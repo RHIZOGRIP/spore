@@ -1,6 +1,6 @@
 {
   "name": "spore-monorepo",
-  "version": "0.15.1",
+  "version": "1.0.0",
   "private": true,
   "description": "spore and its CLI and plugins, as npm workspaces",
   "type": "module",

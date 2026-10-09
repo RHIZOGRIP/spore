@@ -1725,7 +1725,7 @@ dependencies = [
 
 [[package]]
 name = "spore-definition"
-version = "0.15.1"
+version = "1.0.0"
 dependencies = [
  "croner",
  "dirs",
@@ -1737,7 +1737,7 @@ dependencies = [
 
 [[package]]
 name = "spore-node"
-version = "0.15.1"
+version = "1.0.0"
 dependencies = [
  "napi",
  "napi-build",
@@ -1750,7 +1750,7 @@ dependencies = [
 
 [[package]]
 name = "spore-runner"
-version = "0.15.1"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1775,7 +1775,7 @@ dependencies = [
 
 [[package]]
 name = "spore-workspace"
-version = "0.15.1"
+version = "1.0.0"
 dependencies = [
  "dirs",
  "jiff",
