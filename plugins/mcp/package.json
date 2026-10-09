@@ -1,0 +1,55 @@
+{
+  "name": "@rhizogrip/spore-plugin-mcp",
+  "version": "0.1.0",
+  "description": "MCP for spores: a client the agent runs inside its own sandbox, its results in files",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/mcp"
+  },
+  "files": [
+    "bin/",
+    "reference.md",
+    "README.md",
+    "NOTICE"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.3.1",
+    "minimist": "^1.2.8"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/server": "2.3.1",
+    "zod": "^4.2.0"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "spore": {
+    "works": ">=0.3 <1",
+    "programs": {
+      "SPORE_MCP": "./bin/mcp.js"
+    },
+    "reference": "reference.md"
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-mcp v${version}",
+      "tagName": "plugin-mcp-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}

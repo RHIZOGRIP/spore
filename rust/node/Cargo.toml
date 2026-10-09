@@ -1,0 +1,22 @@
+[package]
+name = "spore-node"
+description = "spore-definition and spore-workspace for Node, as one napi addon"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", default-features = false, features = ["napi4"] }
+napi-derive = "2"
+serde = "1"
+serde_json = "1"
+spore-definition = { path = "../definition" }
+spore-workspace = { path = "../workspace" }
+
+[build-dependencies]
+napi-build = "2"

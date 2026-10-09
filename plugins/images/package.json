@@ -1,0 +1,49 @@
+{
+  "name": "@rhizogrip/spore-plugin-images",
+  "version": "0.1.0",
+  "description": "Images for spores: sharp, importable by the programs an agent writes",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/images"
+  },
+  "files": [
+    "reference.md",
+    "README.md",
+    "NOTICE"
+  ],
+  "dependencies": {
+    "sharp": "^0.35.5"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "spore": {
+    "works": ">=0.3 <1",
+    "modules": [
+      "sharp"
+    ],
+    "reference": "reference.md"
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-images v${version}",
+      "tagName": "plugin-images-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}

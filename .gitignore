@@ -1,0 +1,14 @@
+node_modules/
+build/
+# Rust build output, and the definition addon copied out of it
+target/
+native/
+CLB.md
+CLAUDE.md
+# Runtime logs
+logs/
+# Scratch workspace
+ws/
+
+# Local-only convenience file
+Makefile

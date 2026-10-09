@@ -1,0 +1,167 @@
+/**
+ * Opening a workspace: everything an entry point needs before a turn runs.
+ * Contract: ARCHITECTURE.md, "The spore command".
+ */
+
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+import { provisionModules } from '../delegation/agent-env.js'
+import { describePrecursors, cellModelRules, precursorRules, seedPrecursors } from '../delegation/precursor-catalog.js'
+import { parseDefinition } from '../delegation/definition.js'
+import { grantedPathContaining } from '../isolation/sandbox.js'
+import { TOOL_NAMES } from './tool-names.js'
+import { shippedTree, sporangiumOf } from './sporangia.js'
+import { dataDir, definitionPath, DEFINITION_FILE, LIBRARIES_FILE, PLUGINS_DIR, REFERENCE_FILE } from './spore-dir.js'
+
+/**
+ * The files the runtime put in the workspace, named to the agent that has to find them.
+ *
+ * The default sporangium's `spore.cmk` points at `reference.md` in one line, and `--definition` replaces
+ * the shipped definition entirely — so any custom identity lost that pointer while the files
+ * were still being seeded. Measured on a benchmark run: agents guessed `context/` and
+ * `data/`, and nine `read` calls went looking for a file sitting at the workspace root.
+ *
+ * It belongs in `domainRules` because that slot already means *what you can reach here*,
+ * and it is what the runtime knows and an identity's author may not.
+ */
+/**
+ * A declared grant — a corpus it reads, a directory it writes — linked in under the name the
+ * definition gave it. The link is what lets the agent name it the way it names everything
+ * else; the access is Landlock's, and neither is worth anything without the other. Only a link
+ * is ever replaced: anything else under that name is the workspace's own.
+ *
+ * A link whose target is gone is dropped rather than staged: a dangling name in the
+ * workspace reads as a corpus the agent cannot open, and the report says which.
+ */
+export function linkGrants (ws, declared = []) {
+  const staged = []
+  for (const { name, path } of declared) {
+    const at = resolve(ws, name)
+    if (!existsSync(path)) {
+      staged.push({ name, path, missing: true })
+      continue
+    }
+    try {
+      const there = lstatSync(at, { throwIfNoEntry: false })
+      if (there && !there.isSymbolicLink()) {
+        staged.push({ name, path, missing: true, error: `${at} is the workspace's own, not a link` })
+        continue
+      }
+      if (there) rmSync(at)
+      symlinkSync(path, at)
+    } catch (err) {
+      staged.push({ name, path, missing: true, error: err.message })
+      continue
+    }
+    staged.push({ name, path: realpathSync(path), missing: false })
+  }
+  return staged
+}
+
+function seededRules (ws) {
+  const seeded = [REFERENCE_FILE, LIBRARIES_FILE].filter(file => existsSync(resolve(ws, file)))
+  if (!seeded.length) return ''
+  return `At the workspace root: ${seeded.join(' and ')}. ` +
+    `${REFERENCE_FILE} describes this runtime — what each command accepts and what it will refuse — ` +
+    `and ${LIBRARIES_FILE} lists the libraries your own programs can import, with a worked example of each. ` +
+    'Read the part you need rather than the whole file.'
+}
+
+/**
+ * A spore given a directory to work in is opened on it: what a person calls "here" or "the
+ * project" is that directory, and the workspace around it is the runtime's bookkeeping.
+ */
+function workRules (writes) {
+  return writes.map(({ name }) =>
+    `${name}/ is the directory you were opened on, and you work in it in place. When the person says ` +
+    `here, this directory, the project or the code, they mean ${name}/ — not your workspace, which is your own ` +
+    `bookkeeping and worth mentioning only when asked about. write and edit reach ${name}/, and wsexec runs ` +
+    `commands in it (cd ${name} && …); exec only reads it.`
+  ).join('\n\n')
+}
+
+/**
+ * Only the plugins the definition names, whatever else is in `plugins/`: a file left from one it
+ * no longer uses describes a program this agent is not given.
+ */
+function pluginRules (ws, names) {
+  const docs = names.map(name => `${PLUGINS_DIR}/${name}.md`).filter(file => existsSync(resolve(ws, file)))
+  if (!docs.length) return ''
+  const summary = (file) => (readFileSync(resolve(ws, file), 'utf8').split('\n').find(line => line.trim()) || '').replace(/^#+\s*/, '').trim()
+  return ['Plugins this spore uses, each described in its own file:', ...docs.map(file => `- ${file} — ${summary(file)}`)].join('\n')
+}
+
+export function openWorkspace (dir, { cwd = process.cwd(), definition: given, allowGranted = false } = {}) {
+  const ws = resolve(cwd, dir || '.')
+  if (!existsSync(ws) || !statSync(ws).isDirectory()) {
+    return { error: `workspace is not a directory — ${dir || '.'}` }
+  }
+
+  const granted = allowGranted ? null : grantedPathContaining(ws)
+  if (granted) {
+    return { error: `workspace is inside a sandbox-granted path (${granted}) — an agent there could read and write everything around it; use a directory outside the spore repo and outside /tmp` }
+  }
+
+  if (given) {
+    if (existsSync(definitionPath(ws))) {
+      return { error: `workspace already has a definition — ${definitionPath(ws)}` }
+    }
+    const source = readFileSync(resolve(cwd, given), 'utf8')
+    const parsed = parseDefinition(source, { knownTools: TOOL_NAMES })
+    if (parsed.error) return { error: `${given} ${parsed.error}` }
+    copyFileSync(resolve(cwd, given), definitionPath(ws))
+  }
+
+  // Opening is not making. A directory with no definition is not a workspace — `spore
+  // define` is what turns one into a spore, and seeding here would put an agent in a
+  // directory nobody said should hold one.
+  if (!existsSync(definitionPath(ws))) {
+    return { error: `${ws} has no ${DEFINITION_FILE} — spore define makes a spore, and this directory is not one yet` }
+  }
+  mkdirSync(dataDir(ws), { recursive: true })
+  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+  if (definition.error) {
+    return { error: `${definitionPath(ws)} ${definition.error} — edit it, or delete it to start again from the shipped default` }
+  }
+
+  // The detail the identity does not carry. Costs nothing until the agent reads it,
+  // which is what lets the prompt stay short without making the agent ignorant.
+  provisionModules(ws)
+  const reads = linkGrants(ws, definition.reads)
+  const writes = linkGrants(ws, definition.writes)
+  const unstaged = writes.find(w => w.missing)
+  if (unstaged) {
+    return { error: `${definitionPath(ws)} writes ${unstaged.name}=${unstaged.path}, which cannot be staged — ${unstaged.error ?? 'it is not there'}` }
+  }
+  const tree = shippedTree(sporangiumOf(ws))
+  for (const file of [REFERENCE_FILE, LIBRARIES_FILE]) {
+    if (existsSync(resolve(ws, file))) continue
+    copyFileSync(tree.get(file), resolve(ws, file))
+  }
+
+  seedPrecursors(ws)
+
+  const reachable = reads.filter(r => !r.missing)
+  return {
+    ws,
+    granting: definition.tools,
+    model: definition.model,
+    reads: reachable,
+    writes,
+    sources: definition.sources,
+    scopes: definition.scopes,
+    limits: definition.limits,
+    identity: definition.identity,
+    excludeTools: TOOL_NAMES.filter(name => !definition.tools.includes(name)),
+    // Reading a workspace does not tidy it. Retention deletes a live run's records
+    // just as readily as a finished one's, so it belongs to whoever holds the lock.
+    retain: definition.retain,
+    history: definition.history ?? null,
+    memory: definition.memory,
+    images: definition.images,
+    schedules: definition.schedules ?? null,
+    plugins: definition.plugins,
+    domainRules: [workRules(writes), seededRules(ws), pluginRules(ws, definition.plugins), precursorRules(describePrecursors(ws)), cellModelRules(definition.cellModels ?? [], definition.model)].filter(Boolean).join('\n\n')
+  }
+}

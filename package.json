@@ -1,0 +1,52 @@
+{
+  "name": "spore-monorepo",
+  "version": "0.15.1",
+  "private": true,
+  "description": "spore and its CLI and plugins, as npm workspaces",
+  "type": "module",
+  "license": "Apache-2.0",
+  "overrides": {
+    "undici": "^7.30.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "plugins/*"
+  ],
+  "scripts": {
+    "lint": "standard",
+    "test": "npm test -w @rhizogrip/spore -w @rhizogrip/spore-cli -w @rhizogrip/spore-plugin-telegram -w @rhizogrip/spore-plugin-images -w @rhizogrip/spore-plugin-documents -w @rhizogrip/spore-plugin-brave -w @rhizogrip/spore-plugin-mcp -w @rhizogrip/spore-plugin-discord -w @rhizogrip/spore-plugin-sluice",
+    "test:rust": "cargo test -p spore-definition -p spore-workspace -p spore-runner",
+    "licenses": "node scripts/licenses.js",
+    "build": "npm run build -w @rhizogrip/spore",
+    "prerelease": "npm run lint && cargo fmt --check && npm test",
+    "release": "release-it"
+  },
+  "release-it": {
+    "hooks": {
+      "after:bump": "node scripts/sync-version.js"
+    },
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: v${version}",
+      "requireUpstream": false,
+      "tagName": "v${version}",
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "lint-staged": {
+    "*.{js,cjs}": "standard"
+  },
+  "devDependencies": {
+    "chalk": "^6.0.1",
+    "lint-staged": "^17.6.0",
+    "release-it": "^21.0.3",
+    "standard": "^17.1.2",
+    "vitest": "^4.1.11"
+  }
+}

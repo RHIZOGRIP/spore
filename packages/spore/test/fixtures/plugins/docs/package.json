@@ -1,0 +1,10 @@
+{
+  "name": "spore-plugin-docs",
+  "version": "0.1.0",
+  "description": "A plugin that ships precursors only, for the tests",
+  "private": true,
+  "spore": {
+    "works": ">=0.3 <1",
+    "precursors": "precursors"
+  }
+}

@@ -1,0 +1,46 @@
+name: Lint and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Ubuntu denies unprivileged user namespaces through AppArmor, and every contained turn
+      # in the suite needs them.
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Check the host can confine an agent
+        run: |
+          set -euo pipefail
+          grep -qw landlock /sys/kernel/security/lsm || { echo "::error::Landlock is not enabled: $(cat /sys/kernel/security/lsm)"; exit 1; }
+          node -e "const v = require('node:sqlite').DatabaseSync; const db = new v(':memory:'); console.log('node', process.version, 'sqlite', db.prepare('select sqlite_version() v').get().v)"
+
+      # Dependencies' install scripts stay off; the build is spore's own.
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+
+      - run: npm run lint
+      - run: cargo fmt --check
+      - run: npm run test:rust
+      - run: npm test

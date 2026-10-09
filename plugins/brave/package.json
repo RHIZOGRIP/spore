@@ -1,0 +1,60 @@
+{
+  "name": "@rhizogrip/spore-plugin-brave",
+  "version": "0.1.0",
+  "description": "Web search for spores through the Brave Search API, the key held by the runner",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/brave"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "reference.md",
+    "README.md",
+    "NOTICE"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "spore": {
+    "works": ">=0.3 <1",
+    "programs": {
+      "SPORE_BRAVE": "./bin/search.js"
+    },
+    "sources": {
+      "brave": {
+        "url": "https://api.search.brave.com/res/v1/web/search",
+        "headers": {
+          "X-Subscription-Token": "${BRAVE_API_SK}",
+          "Accept": "application/json"
+        },
+        "query": {
+          "count": "5"
+        }
+      }
+    },
+    "reference": "reference.md"
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-brave v${version}",
+      "tagName": "plugin-brave-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}

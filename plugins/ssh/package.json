@@ -1,0 +1,50 @@
+{
+  "name": "@rhizogrip/spore-plugin-ssh",
+  "version": "0.1.2",
+  "description": "SSH for spores: the keys a host's ssh-agent holds, usable and never readable",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/ssh"
+  },
+  "files": [
+    "bin/",
+    "reference.md",
+    "README.md",
+    "NOTICE"
+  ],
+  "spore": {
+    "works": ">=0.3 <1",
+    "settings": {
+      "socket": "text"
+    },
+    "programs": {
+      "SPORE_SSH": "./bin/ssh",
+      "GIT_SSH": "./bin/ssh"
+    },
+    "env": {
+      "SSH_AUTH_SOCK": "{settings.socket}"
+    },
+    "reference": "reference.md"
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-ssh v${version}",
+      "tagName": "plugin-ssh-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}

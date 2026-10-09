@@ -1,0 +1,48 @@
+name: Publish a plugin
+
+on:
+  push:
+    tags:
+      - 'plugin-*-v*'
+
+# One workflow for every package under plugins/. The tag is plugin-<name>-v<version> and has to
+# agree with plugins/<name>/package.json. A plugin has nothing to build; what it depends on comes
+# from npm when it is installed.
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm 11.5.1 or newer; npm 12.0.0 ships without the sigstore
+      # module that `publish --provenance` loads.
+      - run: npm install -g npm@11
+
+      - name: Find the plugin the tag names
+        run: |
+          set -euo pipefail
+          rest="${GITHUB_REF_NAME#plugin-}"
+          name="${rest%-v*}"
+          version="${rest##*-v}"
+          dir="plugins/$name"
+          test -f "$dir/package.json" || { echo "::error::tag $GITHUB_REF_NAME names no $dir/package.json"; exit 1; }
+          declared=$(node -p "require('./$dir/package.json').version")
+          [ "$declared" = "$version" ] || { echo "::error::$dir/package.json says $declared and the tag says $version"; exit 1; }
+          echo "PLUGIN_DIR=$dir" >> "$GITHUB_ENV"
+
+      - name: Publish
+        run: npm publish --provenance --access public --ignore-scripts
+        working-directory: ${{ env.PLUGIN_DIR }}
+        # Only until every package has a trusted publisher on npmjs; a package must exist first.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

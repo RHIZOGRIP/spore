@@ -1,0 +1,24 @@
+#!/bin/sh
+# Drafts the message of a plain `git commit` with the spore named by SPORE_COMMIT (commit when
+# unset), into the editor git opens. Install it as .git/hooks/prepare-commit-msg, or in the
+# directory git's core.hooksPath names, executable.
+
+[ -n "$2" ] && exit 0
+git diff --cached --quiet && exit 0
+
+dir=$(mktemp -d) || exit 0
+trap 'rm -rf "$dir"' EXIT
+git diff --cached > "$dir/staged.diff"
+
+repo=$(basename "$(git rev-parse --show-toplevel)")
+recent=$(git log -10 --format='- %s' 2>/dev/null)
+
+msg=$(spore send "${SPORE_COMMIT:-commit}" --attach "$dir/staged.diff" "Repository $repo. Its recent subjects:
+$recent
+
+The staged diff is attached.") || {
+  echo "spore: no commit message drafted (exit $?) — write it yourself" >&2
+  exit 0
+}
+
+{ printf '%s\n' "$msg"; cat "$1"; } > "$dir/message" && cp "$dir/message" "$1"

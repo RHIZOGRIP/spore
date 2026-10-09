@@ -1,0 +1,89 @@
+{
+  "name": "@rhizogrip/spore-plugin-discord",
+  "version": "0.2.0",
+  "description": "Discord for spores: people and spores in one channel, each spore addressed by its role, run as a service",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/discord"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/",
+    "src/",
+    "reference.md",
+    "README.md",
+    "NOTICE"
+  ],
+  "peerDependencies": {
+    "@rhizogrip/spore": ">=0.5 <1"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "spore": {
+    "works": ">=0.5 <1",
+    "programs": {
+      "SPORE_DISCORD": "./bin/discord.js"
+    },
+    "sources": {
+      "discord": {
+        "url": "https://discord.com/api/v10/channels/",
+        "headers": {
+          "Authorization": "Bot ${DISCORD_BOT_TOKEN}",
+          "User-Agent": "DiscordBot (https://github.com/RHIZOGRIP/spore, 0.2.0)"
+        },
+        "paths": [
+          "*/messages"
+        ],
+        "requires": [
+          "path"
+        ]
+      }
+    },
+    "reference": "reference.md",
+    "services": {
+      "discord": {
+        "what": "a bot of yours in Discord channels, where people and spores talk",
+        "program": "./bin/spore-discord.js",
+        "instances": {
+          "dir": "discord",
+          "ext": ".json",
+          "called": "bot"
+        },
+        "check": [
+          "--check"
+        ]
+      }
+    }
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-discord v${version}",
+      "tagName": "plugin-discord-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}

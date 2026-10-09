@@ -1,0 +1,58 @@
+{
+  "name": "@rhizogrip/spore-plugin-sluice",
+  "version": "0.1.1",
+  "description": "Host commands for spores, as a sluice broker's rules allow them",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/sluice"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "examples/",
+    "reference.md",
+    "README.md",
+    "NOTICE"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "sluicify-native": "0.3.1"
+  },
+  "spore": {
+    "works": ">=0.7 <1",
+    "settings": {
+      "socket": "text"
+    },
+    "programs": {
+      "SPORE_SLUICE": "./bin/sluice.js"
+    },
+    "env": {
+      "SPORE_SLUICE_SOCKET": "{settings.socket}"
+    },
+    "reference": "reference.md"
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-sluice v${version}",
+      "tagName": "plugin-sluice-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}

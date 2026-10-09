@@ -1,0 +1,76 @@
+{
+  "name": "@rhizogrip/spore",
+  "version": "0.15.1",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "description": "An LLM agent in a sandboxed workspace: seven tools, a call contract that keeps streams out of context, soft and hard limits, and sub-agents confined to directories of their own.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "packages/spore"
+  },
+  "homepage": "https://github.com/RHIZOGRIP/spore#readme",
+  "bugs": {
+    "url": "https://github.com/RHIZOGRIP/spore/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./logger": "./src/observability/logger.js",
+    "./testing": "./src/testing.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "webhook/",
+    "api/",
+    "native/spore.node",
+    "native/spore-runner",
+    "native/spore-spawn",
+    "build/Release/sandbox.node",
+    "build/Release/confine",
+    "sporangia/",
+    "NOTICE",
+    "LICENSE"
+  ],
+  "scripts": {
+    "webhook": "node bin/spore-webhook.js",
+    "api": "node bin/spore-api.js",
+    "test": "vitest run && node conformance/selfcheck.js",
+    "prepare": "npm run build",
+    "build": "node-gyp rebuild && npm run build:native",
+    "build:native": "cargo build --release -p spore-node -p spore-runner && mkdir -p native && cp ../../target/release/libspore_node.so native/spore.node.new && mv -f native/spore.node.new native/spore.node && cp ../../target/release/spore-runner native/spore-runner.new && mv -f native/spore-runner.new native/spore-runner && cp ../../target/release/spore-spawn native/spore-spawn.new && mv -f native/spore-spawn.new native/spore-spawn",
+    "test:model": "node conformance/run.js"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.222.0",
+    "@opentelemetry/sdk-node": "^0.222.0",
+    "ajv": "^8.20.0",
+    "cheerio": "^1.2.0",
+    "csv-parse": "^7.0.3",
+    "csv-stringify": "^6.9.0",
+    "decimal.js": "^10.6.0",
+    "fast-xml-parser": "^5.11.2",
+    "fflate": "^0.8.3",
+    "luxon": "^3.7.2",
+    "minimist": "^1.2.8",
+    "mohdel": "3.14.0",
+    "semver": "^7.8.5",
+    "yaml": "^2.9.1"
+  },
+  "license": "Apache-2.0"
+}

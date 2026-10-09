@@ -1,0 +1,58 @@
+{
+  "name": "@rhizogrip/spore-plugin-documents",
+  "version": "0.1.0",
+  "description": "Documents for spores: xlsx, docx, pptx, odt and PDF, importable by the programs an agent writes",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/documents"
+  },
+  "files": [
+    "reference.md",
+    "README.md",
+    "NOTICE"
+  ],
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "mammoth": "^1.13.0",
+    "officeparser": "^8.1.0",
+    "pdf-parse": "^2.4.5"
+  },
+  "devDependencies": {
+    "fflate": "^0.8.3"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "spore": {
+    "works": ">=0.3 <1",
+    "modules": [
+      "exceljs",
+      "mammoth",
+      "officeparser",
+      "pdf-parse"
+    ],
+    "reference": "reference.md"
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-documents v${version}",
+      "tagName": "plugin-documents-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}

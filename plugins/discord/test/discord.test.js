@@ -1,0 +1,234 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { execFile } from 'node:child_process'
+import http from 'node:http'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
+
+import { showPlugin } from '@rhizogrip/spore'
+
+import { createDiscord, INTENTS } from '../src/api.js'
+import { avatarsOf, botToken, channelsOf } from '../src/bots.js'
+import { announce, header, historyLines, isWorkingPost, pieces, plain, workingPost } from '../src/forward.js'
+
+const run = promisify(execFile)
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const SOURCE_BIN = join(dirname(createRequire(join(ROOT, 'package.json')).resolve('@rhizogrip/spore/package.json')), 'bin', 'source.js')
+
+let dir
+let server
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'spore-discord-')) })
+afterEach(async () => {
+  if (server) await new Promise(resolve => server.close(resolve))
+  server = null
+  rmSync(dir, { recursive: true, force: true })
+})
+
+async function broker (answer) {
+  writeFileSync(join(dir, 'model.key'), 'k'.repeat(64))
+  const asked = []
+  server = http.createServer((req, res) => {
+    const chunks = []
+    req.on('data', chunk => chunks.push(chunk))
+    req.on('end', () => {
+      asked.push({ path: req.url, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) })
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(answer))
+    })
+  })
+  const socketPath = join(dir, 'source.sock')
+  await new Promise(resolve => server.listen(socketPath, resolve))
+  const history = (...args) => run(process.execPath, [join(ROOT, 'bin/discord.js'), ...args], {
+    cwd: dir,
+    env: { PATH: process.env.PATH, SPORE_SOURCE: SOURCE_BIN, SPORE_SOURCE_SOCKET: socketPath }
+  })
+  return { asked, history }
+}
+
+describe('the discord plugin', () => {
+  it('is a plugin spore accepts, describing its source, giving its program and offering its service', () => {
+    const shown = showPlugin('discord', { configFile: join(ROOT, 'no-config.json') })
+    expect(shown).toMatchObject({ package: '@rhizogrip/spore-plugin-discord', sources: ['discord'], programs: { SPORE_DISCORD: join(shown.dir, 'bin/discord.js') } })
+  })
+
+  it('reads a channel\'s history through the discord source, oldest first', async () => {
+    const page = [
+      { id: '12', timestamp: 't2', author: { username: 'triage' }, webhook_id: 'h', content: 'on it', mentions: [], attachments: [] },
+      { id: '11', timestamp: 't1', author: { username: 'alice' }, content: 'payouts?', mentions: [], attachments: [] }
+    ]
+    const { asked, history } = await broker({ status: 200, ok: true, contentType: 'application/json', body: JSON.stringify(page) })
+    const { stdout } = await history('history', '100', '--before', '13', '--limit', '2')
+    expect(asked).toEqual([{ path: '/fetch', body: { source: 'discord', path: '100/messages', params: { limit: '2', before: '13' } } }])
+    expect(stdout).toBe('11 t1 alice: payouts?\n12 t2 triage (webhook): on it\n')
+  })
+
+  it('refuses what is not a channel, before asking anything', async () => {
+    const { asked, history } = await broker({ status: 200, ok: true, contentType: 'application/json', body: '[]' })
+    await expect(history('history', 'general')).rejects.toMatchObject({ code: 2 })
+    await expect(history('history', '100', '--limit', '500')).rejects.toMatchObject({ code: 2 })
+    expect(asked).toEqual([])
+  })
+})
+
+const bot = (content) => {
+  const path = join(dir, 'ops.json')
+  writeFileSync(path, JSON.stringify(content))
+  return path
+}
+
+describe('a bot file', () => {
+  it('reads each channel, its spores, who may address them and whether spores talk', () => {
+    const path = bot({ token: '${DISCORD_BOT_TOKEN}', channels: { 100: { spores: ['triage'], humans: ['1', 'role:2'], sporesTalk: true }, 200: { spores: ['ledger'], humans: [] } } }) // eslint-disable-line no-template-curly-in-string
+    expect([...channelsOf(path)]).toEqual([
+      ['100', { spores: ['triage'], humans: ['1', 'role:2'], sporesTalk: true }],
+      ['200', { spores: ['ledger'], humans: [], sporesTalk: false }]
+    ])
+    expect(botToken(path, { DISCORD_BOT_TOKEN: 'tok' })).toBe('tok')
+    expect(() => botToken(path, {})).toThrow(expect.objectContaining({ type: 'DISCORD_NO_TOKEN' }))
+  })
+
+  it('gives a spore the avatar it names, and refuses one Discord could not fetch', () => {
+    const channels = { 100: { spores: ['triage'], humans: [] } }
+    expect(avatarsOf(bot({ token: '${T}', channels, avatars: { triage: 'https://forge.example/triage.png' } }))).toEqual({ triage: 'https://forge.example/triage.png' }) // eslint-disable-line no-template-curly-in-string
+    expect(avatarsOf(bot({ token: '${T}', channels }))).toEqual({}) // eslint-disable-line no-template-curly-in-string
+    for (const avatars of [{ triage: 'http://forge.example/triage.png' }, { triage: '/home/me/triage.png' }, ['https://x/y.png']]) {
+      expect(() => avatarsOf(bot({ token: '${T}', channels, avatars }))).toThrow(/avatars that are not/) // eslint-disable-line no-template-curly-in-string
+    }
+  })
+
+  it('refuses what it cannot route, saying which channel', () => {
+    const refused = (channels) => expect(() => channelsOf(bot({ token: '${T}', channels }))).toThrow(expect.objectContaining({ type: 'DISCORD_BOT_INVALID' })) // eslint-disable-line no-template-curly-in-string
+    refused({ general: { spores: ['triage'], humans: [] } })
+    refused({ 100: { spores: [], humans: [] } })
+    refused({ 100: { spores: ['triage'], humans: ['alice'] } })
+    refused({ 100: { spores: ['triage'], humans: [], talk: true } })
+    expect(() => channelsOf(bot({ token: 'plain-token', channels: {} }))).toThrow(/no token spore can read/)
+    expect(() => channelsOf(join(dir, 'none.json'))).toThrow(expect.objectContaining({ type: 'DISCORD_NO_BOT' }))
+  })
+})
+
+describe('what a channel is told', () => {
+  it('opens an answer with whom it answers and the start of what they said', () => {
+    expect(header('1', 'can you check\nthe payouts')).toBe('<@1> ↪ "can you check"')
+    expect(header('1', 'x'.repeat(80))).toBe(`<@1> ↪ "${'x'.repeat(59)}…"`)
+  })
+
+  it('says where a turn nobody in the channel asked for came from', () => {
+    expect(announce({ record: { stopReason: 'answer', output: 'two new papers' }, asked: [{ schedule: 'digest' }] })).toBe('schedule "digest"\n\ntwo new papers')
+    expect(announce({ record: { stopReason: 'answer', output: 'scanned' }, asked: [{ job: 'scan' }] })).toBe('job "scan"\n\nscanned')
+  })
+
+  it('breaks an answer at Discord\'s 2000 characters', () => {
+    const parts = pieces(`${'a'.repeat(1500)}\n${'b'.repeat(1500)}`)
+    expect(parts.map(part => part.length)).toEqual([1500, 1500])
+    expect(pieces('c'.repeat(4500)).map(part => part.length)).toEqual([2000, 2000, 500])
+  })
+
+  it('names a spore a message mentions by its role, and leaves other roles as they are', () => {
+    expect(plain('<@&9> look, and tell <@&8>', { triage: '9' })).toBe('@triage look, and tell <@&8>')
+  })
+
+  it('reads history oldest first, each line its id, time, who and what, the people it mentions named', () => {
+    const lines = historyLines([
+      { id: '3', timestamp: 't3', author: { username: 'triage' }, webhook_id: 'h', content: '<@7> done, <@&9> knows', mentions: [{ id: '7', username: 'bob', global_name: 'Bob' }], attachments: [] },
+      { id: '2', timestamp: 't2', author: { username: 'alice', global_name: 'Alice' }, content: 'see this', mentions: [], attachments: [{ filename: 'a.png' }] }
+    ])
+    expect(lines).toEqual(['2 t2 Alice: see this [file a.png]', '3 t3 triage (webhook): @Bob done, <@&9> knows'])
+  })
+
+  it('knows its own working posts, which are not part of the conversation', () => {
+    expect(isWorkingPost(workingPost(header('1', 'payouts?'), true))).toBe(true)
+    expect(isWorkingPost(workingPost(header('1', 'payouts?'), false))).toBe(true)
+    expect(isWorkingPost(`${header('1', 'payouts?')}\nall fine, nothing is working…ish`)).toBe(false)
+  })
+})
+
+const answering = (status, body) => async () => ({ ok: status < 300, status, json: async () => body })
+
+describe('the REST API', () => {
+  it('waits as long as Discord said when it is rate limited, and does not retry a refusal', async () => {
+    const limited = createDiscord('tok', { fetchImpl: answering(429, { message: 'You are being rate limited.', retry_after: 1.5 }) })
+    await expect(limited.me()).rejects.toMatchObject({ type: 'DISCORD_FAILED', retryable: true, context: { status: 429, retryAfter: 1.5 } })
+    const refused = createDiscord('tok', { fetchImpl: answering(403, { message: 'Missing Permissions', code: 50013 }) })
+    await expect(refused.createRole('g', 'triage')).rejects.toMatchObject({ retryable: false, detail: 'Missing Permissions (50013)', context: { code: 50013 } })
+  })
+
+  it('sends the bot token, a user agent, and asks a webhook to wait for its message', async () => {
+    const asked = []
+    const discord = createDiscord('tok', {
+      fetchImpl: async (url, init) => {
+        asked.push({ url, init })
+        return { ok: true, status: 200, json: async () => ({ id: 'm1' }) }
+      }
+    })
+    await discord.post({ id: 'h', token: 'secret' }, { username: 'triage', content: 'hi' })
+    expect(asked[0].url).toBe('https://discord.com/api/v10/webhooks/h/secret?wait=true')
+    expect(asked[0].init.headers).toMatchObject({ authorization: 'Bot tok', 'user-agent': expect.stringMatching(/^DiscordBot \(/) })
+    expect(JSON.parse(asked[0].init.body)).toEqual({ username: 'triage', content: 'hi' })
+  })
+})
+
+class FakeSocket {
+  static opened = []
+  constructor (url) {
+    this.url = url
+    this.sent = []
+    this.listeners = { message: [], close: [] }
+    FakeSocket.opened.push(this)
+  }
+
+  addEventListener (kind, listener) { this.listeners[kind].push(listener) }
+  send (text) { this.sent.push(JSON.parse(text)) }
+  close (code, reason) { setTimeout(() => this.listeners.close.forEach(listener => listener({ code, reason }))) }
+  receive (payload) { this.listeners.message.forEach(listener => listener({ data: JSON.stringify(payload) })) }
+}
+
+const until = async (done) => {
+  const deadline = Date.now() + 2000
+  while (!done()) {
+    if (Date.now() > deadline) throw new Error('waited too long')
+    await new Promise(resolve => setTimeout(resolve, 5))
+  }
+}
+
+describe('the Gateway', () => {
+  beforeEach(() => { FakeSocket.opened = [] })
+
+  it('identifies, hands over messages in order, and resumes where Discord asks it to reconnect', async () => {
+    const discord = createDiscord('tok', { fetchImpl: answering(200, { url: 'wss://gateway.test' }), WebSocketImpl: FakeSocket, random: () => 0 })
+    const controller = new AbortController()
+    const messages = []
+    const running = discord.connect({ onMessage: async (message) => { messages.push(message.id) }, signal: controller.signal, sleep: async () => {} })
+
+    await until(() => FakeSocket.opened.length === 1)
+    const first = FakeSocket.opened[0]
+    expect(first.url).toBe('wss://gateway.test/?v=10&encoding=json')
+    first.receive({ op: 10, d: { heartbeat_interval: 60_000 } })
+    expect(first.sent[0]).toEqual({ op: 2, d: { token: 'tok', intents: INTENTS, properties: { os: 'linux', browser: 'spore', device: 'spore' } } })
+    first.receive({ op: 0, t: 'READY', s: 1, d: { session_id: 'sess', resume_gateway_url: 'wss://resume.test', user: { id: 'me' } } })
+    first.receive({ op: 0, t: 'MESSAGE_CREATE', s: 2, d: { id: 'a' } })
+    first.receive({ op: 0, t: 'MESSAGE_CREATE', s: 3, d: { id: 'b' } })
+    first.receive({ op: 7, d: null })
+
+    await until(() => FakeSocket.opened.length === 2)
+    const second = FakeSocket.opened[1]
+    expect(second.url).toBe('wss://resume.test/?v=10&encoding=json')
+    second.receive({ op: 10, d: { heartbeat_interval: 60_000 } })
+    expect(second.sent[0]).toEqual({ op: 6, d: { token: 'tok', session_id: 'sess', seq: 3 } })
+    expect(messages).toEqual(['a', 'b'])
+
+    controller.abort()
+    await running
+  })
+
+  it('stops for good when Discord refuses the token or an intent', async () => {
+    const discord = createDiscord('tok', { fetchImpl: answering(200, { url: 'wss://gateway.test' }), WebSocketImpl: FakeSocket, random: () => 0 })
+    const running = discord.connect({ onMessage: async () => {}, signal: new AbortController().signal, sleep: async () => {} })
+    await until(() => FakeSocket.opened.length === 1)
+    FakeSocket.opened[0].close(4014, 'Disallowed intent(s).')
+    await expect(running).rejects.toMatchObject({ type: 'DISCORD_REFUSED', context: { code: 4014 } })
+  })
+})

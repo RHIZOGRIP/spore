@@ -1,0 +1,6 @@
+#!/bin/sh
+# ssh reads known_hosts and config from the account's home, which the sandbox refuses: these are
+# the workspace's own, under $HOME.
+set -- -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" -o StrictHostKeyChecking=accept-new "$@"
+[ -f "$HOME/.ssh/config" ] && set -- -F "$HOME/.ssh/config" "$@"
+exec ssh "$@"

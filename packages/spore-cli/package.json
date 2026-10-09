@@ -1,0 +1,52 @@
+{
+  "name": "@rhizogrip/spore-cli",
+  "version": "0.15.1",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "description": "The spore command: define, send, watch and manage spores from a terminal.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "packages/spore-cli"
+  },
+  "homepage": "https://github.com/RHIZOGRIP/spore#readme",
+  "bugs": {
+    "url": "https://github.com/RHIZOGRIP/spore/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "bin": {
+    "spore": "bin/spore.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "tui/",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "tui": "node bin/spore.js tui"
+  },
+  "dependencies": {
+    "@rhizogrip/spore": "0.15.1",
+    "chalk": "^6.0.1",
+    "minimist": "^1.2.8"
+  },
+  "optionalDependencies": {
+    "@earendil-works/pi-tui": "1.0.4"
+  },
+  "license": "Apache-2.0"
+}

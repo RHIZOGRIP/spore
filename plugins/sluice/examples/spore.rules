@@ -1,0 +1,20 @@
+; What spores may ask the host to run. sluice serve reads this through spore-sluice.service;
+; sluice check spore.rules before you start it, and sluice match spore.rules <argv…> to try one.
+
+defaults:
+  timeout = 30s
+  env     = HOME,PATH,LANG,XDG_RUNTIME_DIR,DBUS_SESSION_BUS_ADDRESS
+  log     = argv-only
+
+; How one of the shop's services is doing.
+systemctl --user --no-pager status #unit
+  unit = (shop|shop-worker)\.service
+
+; Restart one of them.
+systemctl --user restart #unit
+  unit = (shop|shop-worker)\.service
+
+; The last lines of its journal.
+journalctl --user --no-pager -u #unit -n #lines
+  unit  = (shop|shop-worker)\.service
+  lines = [1-9][0-9]{0,2}

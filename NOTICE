@@ -1,0 +1,6 @@
+spore
+Copyright 2026 Christophe Le Bars <clb@toort.net>
+
+The native binaries (native/spore-runner, native/spore-spawn, native/spore.node) include the
+Rust crate option-ext, unmodified, under the Mozilla Public License 2.0. Its source is at
+https://crates.io/crates/option-ext.

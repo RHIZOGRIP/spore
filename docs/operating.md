@@ -1,0 +1,525 @@
+# Operating spore
+
+What a host's operator configures and runs: the files under `~/.config/spore/`, the host-wide
+settings, plugins and their services, and the commands that look after spores. How it works is
+[ARCHITECTURE.md](../ARCHITECTURE.md); what it commits to is [PRINCIPLES.md](../PRINCIPLES.md);
+the commands a user types every day are in the [README](../packages/spore/README.md).
+The fields of a `.cmk` — a spore's, a precursor's, a schedule's — are in [definition.md](definition.md).
+
+## `~/.config/spore/` and its `environment`
+
+What the operator authors, never granted to an agent:
+
+| path | what it holds |
+|---|---|
+| `config.json` | where workspaces live and what the machine allows (above) |
+| `sporangia/<name>/` | your sporangia, each laid over the package's of that name |
+| `sources.json` | what each source name means, with its credentials |
+| `memory.json` | the vector store of `memory: vectors` |
+| `hooks.json` | the webhook service's hooks |
+| `api.json` | the HTTP API's socket, address and callers |
+| `environment` | provider keys, `PATH`, the bots' tokens |
+| `<dir>/<instance><ext>` | one file per instance of a plugin service, in the folder its manifest names, as `telegram/<bot>.json` |
+| `ssh/` | the private keys the `ssh-agent` service loads |
+
+**`environment`** is read by every spore command at start, in the format systemd's
+`EnvironmentFile=` reads: one `KEY=value` per line, no `export`, no spaces around `=`; `#` and `;`
+start a comment; a value may be quoted; nothing is expanded. A variable already set in the
+command's own environment wins. A missing file is no environment; a malformed line refuses the
+command with its line number (`ENVIRONMENT_INVALID`), and `spore doctor` reports it.
+
+## `config.json`
+
+`$XDG_CONFIG_HOME/spore/config.json`, else `~/.config/spore/config.json`. Read and written with
+`spore config get [<key>]`, `set <key> <value>`, `add <key> <value>` and `rm <key> [<value>]` (a
+list takes `add`, and `rm` with a value drops one entry); `spore config path` prints where it is.
+The file is written whole and renamed into place. A key spore does not read is refused, naming the
+ones it does.
+
+```json
+{
+  "home": "~/work/spores",
+  "workspaces": ["~/tmp/bench/bench-12"],
+  "turns": 8
+}
+```
+
+| key | what it is | when unset |
+|---|---|---|
+| `home` | the one directory spores are made in, one per subdirectory; not itself a spore | a bare name cannot be resolved |
+| `workspaces` | spores living outside `home`, as paths | none |
+| `turns` | how many of your turns may run at once | 8 |
+| `modelSessions` | how many model calls one running turn and its cells may have going at once | 8 |
+| `largestFile` | the largest file a turn may write, as `1GB`, `512MB` or bytes | 1 GB |
+| `freeFloor` | free disk below which a turn is refused | 2 GB |
+| `spendPerDay`, `spendPerMonth` | dollars all your spores may spend per local day or month | no limit |
+| `contain` | `on` or `off`: whether every turn, job and router runs in namespaces of its own | on |
+| `hereSnapshots` | how many `spore here` session snapshots are kept per spore | 20 |
+| `plugins` | the plugins allowed on this machine; written by `spore plugin allow`, not by `config set` | none |
+| `replyTo` | per spore, where answers go when what a turn read asked from nowhere, as `{ "triage": "discord:ops/1234" }` | none |
+
+A path starting with `~` is kept as written; a relative one is resolved when it is set.
+`spore config set model <provider>/<name>` is not a key: it writes the `model:` line of your
+default sporangium, `~/.config/spore/sporangia/default/spore.cmk`.
+
+**Naming a spore.** A bare name is the spore of that name in `home`; anything path-shaped — it
+starts with `.` or `~`, or holds a `/` — is taken as written; `.` is the one you are standing in. A
+name is letters, digits, `.`, `-` and `_`, starting with a letter or digit, at most 64 characters.
+`spore define <path>` makes a spore there and adds it to `workspaces`. A listed workspace that is
+gone, or holds no `spore.cmk`, is skipped by `spore ls` and reported by `spore doctor`; `spore
+config rm workspaces <path>` drops it.
+
+### What the host limits do when they bind
+
+```bash
+spore config                       # every setting, and whether it is set or the default
+spore config set turns 4
+spore config set largestFile 4GB
+spore config rm spendPerDay        # back to unset
+```
+
+What each does when it binds:
+
+- **`turns`** — a start past it is refused, `ADMISSION_FULL`, with nothing said or made.
+  `spore send` and `spore fork` say so and stop; `spore tick` holds a due schedule for a later
+  pass; the chat plugins answer busy; the HTTP API answers `503`.
+- **`modelSessions`** — a model call that finds every session busy waits for one; the turn's
+  `wall` bounds the wait.
+- **`largestFile`** — a write past it fails with `EFBIG` ("File too large"), or the command
+  writing it ends on `SIGXFSZ`; the call record shows which. It bounds each file, not a turn's
+  total.
+- **`freeFloor`** — the turn is recorded as an error, `DISK_FULL`, without starting, and its
+  message waits unread for the next turn.
+- **`spendPerDay`, `spendPerMonth`** — once what the user's spores have settled reaches one, no
+  turn starts (`SPEND_LIMIT`, saying which window, how much, and when it turns) and no new model
+  call is made: a running turn ends `hard:spend`. Calls already running finish and are paid.
+  `spore ls` and `spore usage` show how far each window has gone; `spore doctor` notes one
+  reached.
+
+### `contain`
+
+On unless set: every turn's agent, job command, router command
+and cell outside any turn starts in user, PID and mount namespaces of its own. On a host that
+refuses unprivileged user namespaces, a turn is recorded as `CONTAIN_FAILED` with its message
+left unread, and a job, router or standalone cell is refused.
+
+```bash
+spore config set contain off    # only where no one else's spores run as this user
+spore config set contain on
+```
+
+While it is off, `spore ls` and `spore doctor` say so. The setting is the host's alone; a
+definition cannot change it.
+
+### `replyTo`
+
+```json
+{ "replyTo": { "triage": "telegram:triage/148392011" } }
+```
+
+Maps a spore's name to the place its answers go when what a turn read carries no reply-to of its
+own — a schedule's firing, a webhook, a job, or a message sent without one. A place is `terminal`
+or `<kind>:<place>`: `<kind>` lowercase letters, digits and `-`, `<place>` non-empty with no
+whitespace. Unset, such an answer is addressed nowhere. A `quiet` turn is addressed nowhere
+either way. Whoever serves the kind — the Telegram or Discord service — delivers it.
+
+## `$XDG_STATE_HOME/spore/`
+
+What the user's spores share while they run, under `$XDG_STATE_HOME/spore/`, else
+`~/.local/state/spore/`. None of it is granted to an agent.
+
+| path | what it is |
+|---|---|
+| `slots/` | the admission slots, `0` … `turns`−1; a running turn holds one's `flock` |
+| `spend/<YYYY-MM-DD>` | dollars settled that local day, in micros; this month and the last are kept |
+| `paused` | `{ at, why? }`, present while `spore pause` is in force; a file made by hand pauses as well |
+| `tick.lock` | held by the pass that fires schedules |
+| `jobs/<run>.lock` | held by a job's supervisor while the job runs |
+| `services/<name>.json` | the plugin version each service started with, read by `spore service restart --outdated` |
+| `cells/` | the workspaces of cells run outside any turn, such as a router's |
+| `telegram/<bot>/`, `discord/<bot>/` | each chat bot's position |
+
+The spend ledger is written whether or not a limit is set, so a limit set at noon counts the
+morning. It counts every spore of the user, including one no config lists and one since
+removed, and puts each call on the day it settled; `spore usage` reads the workspaces instead
+and puts each turn on the day it started.
+
+## Models on the host
+
+`spore setup` asks questions and refuses without a terminal, naming the commands its steps are:
+`spore config set home <dir>`, `mo onboard <provider>`, `spore config set model <provider>/<name>`,
+`spore config set spendPerDay <dollars>`, `spore doctor`.
+
+`spore doctor`'s **models** area reads every model a spore names — `model`, `models` and the
+`cell-models` values — once each: a problem when a turn on it cannot run, a note when it has no
+prices in mohdel's catalog, its calls then counting as $0 against `cost` and the spend limits.
+Each names the `mo` command that fixes it.
+
+A model the catalog lacks is added through `/curate [<provider>]` in `spore tui` — a picker over
+what the provider lists beyond the catalog, with its prices, written by mohdel's `curate` — or
+`mo curate <provider>`, which asks for what an entry is missing. That only adds it to the
+catalog; a spore may use it once its `spore.cmk` names it in `model`, `models` or `cell-models`.
+
+## Provider credentials and ChatGPT plans
+
+The runner fills each model call's provider key the way `mo` finds one, under mohdel's variable
+names: first its own environment — which holds `~/.config/spore/environment` — then
+`~/.config/mohdel/environment`. A machine where `mo` works runs spores with no key copied. No key
+reaches an agent.
+
+A `chatgpt/<model>` call uses the ChatGPT account `mo chatgpt login` signed in and
+`mo chatgpt select` made active, through an OAuth token mohdel's helper fetches. Its calls report
+zero spend: a definition's `cost` limits and the host's `spendPerDay` and `spendPerMonth` never
+stop a spore running on a ChatGPT plan, while `rounds` and `wall` still do. Wherever spend is
+shown — the header `send` and `fork` print when a turn starts, `spore show`, `spore usage`,
+Telegram's `/status` — such a model reads `not metered · <label>` instead of dollars, as does any
+model mohdel declares billed by `plan` or `capacity`.
+
+## Sources: `sources.json`
+
+`~/.config/spore/sources.json`, beside `config.json`, maps each source name to what it means:
+
+```json
+{
+  "pubmed": {
+    "url": "https://search.example.org/v1/search",
+    "query": { "db": "pubmed", "api_key": "${PUBMED_KEY}" },
+    "requires": ["collection"]
+  },
+  "tracker": {
+    "url": "https://tracker.example.org/api/v1/",
+    "headers": { "Authorization": "token ${TRACKER_TOKEN}" },
+    "methods": ["GET", "POST", "PATCH"],
+    "paths": ["projects/web/**"]
+  }
+}
+```
+
+| field | |
+|---|---|
+| `url` | required; `http://` or `https://` |
+| `query` | parameters sent with every call, as a host default |
+| `headers` | headers sent with every call |
+| `method` | the one method of a plain source; `GET` when absent |
+| `methods` | with `paths`, the methods a call may name |
+| `paths` | path patterns under `url` a call may name: `*` one segment, `**` one or more; `url` must then end in `/` |
+| `requires` | parameters a definition granting the source must narrow with `<source>.<param>` |
+
+`${VAR}` in `url`, `query` and `headers` is filled from the runner's environment, which includes
+`~/.config/spore/environment`; the agent never sees the value. Without `methods` and `paths` a
+source is one URL and one method, and the agent adds query parameters. With them it is an API:
+a call names a method, a path matching a pattern, and a JSON body. The credential's own scopes,
+at the service, bound what those calls may do.
+
+Refused when a turn starts, before any call: a `${VAR}` that is not set
+(`SOURCE_SECRET_MISSING`), a source the definition grants and this file does not describe, a
+`requires` parameter the definition does not narrow, and a `query` default outside the values
+the definition allows. A response past 32 MB is refused, and a call times out after 30 s.
+
+Sources are outside every spend limit: an endpoint that costs money is bounded at the endpoint.
+
+## Accounts held by more than one spore
+
+An account — a source's token, a key the `ssh-agent` service holds — may be granted to several
+spores, which then act on that platform as one user with separate memories. Spore does not
+track who shares an account and cannot tell them: two entries of `sources.json` may hold the
+same token under different names, and the `ssh-agent` socket is reachable by every spore of the
+user, whether its definition names the ssh plugin or not.
+
+So the holders of one account know they share it only if their identities say so, and agree only
+there which events each acts on and who answers what. Each should read the account's own history
+on the platform before acting, since that is the one record every holder sees; a hook per spore
+can send each only its events. Holders that do not know they share an account both answer the
+same event. A fork is a co-holder that does not know it: it holds every account of its origin
+and inherits the commitments made before the cut, a review promised or a reply owed, and neither
+it nor its origin is told.
+
+## Vector store: `memory.json`
+
+`memory: vectors` keeps its index in a vector store the host describes in
+`~/.config/spore/memory.json`, beside `config.json`. The runner reads it at the start of each
+turn; the agent never sees it, its URL or its credential.
+
+```json
+{
+  "url": "https://vectors.example",
+  "headers": { "authorization": "Bearer ${SPORE_MEMORY_TOKEN}" },
+  "paths": { "create": "/v1/collections", "query": "/v1/collections/{collection}/query" },
+  "collectionField": "collection"
+}
+```
+
+| key | | |
+|---|---|---|
+| `url` | required | the store, `http` or `https` |
+| `headers` | optional | sent on every request; each `${VAR}` is filled from the runner's environment, and an unset one is an error |
+| `paths` | optional | where `ready`, `create`, `fetch`, `upsert` and `query` live, each starting with `/`; `fetch`, `upsert` and `query` must contain `{collection}`. Absent ones are the protocol's defaults |
+| `collectionField` | optional | the field of a create's body that names the collection; `collection` when absent |
+
+Any other key is refused. Put the token in `~/.config/spore/environment`, never in the file. A
+store whose API differs from the protocol only in where its operations live and what its create
+calls the id is described here rather than adapted; the protocol itself is ARCHITECTURE
+§The vector store protocol.
+
+A turn of a spore declaring `memory: vectors` is refused at its start (`START_FAILED`) when the
+file is missing or unreadable, or when the store does not answer `ready`. Each workspace gets
+one collection per embedding model, so changing `embedding` starts a new collection.
+
+## Webhooks: `hooks.json`
+
+```bash
+spore service define webhook && spore service enable webhook && spore service start webhook
+```
+
+The webhook service (`bin/spore-webhook.js`) listens on `127.0.0.1:8742`, or on the
+`<host>:<port>` that `SPORE_WEBHOOK_LISTEN` names in `~/.config/spore/environment`. Exposing it is
+a reverse proxy's job. Each hook is one URL, `POST /hook/<name>`, configured in
+`~/.config/spore/hooks.json`. The service reads that file and `environment` again for every
+request, so a change needs no restart. `--check` reads them and exits.
+
+```json
+{
+  "forge": {
+    "spore": ["triage", { "name": "release", "accept": { "header": "x-forgejo-event", "values": ["release"] } }],
+    "verify": { "preset": "forgejo", "secret": "${FORGE_HOOK_SECRET}" },
+    "accept": { "payload": { "properties": { "sender": { "not": { "properties": { "login": { "const": "spore-bot" } } } } } } },
+    "maxWait": "30m"
+  }
+}
+```
+
+A hook name is letters, digits, `.`, `-` and `_`. Unknown fields are refused.
+
+| field | meaning | default |
+|---|---|---|
+| `spore` | the spore it reaches, by name, or a list of them. Each entry is a name, which takes every delivery, or `{ "name", "accept" }`, which takes only what its `accept` keeps. A name may appear once | required |
+| `verify` | how a request proves it is the sender's (below) | required: a hook without it is refused |
+| `accept` | which requests are kept: `{ "header", "values": [ … ] }` keeps a request whose header has one of the values; `{ "payload": <JSON Schema> }` keeps one whose JSON body matches; both may be given. One that keeps everything is refused | keep everything |
+| `maxBytes` | the largest body, as `1MB` or `512KB`; past it, `413` | `1MB` |
+| `perHour` | turns the hook may start in each spore an hour; past it a delivery is said and starts nothing | `30` |
+| `maxWait` | the longest a delivery may be held for the spore's router or triage cell, as `30m` or `2h` | none: said at once |
+| `perDay` | triage cells the hook may start in each spore a day; past it a delivery is said at once | `100` |
+
+**`verify`** is one of:
+
+- `{ "preset": "<name>", "secret": "${VAR}" }` — `github`, `forgejo`, `gitea` (HMAC SHA-256 of the
+  body in the sender's signature header), `gitlab` (the `X-Gitlab-Token` header) or `stripe`
+  (Stripe's timestamped signature, 300 s tolerance). A preset also names the headers carrying the
+  event and the delivery id.
+- `{ "hmac": "sha256" | "sha1", "header": "<header>", "secret": "${VAR}", "encoding": "hex" | "base64", "prefix": "<text>" }`
+  — an HMAC of the raw body; `encoding` defaults to `hex`, `prefix` to none.
+- `{ "header": "<header>", "token": "${VAR}" }` — the header must equal the token.
+- `{ "token": "${VAR}" }` — the token is the last path segment: `POST /hook/<name>/<token>`.
+
+A secret is always `${VAR}`, filled from the environment; a variable that is not set refuses the
+hook. No variable a hook names is passed to a turn or a triage cell.
+
+**Answers.** `202` once the message is held, also when no spore kept it (the journal says why); a
+retried or replayed body is taken once per spore. `401` for a failed check, `404` for an unknown
+hook, `413` past `maxBytes`, `503` while spores are paused, and `500` when a spore could not be
+reached, so the sender's retry reaches that one.
+
+## The HTTP API service
+
+```bash
+spore service define api && spore service enable api && spore service start api
+node bin/spore-api.js --tick      # a container's one process; also fires schedules every minute
+node bin/spore-api.js --check     # read api.json and the environment, print where it listens, exit
+```
+
+`~/.config/spore/api.json` says where it listens and who may call it:
+
+```json
+{
+  "socket": "/run/spore/api.sock",
+  "listen": "127.0.0.1:8787",
+  "callers": { "app": { "token": "${SPORE_API_APP}", "spores": ["support-*"] } }
+}
+```
+
+- `listen` must be a loopback host (`127.0.0.1`, `::1` or `localhost`) and a port; any other host
+  is refused. `socket` is an absolute path; the service makes its directory `0700` and the socket
+  `0600`, and refuses to start when something already answers on it.
+- Each caller's `token` is `${VAR}`, at least 32 characters once filled. The value goes in
+  `~/.config/spore/environment` (`openssl rand -hex 32`), never in the file. `spores` lists names
+  and patterns of letters, digits, `.`, `_`, `-` and `*`, where `*` matches within one name; a
+  caller reaches only the spores under `home` that its patterns name.
+- `--tick` runs the schedule pass (`spore tick`) every minute, for a container without a timer.
+- Exit code 2 means the configuration was refused; the unit does not restart after it.
+
+The routes, the token a request carries, the errors and `traceparent` are in
+[INTEGRATION.md §The HTTP API](../INTEGRATION.md#the-http-api).
+
+## Services spore ships
+
+`spore service define <svc>` writes these units under `~/.config/systemd/user/`, each marked
+`X-Spore-Service=<name>`; spore never touches a unit it did not write.
+
+| service | units | what it runs |
+|---|---|---|
+| `tick` | `spore-tick.service`, `spore-tick.timer` | `bin/spore-tick.js` every minute: fires every schedule that is due |
+| `webhook` | `spore-webhook.service` | `bin/spore-webhook.js`: each hook in `hooks.json` a message to its spore |
+| `api` | `spore-api.service` | `bin/spore-api.js`: the verbs over HTTP, as `api.json` says |
+| `ssh-agent` | `spore-ssh-agent.service` | an `ssh-agent` on `$XDG_RUNTIME_DIR/spore-ssh-agent.socket`, loaded with every private key in `~/.config/spore/ssh/` |
+| `sluice` | `spore-sluice.service` | a sluice broker serving `~/.config/sluice/spore.rules` on `$XDG_RUNTIME_DIR/sluice/spore.sock` |
+
+Adding or retiring an SSH key is putting it in `ssh/` or taking it out, then restarting
+`ssh-agent`. Its socket is handed to a spore by the ssh plugin: `spore plugin allow ssh
+socket=/run/user/<uid>/spore-ssh-agent.socket`.
+
+`sluice` needs the `sluice` binary on `PATH` (or in `~/.cargo/bin`), the rules file, and
+`~/.config/sluice/spore.md`, the list its agents read with `--list`. The unit copies that list
+beside the socket. Its socket is handed to a spore by the sluice plugin:
+`spore plugin allow sluice socket=/run/user/<uid>/sluice/spore.sock`. Every unix socket of the user
+is in a spore's reach, so a broker spores must not use runs as another user.
+
+## Plugin services
+
+```bash
+spore service ls                          # spore's own services and every installed plugin's
+spore service define <svc>                # write its systemd user unit, checked first
+spore service start|stop|restart <svc>    # now; enable|disable: at every login
+spore service restart --outdated          # every service running older code than is installed
+spore service show <svc>                  # its state and last lines
+spore service log <svc> [-n <lines>] [-f] # its journal; -f follows it
+spore service rm <svc> [--yes]            # remove it; --yes when that stops instances running
+```
+
+`spore service ls` offers the services of every installed plugin, allowed or not. Defining one is
+the operator's consent to run that plugin's program on the host, outside every sandbox. A service
+name spore ships, or one two plugins claim, is given to neither plugin, and `spore service ls`
+says why.
+
+Spore writes the unit itself, under `~/.config/systemd/user/`: restarted on failure and not after
+exit code 2 (`RestartPreventExitStatus=2`), with `KillMode=process`. A plugin service with
+instances keeps one file per instance in a folder beside `config.json`, as
+`telegram/<bot>.json`.
+
+A running service records the plugin version it started with; `spore service restart --outdated`
+restarts each one whose installed version has moved on.
+
+## Plugins on the host
+
+```bash
+spore plugin ls                      # installed beside spore, and which are allowed
+spore plugin allow <plugin> [k=v …]  # check it, then record it in config.json
+spore plugin disallow <plugin>       # undo that
+spore plugin show <plugin>           # settings, programs, env, docs, precursors
+```
+
+`allow` checks the manifest, the `works` range against the installed `@rhizogrip/spore`, every
+program (executable, and inside the plugin or a package it depends on), every setting the manifest
+declares (present, and a `port` or `text` as declared) and every precursor it carries, then
+records the plugin under `plugins` in `config.json` with its version and the directory of the copy
+it checked.
+
+A turn uses exactly that copy. After a plugin's version or directory changes, a turn of a spore
+using it is refused with `PLUGIN_CHANGED` until `spore plugin allow` is run again. A definition
+naming a plugin that is not allowed is refused at `spore send`, and `spore define` does not make
+the spore. What a plugin's manifest may declare, and how one is written, is in
+[plugins.md](plugins.md).
+
+## Pausing every spore
+
+```bash
+spore pause [why]      # stop every running turn and job of your spores, and start none
+spore unpause          # lift it; the next tick releases what was held and fires what is due
+```
+
+While paused:
+
+- `spore send`, `spore fork` and a release are refused, `PAUSED`, with nothing said or made. A
+  person's message through a chat plugin is refused and they are told why.
+- The webhook service answers `503` to every delivery without reading its body; nothing of it is
+  kept, and whether it comes again is the sender's retry policy.
+- A job's message stays held, a schedule keeps its due slot, and `spore tick` passes without
+  firing. After `spore unpause`, each schedule fires at most one catch-up.
+- `spore ls`, `spore show` and the Telegram plugin's `/status` say the spores are paused.
+
+A stopped turn is not resumed: what it had not answered is read by the next turn in its spore.
+A second `spore pause` keeps the first mark and stops whatever is running, which catches a turn
+that started beside the first. The file is the pause: creating `paused` by hand, empty, pauses
+as well, and deleting it unpauses.
+
+## Jobs: `jobs` and `spore job`
+
+A spore may start jobs only when its `spore.cmk` grants them, with `jobs` and its `jobs.*` fields
+([definition.md](definition.md#jobs)).
+
+```bash
+spore job ls [<spore>]          # a spore's jobs, newest first, with each running one's last progress line
+spore job stop <spore> <job>    # ask the job's supervisor to stop it; how it ended is said to the spore
+```
+
+A running job also shows in `spore show`, with its last progress line.
+
+## Driving `spore` from a program
+
+`spore send --json`, its exit codes, `--request-id` and `spore attach --json --after` are in
+[INTEGRATION.md §The command](../INTEGRATION.md#the-command).
+
+## Cloning a spore: `spore define --from`
+
+```bash
+spore define <new> --from <old>
+```
+
+Makes `<new>` with `<old>`'s `spore.cmk`, its `precursors/` and every program a precursor grants
+in `enzymes`, each with the paths its `<enzyme>.with` declares, links carried as links. It leaves
+behind the database, `calls/`, `inbox.d/`, `schedules/`, `home/` and the rest of `data/`,
+`data/memory/` included. `<old>` may be running. `--from` refuses `--definition` and
+`--sporangium` (`DEFINE_AMBIGUOUS`). The clone is refused (`CLONE_INCOMPLETE`) when a granted
+program or a declared path is missing, lies outside the workspace, or is a link out of it, to the
+whole workspace or to nothing.
+
+## Forking a turn: `spore fork`
+
+```bash
+spore fork <name> --at <call> <new> [--definition <file>] [--replay]
+```
+
+Makes `<new>`, a name or a path, as `<name>` stood when the round of `<call>` came back, and carries
+the turn on from there; the command follows it like `send`, with the same exit codes. `<call>` is
+a call of the run's last turn, as `--at 0003`, or of another turn, as `--at <runId>/0003`.
+`--definition` runs the fork under another `spore.cmk`. `--replay` cuts before the round's
+results, so its calls run again under the runtime as it is now.
+
+Refused (`FORK_REFUSED`): a spore still running, a `<new>` that exists, a definition that does not
+parse, a file in `data/`, `calls/`, `precursors/` or `home/` changed after the cut — cut at a later
+call — and a `--replay` of a round that called `ask`. The fork spends like any turn.
+
+`scripts/try-definitions.js` in the package forks one cut many times under each definition and
+says how often each delivered a file under `data/out/`, and how its turns ended:
+
+```bash
+node scripts/try-definitions.js --run <workspace> --at <call> --into <dir> [--times 20] [--at-once 4] [--replay] [other.cmk …]
+```
+
+## `spore here`
+
+```bash
+spore here [<dir>] [--sporangium <s>] [--model <m>] [--no-git]
+```
+
+Opens the spore that works in `<dir>` (the current directory by default), made the first time as
+`<directory>-<6 hex>` in `home`, granted `writes: [here=<dir>]`. On a terminal a picker offers the
+sporangia; without one `--sporangium` is required. Outside a git work tree it is refused unless
+`--no-git`, and then nothing can be undone. Each session's snapshot is a ref under
+`refs/spore/<spore>/` in that repository; the newest `hereSnapshots` (20 unless set) are kept.
+
+## Root documents and `spore upgrade`
+
+```bash
+spore upgrade <name>     # replace this spore's root documents with the installed ones
+spore upgrade --all      # the same for every spore `spore ls` finds
+```
+
+The root documents are `reference.md`, `libraries.md` and `plugins/<name>.md` for each plugin the
+spore uses. They are copied into a workspace when absent and otherwise change only through
+`spore upgrade`. `spore send` and `spore show` name each one that differs from the installed copy;
+"differs" covers both a local edit and a newer package. `precursors/`, its `README.md` included,
+is never touched by an upgrade.
+
+A root document missing when a turn starts is laid again from what is installed. A program that
+manages workspaces without the command can upgrade one by deleting those files while it holds the
+workspace lock; the next turn writes the installed copies.

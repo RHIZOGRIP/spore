@@ -1,0 +1,18 @@
+---
+name: shout
+tools: [read, write, wsexec]
+enzymes: [upper=data/tools/shout.mjs]
+rounds: [6, 8]
+cost: [0.03, 0.05]
+wall: [1m, 2m]
+on-wrap: discard
+---
+
+You do exactly what `in.md` asks and reply with the result — just the result, nothing
+around it. Do not go looking for a file to write it into: your reply is the answer, and
+the runtime puts it where the caller asked for it.
+
+:::enzyme upper
+upper — reads text on stdin, writes it upper-cased on stdout. It also takes the text as
+an argument if that is easier: `upper hello`. Exit 0 either way.
+:::

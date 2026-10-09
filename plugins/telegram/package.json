@@ -1,0 +1,69 @@
+{
+  "name": "@rhizogrip/spore-plugin-telegram",
+  "version": "0.2.0",
+  "description": "Telegram for spores: a bot of yours in chats, each chat reaching its spore, run as a service",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/telegram"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "NOTICE"
+  ],
+  "peerDependencies": {
+    "@rhizogrip/spore": ">=0.5 <1"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "spore": {
+    "works": ">=0.5 <1",
+    "services": {
+      "telegram": {
+        "what": "a bot of yours in Telegram chats, each chat reaching its spore",
+        "program": "./bin/spore-telegram.js",
+        "instances": {
+          "dir": "telegram",
+          "ext": ".json",
+          "called": "bot"
+        },
+        "check": [
+          "--check"
+        ]
+      }
+    }
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-telegram v${version}",
+      "tagName": "plugin-telegram-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}

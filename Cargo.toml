@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = [
+    "rust/definition",
+    "rust/workspace",
+    "rust/node",
+    "rust/runner",
+]
+
+[workspace.package]
+version = "0.15.1"
+license = "Apache-2.0"
+edition = "2021"
+authors = ["Christophe Le Bars <clb@toort.net>"]
+rust-version = "1.80"
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1

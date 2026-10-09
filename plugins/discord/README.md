@@ -1,0 +1,98 @@
+# @rhizogrip/spore-plugin-discord
+
+A service that puts your spores in Discord channels, beside the people who talk to them. One
+channel holds many people and many spores; each spore has a role, so `@triage` reaches it the way
+a person is reached, and each answers under its own name. It runs on the machine the spores are
+on as a systemd user unit, and it is an application against `@rhizogrip/spore`: everything it
+does goes through the package's exports.
+
+```bash
+npm i -g @rhizogrip/spore-plugin-discord
+spore plugin allow discord                                   # gives spores "$SPORE_DISCORD"
+echo 'DISCORD_BOT_TOKEN=…' >> ~/.config/spore/environment    # from the Developer Portal; it never reaches a spore
+mkdir -p ~/.config/spore/discord
+cat > ~/.config/spore/discord/ops.json <<'JSON'
+{
+  "token": "${DISCORD_BOT_TOKEN}",
+  "channels": {
+    "1234567890": { "spores": ["triage", "ledger"], "humans": ["111111111111", "role:222222222222"] }
+  }
+}
+JSON
+spore service define discord@ops && spore service start discord@ops
+```
+
+Each spore in a channel lists `discord` in the `plugins:` of its `spore.cmk`, which gives it
+`$SPORE_DISCORD` to read what was said before it was addressed. The bot can see more channels than
+the spore should read, so its `spore.cmk` names the channels whose history it reads, and a turn is
+refused without them:
+
+```
+plugins: [discord]
+sources: [discord]
+discord.path: [<channel id>/messages]
+```
+
+## The bot
+
+In the [Developer Portal](https://discord.com/developers/applications): a bot, its token in
+`environment` as `DISCORD_BOT_TOKEN`, and the **Message Content** intent on — without it Discord
+sends the bot every message empty except those that mention the bot itself, and a spore is
+mentioned by its role. Invite it to the server with these permissions: View Channels, Send
+Messages, Read Message History, Manage Webhooks and Manage Roles.
+
+One bot per user: the source a spore reads history through takes `DISCORD_BOT_TOKEN`, from that user's `environment`.
+
+## A channel
+
+`channels` is the routing. A channel the file does not name is not the bot's, whatever it can
+see. Each names:
+
+- `spores` — who answers there. For each, the bot finds or makes a mentionable role of that name,
+  below its own highest role.
+- `humans` — who may address them: user ids, and `role:<id>` for everyone holding a role. Someone
+  else addressing a spore gets silence, and the log gets the line to add.
+- `sporesTalk` — `true` lets a spore's post that mentions another spore's role reach it. False
+  when left out: two spores that keep answering each other run until their limits stop them.
+
+Beside `channels`, `avatars` gives a spore a face: `"avatars": { "triage": "https://…/triage.png" }`.
+Discord fetches the image from that address for every post, so it has to be public and https; a
+spore without one shows Discord's default.
+
+The file is read on every message, so a channel, a spore or a person is added by editing a line.
+
+## In a channel
+
+Mention a spore's role, or reply to one of its posts, and the message goes to that spore; a
+message addressing two goes to both. A message addressing none goes to none. The spore posts
+`@you ↪ "what you said…" working…`, and when the turn ends posts its answer under its own name,
+opened with whom it answers — which pings them — and removes the `working…` post. Discord does
+not let a webhook reply, so the opening stands for the reply arrow. Files the turn left in
+`data/out/` follow as attachments; one over 20 MB is named instead.
+
+A spore is told who spoke and where, never the rest of the channel; it reads what came before
+with `$SPORE_DISCORD` when the message points at it, as its `reference.md` teaches. What it reads
+there is data: people who may not address it still write in the channel.
+
+## Turns nobody in a channel started
+
+A schedule, a job or a webhook starts a turn no one in a channel asked for. Its answer goes to
+the spore's default place, `replyTo` in `config.json` — `"triage": "discord:ops/1234567890"`, this
+bot, that channel — labelled with where it came from, and nowhere when the turn ended `quiet`. A
+default naming a channel this bot's file does not give the spore is refused, and the log says why.
+
+## What it guarantees
+
+- **A message reaches each spore it addresses once,** under `discord:<message>:<spore>` as its
+  `requestId`, so a message Discord hands over again is not said twice.
+- **A finished turn reaches its channel at least once.** What it owes a channel is an entry in
+  the spore's outbox, settled only after Discord took it; a crash between the two repeats a post
+  rather than losing one. One Discord will not take is settled refused, with Discord's reason.
+- **Nothing a spore writes pings anyone but whom it answers.** Every post the service makes
+  allows no mentions but those.
+
+## What it keeps
+
+`$XDG_STATE_HOME/spore/discord/<bot>/state.json`, mode 0600: where it stands in each spore, the
+`working…` posts waiting for an answer, each channel's webhook and its token, the spores' roles,
+and how many messages each channel has had since each spore last posted there.
