@@ -30,7 +30,7 @@
     "test": "vitest run"
   },
   "spore": {
-    "works": ">=0.3 <1",
+    "works": "^1",
     "programs": {
       "SPORE_MCP": "./bin/mcp.js"
     },

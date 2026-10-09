@@ -94,7 +94,7 @@ A minimal plugin gives one program and says how to run it:
   "version": "0.1.0",
   "files": ["bin/", "reference.md"],
   "spore": {
-    "works": ">=0.13 <1",
+    "works": "^1",
     "programs": { "SPORE_HELLO": "./bin/hello.js" },
     "reference": "reference.md"
   }
@@ -111,7 +111,7 @@ A plugin using every key:
   "dependencies": { "ledger-math": "^2.0.0", "ledger-bin": "3.1.0" },
   "peerDependencies": { "@rhizogrip/spore": ">=0.13 <1" },
   "spore": {
-    "works": ">=0.13 <1",
+    "works": "^1",
     "settings": { "port": "port", "book": "text" },
     "programs": {
       "SPORE_LEDGER": "./bin/ledger.js",
@@ -154,7 +154,7 @@ it does not contain*): what the manifest names must be in the package's `files`.
 ## `works`
 
 ```json
-"works": ">=0.5 <1"
+"works": "^1"
 ```
 
 A semver range over `@rhizogrip/spore`, checked against the version installed, prereleases

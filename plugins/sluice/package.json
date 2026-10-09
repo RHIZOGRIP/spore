@@ -27,7 +27,7 @@
     "sluicify-native": "0.3.1"
   },
   "spore": {
-    "works": ">=0.7 <1",
+    "works": "^1",
     "settings": {
       "socket": "text"
     },

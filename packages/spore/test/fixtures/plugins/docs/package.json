@@ -4,7 +4,7 @@
   "description": "A plugin that ships precursors only, for the tests",
   "private": true,
   "spore": {
-    "works": ">=0.3 <1",
+    "works": "^1",
     "precursors": "precursors"
   }
 }

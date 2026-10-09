@@ -26,7 +26,7 @@
     "agent-browser": "0.38.1"
   },
   "spore": {
-    "works": ">=0.8 <1",
+    "works": "^1",
     "settings": {
       "cdp": "port"
     },

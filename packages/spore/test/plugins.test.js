@@ -19,7 +19,7 @@ const DOCS = resolve(__dirname, 'fixtures/plugins/docs')
 
 const PRECURSOR = (name) => `---\nname: ${name}\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\non-wrap: discard\n---\n\nYou ${name}.\n`
 
-function plugin (packageName, manifest, { works = '>=0.3 <1', files = {}, programs = {} } = {}) {
+function plugin (packageName, manifest, { works = '^1', files = {}, programs = {} } = {}) {
   const dir = join(MODULES, packageName)
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: packageName, version: '0.1.0', spore: manifest && (works ? { works, ...manifest } : manifest) }))
@@ -216,7 +216,7 @@ describe('checking a plugin', () => {
 
   it('grants the plugin and every package it depends on, as installed, and refuses one missing', () => {
     const found = plugin('spore-plugin-deep', {})
-    writeFileSync(join(found.dir, 'package.json'), JSON.stringify({ name: 'spore-plugin-deep', version: '0.1.0', dependencies: { a: '1' }, optionalDependencies: { absent: '1' }, spore: { works: '>=0.3 <1' } }))
+    writeFileSync(join(found.dir, 'package.json'), JSON.stringify({ name: 'spore-plugin-deep', version: '0.1.0', dependencies: { a: '1' }, optionalDependencies: { absent: '1' }, spore: { works: '^1' } }))
     mkdirSync(join(MODULES, 'a'))
     writeFileSync(join(MODULES, 'a/package.json'), JSON.stringify({ name: 'a', dependencies: { b: '1' } }))
     expect(refusal(() => checkPlugin(found)).message).toMatch(/depends on b, which is not installed/)
@@ -282,7 +282,7 @@ describe('libraries a plugin offers', () => {
   }
   const offering = (packageName, modules, dependencies = Object.fromEntries(modules.map(m => [m, '1']))) => {
     const found = plugin(packageName, {})
-    writeFileSync(join(found.dir, 'package.json'), JSON.stringify({ name: packageName, version: '0.1.0', dependencies, spore: { works: '>=0.3 <1', modules } }))
+    writeFileSync(join(found.dir, 'package.json'), JSON.stringify({ name: packageName, version: '0.1.0', dependencies, spore: { works: '^1', modules } }))
     for (const name of Object.keys(dependencies)) library(name)
     return found
   }

@@ -29,13 +29,13 @@
     "NOTICE"
   ],
   "peerDependencies": {
-    "@rhizogrip/spore": ">=0.5 <1"
+    "@rhizogrip/spore": "^1"
   },
   "scripts": {
     "test": "vitest run"
   },
   "spore": {
-    "works": ">=0.5 <1",
+    "works": "^1",
     "programs": {
       "SPORE_DISCORD": "./bin/discord.js"
     },

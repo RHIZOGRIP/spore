@@ -428,7 +428,7 @@ describe('defining a spore', () => {
     mkdirSync(resolve(modules, '@example'), { recursive: true })
     symlinkSync(resolve(import.meta.dirname, 'fixtures/plugins/docs'), resolve(modules, '@example/spore-plugin-docs'))
     mkdirSync(resolve(modules, 'spore-plugin-extra'))
-    writeFileSync(resolve(modules, 'spore-plugin-extra/package.json'), JSON.stringify({ name: 'spore-plugin-extra', version: '0.1.0', spore: { works: '>=0.3 <1' } }))
+    writeFileSync(resolve(modules, 'spore-plugin-extra/package.json'), JSON.stringify({ name: 'spore-plugin-extra', version: '0.1.0', spore: { works: '^1' } }))
     for (const name of ['docs', 'extra']) allowPlugin(name, [], { configFile: CONFIG, roots: [modules] })
     return [modules]
   }

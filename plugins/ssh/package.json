@@ -18,7 +18,7 @@
     "NOTICE"
   ],
   "spore": {
-    "works": ">=0.3 <1",
+    "works": "^1",
     "settings": {
       "socket": "text"
     },
