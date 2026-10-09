@@ -35,5 +35,6 @@ if (!due.length) {
   console.log('tag-plugins: every plugin version is on origin already')
   process.exit(0)
 }
-git('push', 'origin', ...due)
+// GitHub starts no workflow for any tag of a push that carries more than three.
+for (const tag of due) git('push', 'origin', tag)
 console.log(`tag-plugins: pushed ${due.join(', ')}`)
