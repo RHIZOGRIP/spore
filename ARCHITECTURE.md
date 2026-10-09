@@ -276,7 +276,8 @@ and applies its own Landlock ruleset, `sandbox()` in `src/isolation/sandbox.js`,
 model call:
 
 - **the agent process** reads the system's directories (`/usr`, `/lib`, `/lib64`, `/etc`,
-  `/bin`, `/sbin`, `/proc`, `/dev`, `/run`), the runtime's own files, its workspace, its declared
+  `/bin`, `/sbin`, `/proc`, `/dev`, `/run`), the directory of the `node` running spore, the
+  runtime's own files, its workspace, its declared
   `reads` and its plugins' grants. It writes only its islands — `data/`, `calls/`, `precursors/`
   and `home/`, `schedules/` when its definition grants schedules, each directory its definition
   `writes`, and its broker socket directory. The workspace root is read-only to it

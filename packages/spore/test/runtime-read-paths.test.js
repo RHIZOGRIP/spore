@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, realpathSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,6 +22,10 @@ describe('what a confined agent may read of the checkout', () => {
     expect(granted).toEqual(['bin', 'build', 'native', 'package.json', 'sporangia', 'src'])
     expect(systemReadPaths()).not.toContain(ROOT)
     expect(systemReadPaths()).toContain(getNodeModulesRoot())
+  })
+
+  it('includes the directory of the node running spore, wherever it is installed', () => {
+    expect(systemReadPaths()).toContain(dirname(realpathSync(process.execPath)))
   })
 
   // A workspace inside the checkout is refused for its own reason, and narrowing what an

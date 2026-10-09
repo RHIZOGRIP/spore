@@ -10,7 +10,7 @@
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, realpathSync } from 'node:fs'
 import { silent } from '../observability/logger.js'
 import { safePath } from './safe-path.js'
 import { native as rules } from '../native.js'
@@ -21,6 +21,7 @@ const native = require('../../build/Release/sandbox.node')
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const sporeRoot = resolve(__dirname, '..', '..')
+const nodeBin = dirname(realpathSync(process.execPath))
 
 /** Where hoisted dependencies live when spore is installed inside another package. */
 export function getNodeModulesRoot () {
@@ -30,10 +31,11 @@ export function getNodeModulesRoot () {
 /**
  * What a confined agent may read: the system, the runtime's own programs, binaries and
  * sporangia, and its dependencies — never the checkout. `rust/workspace`'s list, shared with
- * the Rust cell supervisor.
+ * the Rust cell supervisor, and the directory of the node running spore, which a version
+ * manager or a CI image puts outside the system's.
  */
 export function systemReadPaths () {
-  return rules.systemReadPaths(sporeRoot)
+  return [...rules.systemReadPaths(sporeRoot), nodeBin]
 }
 
 /**
