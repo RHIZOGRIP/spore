@@ -6,6 +6,15 @@
     "email": "clb@toort.net"
   },
   "description": "The spore command: define, send, watch and manage spores from a terminal.",
+  "keywords": [
+    "agents-sdk",
+    "ai-agents",
+    "ai-agents-framework",
+    "linux-app",
+    "llm-agents",
+    "rust",
+    "self-hosted"
+  ],
   "type": "module",
   "repository": {
     "type": "git",

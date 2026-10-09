@@ -5,7 +5,16 @@
     "name": "Christophe Le Bars",
     "email": "clb@toort.net"
   },
-  "description": "An LLM agent in a sandboxed workspace: seven tools, a call contract that keeps streams out of context, soft and hard limits, and sub-agents confined to directories of their own.",
+  "description": "A runtime for AI agents you run on your own Linux machines: kernel-confined, spend-limited, recorded, and driven from Node, the command line or HTTP.",
+  "keywords": [
+    "agents-sdk",
+    "ai-agents",
+    "ai-agents-framework",
+    "linux-app",
+    "llm-agents",
+    "rust",
+    "self-hosted"
+  ],
   "type": "module",
   "repository": {
     "type": "git",
