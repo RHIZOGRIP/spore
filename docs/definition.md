@@ -106,6 +106,7 @@ that level. **Absent** says what leaving the field out means where it is accepte
 | [`model`](#model) | model id / name | required¹ | optional | precursor: the spore's model | spore: what it runs on; precursor: a `cell-models` name | [Defining a spore](../ARCHITECTURE.md#defining-a-spore) |
 | [`models`](#models) | list of model ids | optional | refused | only `model` | what a person may switch the spore to | [How a precursor actually runs](../ARCHITECTURE.md#how-a-precursor-actually-runs) |
 | [`cell-models`](#cell-models) | list of `name=id` | optional | refused | cells run on the spore's model | the names a precursor's `model` may give | [How a precursor actually runs](../ARCHITECTURE.md#how-a-precursor-actually-runs) |
+| [`auth`](#auth) | scalar | required³ | refused | calls are spore's own | whom the spore's model calls are for on a shared gate | [The model broker](../ARCHITECTURE.md#the-model-broker) |
 | [`tools`](#tools) | list | optional | optional | no tools | which of the seven built-ins are offered | [Grants, limits…](../ARCHITECTURE.md#grants-limits-and-how-a-turn-ends) |
 | [`enzymes`](#enzymes) | list of `name=path` | refused | optional | none | programs of the spore a cell may run by name | [Format](../ARCHITECTURE.md#format) |
 | [`<enzyme>.with`](#enzymewith) | list of paths | refused | optional | the program alone | files and directories an enzyme needs beside itself | [Format](../ARCHITECTURE.md#format) |
@@ -138,6 +139,7 @@ that level. **Absent** says what leaving the field out means where it is accepte
 ¹ A sporangium's `spore.cmk`, the template spores are made from, may leave `model` out
 (§[`model`](#model)).
 ² Only beside `jobs`. Declared without it, the file is refused.
+³ On a host that sets `gate` ([operating](operating.md)); elsewhere optional and unused.
 
 ## Identity and model
 
@@ -213,6 +215,18 @@ The runner's model broker refuses a call to any model this file does not name, w
 `model`, `models` or a `cell-models` value. Neither the agent nor a precursor it wrote can reach
 another model ([How a precursor actually runs](../ARCHITECTURE.md#how-a-precursor-actually-runs)).
 The `embedding` model is not held by this check.
+
+### `auth`
+
+```
+auth: thread-7f3a
+```
+
+`spore.cmk` only. On a host that calls its models through a shared mohdel gate, every call the
+spore and its cells make goes there as this `authId`: the gate resolves keys and quotas by it. One
+id of at most 128 bytes. The agent can read it and cannot change it. A host with a gate refuses a
+turn of a spore that names none; on a host without one it is unused. A precursor declaring it is
+refused, since a cell's calls go through its spore's.
 
 ## Tools and enzymes
 

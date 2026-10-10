@@ -18,10 +18,11 @@ pub use schedule::{parse_schedule, Due, Schedule};
 /// The tool suite, by name. Contract: ARCHITECTURE.md, "Tools".
 pub const TOOL_NAMES: [&str; 7] = ["read", "write", "edit", "exec", "wsexec", "ask", "quiet"];
 
-const FIELDS: [&str; 31] = [
+const FIELDS: [&str; 32] = [
     "name",
     "description",
     "model",
+    "auth",
     "models",
     "cell-models",
     "tools",
@@ -53,6 +54,9 @@ const FIELDS: [&str; 31] = [
 ];
 
 const ON_WRAP: [&str; 2] = ["keep", "discard"];
+
+/// mohdel's bound on an envelope's `authId`.
+const AUTH_MAX_BYTES: usize = 128;
 
 /// What sits at the workspace root under a name a grant could take: staging a grant there would
 /// replace the workspace's own directory with a link.
@@ -234,6 +238,9 @@ pub struct Definition {
     /// A root's model; a precursor's is the name of one of its spore's `cell_models`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Whom a root's model calls are for on a shared gate, sent as every envelope's `authId`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth: Option<String>,
     /// What a person may switch the root to, beside `model`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub models: Vec<String>,
@@ -886,6 +893,22 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         }
     };
 
+    let auth = match (opts.cell, fields.get("auth")) {
+        (_, None) => None,
+        (true, Some(_)) => {
+            return Err("declares auth — a cell's model calls go through its root's runner, under its root's auth".into());
+        }
+        (false, Some(Value::Scalar(a))) if !a.is_empty() && a.len() <= AUTH_MAX_BYTES => {
+            Some(a.clone())
+        }
+        (false, Some(other)) => {
+            return Err(format!(
+                "has an auth it cannot read — got \"{}\", expected one id of at most {AUTH_MAX_BYTES} bytes",
+                other.text()
+            ));
+        }
+    };
+
     for key in [
         "tools",
         "enzymes",
@@ -1253,6 +1276,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         name,
         description,
         model,
+        auth,
         models,
         cell_models,
         identity,
@@ -1394,6 +1418,7 @@ mod tests {
         let json = serde_json::to_value(parse(WELL_FORMED).unwrap()).unwrap();
         for key in [
             "description",
+            "auth",
             "onWrap",
             "retain",
             "history",
@@ -1424,6 +1449,25 @@ mod tests {
         assert!(with("description:\n")
             .unwrap_err()
             .contains("one line of text"));
+    }
+
+    #[test]
+    fn reads_whom_a_roots_calls_are_for_and_refuses_it_in_a_cell() {
+        let with =
+            |line: &str| parse(&WELL_FORMED.replace("name: x\n", &format!("name: x\n{line}")));
+        assert_eq!(
+            with("auth: thread-7f3a\n").unwrap().auth.as_deref(),
+            Some("thread-7f3a")
+        );
+        assert!(with(&format!("auth: {}\n", "a".repeat(129)))
+            .unwrap_err()
+            .contains("at most 128 bytes"));
+        assert!(with("auth: [a, b]\n")
+            .unwrap_err()
+            .contains("an auth it cannot read"));
+        let refused = cell(&CHART.replace("on-wrap: keep\n", "on-wrap: keep\nauth: thread-7f3a\n"))
+            .unwrap_err();
+        assert!(refused.contains("under its root's auth"), "{refused}");
     }
 
     #[test]

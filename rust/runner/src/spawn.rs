@@ -55,7 +55,8 @@ Usage:
                parent's, and counts what the cell spent on the cell's own record
                and in its user's spend; --spend-per-day and --spend-per-month,
                in dollars, are the operator's limits on that; --no-contain when the
-               operator turned containment off
+               operator turned containment off; --gate with --auth on a host whose
+               model calls go through a mohdel gate, under the spore's auth
 
 The sub-agent runs on $MODEL, inherited from the environment. There is no flag
 for it: choosing a model is configuration, not something a caller decides.";
@@ -75,15 +76,19 @@ struct Args {
     chatgpt_helper: Option<String>,
     spend: Limits,
     no_contain: bool,
+    gate: Option<PathBuf>,
+    auth: Option<String>,
 }
 
-/// What a cell outside any turn starts its own model session with.
+/// What a cell outside any turn starts its own model session with, or the host's gate and the
+/// spore's auth it calls through instead.
 struct Standalone {
     node: String,
     session: String,
     chatgpt_helper: String,
     spend: Limits,
     contain: bool,
+    gate: Option<(PathBuf, String)>,
 }
 
 fn fail(problem: impl std::fmt::Display) -> ! {
@@ -119,6 +124,8 @@ fn parse_args(given: &[String]) -> Args {
             "--spend-per-day" => args.spend.day = Some(dollars(name, &value())),
             "--spend-per-month" => args.spend.month = Some(dollars(name, &value())),
             "--no-contain" => args.no_contain = true,
+            "--gate" => args.gate = Some(PathBuf::from(value())),
+            "--auth" => args.auth = Some(value()),
             "--help" | "-h" => args.help = true,
             "-m" | "--model" => fail(format!(
                 "unknown option {name} — the model comes from $MODEL, never from a flag"
@@ -219,6 +226,15 @@ async fn main() {
     if args.standalone && std::env::var(OWNERS).is_ok_and(|owners| !owners.is_empty()) {
         fail("--standalone is a host's, run outside any turn — a turn's cells go through its own model socket, where what they spend is counted");
     }
+    if !args.standalone && (args.gate.is_some() || args.auth.is_some()) {
+        fail("--gate and --auth are a cell's outside any turn — a turn's cells reach the gate through its own model socket");
+    }
+    if let (Some(gate), None) = (&args.gate, &args.auth) {
+        fail(format!(
+            "this host calls its models through the gate at {}, and the spore names no auth — add auth: <id> to its spore.cmk, whom its model calls are for",
+            gate.display()
+        ));
+    }
     let root = root();
     let cwd = std::env::current_dir()
         .unwrap_or_else(|e| fail(format!("cannot read the working directory — {e}")));
@@ -253,6 +269,10 @@ async fn main() {
             chatgpt_helper: need(&args.chatgpt_helper, "--chatgpt-helper"),
             spend: args.spend,
             contain: !args.no_contain,
+            gate: args
+                .gate
+                .clone()
+                .map(|gate| (gate, args.auth.clone().expect("checked above"))),
         }
     });
     // A cell reaches a model only through its parent's socket, or — outside any turn — through
@@ -335,19 +355,36 @@ async fn main() {
         let own_model = match &standalone {
             None => None,
             Some(own) => {
-                std::env::set_var("MOHDEL_MEDIA_ROOTS", plan.ws.display().to_string());
-                let pool = model::start_pool(
-                    own.node.clone(),
-                    own.session.clone(),
-                    own.chatgpt_helper.clone(),
-                    1,
-                    plan.precursor
-                        .model
-                        .clone()
-                        .or_else(|| std::env::var("MODEL").ok())
-                        .into_iter()
-                        .collect(),
-                );
+                let allowed: Vec<String> = plan
+                    .precursor
+                    .model
+                    .clone()
+                    .or_else(|| std::env::var("MODEL").ok())
+                    .into_iter()
+                    .collect();
+                let upstream = match &own.gate {
+                    Some((gate, auth)) => {
+                        let model = allowed.first().cloned();
+                        model::reach_gate(
+                            gate,
+                            auth.clone(),
+                            allowed,
+                            vec![plan.ws.clone()],
+                            model.as_deref(),
+                        )
+                        .await?
+                    }
+                    None => {
+                        std::env::set_var("MOHDEL_MEDIA_ROOTS", plan.ws.display().to_string());
+                        model::Upstream::Pool(model::start_pool(
+                            own.node.clone(),
+                            own.session.clone(),
+                            own.chatgpt_helper.clone(),
+                            1,
+                            allowed,
+                        ))
+                    }
+                };
                 let spending = model::Spending {
                     slots: slot_dir(),
                     limits: own.spend,
@@ -356,7 +393,7 @@ async fn main() {
                     key.clone(),
                     plan.precursor.limits.cost.hard,
                     Some(spending),
-                    pool,
+                    upstream,
                 );
                 let path = broker_socket_path("model")
                     .map_err(|e| format!("cannot make the model socket's directory — {e}"))?

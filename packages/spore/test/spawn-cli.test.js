@@ -42,6 +42,15 @@ describe('the spawn command', () => {
     expect(r.stderr).toMatch(/--standalone is a host's, run outside any turn/)
   })
 
+  it('takes a gate only for a cell outside any turn, and only with the spore\'s auth', async () => {
+    const inTurn = await spawnCli([...ARGS, '--gate', '/run/mohdel/data.sock', '--auth', 'a1'])
+    expect(inTurn.code).toBe(2)
+    expect(inTurn.stderr).toMatch(/--gate and --auth are a cell's outside any turn/)
+    const unnamed = await spawnCli([...ARGS, '--standalone', '--node', process.execPath, '--session', 'x', '--chatgpt-helper', 'y', '--gate', '/run/mohdel/data.sock'])
+    expect(unnamed.code).toBe(2)
+    expect(unnamed.stderr).toMatch(/the spore names no auth — add auth: <id> to its spore.cmk/)
+  })
+
   it('refuses to run inside a cell, so a fan-out cannot nest', async () => {
     const r = await spawnCli(ARGS, { SPORE_CELL: 'summarize' })
     expect(r.code).toBe(2)

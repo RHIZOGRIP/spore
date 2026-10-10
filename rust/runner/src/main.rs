@@ -50,6 +50,7 @@ struct Args {
     free_floor: u64,
     spend: Limits,
     model_sessions: usize,
+    gate: Option<PathBuf>,
     reply_to: Option<String>,
     debug: bool,
     unsafe_: bool,
@@ -77,6 +78,7 @@ fn parse_args() -> Args {
         free_floor: DEFAULT_FREE_FLOOR,
         spend: Limits::default(),
         model_sessions: DEFAULT_MODEL_SESSIONS as usize,
+        gate: None,
         reply_to: None,
         debug: false,
         unsafe_: false,
@@ -124,6 +126,7 @@ fn parse_args() -> Args {
                     _ => fail(format!("--model-sessions is a count from 1 — got {given}")),
                 }
             }
+            "--gate" => args.gate = Some(PathBuf::from(value("--gate"))),
             "--reply-to" => args.reply_to = Some(value("--reply-to")),
             "--debug" => args.debug = true,
             "--unsafe" => args.unsafe_ = true,
@@ -244,14 +247,21 @@ fn refuse(ws: &Path, lock: std::fs::File, started_at: &str, problem: &str) -> ! 
 }
 
 /// Where a session may read a `file://` image from: the workspace and what it may reach.
-fn media_roots(ws: &Path, def: &Definition) -> String {
-    std::iter::once(ws.display().to_string())
+fn media_root_paths(ws: &Path, def: &Definition) -> Vec<PathBuf> {
+    std::iter::once(ws.to_path_buf())
         .chain(
             def.reads
                 .iter()
                 .chain(&def.writes)
-                .map(|grant| grant.path.clone()),
+                .map(|grant| PathBuf::from(&grant.path)),
         )
+        .collect()
+}
+
+fn media_roots(ws: &Path, def: &Definition) -> String {
+    media_root_paths(ws, def)
+        .iter()
+        .map(|root| root.display().to_string())
         .collect::<Vec<_>>()
         .join(":")
 }
@@ -460,27 +470,47 @@ async fn main() {
 
     trace::init();
 
-    // Once per runner: the session pool, the vector store, the sources. What a turn is
+    // Once per runner: the session pool or the gate, the vector store, the sources. What a turn is
     // given to reach them — its sockets and its key — is made again for every turn.
     let start = async {
-        let pool = match &given {
-            Some(_) => None,
-            None => {
+        let allowed: Vec<String> = def
+            .model
+            .iter()
+            .chain(&def.models)
+            .chain(def.cell_models.iter().map(|named| &named.model))
+            .cloned()
+            .collect();
+        let upstream = match (&given, &args.gate) {
+            (Some(_), _) => None,
+            (None, Some(gate)) => {
+                let Some(auth) = def.auth.clone() else {
+                    return Err(format!(
+                        "this host calls its models through the gate at {}, and spore.cmk names no auth — add auth: <id>, whom its model calls are for",
+                        gate.display()
+                    ));
+                };
+                Some(
+                    model::reach_gate(
+                        gate,
+                        auth,
+                        allowed,
+                        media_root_paths(&ws, &def),
+                        def.model.as_deref(),
+                    )
+                    .await?,
+                )
+            }
+            (None, None) => {
                 std::env::set_var("MOHDEL_MEDIA_ROOTS", media_roots(&ws, &def));
                 let session = args.session.clone().expect("checked above");
                 let helper = args.chatgpt_helper.clone().expect("checked above");
-                Some(model::start_pool(
+                Some(model::Upstream::Pool(model::start_pool(
                     node.clone(),
                     session,
                     helper,
                     args.model_sessions,
-                    def.model
-                        .iter()
-                        .chain(&def.models)
-                        .chain(def.cell_models.iter().map(|named| &named.model))
-                        .cloned()
-                        .collect(),
-                ))
+                    allowed,
+                )))
             }
         };
         let store = match vectors {
@@ -507,10 +537,10 @@ async fn main() {
                 Err(e) => return Err(format!("cannot read {MODEL_KEY_FILE} — {e}")),
             }),
         };
-        Ok::<_, String>((pool, store, supplied_key))
+        Ok::<_, String>((upstream, store, supplied_key))
     };
 
-    let (pool, store, supplied_key) = tokio::select! {
+    let (upstream, store, supplied_key) = tokio::select! {
         biased;
         _ = sigterm.recv() => leave(&ws, lock, &started_at),
         _ = sigint.recv() => leave(&ws, lock, &started_at),
@@ -568,13 +598,13 @@ async fn main() {
                 .map(|handle| served.push(handle))
                 .map_err(|e| format!("cannot bind the {kind} socket {path} — {e}"))
         };
-        let model = match &pool {
-            Some(pool) => {
+        let model = match &upstream {
+            Some(upstream) => {
                 let spending = model::Spending {
                     slots: slots.clone(),
                     limits: args.spend,
                 };
-                let model = model::Model::new(key.clone(), def.limits.cost.hard, Some(spending), pool.clone());
+                let model = model::Model::new(key.clone(), def.limits.cost.hard, Some(spending), upstream.clone());
                 let path = socket(&sockets, "model")?;
                 bind("model", &mut served, model::serve(model.clone(), Path::new(&path)), &path)?;
                 passed.insert("SPORE_MODEL_SOCKET".into(), path);

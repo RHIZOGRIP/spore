@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { closeSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, symlinkSync, utimesSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -204,6 +204,15 @@ describe('editing where to look', () => {
     expect(readConfig(CONFIG).modelSessions).toBe(4)
     expect(() => setKey('modelSessions', '0', CONFIG)).toThrow(/not a count/)
     expect(() => setKey('modelSessions', 'wide', CONFIG)).toThrow(/not a count/)
+  })
+
+  it('holds the gate as a path, kept as written and expanded on the way out', () => {
+    expect(readConfig(CONFIG).gate).toBeUndefined()
+    setKey('gate', '~/run/mohdel/data.sock', CONFIG)
+    expect(getKey('gate', CONFIG)).toEqual({ gate: '~/run/mohdel/data.sock' })
+    expect(readConfig(CONFIG).gate).toBe(resolve(homedir(), 'run/mohdel/data.sock'))
+    removeFrom('gate', undefined, CONFIG)
+    expect(readConfig(CONFIG).gate).toBeUndefined()
   })
 
   it('survives an interrupted write by renaming into place, never half a file', () => {

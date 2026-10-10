@@ -166,6 +166,7 @@ export function startRunner (workspace, { slot, plugins, unsafe = false, debug =
       ...(spend.month === null ? [] : ['--spend-per-month', String(spend.month)]),
       ...(containing(config) ? [] : ['--no-contain']),
       ...(modelSessions === null ? [] : ['--model-sessions', String(modelSessions)]),
+      ...(config.gate ? ['--gate', config.gate] : []),
       ...(replyTo === null ? [] : ['--reply-to', replyTo]),
       ...(unsafe ? ['--unsafe'] : []),
       ...(debug ? ['--debug'] : []),

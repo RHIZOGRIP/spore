@@ -50,6 +50,7 @@ The file is written whole and renamed into place.
 | `workspaces` | spores living outside `home`, as paths | none |
 | `turns` | how many of your turns may run at once | 8 |
 | `modelSessions` | how many model calls one running turn and its cells may have going at once | 8 |
+| `gate` | the data socket of a mohdel gate every turn calls its models through | each turn starts its own model sessions |
 | `largestFile` | the largest file a turn may write, as `1GB`, `512MB` or bytes | 1 GB |
 | `freeFloor` | free disk below which a turn is refused | 2 GB |
 | `spendPerDay`, `spendPerMonth` | dollars all your spores may spend per local day or month | no limit |
@@ -94,6 +95,11 @@ spore config rm spendPerDay        # back to unset
   pass; the chat plugins answer busy; the HTTP API answers `503`.
 - **`modelSessions`** — a model call that finds every session busy waits for one; the turn's
   `wall` bounds the wait.
+- **`gate`** — a turn's model calls go to that gate under its spore's `auth`, and so do those of
+  a triage cell started outside any turn; no model session is started and no provider key held. A spore with no `auth`, a gate that does
+  not answer, or a gate whose catalog lacks the spore's `model` refuses the turn before it
+  starts. An image the agent reads goes to the gate inline, so the gate need not share this
+  machine's files. `modelSessions` no longer applies: the gate's pool bounds the calls.
 - **`largestFile`** — a write past it fails with `EFBIG` ("File too large"), or the command
   writing it ends on `SIGXFSZ`; the call record shows which. It bounds each file, not a turn's
   total.

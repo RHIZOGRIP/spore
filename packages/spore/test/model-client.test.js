@@ -184,8 +184,10 @@ describe('the mohdel release', () => {
   it('is the same in npm and in Cargo', () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
     const npm = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).dependencies.mohdel
-    const cargo = readFileSync(resolve(root, '../../rust/runner/Cargo.toml'), 'utf8').match(/mohdel-thin-gate = \{[^}]*tag = "v([^"]+)"/)
+    const cargo = readFileSync(resolve(root, '../../rust/runner/Cargo.toml'), 'utf8')
     expect(npm).toMatch(/^\d+\.\d+\.\d+$/)
-    expect(cargo?.[1]).toBe(npm)
+    for (const crate of ['mohdel-thin-gate', 'mohdel-client']) {
+      expect(cargo.match(new RegExp(`${crate} = \\{[^}]*tag = "v([^"]+)"`))?.[1], crate).toBe(npm)
+    }
   })
 })

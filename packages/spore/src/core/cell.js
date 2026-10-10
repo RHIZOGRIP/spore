@@ -1,7 +1,8 @@
 /**
  * A cell outside any turn: a precursor of a spore, run for a host that is not a turn — a webhook's
- * triage, a schedule's, a command's. `spore-spawn --standalone` starts its own model session
- * under a key of its own and the precursor's hard cost; this prepares its directory, waits for it,
+ * triage, a schedule's, a command's. `spore-spawn --standalone` starts its own model session, or
+ * reaches the host's gate under the spore's `auth`, with a key of its own and the precursor's
+ * hard cost; this prepares its directory, waits for it,
  * and records the run in the spore, so its spend is the spore's whatever asked for it. Contract:
  * ARCHITECTURE.md, "A cell outside any turn".
  */
@@ -38,7 +39,7 @@ export const cellsRoot = (env) => join(env.XDG_STATE_HOME || join(homedir(), '.l
  *
  * @returns {Promise<{ answer: string|null, costUsd: number, durationMs: number, failed: string|null }>}
  */
-export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model, env, wallMs }) {
+export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model, auth, env, wallMs }) {
   const startedAt = Date.now()
   const config = readConfig()
   const spend = spendLimits(config)
@@ -54,7 +55,9 @@ export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model
       '--answer', answer,
       ...(spend.day === null ? [] : ['--spend-per-day', String(spend.day)]),
       ...(spend.month === null ? [] : ['--spend-per-month', String(spend.month)]),
-      ...(containing(config) ? [] : ['--no-contain'])
+      ...(containing(config) ? [] : ['--no-contain']),
+      ...(config.gate ? ['--gate', config.gate] : []),
+      ...(config.gate && auth ? ['--auth', auth] : [])
     ], { cwd: ws, env: { ...env, MODEL: model }, stdio: ['ignore', 'ignore', 'pipe'] })
     let stderr = ''
     child.stderr.on('data', chunk => { stderr += chunk })
@@ -107,7 +110,7 @@ export async function runCell ({ ws, precursor, origin, ref = null, files = {}, 
   writeFileSync(join(cellWs, PROMPT), briefing)
 
   starting(cell.limits.wall.hard)
-  const ran = await launch({ ws, precursor, cellWs, prompt: PROMPT, answer: ANSWER, model, env: { ...env, ...(naming ? { SPORE_CELL_MODELS: JSON.stringify(named) } : {}) }, wallMs: cell.limits.wall.hard })
+  const ran = await launch({ ws, precursor, cellWs, prompt: PROMPT, answer: ANSWER, model, auth: root.auth, env: { ...env, ...(naming ? { SPORE_CELL_MODELS: JSON.stringify(named) } : {}) }, wallMs: cell.limits.wall.hard })
   const failed = ran.failed ?? (ran.answer === null ? 'gave no answer' : null)
   recordCell(ws, {
     precursor,

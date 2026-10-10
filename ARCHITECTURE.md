@@ -2011,7 +2011,8 @@ with `spore-spawn --standalone`.
 
 - **It has no parent to borrow a model from**, so `--standalone` starts its own session as a
   runner does, under a key of its own and the precursor's hard cost, and records the settled spend
-  on the cell's own turn. It reaches no source — sources are served by a turn — and runs in the
+  on the cell's own turn. On a host that names a gate it reaches that gate instead, under its
+  spore's `auth`, and is refused when the spore names none. It reaches no source — sources are served by a turn — and runs in the
   foreground, for whoever waits on its answer.
 - **It is refused under a turn** (its owner token is in the environment): a turn's cells go
   through the turn's socket, where they are counted. That is a guard; the boundary is a turn
@@ -2120,6 +2121,19 @@ call reports zero spend, so a definition's `cost` limits never stop a spore runn
 plan; `rounds` and `wall` still do. How a model's calls are paid for is mohdel's to declare
 (`billingOf`, `src/core/billing.js`): for a `plan` or `capacity` model, spend is shown as
 `not metered · <label>` in place of dollars.
+
+**On a host that names a gate** (`gate` in `config.json`, passed to the runner as `--gate`), the
+runner starts no pool. It forwards `/v1/call` and `/v1/embed` to that mohdel gate through mohdel's
+Rust client, with the spore's `auth` as every envelope's `authId` whatever the agent wrote, and
+answers `/spore/info` from the gate's `POST /v1/info`; the tree key, the ledger, the hard stop
+and the route policy stay the runner's, checked before a call leaves. Keys and quotas are the
+gate's, by `authId`. A `file://` image part goes to the gate as a `data:` URI, read by the runner
+from the workspace or a granted directory — the roots `MOHDEL_MEDIA_ROOTS` holds on the pool —
+since the gate need not share this machine's files. The ceiling aborts a call at the gate that
+streams it (its `mohdel-gate`). A turn whose spore names no `auth`, or whose gate does not
+answer for its `model`, is refused before it starts; the runner never falls back to a pool. The
+gate checks no caller, and an agent can connect to a gate socket mounted where it runs, so a
+gate shared between tenants is only as separate as its socket's reach.
 
 `runSpore` hosts nothing (§The supervisor builds, the worker runs): the confined half is handed a
 socket and a ledger as parameters. A runner started with `SPORE_MODEL_SOCKET` — a test, or an

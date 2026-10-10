@@ -76,6 +76,15 @@ describe('a cell outside any turn', () => {
     expect(refused).toMatchObject({ started: false, failed: expect.stringMatching(/cell model "strong", which this spore's cell-models does not have — it has low/) })
   })
 
+  it('carries the spore\'s auth to the cell, whom its calls are for on a gate', async () => {
+    const launched = []
+    const launch = async (question) => { launched.push(question.auth); return { answer: 'ok', costUsd: 0, durationMs: 1, failed: null } }
+    await runCell({ ws, precursor: 'digest', origin: 'command', briefing: 'x\n', env, launch })
+    writeFileSync(join(ws, 'spore.cmk'), definitionWith('fake/root').replace('\n---\n', '\nauth: thread-7f3a\n---\n'))
+    await runCell({ ws, precursor: 'digest', origin: 'command', briefing: 'x\n', env, launch })
+    expect(launched).toEqual([undefined, 'thread-7f3a'])
+  })
+
   it('does not start while spores are paused', async () => {
     pauseSpores()
     try {

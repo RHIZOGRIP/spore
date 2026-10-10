@@ -65,6 +65,7 @@ export function readConfig (file = CONFIG_FILE) {
   return {
     ...raw,
     home,
+    ...(raw.gate ? { gate: expand(raw.gate) } : {}),
     workspaces: (raw.workspaces || []).map(expand),
     file,
     exists: true
@@ -122,6 +123,12 @@ function validate (raw, file) {
     throw new SporeError(`${file} has a home that is not a path`, {
       type: 'CONFIG_INVALID',
       detail: 'home is the one directory workspaces are made in, as a single path'
+    })
+  }
+  if (raw.gate !== undefined && typeof raw.gate !== 'string') {
+    throw new SporeError(`${file} has a gate that is not a path`, {
+      type: 'CONFIG_INVALID',
+      detail: 'gate is the data socket of the mohdel gate every turn calls its models through, as a single path'
     })
   }
   if (raw.turns !== undefined && !(Number.isInteger(raw.turns) && raw.turns >= 1)) {
@@ -225,7 +232,7 @@ export function existing (paths) {
   return { live, missing }
 }
 
-const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'largestFile', 'freeFloor', 'spendPerDay', 'spendPerMonth', 'contain', 'hereSnapshots'])
+const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'largestFile', 'freeFloor', 'spendPerDay', 'spendPerMonth', 'contain', 'hereSnapshots'])
 const SWITCHES = { on: true, off: false }
 const COUNTS = new Set(['turns', 'modelSessions', 'hereSnapshots', 'homeSplit'])
 const DOLLARS = new Set(['spendPerDay', 'spendPerMonth'])
