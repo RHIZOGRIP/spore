@@ -13,6 +13,7 @@ import { applyEvent, createLive, history } from './conversation.js'
 import { changeOf, counts, hunks } from './diff.js'
 import { printable } from './printable.js'
 import { PromptEditor } from './prompt.js'
+import { Answer } from './answer.js'
 import { matching, priceText, statusParts } from './status.js'
 
 const REFRESH_MS = 1000
@@ -99,23 +100,37 @@ class Conversation {
   }
 
   markdown (item) {
-    if (!this.answers.has(item)) this.answers.set(item, new Markdown(item.text, 0, 0, markdownTheme))
+    if (!this.answers.has(item)) this.answers.set(item, new Answer(item.text, markdownTheme))
     return this.answers.get(item)
+  }
+
+  lastAnswer () {
+    return [...this.items].reverse().find(item => item.kind === 'answer')
+  }
+
+  /** The code blocks of the last answer, numbered on screen from 1. */
+  lastBlocks () {
+    const last = this.lastAnswer()
+    return last ? this.markdown(last).blocks : []
   }
 
   render (width) {
     const out = []
     if (!this.items.length && !this.live) out.push(dim('nothing said yet — write below, / for commands'))
+    const last = this.lastAnswer()
     for (const item of this.items) {
       if (item.kind === 'said') {
-        const from = item.origin === 'terminal' ? chalk.cyan('›') : chalk.cyan(`${item.origin} ›`)
-        out.push('', ...lines(`${from} ${item.text}${item.waiting && !this.live ? dim('  (not read yet)') : ''}`, width))
+        const from = item.origin === 'terminal' ? chalk.cyan('>') : chalk.cyan(`${item.origin} >`)
+        out.push('', ...lines(`${from} ${chalk.bold(item.text)}${item.waiting && !this.live ? dim('  (not read yet)') : ''}`, width))
       } else if (item.kind === 'answer') {
-        out.push('', ...this.markdown(item).render(width))
+        const answer = this.markdown(item)
+        answer.label(item === last)
+        out.push('', ...answer.render(width))
       } else if (item.kind === 'end') {
         const how = [item.stopReason, item.error].filter(Boolean).join(' · ')
         const took = item.durationMs === null ? '' : ` · ${durationText(item.durationMs)}`
-        out.push(dim(truncateToWidth(`── turn ${item.turnNo} · ${how} · ${item.rounds ?? 0} rounds · $${(item.treeUsd ?? 0).toFixed(4)}${took}`, width)))
+        const label = `── turn ${item.turnNo} · ${how} · ${item.rounds ?? 0} rounds · $${(item.treeUsd ?? 0).toFixed(4)}${took} `
+        out.push(dim(truncateToWidth(label + '─'.repeat(Math.max(0, width - visibleWidth(label))), width)))
         if (item.error && item.detail) out.push(...lines(`   ${item.detail.split('\n')[0]}`, width, chalk.red))
       }
     }
@@ -176,7 +191,7 @@ class Picker {
     this.items = items
     this.onSelect = onSelect
     this.onCancel = onCancel
-    this.filter = new Input({ prompt: '› ', placeholder: 'type to filter', placeholderStyle: dim })
+    this.filter = new Input({ prompt: '> ', placeholder: 'type to filter', placeholderStyle: dim })
     this.filter.focused = true
     this.list = this.listOf(items)
   }
@@ -370,7 +385,7 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
 
   const helpPanel = () => overlay(new Panel('keys and commands', [
     'enter send · alt+enter new line · ↑↓ earlier messages · tab complete',
-    'ctrl+p open another spore · ctrl+o show tool calls in full · ctrl+g write in $EDITOR',
+    'ctrl+p open another spore · ctrl+o show tool calls in full · ctrl+g write in $EDITOR · alt+c copy the last code block',
     'esc twice stop the running turn, or clear the line when none runs · ctrl+c clear · ctrl+d on an empty line leave',
     '',
     ...allCommands.map(c => `/${c.name}${c.argumentHint ? ` ${c.argumentHint}` : ''} — ${c.description}`)
@@ -381,6 +396,10 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
     clearInterval(ticking)
     tui.stop({ preserveScreen: true })
     finish(0)
+  }
+
+  const copy = async (text, what) => {
+    if (await tui.copyTextToClipboard(text)) notice(`copied ${what}`)
   }
 
   const say = (text) => {
@@ -471,10 +490,16 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
     if (name === 'help') return helpPanel()
     if (name === 'quit') return leave()
     if (name === 'copy') {
-      const answer = conversation.live?.complete?.output ?? [...conversation.items].reverse().find(item => item.kind === 'answer')?.text
-      if (!answer) return notice('no answer to copy yet')
-      terminal.write(`\x1b]52;c;${Buffer.from(answer).toString('base64')}\x07`)
-      return notice('copied the last answer')
+      if (!args.length) {
+        const answer = conversation.live?.complete?.output ?? conversation.lastAnswer()?.text
+        if (!answer) return notice('no answer to copy yet')
+        return copy(answer, 'the last answer')
+      }
+      const blocks = conversation.lastBlocks()
+      const n = Number(args[0])
+      if (!blocks.length) return notice('the last answer has no code block')
+      if (!Number.isInteger(n) || n < 1 || n > blocks.length) return notice(`the last answer has ${blocks.length === 1 ? '1 code block — /copy 1' : `${blocks.length} code blocks — /copy 1 to /copy ${blocks.length}`}`)
+      return copy(blocks[n - 1].text, `code block ${n}`)
     }
     const added = commands.find(c => c.name === name)
     if (!added) return notice(`no /${name} — /help lists them`)
@@ -550,6 +575,12 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
       return { consume: true }
     }
     if (matchesKey(data, 'ctrl+p')) { picker(); return { consume: true } }
+    if (matchesKey(data, 'alt+c')) {
+      const block = conversation.lastBlocks().at(-1)
+      if (block) copy(block.text, 'the last code block')
+      else notice('the last answer has no code block')
+      return { consume: true }
+    }
     if (matchesKey(data, 'ctrl+o')) { conversation.expanded = !conversation.expanded; tui.requestRender(); return { consume: true } }
     if (matchesKey(data, 'ctrl+g')) { compose(); return { consume: true } }
     if (matchesKey(data, 'escape') && !editor.isShowingAutocomplete()) {

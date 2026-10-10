@@ -12,11 +12,13 @@ alt+enter      a new line
 ↑ ↓            earlier messages
 ctrl+p         open another spore
 ctrl+o         tool calls in full — an edit or a write as its diff
+alt+c          copy the last code block of the last answer, exactly as written
 ctrl+g         write the message in $EDITOR
 esc esc        stop the running turn; when none runs, clear the line
 ctrl+c         clear the line
 ctrl+d         leave, on an empty line
 /              commands: /stop /wrap /extend /model /curate /pause /unpause /spores /status /copy /help /quit
+/copy [<n>]    the last answer, or its code block <n> — each block's opening fence shows its number
 //text         a message that starts with /
 ```
 

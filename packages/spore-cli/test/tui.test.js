@@ -6,6 +6,7 @@ import { changeOf, counts, hunks, lineDiff } from '../tui/diff.js'
 import { applyEvent, createLive, history, originOf } from '../tui/conversation.js'
 import { limitsText, matching, priceText, spendText, stateText, statusParts } from '../tui/status.js'
 import { PromptEditor } from '../tui/prompt.js'
+import { Answer } from '../tui/answer.js'
 
 const turn = (turnNo, inboxFrom, inboxTo, extra = {}) => ({
   turnNo,
@@ -229,5 +230,36 @@ describe('the line you type on', () => {
     const lines = typed('a'.repeat(30))
     expect(lines[1].startsWith('> a')).toBe(true)
     expect(lines[2].startsWith('  a')).toBe(true)
+  })
+})
+
+describe('the code blocks of an answer', () => {
+  const same = (text) => text
+  const theme = Object.fromEntries(['heading', 'link', 'linkUrl', 'code', 'codeBlock', 'codeBlockBorder', 'quote', 'quoteBorder', 'hr', 'listBullet', 'bold', 'italic', 'strikethrough', 'underline'].map(key => [key, same]))
+  const long = `az account show --query '${'x'.repeat(150)}' --output yaml`
+  const text = `Run:\n\n\`\`\`sh\n${long}\n\`\`\`\n\n- then this one:\n\n  \`\`\`sh\n  az account list --output table\n  \`\`\`\n`
+
+  it('are kept as written, a line wider than the screen and a block inside a list included', () => {
+    const answer = new Answer(text, theme)
+    answer.render(60)
+    expect(answer.blocks).toEqual([{ lang: 'sh', text: long }, { lang: 'sh', text: 'az account list --output table' }])
+  })
+
+  it('are numbered on their opening fence when the answer is labelled, and only then', () => {
+    const answer = new Answer(text, theme, { labelled: true })
+    const lines = answer.render(200).map(line => line.trim())
+    expect(lines).toContain('```sh · /copy 1')
+    expect(lines).toContain('```sh · /copy 2')
+    expect(lines.filter(line => line === '```')).toHaveLength(2)
+    answer.label(false)
+    expect(answer.render(200).some(line => line.includes('/copy'))).toBe(false)
+  })
+
+  it('are counted once however often the answer is drawn', () => {
+    const answer = new Answer(text, theme)
+    answer.render(60)
+    answer.render(60)
+    answer.render(90)
+    expect(answer.blocks).toHaveLength(2)
   })
 })

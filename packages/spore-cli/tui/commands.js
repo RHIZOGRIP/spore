@@ -8,7 +8,7 @@ export const COMMANDS = [
   { name: 'unpause', description: 'let turns start again' },
   { name: 'spores', description: 'open another spore (Ctrl+P)' },
   { name: 'status', description: 'jobs, schedules, held deliveries, answers waiting to be delivered' },
-  { name: 'copy', description: 'copy the last answer' },
+  { name: 'copy', description: 'copy the last answer, or code block <n> of it as numbered on screen (Alt+C: the last one)', argumentHint: '[<n>]' },
   { name: 'help', description: 'keys and commands' },
   { name: 'quit', description: 'leave (Ctrl+D)' }
 ]
