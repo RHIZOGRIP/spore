@@ -203,11 +203,12 @@ the others print. The guide:
 
 ```
 list({ where, disk = false, configFile })
-→ { configured, file, home, paused, spend, contain, missing, workspaces }
+→ { configured, file, home, asked, paused, spend, contain, missing, workspaces }
 ```
 
 Every spore the configuration points at: those directly under `home` and those named in
-`workspaces`. `where` lists the spores directly under that directory instead. Each row of
+`workspaces`. `where` lists the spores directly under that directory instead; `home` is then that
+directory, and `asked` is true. Each row of
 `workspaces` is `{ ws, from, writes, definitionError, …stateOf(ws) }`, with `bytes` when `disk` is
 true (a walk of the whole tree). `missing` is `[{ path, why }]` for listed paths that are gone or
 not a spore. `paused` is `paused()`, `spend` is `spendSoFar()`. Throws the `CONFIG_*` refusals of

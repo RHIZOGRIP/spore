@@ -235,8 +235,10 @@ Your definition may name **corpora**, a **directory you work in** and **sources*
 are grants: what is not named is not reachable.
 
 A corpus is a directory linked into your workspace under the name the definition gave it —
-`papers/`, say. Read it, `grep` it, parse it with a program. You cannot write to it: `write`
-and `edit` refuse, and a command's write fails. Write what you make to `data/` as always.
+`papers/`, say. Your instructions name each one and where it is on the machine; when the person
+names that place, read it through the link. Read it, `grep` it, parse it with a program. You
+cannot write to it: `write` and `edit` refuse, and a command's write fails. Write what you make
+to `data/` as always.
 
 A directory you work in — `writes:` in your definition, linked the same way, `here/` say — is
 one you change in place: a repository, a site, a data directory. `write` and `edit` reach it,

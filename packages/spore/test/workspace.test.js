@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { openWorkspace } from '../src/core/workspace.js'
+import { openWorkspace, readRules } from '../src/core/workspace.js'
 import { dataDir, definitionPath } from '../src/core/spore-dir.js'
 import { DEFAULT_DEFINITION, definitionWith } from '../src/core/identity-defaults.js'
 import { TOOL_NAMES } from '../src/core/tool-names.js'
@@ -135,5 +135,22 @@ describe('what the runtime tells an agent it has been given', () => {
     expect(opened.domainRules).toContain('reference.md')
     expect(opened.domainRules).toContain('libraries.md')
     expect(opened.domainRules).toContain('workspace root')
+  })
+})
+
+describe('a corpus, as the agent is told of it', () => {
+  it('is named where it is linked, and where the person knows it', () => {
+    const corpus = resolve(ROOT, 'notes')
+    mkdirSync(corpus)
+    writeFileSync(definitionPath(WS), `---\nname: spore\nmodel: ${MODEL}\ntools: [read]\nreads: [papers=${corpus}]\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\n---\n\nYou read.\n`)
+    expect(open().domainRules).toContain(`papers/ is ${realpathSync(corpus)}`)
+    expect(open().domainRules).toContain('read it through papers/. You cannot change it.')
+  })
+
+  it('is given in the person\'s ~ when it is under their home, and only then', () => {
+    expect(readRules([{ name: 'bin', path: '/home/ada/bin' }], '/home/ada')).toMatch(/^bin\/ is \/home\/ada\/bin \(~\/bin\), linked in/)
+    expect(readRules([{ name: 'law', path: '/srv/law' }], '/home/ada')).toMatch(/^law\/ is \/srv\/law, linked in/)
+    expect(readRules([{ name: 'adams', path: '/home/adams' }], '/home/ada')).not.toContain('~')
+    expect(readRules([{ name: 'bin', path: '/home/ada/bin' }], null)).not.toContain('~')
   })
 })

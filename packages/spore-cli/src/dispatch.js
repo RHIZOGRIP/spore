@@ -69,7 +69,8 @@ function renderList (result) {
   const outside = result.workspaces.filter(row => row.from !== result.home)
 
   if (!result.workspaces.length) {
-    if (result.home) console.log(`no spores yet — spore define <name> makes one in ${result.home}`)
+    if (result.asked) console.log(`no spores in ${result.home} — spore ls alone lists your home, spore show <name> shows one spore`)
+    else if (result.home) console.log(`no spores yet — spore define <name> makes one in ${result.home}`)
     else console.log('nowhere configured to look — spore config set home <dir>')
     return
   }

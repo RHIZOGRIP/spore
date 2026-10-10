@@ -510,6 +510,7 @@ export function list ({ where, disk = false, configFile = CONFIG_FILE } = {}) {
     configured: config.exists,
     file: config.file,
     home: config.home,
+    asked: Boolean(where),
     paused: paused(),
     spend: spendSoFar({ config }),
     contain: containing(config),

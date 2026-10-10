@@ -4,6 +4,7 @@
  */
 
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync } from 'node:fs'
+import { userInfo } from 'node:os'
 import { resolve } from 'node:path'
 
 import { provisionModules } from '../delegation/agent-env.js'
@@ -79,6 +80,27 @@ function workRules (writes) {
     `bookkeeping and worth mentioning only when asked about. write and edit reach ${name}/, and wsexec runs ` +
     `commands in it (cd ${name} && …); exec only reads it.`
   ).join('\n\n')
+}
+
+// A container may run spore as a uid with no account, which has no home to name.
+function accountHome () {
+  try {
+    return userInfo().homedir
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A corpus is named in the agent's workspace, while the person names it where it is on the
+ * machine — and the agent's `~` is its own home, not theirs.
+ */
+export function readRules (reads, home = accountHome()) {
+  return reads.map(({ name, path }) => {
+    const theirs = home && (path === home || path.startsWith(`${home}/`)) ? ` (~${path.slice(home.length)})` : ''
+    return `${name}/ is ${path}${theirs}, linked in for you to read. When the person names that directory or a ` +
+      `file in it, read it through ${name}/. You cannot change it.`
+  }).join('\n\n')
 }
 
 /**
@@ -162,6 +184,6 @@ export function openWorkspace (dir, { cwd = process.cwd(), definition: given, al
     images: definition.images,
     schedules: definition.schedules ?? null,
     plugins: definition.plugins,
-    domainRules: [workRules(writes), seededRules(ws), pluginRules(ws, definition.plugins), precursorRules(describePrecursors(ws)), cellModelRules(definition.cellModels ?? [], definition.model)].filter(Boolean).join('\n\n')
+    domainRules: [workRules(writes), readRules(reachable), seededRules(ws), pluginRules(ws, definition.plugins), precursorRules(describePrecursors(ws)), cellModelRules(definition.cellModels ?? [], definition.model)].filter(Boolean).join('\n\n')
   }
 }
