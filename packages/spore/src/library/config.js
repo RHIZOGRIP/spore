@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { homedir } from 'node:os'
 import { dirname, resolve, join } from 'node:path'
 
-import { isWorkspace } from './discover.js'
+import { isWorkspace, sporesInHome } from './discover.js'
 import { native } from '../native.js'
 import { SporeError } from '../observability/errors.js'
 
@@ -60,9 +60,11 @@ export function readConfig (file = CONFIG_FILE) {
     })
   }
   validate(raw, file)
+  const home = raw.home ? expand(raw.home) : null
+  if (home) checkLayout(home, raw.homeSplit ?? null, file)
   return {
     ...raw,
-    home: raw.home ? expand(raw.home) : null,
+    home,
     workspaces: (raw.workspaces || []).map(expand),
     file,
     exists: true
@@ -132,6 +134,12 @@ function validate (raw, file) {
     throw new SporeError(`${file} has a modelSessions that is not a count`, {
       type: 'CONFIG_INVALID',
       detail: 'modelSessions is how many model calls one running turn and its cells may have going at once, a whole number from 1'
+    })
+  }
+  if (raw.homeSplit !== undefined && !(Number.isInteger(raw.homeSplit) && raw.homeSplit >= 1 && raw.homeSplit <= 8)) {
+    throw new SporeError(`${file} has a homeSplit that is not a count from 1 to 8`, {
+      type: 'CONFIG_INVALID',
+      detail: 'homeSplit is how many of a spore\'s last characters name the directory it sits in under home, a whole number from 1 to 8'
     })
   }
   if (raw.hereSnapshots !== undefined && !(Number.isInteger(raw.hereSnapshots) && raw.hereSnapshots >= 1)) {
@@ -217,9 +225,9 @@ export function existing (paths) {
   return { live, missing }
 }
 
-const KEYS = new Set(['home', 'workspaces', 'turns', 'modelSessions', 'largestFile', 'freeFloor', 'spendPerDay', 'spendPerMonth', 'contain', 'hereSnapshots'])
+const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'largestFile', 'freeFloor', 'spendPerDay', 'spendPerMonth', 'contain', 'hereSnapshots'])
 const SWITCHES = { on: true, off: false }
-const COUNTS = new Set(['turns', 'modelSessions', 'hereSnapshots'])
+const COUNTS = new Set(['turns', 'modelSessions', 'hereSnapshots', 'homeSplit'])
 const DOLLARS = new Set(['spendPerDay', 'spendPerMonth'])
 const SIZES = new Set(['largestFile', 'freeFloor'])
 const LISTS = new Set(['workspaces'])
@@ -252,6 +260,49 @@ function writeConfig (next, file = CONFIG_FILE) {
   writeFileSync(temporary, JSON.stringify(next, null, 2) + '\n', { mode: 0o600 })
   renameSync(temporary, file)
   return next
+}
+
+/**
+ * How a home is laid out, written by `define` beside its first spore: `homeSplit` is chosen
+ * before then and kept, since spores already made would not be where a new value puts them.
+ * The leading dot keeps it from ever being read as a spore's name.
+ */
+export const HOME_RECORD = '.spore-home'
+
+const laidOut = (home) => {
+  const record = join(home, HOME_RECORD)
+  if (!existsSync(record)) return undefined
+  return JSON.parse(readFileSync(record, 'utf8')).homeSplit ?? null
+}
+
+const layoutText = (split) => (split ? `homeSplit ${split}` : 'flat')
+
+function checkLayout (home, split, file) {
+  const laid = laidOut(home)
+  if (laid === undefined || laid === split) return
+  throw new SporeError(`${home} holds spores laid out ${layoutText(laid)}, and ${file} says ${layoutText(split)}`, {
+    type: 'CONFIG_HOME_LAID_OUT',
+    detail: 'homeSplit is chosen before a home\'s first spore and kept — put it back, or point home at a directory of its own'
+  })
+}
+
+/** Called by `define` once a spore is made in `home`: the first one fixes the layout. */
+export function recordLayout (home, split) {
+  try {
+    writeFileSync(join(home, HOME_RECORD), JSON.stringify({ homeSplit: split ?? null }) + '\n', { flag: 'wx' })
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err
+  }
+}
+
+const refuseRelayout = (current, split) => {
+  if (!current.home) return
+  const home = expand(current.home)
+  if (laidOut(home) === undefined && !sporesInHome(home, current.homeSplit ?? null).length) return
+  throw new SporeError(`${home} already holds spores, laid out ${layoutText(current.homeSplit ?? null)}`, {
+    type: 'CONFIG_HOME_LAID_OUT',
+    detail: `homeSplit is chosen before a home's first spore and kept${split ? ' — set it on a new home: spore config set home <dir>, then homeSplit' : ''}`
+  })
 }
 
 const known = (key) => {
@@ -287,7 +338,7 @@ export function workspaceFor (asked, { config, cwd = process.cwd(), file = CONFI
       detail: 'letters, digits, dot, dash and underscore, starting with a letter or digit, up to 64 — or pass a path'
     })
   }
-  const { home } = config ?? readConfig(file)
+  const { home, homeSplit } = config ?? readConfig(file)
   if (!home) {
     throw new SporeError(`"${asked}" is a name, and no home is set to put it in`, {
       type: 'CONFIG_NO_HOME',
@@ -300,7 +351,15 @@ export function workspaceFor (asked, { config, cwd = process.cwd(), file = CONFI
       detail: 'home holds workspaces, one per subdirectory, and is not one; a spore made inside another sits in that agent\'s own tree, readable to it'
     })
   }
-  return { path: join(home, asked), named: true, home }
+  if (!homeSplit) return { path: join(home, asked), named: true, home }
+  const split = asked.slice(-homeSplit)
+  if (!/^[A-Za-z0-9_-]+$/.test(split)) {
+    throw new SporeError(`"${asked}" ends in "${split}", which cannot name a directory`, {
+      type: 'CONFIG_BAD_NAME',
+      detail: `with homeSplit ${homeSplit}, a name's last ${homeSplit} characters name the directory it sits in under home — letters, digits, dash and underscore`
+    })
+  }
+  return { path: join(home, split, asked), named: true, home }
 }
 
 /**
@@ -358,11 +417,13 @@ export function getKey (key, file = CONFIG_FILE) {
 export function setKey (key, value, file = CONFIG_FILE) {
   const current = raw(file)
   known(key)
+  if (key === 'homeSplit' && Number(value) !== (current.homeSplit ?? null)) refuseRelayout(current, Number(value))
   const next = LISTS.has(key)
     ? value.split(',').map(v => store(v.trim())).filter(Boolean)
     : COUNTS.has(key) || DOLLARS.has(key) ? Number(value) : SIZES.has(key) ? value : key === 'contain' ? switchOf(value) : store(value)
   const written = { ...current, [key]: next }
   validate(written, file)
+  if (key === 'home') checkLayout(expand(next), written.homeSplit ?? null, file)
   return writeConfig(written, file)
 }
 
@@ -378,6 +439,7 @@ export function addTo (key, value, file = CONFIG_FILE) {
 export function removeFrom (key, value, file = CONFIG_FILE) {
   const current = raw(file)
   if (value === undefined) {
+    if (key === 'homeSplit' && current.homeSplit !== undefined) refuseRelayout(current, null)
     const { [known(key)]: _gone, ...rest } = current
     return writeConfig(rest, file)
   }

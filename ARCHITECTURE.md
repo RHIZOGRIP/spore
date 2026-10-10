@@ -696,7 +696,12 @@ read-only root and is readable to it, which is the objection `grantedPathContain
 this repository and for `/tmp`.
 
 **The search is one level deep** (`src/library/discover.js`). A spore is an immediate
-subdirectory of its home and nothing below that is looked at. An application that nests workspaces inside a directory of its own lists them itself; they
+subdirectory of its home and nothing below that is looked at. With **`homeSplit: N`**, a spore
+lives at `<home>/<its name's last N characters>/<name>` instead, and that is the one level looked
+at; `workspaceFor` is the one place a name becomes a path. The layout is recorded in
+`<home>/.spore-home` — by `define` with a home's first spore, or by `recordLayout` from a program
+that makes spores itself — and a configuration disagreeing with the record is refused, so a spore
+is never looked for where it was not made. An application that nests workspaces inside a directory of its own lists them itself; they
 are not reached this way.
 
 That decides how a spore is named: a **bare name** is the one of that name in `home`, anything

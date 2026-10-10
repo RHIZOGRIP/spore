@@ -207,7 +207,8 @@ list({ where, disk = false, configFile })
 ```
 
 Every spore the configuration points at: those directly under `home` and those named in
-`workspaces`. `where` lists the spores directly under that directory instead; `home` is then that
+`workspaces`, one level further down with `homeSplit`. `where` lists the spores directly under
+that directory instead; `home` is then that
 directory, and `asked` is true. Each row of
 `workspaces` is `{ ws, from, writes, definitionError, …stateOf(ws) }`, with `bytes` when `disk` is
 true (a walk of the whole tree). `missing` is `[{ path, why }]` for listed paths that are gone or
@@ -811,7 +812,8 @@ readConfig(file = CONFIG_FILE) → { …settings, home, workspaces, file, exists
 
 The host's `config.json`, with `home` and `workspaces` expanded to absolute paths. A missing file
 is `{ home: null, workspaces: [], file, exists: false }`. Throws `CONFIG_UNREADABLE`,
-`CONFIG_INVALID`.
+`CONFIG_INVALID`, and `CONFIG_HOME_LAID_OUT` when `home`'s layout record names another
+`homeSplit` than the file.
 
 ### `settings`
 
@@ -865,9 +867,22 @@ workspaceFor(asked, { config, cwd = process.cwd(), file = CONFIG_FILE }) → { p
 ```
 
 What a spore argument names. A path-shaped argument (`NAMES_A_PATH`) is taken as written, a name
-is the directory of that name under `home` (`named: true`), and nothing is `cwd`. Throws
+is the directory of that name under `home` (`named: true`), or under `home/<its last homeSplit
+characters>` when `homeSplit` is set, and nothing is `cwd`. Throws
 `CONFIG_BAD_NAME`, `CONFIG_NO_HOME`, `CONFIG_HOME_IS_A_WORKSPACE`, and the refusals of
 `readConfig`.
+
+### `recordLayout`
+
+```
+recordLayout(home, homeSplit) → undefined
+```
+
+Writes `home`'s layout record, `<home>/.spore-home`, saying `homeSplit` (null for flat), unless
+one is already there. `define` calls it with a home's first spore; a program that makes spores
+with its own code calls it itself, at every start, so the home is guarded from its first spore
+on. It never compares: a record naming another value stays, and the next `readConfig` refuses
+(`CONFIG_HOME_LAID_OUT`). `home` must exist; any other filesystem error is thrown.
 
 ### `existing`
 

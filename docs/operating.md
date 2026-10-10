@@ -46,6 +46,7 @@ The file is written whole and renamed into place.
 | key | what it is | when unset |
 |---|---|---|
 | `home` | the one directory spores are made in, one per subdirectory; not itself a spore | a bare name cannot be resolved |
+| `homeSplit` | how many of a spore's last characters name the directory it sits in under `home`, 1 to 8 | flat: every spore directly under `home` |
 | `workspaces` | spores living outside `home`, as paths | none |
 | `turns` | how many of your turns may run at once | 8 |
 | `modelSessions` | how many model calls one running turn and its cells may have going at once | 8 |
@@ -60,6 +61,14 @@ The file is written whole and renamed into place.
 A path starting with `~` is kept as written; a relative one is resolved when it is set.
 `spore setup` offers `~/.spore` as the home. `~/.config/spore` holds your configuration and keys;
 your spores live in `home`. A spore inside `~/.config/spore` is refused.
+
+**Many spores.** With `homeSplit: 3`, a spore named `85266511-…-0f665bc95d21` lives at
+`<home>/d21/85266511-…-0f665bc95d21`: the last characters, which are random in a uuid, a ULID or a
+KSUID, spread spores evenly over at most 4,096 directories. Set it before the home's first spore.
+The layout is recorded in `<home>/.spore-home` — by `define` with the home's first spore, or by a
+program that makes spores itself calling `recordLayout` — and once that record exists, a different
+`homeSplit`, by `config set` or by editing the file, is refused. Before it exists, nothing guards
+the value. With it, a name's last characters must be letters, digits, `-` or `_`.
 `spore config set model <provider>/<name>` is not a key: it writes the `model:` line of your
 default sporangium, `~/.config/spore/sporangia/default/spore.cmk`.
 

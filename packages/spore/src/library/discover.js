@@ -8,7 +8,8 @@
  * **One level.** A spore is an immediate subdirectory of its home, `<home>/<name>`, and
  * nothing deeper is looked at. There is no recursion to bound, no depth to tune and no
  * directory names to skip: a checkout sitting under a home costs one `existsSync`, and a
- * workspace may be called anything without going missing.
+ * workspace may be called anything without going missing. With `homeSplit`, every spore is
+ * one level further down, `<home>/<end of name>/<name>`, and that is the one level looked at.
  */
 
 import { existsSync, readdirSync } from 'node:fs'
@@ -25,6 +26,18 @@ export function workspacesIn (dir) {
       .filter(entry => entry.isDirectory())
       .map(entry => resolve(dir, entry.name))
       .filter(isWorkspace)
+  } catch {
+    return []
+  }
+}
+
+/** The spores of a home, laid out flat or, with `homeSplit`, one directory further down. */
+export function sporesInHome (home, split) {
+  if (!split) return workspacesIn(home)
+  try {
+    return readdirSync(home, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .flatMap(entry => workspacesIn(resolve(home, entry.name)))
   } catch {
     return []
   }

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, settings, spendLimits, workspaceFor, containing, hereSnapshots } from '../src/library/config.js'
+import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, spendLimits, workspaceFor, containing, hereSnapshots } from '../src/library/config.js'
 import { workspacesIn, isWorkspace } from '../src/library/discover.js'
 import { define, defaultModel, defaultSporangiumPath, switchModel, edit, grantOf, list, log, pause, show, precursors, schedules, setDefaultModel, setSchedule, removeSchedule, sql, unpause, usage } from '../src/library/verbs.js'
 import { billingOf } from 'mohdel/providers'
@@ -255,6 +255,83 @@ describe('where a workspace goes', () => {
 
 // Outside /tmp and outside the repo: `openWorkspace` refuses a granted path, so a test
 // that actually makes a workspace cannot use the temp directory the rest of these use.
+describe('a home split by the end of each name', () => {
+  let OUT
+  beforeEach(() => { OUT = outsideRoot('cli-split') })
+  afterEach(() => rmSync(OUT, { recursive: true, force: true }))
+
+  const V4 = '85266511-69a6-4dbf-bc33-0f665bc95d21'
+  const V7 = '01927b3c-8f2e-7a1b-9c4d-5e6f7a8b9c0d'
+
+  const splitHome = (n = 3) => {
+    const at = resolve(OUT, 'home')
+    setKey('home', at, CONFIG)
+    setKey('homeSplit', String(n), CONFIG)
+    writeDefault(definitionWith(MODEL))
+    return at
+  }
+
+  it('puts a spore under the last characters of its name, or under its whole name when shorter', () => {
+    const home = splitHome()
+    expect(workspaceFor(V4, { file: CONFIG }).path).toBe(resolve(home, 'd21', V4))
+    expect(workspaceFor(V7, { file: CONFIG }).path).toBe(resolve(home, 'c0d', V7))
+    expect(workspaceFor('ab', { file: CONFIG }).path).toBe(resolve(home, 'ab', 'ab'))
+  })
+
+  it('refuses a name whose end cannot name a directory', () => {
+    splitHome()
+    for (const bad of ['notes.md', 'a..']) expect(() => workspaceFor(bad, { file: CONFIG })).toThrow(/cannot name a directory/)
+  })
+
+  it('makes, lists, shows and takes a message for a spore one level down, and never takes the split directory for one', () => {
+    const home = splitHome()
+    define({ ws: V4, configFile: CONFIG })
+    const ws = resolve(home, 'd21', V4)
+    expect(isWorkspace(ws)).toBe(true)
+    expect(isWorkspace(resolve(home, 'd21'))).toBe(false)
+    expect(list({ configFile: CONFIG }).workspaces.map(row => row.ws)).toEqual([ws])
+    expect(show({ ws: V4, configFile: CONFIG }).ws).toBe(ws)
+    send(ws, 'hello', { start: false })
+    expect(readInbox(ws).map(m => m.text)).toEqual(['hello'])
+  })
+
+  it('is kept once the home holds a spore: changing it is refused by config set and on reading', () => {
+    const home = splitHome()
+    define({ ws: 'abc123', configFile: CONFIG })
+    expect(existsSync(resolve(home, '.spore-home'))).toBe(true)
+    expect(() => setKey('homeSplit', '2', CONFIG)).toThrow(/already holds spores/)
+    expect(() => removeFrom('homeSplit', undefined, CONFIG)).toThrow(/already holds spores/)
+    writeFileSync(CONFIG, JSON.stringify({ ...JSON.parse(readFileSync(CONFIG, 'utf8')), homeSplit: 2 }))
+    expect(() => readConfig(CONFIG)).toThrow(/laid out homeSplit 3, and .* says homeSplit 2/)
+  })
+
+  it('is recorded once by a program that makes spores itself, and then guards the home as define\'s record does', () => {
+    const home = resolve(OUT, 'threads')
+    mkdirSync(home, { recursive: true })
+    setKey('home', home, CONFIG)
+    setKey('homeSplit', '3', CONFIG)
+    const record = () => JSON.parse(readFileSync(resolve(home, '.spore-home'), 'utf8'))
+    recordLayout(home, 3)
+    recordLayout(home, 3)
+    expect(record()).toEqual({ homeSplit: 3 })
+    recordLayout(home, 2)
+    expect(record()).toEqual({ homeSplit: 3 })
+    writeFileSync(CONFIG, JSON.stringify({ ...JSON.parse(readFileSync(CONFIG, 'utf8')), homeSplit: 2 }))
+    expect(() => readConfig(CONFIG)).toThrow(/laid out homeSplit 3, and .* says homeSplit 2/)
+  })
+
+  it('cannot be set on a flat home that holds spores, and is a count from 1 to 8', () => {
+    setKey('home', resolve(OUT, 'flat'), CONFIG)
+    writeDefault(definitionWith(MODEL))
+    define({ ws: 'one', configFile: CONFIG })
+    expect(() => setKey('homeSplit', '3', CONFIG)).toThrow(/already holds spores, laid out flat/)
+    setKey('home', resolve(OUT, 'fresh'), CONFIG)
+    for (const bad of ['0', '9', 'x']) expect(() => setKey('homeSplit', bad, CONFIG)).toThrow(/not a count from 1 to 8/)
+    setKey('homeSplit', '3', CONFIG)
+    expect(readConfig(CONFIG).homeSplit).toBe(3)
+  })
+})
+
 describe('defining a spore', () => {
   let OUT
   beforeEach(() => { OUT = outsideRoot('cli-create') })
@@ -408,7 +485,8 @@ describe('defining a spore', () => {
     home()
     const own = resolve(OUT, 'other.cmk')
     writeFileSync(own, definitionWith(MODEL))
-    expect(() => define({ ws: process.cwd(), definition: own, configFile: CONFIG }))
+    const runtime = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+    expect(() => define({ ws: runtime, definition: own, configFile: CONFIG }))
       .toThrow(/sandbox-granted path/)
   })
 

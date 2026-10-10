@@ -6,6 +6,7 @@
  */
 
 import { createServer } from 'node:http'
+import { basename } from 'node:path'
 
 import { isWorkspace } from '../src/library/discover.js'
 import { CONFIG_FILE, NAME, readConfig, workspaceFor } from '../src/library/config.js'
@@ -91,7 +92,7 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       const { home } = readConfig(configFile)
       const reached = list({ configFile }).workspaces
         .filter(row => row.from === home)
-        .map(row => ({ name: row.ws.slice(home.length + 1), state: row.state, turns: row.lastTurnNo }))
+        .map(row => ({ name: basename(row.ws), state: row.state, turns: row.lastTurnNo }))
         .filter(row => reaches(caller, row.name))
       return { status: 200, body: { spores: reached } }
     },

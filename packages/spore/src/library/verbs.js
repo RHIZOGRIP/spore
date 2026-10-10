@@ -11,8 +11,8 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 
-import { readConfig, existing, addTo, workspaceFor, CONFIG_FILE, containing } from './config.js'
-import { workspacesIn, isWorkspace } from './discover.js'
+import { readConfig, existing, addTo, workspaceFor, CONFIG_FILE, containing, recordLayout } from './config.js'
+import { isWorkspace, sporesInHome } from './discover.js'
 import { acquireLock, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readTranscript, readTurns, releaseLock, runningLimits, saidOf, statePath, turnSummary } from '../core/spore-dir.js'
 import { sqlLines } from './sql.js'
 import { TOOL_NAMES } from '../core/tool-names.js'
@@ -336,6 +336,7 @@ export function define ({ ws, definition, from, sporangium, model, plugins = [],
     throw err
   }
 
+  if (target.named) recordLayout(config.home, config.homeSplit)
   let remembered = null
   if (!inside(opened.ws, config.home) && !config.workspaces.includes(opened.ws)) {
     addTo('workspaces', opened.ws, configFile)
@@ -503,7 +504,7 @@ export function list ({ where, disk = false, configFile = CONFIG_FILE } = {}) {
     return [{ ws, from, ...stateOf(ws), ...worksIn(ws), ...(disk ? { bytes: diskUsage(ws).total } : {}) }]
   })
 
-  const home = config.home && existsSync(config.home) ? rows(config.home, workspacesIn(config.home)) : []
+  const home = config.home && existsSync(config.home) ? rows(config.home, sporesInHome(config.home, config.homeSplit)) : []
   const outside = live.flatMap(path => rows(path, isWorkspace(path) ? [path] : []))
 
   return {
