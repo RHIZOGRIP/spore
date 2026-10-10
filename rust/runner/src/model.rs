@@ -991,11 +991,10 @@ mod tests {
     #[tokio::test]
     async fn counts_a_call_to_its_end_with_nobody_left_reading_it() {
         let m = model();
-        let body: Body = http_body_util::StreamBody::new(futures_frames(&[
+        let body: Body = BodyExt::boxed(http_body_util::StreamBody::new(futures_frames(&[
             b"{\"type\":\"done\",\"res",
             b"ult\":{\"cost\":0.1}}\n{\"type\":\"done\",\"result\":{\"cost\":0.2}}\n",
-        ]))
-        .boxed();
+        ])));
         let (tx, rx) = mpsc::unbounded_channel();
         drop(rx);
         let carrying = InFlight::new(&m);
@@ -1035,13 +1034,14 @@ mod tests {
     async fn aborts_a_call_past_the_ceiling_and_counts_what_it_reported() {
         let m = model();
         let (frames, rx) = mpsc::unbounded_channel::<Frame<Bytes>>();
-        let body: Body =
-            http_body_util::StreamBody::new(futures::stream::unfold(rx, |mut rx| async move {
+        let body: Body = BodyExt::boxed(http_body_util::StreamBody::new(futures::stream::unfold(
+            rx,
+            |mut rx| async move {
                 rx.recv()
                     .await
                     .map(|frame| (Ok::<_, Infallible>(frame), rx))
-            }))
-            .boxed();
+            },
+        )));
         let abort: Abort = Box::new(move || {
             let done = br#"{"type":"done","result":{"status":"incomplete","warning":"aborted","cost":0.04}}"#;
             frames.send(Frame::data(Bytes::from_static(done))).unwrap();

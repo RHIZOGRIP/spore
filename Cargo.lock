@@ -1139,9 +1139,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "mohdel-client"
+version = "3.15.0"
+source = "git+https://github.com/clbrge/mohdel?tag=v3.15.0#cc66bf3c21d181ea6f392898406706f4463c1cec"
+dependencies = [
+ "async-trait",
+ "futures",
+ "mohdel-protocol",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "mohdel-protocol"
-version = "3.14.0"
-source = "git+https://github.com/clbrge/mohdel?tag=v3.14.0#814ad74353cae128a1868aa8cbb226c4bc3ed0b7"
+version = "3.15.0"
+source = "git+https://github.com/clbrge/mohdel?tag=v3.15.0#cc66bf3c21d181ea6f392898406706f4463c1cec"
 dependencies = [
  "indexmap 2.11.4",
  "serde",
@@ -1151,8 +1164,8 @@ dependencies = [
 
 [[package]]
 name = "mohdel-thin-gate"
-version = "3.14.0"
-source = "git+https://github.com/clbrge/mohdel?tag=v3.14.0#814ad74353cae128a1868aa8cbb226c4bc3ed0b7"
+version = "3.15.0"
+source = "git+https://github.com/clbrge/mohdel?tag=v3.15.0#cc66bf3c21d181ea6f392898406706f4463c1cec"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1753,6 +1766,7 @@ name = "spore-runner"
 version = "1.2.0"
 dependencies = [
  "async-trait",
+ "base64",
  "bytes",
  "futures",
  "http-body-util",
@@ -1760,11 +1774,13 @@ dependencies = [
  "hyper-rustls",
  "hyper-util",
  "libc",
+ "mohdel-client",
  "mohdel-thin-gate",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "rustls",
+ "serde",
  "serde_json",
  "sha2",
  "spore-definition",
