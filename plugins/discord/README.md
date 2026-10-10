@@ -3,8 +3,7 @@
 A service that puts your spores in Discord channels, beside the people who talk to them. One
 channel holds many people and many spores; each spore has a role, so `@triage` reaches it the way
 a person is reached, and each answers under its own name. It runs on the machine the spores are
-on as a systemd user unit, and it is an application against `@rhizogrip/spore`: everything it
-does goes through the package's exports.
+on as a systemd user unit.
 
 ```bash
 npm i -g @rhizogrip/spore-plugin-discord
@@ -45,8 +44,7 @@ One bot per user: the source a spore reads history through takes `DISCORD_BOT_TO
 
 ## A channel
 
-`channels` is the routing. A channel the file does not name is not the bot's, whatever it can
-see. Each names:
+`channels` is the routing. The bot ignores every channel the file does not name. Each names:
 
 - `spores` — who answers there. For each, the bot finds or makes a mentionable role of that name,
   below its own highest role.
@@ -66,9 +64,8 @@ The file is read on every message, so a channel, a spore or a person is added by
 Mention a spore's role, or reply to one of its posts, and the message goes to that spore; a
 message addressing two goes to both. A message addressing none goes to none. The spore posts
 `@you ↪ "what you said…" working…`, and when the turn ends posts its answer under its own name,
-opened with whom it answers — which pings them — and removes the `working…` post. Discord does
-not let a webhook reply, so the opening stands for the reply arrow. Files the turn left in
-`data/out/` follow as attachments; one over 20 MB is named instead.
+opened with whom it answers — which pings them — and removes the `working…` post. Files the turn
+left in `data/out/` follow as attachments; one over 20 MB is named instead.
 
 A spore is told who spoke and where, never the rest of the channel; it reads what came before
 with `$SPORE_DISCORD` when the message points at it, as its `reference.md` teaches. What it reads

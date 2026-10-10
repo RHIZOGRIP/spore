@@ -16,9 +16,8 @@ the exec timeout. A package manager keeps its cache and settings in `home/`, the
 
 ## Two levels
 
-**The spore is the general case, and what it can do that no specialist can is make specialists**
-([principle 2](PRINCIPLES.md#2-one-general-assistant-which-creates-specialists)). There
-are two levels and no third. The spore, defined by its workspace's `spore.cmk`, has the whole
+There are two levels
+([principle 2](PRINCIPLES.md#2-one-general-assistant-which-creates-specialists)). The spore, defined by its workspace's `spore.cmk`, has the whole
 suite and may spawn. A cell, grown from a precursor (§Precursors), has the tools its precursor
 grants, may be granted enzymes, and cannot spawn.
 
@@ -70,9 +69,9 @@ program over a source whose key the runner holds (`plugins/brave`).
 
 **A tool that cannot work is not offered**
 ([principle 21](PRINCIPLES.md#21-when-something-fails-it-says-so)): the suite's tools a definition
-does not grant are taken off what the model is offered (`src/core/spore-run.js`). A missing
-`build/Release/confine` is a build that was not run, not a runtime condition, so `exec` refuses
-naming the binary and the rebuild instead of quietly disappearing.
+does not grant are taken off what the model is offered (`src/core/spore-run.js`). When
+`build/Release/confine` is missing, `exec` is still offered and refuses, naming the binary and the
+rebuild.
 
 **Readers run together, mutators one at a time.** `tool-kernel.js` runs readers through
 `Promise.all` and mutators serially. The split is about the workspace: `exec` is read-only on the
@@ -95,13 +94,8 @@ The caller names paths at call time. There are no fixed filenames.
 `out` and `err` are auto-named `calls/<runId>/<seq>/out` and `.../err` when the caller
 omits them — extensionless. They sit beside the record: a stream the caller did not name is the
 call's leftover, not a workspace product, so one directory is one call and dropping a run takes its
-streams with it. Either is removed when it ends up empty: **the runtime deletes only what the
-runtime named**, so a caller-named path survives even empty, its emptiness being a fact about the
-run. `wsexec` requires `out`: producing a named artifact is the point of that tool.
-
-Auto-naming is what makes a read-only survey cheap to call — `exec` with just a command
-answers through the record when the output is short, and leaves a reachable file when it
-is not.
+streams with it. Either is removed when it ends up empty. A path the caller named is kept even
+when empty. `wsexec` requires `out`: producing a named artifact is the point of that tool.
 
 **No stream enters context directly**
 ([principle 5](PRINCIPLES.md#5-big-results-stay-in-files)): `out` is work product, in the
@@ -124,7 +118,7 @@ read(path, offset?, length?, encoding?, unit?) -> decoded text in the result
 
 No `out`: it is the only tool whose product is *context* rather than an effect.
 
-It still writes a call record. **Uniform record, exceptional shape.**
+It still writes a call record.
 
 ### Looking at a picture is a read
 
@@ -157,7 +151,7 @@ images, and the refusal then comes from the provider mid-turn — the same barga
 with a model that has no tool support. Whether a given model can drive this runtime is the
 conformance suite's question, answered per model.
 
-### Two guards on the path, and one of them is not optional
+### Two guards on an image path
 
 A `file://` image is resolved on the supervisor's side, which holds the provider keys. An agent
 naming `/etc/passwd`, or `model.key`, would be handing it to the model as a picture.
@@ -166,7 +160,7 @@ naming `/etc/passwd`, or `model.key`, would be handing it to the model as a pict
 `MOHDEL_MEDIA_ROOTS` to the workspace, its `reads` and its `writes` before it starts its model
 sessions (`media_roots`, `rust/runner/src/main.rs`) — a cell outside any turn, to its own
 workspace (`rust/runner/src/spawn.rs`) — so mohdel refuses independently of anything this code got
-right. That second guard is **not defence in depth**: a session takes each envelope off the wire,
+right. The second guard is required: a session takes each envelope off the wire,
 where mohdel treats a `file://` read as untrusted, so the variable is what permits the read at
 all, and unset it would refuse every local image. One runner serves one workspace, so the bound is
 that workspace's own.
@@ -194,7 +188,7 @@ The record carries only what the runtime observed (`src/core/call-record.js`):
 What a program wrote without naming it is not in the call's record; the turn's `produced` lists it
 (§What a run produced).
 
-Artifacts are **observed, not claimed**. Under synchronous execution the runtime records each
+Under synchronous execution the runtime records each
 file the moment the tool exits, with no agent turn in between.
 
 ### Inline rule
@@ -213,11 +207,10 @@ without control characters beyond tab, line feed and carriage return.
 
 ### What a run produced
 
-An answer is prose, and bulk output never reaches it. So the rule is **structure beside the
-prose, never inside it**: every turn record carries
+An answer is prose, and bulk output never reaches it. Every turn record carries
 `produced: [{path, bytes, mtime, mime, delivered}]`, the event log has it as a `produced`
-event of its own after `complete`, and a consumer holds `{ output, produced }` — an inbox
-entry reversed — and never parses an answer to find a file.
+event of its own after `complete`, and a consumer reads `{ output, produced }` instead of
+parsing the answer for file names.
 
 **Observed by walking the tree, not reported by the agent**. `producedIn()` (`src/core/produced.js`)
 takes every file under `data/` and `precursors/` whose mtime is at or after the turn's start and
@@ -228,14 +221,13 @@ Neither `calls/` nor `home/` is walked.
 holds its notes: a conventional directory it writes and the runtime reads, with the rest of
 `data/` working space. Deliverables sort first, so when `PRODUCED_CAP` (50) bites — a fan-out
 writes one directory per part — the list keeps the answer and drops the scratch, with
-`producedMore` carrying the count that did not fit. Nothing is lost by an agent that ignores the
-convention: every file is recorded either way, and `data/out/` only adds its judgement about
-which one is the point.
+`producedMore` carrying the count that did not fit. Files outside `data/out/` are listed all the
+same.
 
 Delivering those files is the **invoker's** problem. The workspace is the delivery
 surface and already holds everything; a terminal lists what changed, a bot attaches it, a
 relay serves it. `produced` carries paths and types, **never bytes**
-([principle 5](PRINCIPLES.md#5-big-results-stay-in-files)) — spore has no artifact channel.
+([principle 5](PRINCIPLES.md#5-big-results-stay-in-files)).
 
 `mimeOf()` is the one naming of what a file is: the extension for the formats a workspace
 mostly holds, the first bytes when it does not. A chart the agent just rendered has
@@ -248,10 +240,10 @@ only this to go on.
 and the runner drops the rest before it starts a turn (`prune_trail`,
 `rust/workspace/src/state.rs`): a run's call records and events, and its `calls/<runId>/`
 directory — the streams first and the rows second, so an interrupted prune is finished by the
-next. A run is one delete, which is the granularity the layout already has. The inbox, the turns and
+next. The inbox, the turns and
 the transcript are never pruned.
 
-Absent, every turn survives: a real answer rather than a number standing in for one
+Absent, every turn survives
 ([principle 19](PRINCIPLES.md#19-each-default-is-written-once)), and the shipped
 definition declares `retain: 10`, so a seeded workspace tidies itself. A precursor may not
 declare it.
@@ -366,11 +358,8 @@ checked when the spawn is planned, for existence and the execute bit, so a broke
 caught before a cell meets it. The cell reaches them through the broker by name, never by path.
 
 **An enzyme does not describe itself. The precursor that grants it does**, in a
-`:::enzyme <name>` block in the body. **A description belongs to the use, not to the program**:
-two precursors can grant one executable and frame it two ways — chart a time series, or check
-that a file parses — and those are two different enzymes over one binary, down to the name the
-cell calls. The words can drift from the program — the same drift the identity body already carries,
-owned by the same author.
+`:::enzyme <name>` block in the body. Two precursors can grant one executable under different
+names and descriptions.
 
 A grant with no block does not parse, and neither does a block naming something the
 precursor does not grant, nor a grant of enzymes without `exec` or `wsexec` to run them with.
@@ -391,12 +380,10 @@ belongs to the author, who wrote the program and has `wsexec`, and `precursors/R
 
 **The program is frozen for the cell's life.** `spawn` hashes each granted enzyme at
 cell start and the broker refuses a call once that hash stops matching
-(`rust/runner/src/enzymes.rs`). This is coherence, not access — the parent can always edit the
-file. A refusal is an ordinary failed call, so five in a row trip the loop guard into
+(`rust/runner/src/enzymes.rs`). The parent can still edit the file. A refusal is an ordinary failed call, so five in a row trip the loop guard into
 `soft:progress` and the cell wraps up and reports rather than dying. The hashes go into the spawn
-frame, so a run stays attributable to a program after the file has moved on. Editing an enzyme needs
-no version and no new name: a precursor names a path, `spawn` resolves and hashes it when a cell
-starts, and the next cell simply gets the newer file. Nothing caches an enzyme's identity, so
+frame, so a run stays attributable to a program after the file has moved on. The next cell gets
+the edited file. Nothing caches an enzyme's identity, so
 nothing can go stale — what the author owes is keeping the description true.
 
 **An enzyme is its program and what it declares it needs.** `<enzyme>.with: [paths]` beside the
@@ -431,13 +418,11 @@ include `ask` or `quiet`.
 The default sporangium ships no precursors, only their format, `precursors/README.md`. A
 precursor someone else wrote arrives with the sporangium a spore is made from (`reviewer` and
 `security` carry theirs) or from a plugin the spore uses (§Plugins), **copied into the
-workspace** when absent and never overwritten. Copying gives one resolution path, lets the agent
-adapt one by editing it, and makes a clone carry it.
+workspace** when absent and never overwritten.
 
 The list reaches the agent through **`domainRules`** — each precursor's name, first line, the
 tools it grants and its model. That slot is concatenated with the identity *inside* the cached
-foundation block, which is the right trade: the list is stable for most of a session, so it earns
-the cache and pays one invalidation on the rare turn where the agent writes a precursor. Anything
+foundation block, so writing a precursor invalidates the cache once. Anything
 that changes from turn to turn stays out of the system prompt: the `dynamic` tail is a constant
 note, and the time is the `Now:` line in front of the turn's message (§The clock line stays out of
 the prefix). A malformed one is
@@ -525,7 +510,7 @@ touches it.
 
 **A root document missing at turn start is laid again** from what is installed: `reference.md`
 and `libraries.md` from the package's own sporangium tree, and each used plugin's
-`plugins/<name>.md` and precursors from that plugin. This is a contract, not a side effect. A
+`plugins/<name>.md` and precursors from that plugin. A
 program that manages workspaces without `spore upgrade` upgrades one by deleting those files
 while it holds the workspace lock, and the next turn lays the installed copies.
 
@@ -590,8 +575,7 @@ leaves `inboxConsumed` at the last finalized turn.
 **A file sent with a message, and a message too long to inline, land in `<ws>/inbox.d/`.** A
 turn's prompt is every unanswered message joined, so a long paste would enter context whole
 ([principle 5](PRINCIPLES.md#5-big-results-stay-in-files)). A directory at the workspace root is
-readable to the agent and unwritable by it with no confinement of its own, which is right for
-material someone sent. Each message that needs one gets a directory named from the clock and three
+readable to the agent and unwritable by it with no confinement of its own. Each message that needs one gets a directory named from the clock and three
 random bytes. An attachment's name is reduced to one path segment: it comes from outside and picks
 the file it lands on.
 
@@ -604,8 +588,7 @@ A spilled entry carries `bodyPath`, `bodyBytes`, `bodyHead` and `bodyTail` — w
 between them is the difference — and the runtime composes what the turn sees from them. **Head
 and tail, not head**: the two shapes a long message takes put the instruction at opposite ends —
 `summarise this:` before twenty pages, and forty kilobytes of log before `why does this fail?`
-— and which one it is cannot be known. The preview's job is to carry the instruction, not to sample
-the content. `headAndTail()` in `src/core/preview.js` reports what it elides in bytes, the unit the
+— and which one it is cannot be known. `headAndTail()` in `src/core/preview.js` reports what it elides in bytes, the unit the
 file is measured in, and does not cut between the halves of a surrogate pair: an orphan half is not
 text the inbox can hold, and anything taking the text through a Buffer renders U+FFFD.
 
@@ -705,16 +688,15 @@ another matter: Landlock does not gate `connect()`, so every socket of the user 
 included — is in a spore's reach, and a broker spores must not use runs as another user.
 
 **`home` is a directory that contains workspaces**, one per subdirectory, and is not a
-workspace itself. It is where a new spore is made, which is why it is a single path. **`workspaces`
+workspace itself. It is where a new spore is made. **`workspaces`
 names individual workspaces living outside `home`** — a bench directory, a workspace sitting inside
-a project checkout. It is the exception, which is why it is a list. `home` may not itself be a
+a project checkout. It is the exception. `home` may not itself be a
 workspace (`CONFIG_HOME_IS_A_WORKSPACE`): a spore made inside another sits within that agent's own
 read-only root and is readable to it, which is the objection `grantedPathContaining` raises for
 this repository and for `/tmp`.
 
 **The search is one level deep** (`src/library/discover.js`). A spore is an immediate
-subdirectory of its home and nothing below that is looked at, which is the shape `home` already
-claims. An application that nests workspaces inside a directory of its own lists them itself; they
+subdirectory of its home and nothing below that is looked at. An application that nests workspaces inside a directory of its own lists them itself; they
 are not reached this way.
 
 That decides how a spore is named: a **bare name** is the one of that name in `home`, anything
@@ -736,7 +718,7 @@ beside it.
 **Defining a spore and sending to it are separate acts.** `spore define` says what a spore is;
 `spore send` only reaches one that exists, so a mistyped name is an error rather than a second
 spore beside an abandoned conversation. What a message means — the job, a continuation, the
-answer to a question the spore asked — is the spore's to decide, which is why the verb is `send`.
+answer to a question the spore asked — is the spore's to decide.
 
 **Defining is also revising.** `--definition` given for a workspace that already has a
 definition replaces `spore.cmk` and leaves `state.sqlite` and `data/` alone: the agent keeps what
@@ -756,9 +738,7 @@ one.
 **The model is part of the definition**
 ([principle 7](PRINCIPLES.md#7-a-spore-is-described-in-a-file-not-built-in-code)): `model: <provider>/<name>` sits
 beside the tools and the limits, and a root definition naming none is refused the way one missing
-a limit is. A precursor may leave it out and run on its parent's — inheritance from a real value,
-not a second default — which also makes a cheap cell under an expensive root expressible, as the
-work units' 2:1 weighting of a root's rounds over a cell's assumes. The parent's model reaches the
+a limit is. A precursor may leave it out and run on its parent's. The parent's model reaches the
 cell as `$MODEL`: a spawning agent's environment carries its own model there, and the cell's
 supervisor and worker take the precursor's model or else that variable (`rust/runner/src/spawn.rs`,
 `bin/spawn-worker.js`). That is the only place `$MODEL` is read at runtime; elsewhere it is how
@@ -785,7 +765,7 @@ the package's sporangia alone.
 
 **No shipped sporangium names a model, and the first `define` copies the default sporangium and
 then refuses**, saying to set one. A sporangium that names no model runs on the operator's default
-sporangium's, inheritance from a real value as a precursor's is. What a spore runs on, what it may
+sporangium's. What a spore runs on, what it may
 call and what it may spend are all `.cmk` fields, changed by editing one. `--model` and `--plugin`
 fill in the `spore.cmk` that `define` writes, a new file, and they, `--sporangium` and a `writes`
 grant are refused for a spore that exists (`DEFINE_FILLS_ONLY_NEW`).
@@ -826,8 +806,7 @@ command and gets no less.
 
 `spore extend` raises the running turn's soft and hard limit of one dimension together;
 `spore wrap` brings its soft wall to now, or to a while from now. The Telegram plugin and the HTTP
-API offer both. They exist for work that needed one longer turn rather than a chain of turns each
-wrapping at its wall and told "continue", and only its owner can say so while it runs.
+API offer both. Only the turn's owner can change its limits while it runs.
 
 **Raising is a grant.** The definition names a ceiling per limit — `extend.wall: 3h` — and an
 extension that would take the hard limit past it is refused, saying how much room is left. No
@@ -923,8 +902,8 @@ broken enzyme at its first spawn.
 
 **A clone is not told it is one.** Nothing in its prompt or its reference says it inherited
 anything, so whether it finds and uses its precursors is a property of how its origin left them. The
-command reports the cut to whoever ran it, not to the agent. Not told is not hidden: an experiment's
-`origin.json` sits in the clone's root, and one that looks can read it.
+command reports the cut to whoever ran it, not to the agent. An experiment's `origin.json` sits in
+the clone's root, where the agent can read it.
 
 ### Removing a spore
 
@@ -1107,8 +1086,8 @@ subtly wrong**, not "might this be handy". What the machine already does stays a
 `--zstd --xz --bzip2` included, so there is no tar package, and `libraries.md` says so under
 `fflate`.
 
-**An installed library is a capability once the agent knows how to call it**, and a model's
-guess at an API is drawn from whichever version it was trained on. So `libraries.md`, seeded
+**Each library has a worked example.** A model's guess at an API is drawn from whichever
+version it was trained on, so `libraries.md`, seeded
 beside `reference.md`, carries one worked example per library — the call and the output it
 produces — and each plugin offering modules does the same in its own `reference.md`. The test
 suite runs those examples **out of the file the agent reads** (`test/libraries-examples.test.js`,
@@ -1129,7 +1108,7 @@ resolves a bare import by walking up from the importing file, and an agent's pro
 - **Declared and not installed is refused**, `PROVISION_INCOMPLETE`, naming every missing one,
   before a single link is made.
 
-`reference.md` lists them too, because a capability the agent is not told about is not one.
+`reference.md` lists them too.
 
 ### One reading of what a call did
 
@@ -1188,14 +1167,12 @@ accepts, and, last, what the runtime will refuse. It comes from the spore's spor
 `spore.cmk`, and is replaced only by `spore upgrade` (§Plugins, Documentation that moves). The
 split with the identity is by cost: the identity is the cached prefix, paid on every round of
 every turn, so it carries the ordinary path and one line pointing here, while the reference —
-about 30 KB — costs nothing until the agent reads the part it needs. It is also by kind: the
-reference instructs and this document explains, so it says the root is read-only and where to
-write instead, not why.
+about 30 KB — costs nothing until the agent reads the part it needs.
 
 **The runtime names it in `domainRules`** (`src/core/workspace.js`), together with
 `libraries.md`, whenever they are seeded: `--definition` replaces the identity wholesale, so a
 custom identity may carry no pointer, and `domainRules` already means *what you can reach
-here* — what the runtime seeded is what the runtime knows and an identity's author may not.
+here*.
 
 **Only the spore gets one.** `openWorkspace()` seeds it; a cell reaches `runSpore` through
 `bin/spawn-worker.js` and is seeded no reference.
@@ -1266,11 +1243,9 @@ file is the pause: one made by hand, empty, pauses as well.
 ### Grants, limits and how a turn ends
 
 **Tools are exactly what the frontmatter lists**, in a root definition and a precursor alike,
-and a definition listing none grants none. There is no second path for the default
-([principle 19](PRINCIPLES.md#19-each-default-is-written-once)): the default
-sporangium is laid down as every sporangium is, so the identity and the tool grant are always
-read from a parsed `spore.cmk` in the workspace — no string constant standing in, no branch
-only the default takes. The shipped default lists all seven. The seeded copy is the spore's own
+and a definition listing none grants none. The default sporangium is laid down as every
+sporangium is, so the identity and tool grant are always read from a parsed `spore.cmk`
+([principle 19](PRINCIPLES.md#19-each-default-is-written-once)). The shipped default lists all seven. The seeded copy is the spore's own
 to edit and is not overwritten once present, so the default is a starting point rather than a
 policy. A narrower list shapes what the agent reaches for and bounds nothing
 ([principle 8](PRINCIPLES.md#8-protection-comes-from-the-computer-not-from-good-behaviour)):
@@ -1329,9 +1304,8 @@ else on the host. Two bounds hold it, both host settings beside `turns` with the
 - **`largestFile`**: the runner sets `RLIMIT_FSIZE` on the agent, soft and hard alike
   (`limit_file_size`), so everything below it — `exec`, `wsexec`, the agent's own `write`,
   every cell — inherits it and cannot raise it. A write past it fails with `EFBIG`, or ends a
-  command that has not ignored `SIGXFSZ`; the call record says which. The default, 1 GB, stops
-  runaways and rarely anything else: the largest real file seen is 23 MB and the largest
-  accidental one 118 MB. It bounds each file, not a turn's total.
+  command that has not ignored `SIGXFSZ`; the call record says which. The default is 1 GB. It
+  bounds each file, not a turn's total.
 - **`freeFloor`**: before each turn the runner checks the workspace's filesystem (`statvfs`),
   and below the floor records the turn as an error, `DISK_FULL`, without starting the agent;
   its message stays unread for the next. That covers what the cap does not — many files each
@@ -1400,8 +1374,7 @@ a shared gate the runner hosts no sessions and the gate's pool is what is sized.
 **Memory is not capped, only ranked.** Running out of it is what takes a machine down, and the
 kernel chooses what to kill by size — a browser before a small runaway. With the score raised,
 a spore's command goes first; the agent sees a command killed by `SIGKILL` and the turn carries
-on. A real cap is a per-turn cgroup (`MemoryMax=` on a transient systemd user scope), which
-is not built.
+on.
 
 ## Turns the clock starts
 
@@ -1688,8 +1661,7 @@ are not in it: a row says what was last recorded, never whether a process is ali
 `limits`, `held`, `cells`, `jobs` and `outbox`. A program reads them through the library, whose
 records are the views' rows with JSON columns parsed and flags as booleans; a person with
 `spore sql`, and the agent with `$SPORE_SQL` or `node:sqlite` in its own programs. Both commands
-are one function (`src/library/sql.js`), which opens the file read-only. There are no JSONL
-exports. The `t_` tables behind the views are storage and free to change; a view selects and filters
+are one function (`src/library/sql.js`), which opens the file read-only. The `t_` tables behind the views are storage and free to change; a view selects and filters
 and never renames. `reference.md` documents the views for the agent.
 
 **Names.** Columns are camelCase, as JavaScript names fields. Money is stored as integer
@@ -1815,7 +1787,7 @@ changes, with a 1 s bound for a change the kernel's queue dropped, and read the 
 last sequence they handled — a query, not a reread of the log. A notice comes when a commit
 writes the WAL, before SQLite makes it visible in its shared-memory index, which no notice
 reports; read then, the commit is missed until the next one. So a notice is read again 10, 50
-and 250 ms later (measured: 466 ms from log to follower without, 11 with). A follower catching
+and 250 ms later. A follower catching
 up reads 500 events at a time, each batch its own short read.
 
 **The log is written by every turn** through its channel, as the transcript is, and numbered by
@@ -1863,7 +1835,7 @@ lines — one per burst of a kind, cut when the kind changes (reasoning to the a
 when any other event arrives so the log stays in order, after 100 ms, or at 4096 characters — and
 `runSpore` flushes it when the turn ends, however it ends. **The log is how a reply is followed
 live**: every consumer outside the process reads it, one rendering an answer as it streams included,
-so the window is short enough for that and no second channel exists beside it. Its granularity is
+so the window is short enough for that. Its granularity is
 spore's to tune, not a contract: a consumer reads `stream` lines of whatever size they come in.
 
 **`loop` asks for deltas only when something listens for them** — `emitter.has('stream')`, not
@@ -1926,9 +1898,8 @@ rather than replace, so the cell's own layer is what makes its root read-only ev
 root sits inside the parent's `data/` island — and the supervisor, outside the cell's layer, can
 still stage files there.
 
-With the parent's tree unreadable, the call trail and the sources of the precursor's enzymes are
-not merely hidden from `read` — `exec cat` cannot reach them either, so a cell's opacity is a
-property rather than a convention
+With the parent's tree unreadable, the call trail and the enzymes' sources are unreachable from
+the cell, through `read` and `exec cat` alike
 ([principle 2](PRINCIPLES.md#2-one-general-assistant-which-creates-specialists)).
 
 **This holds only if the workspace sits outside every path the sandbox grants.** `sandbox()`
@@ -1947,7 +1918,7 @@ for a workspace, as a whole: it is the runtime's tree, and `sporangia/` in it ho
 is made from. Sporangia live in `sporangia/` rather than at the root so that the checkout does not
 itself read as a workspace.
 
-This is **enforced, not documented**: `granted_path_containing` in `rust/workspace` owns the
+`granted_path_containing` in `rust/workspace` owns the
 list — `sandbox.js` reaches it through the addon — and `plan_spawn` refuses a workspace inside any
 of it.
 
@@ -1977,8 +1948,7 @@ name and nothing else.
 ls -d data/parts/*/ | xargs -P 8 -I{} "$SPORE_SPAWN" --precursor summarize --ws {} --prompt in.md --answer data/out.json
 ```
 
-Eight at a time, scheduled by the OS. The tool call stays synchronous while the work underneath
-is parallel, so synchronous tools cost no parallelism.
+Eight at a time, scheduled by the OS.
 
 ### Fan-out
 
@@ -2002,8 +1972,7 @@ answers and the spawn throws it away, leaving nothing to reduce.
 
 ### `--detach`
 
-**`--detach` buys the one thing blocking cannot: sight.** `spawn` returns as soon as the cell is
-running, printing where it is and the supervisor's pid; its `spawn.json` holds the result frame
+**With `--detach`, `spawn` returns once the cell is running**, printing where it is and the supervisor's pid; its `spawn.json` holds the result frame
 once it ends, and its own `turns` view how it ended. Nothing new reaches the agent's tool
 surface — liveness is `kill -0` or the cell's `lock`, progress is its `calls/` filling, results
 are the answer files, cancel is `kill`. The join becomes the agent's to write, and one shell loop
@@ -2011,7 +1980,7 @@ with a `sleep` costs the same single round the blocking form does while allowing
 reading the records that have arrived, and killing forty-seven cells when the first three failed
 the same way. It is not the default.
 
-**What keeps a detached cell honest is its parent's turn.** It escapes the process group its
+**A detached cell ends with its parent's turn.** It escapes the process group its
 `wsexec` created, so the parent's abort no longer reaches it — but it carries the turn's token in
 `SPORE_OWNERS`, and when the turn ends the runner stops everything that does (§The spore
 command). Before that, it reaches a model only through the socket its parent's supervisor hosts.
@@ -2026,12 +1995,6 @@ its own, started with `send`.
 Detached, the pid a caller holds is the **supervisor's**, not the worker's — the supervisor hosts
 the enzyme broker, so it takes SIGTERM and passes it to the cell rather than dying and leaving the
 agent running with its broker pulled away.
-
-**Anything added beside it follows the same rules**
-([principle 4](PRINCIPLES.md#4-only-seven-built-in-tools)): a helper is a
-program reached the way `$SPORE_SPAWN` is, ships only for a pattern watched recurring, and stays
-readable enough to copy and change, the way precursors are seeded into a workspace as worked
-examples. A helper that is wrong is wrong for every agent at once, which is why it has tests.
 
 ### A cell outside any turn
 
@@ -2269,8 +2232,8 @@ model, `childRounds` what its cells did, and **work units** weigh them 2:1 (`wor
 `rust/workspace`) — an agent's own round costs double a specialist's, pricing delegation below
 reasoning it through alone. The count is kept at the socket because a round is a model call,
 every model call crosses it, and a retry is another call; an agent cannot reach the counter, so
-the number never depends on its own account of its work. Embeddings are not rounds. It is a
-preference about where thinking happens, not a measure of cost, tokens or time.
+the number never depends on its own account of its work. Embeddings are not rounds. Work units
+count rounds, not cost, tokens or time.
 
 Each turn records its own increment as `workUnits`, `workUnitsOwn` and `workUnitsChildren`, and
 finalizing it adds `workUnits` to the workspace's total. Turns are never pruned, so the sum stays
@@ -2305,7 +2268,7 @@ privileges in the caller's working directory, so a caller without the key that k
 and an enzyme name could read whatever that program reaches — another cell's `model.key`
 included, which would open the model broker as well. What an *authorised* enzyme can reach is
 still the precursor author's choice, outside the cell's own confinement; the key governs
-invocation, not reach. **It is a file and not an environment variable.**
+invocation, not reach.
 
 What it does not do:
 
@@ -2575,9 +2538,7 @@ Node process with the runtime loaded, and **~450 ms** from `spore send` to the f
 all of it module loading — `openWorkspace` is 1–4 ms. A mohdel session is Node too, since the
 provider SDKs are JavaScript: 56 MB with mohdel loaded (40 MB bare, ~85 ms of import). The
 runner embeds one session for its turn, more only while cells call at once (§CPU and memory on
-one machine); sharing sessions between turns is what would move the figure. Against a turn
-bounded at minutes, 450 ms is noise; for chat-shaped exchanges of a few seconds it is not, and an
-agent started before its turn is what would remove it.
+one machine).
 
 **Two limits:**
 
@@ -2628,9 +2589,9 @@ spore that died at startup says why there
 `exec` names the cause and the fix instead of the raw EACCES: *spawn stages a workspace for the
 cell before it starts, so it has to run under wsexec* (`rust/runner/src/spawn.rs`).
 
-### A broker socket goes in `/tmp`, literally
+### Broker sockets
 
-Broker sockets root at `/tmp/spore-<uid>` literally (`socket_root`, `rust/workspace`). A path past
+Broker sockets root at `/tmp/spore-<uid>` (`socket_root`, `rust/workspace`). A path past
 AF_UNIX's 108-byte limit is refused as `SOCKET_PATH_TOO_LONG`, naming the path and its length,
 rather than failing inside a listen. `bin/fanout.js` captures each spawn's stderr: a part with no
 frame reports the last line of why in the JSON its parent reads, with the whole of it in
@@ -2700,7 +2661,7 @@ What keeps them apart there:
 is what a caller gets for supplying none — hosts no broker, and reads nothing about its situation
 out of the environment. The socket and the ledger are parameters, passed by whoever owns them:
 `bin/spore-agent.js` and `bin/spawn-worker.js` pass the supervisor's. Hosting is the
-supervisor's job in both shapes, and there is no in-process host.
+supervisor's job in both shapes.
 
 The core does not know what a cell is: nothing in it branches on cell-ness. The cell supervisor
 refuses a spawn from inside a cell (`SPORE_CELL`, `rust/runner/src/spawn.rs`), which is where that

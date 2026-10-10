@@ -12,7 +12,7 @@ What the operator authors, never granted to an agent:
 
 | path | what it holds |
 |---|---|
-| `config.json` | where workspaces live and what the machine allows (above) |
+| `config.json` | where workspaces live and what the machine allows |
 | `sporangia/<name>/` | your sporangia, each laid over the package's of that name |
 | `sources.json` | what each source name means, with its credentials |
 | `memory.json` | the vector store of `memory: vectors` |
@@ -33,12 +33,11 @@ command with its line number (`ENVIRONMENT_INVALID`), and `spore doctor` reports
 `$XDG_CONFIG_HOME/spore/config.json`, else `~/.config/spore/config.json`. Read and written with
 `spore config get [<key>]`, `set <key> <value>`, `add <key> <value>` and `rm <key> [<value>]` (a
 list takes `add`, and `rm` with a value drops one entry); `spore config path` prints where it is.
-The file is written whole and renamed into place. A key spore does not read is refused, naming the
-ones it does.
+The file is written whole and renamed into place.
 
 ```json
 {
-  "home": "~/work/spores",
+  "home": "~/.spore",
   "workspaces": ["~/tmp/bench/bench-12"],
   "turns": 8
 }
@@ -59,6 +58,8 @@ ones it does.
 | `replyTo` | per spore, where answers go when what a turn read asked from nowhere, as `{ "triage": "discord:ops/1234" }` | none |
 
 A path starting with `~` is kept as written; a relative one is resolved when it is set.
+`spore setup` offers `~/.spore` as the home. `~/.config/spore` holds your configuration and keys;
+your spores live in `home`. A spore inside `~/.config/spore` is refused.
 `spore config set model <provider>/<name>` is not a key: it writes the `model:` line of your
 default sporangium, `~/.config/spore/sporangia/default/spore.cmk`.
 
@@ -78,9 +79,8 @@ spore config set largestFile 4GB
 spore config rm spendPerDay        # back to unset
 ```
 
-What each does when it binds:
-
-- **`turns`** — a start past it is refused, `ADMISSION_FULL`, with nothing said or made.
+- **`turns`** — a start past it is refused, `ADMISSION_FULL`, and no message is recorded and no
+  spore created.
   `spore send` and `spore fork` say so and stop; `spore tick` holds a due schedule for a later
   pass; the chat plugins answer busy; the HTTP API answers `503`.
 - **`modelSessions`** — a model call that finds every session busy waits for one; the turn's
@@ -120,7 +120,7 @@ definition cannot change it.
 Maps a spore's name to the place its answers go when what a turn read carries no reply-to of its
 own — a schedule's firing, a webhook, a job, or a message sent without one. A place is `terminal`
 or `<kind>:<place>`: `<kind>` lowercase letters, digits and `-`, `<place>` non-empty with no
-whitespace. Unset, such an answer is addressed nowhere. A `quiet` turn is addressed nowhere
+whitespace. Unset, such an answer is not delivered anywhere. A `quiet` turn is addressed nowhere
 either way. Whoever serves the kind — the Telegram or Discord service — delivers it.
 
 ## `$XDG_STATE_HOME/spore/`
@@ -208,15 +208,15 @@ model mohdel declares billed by `plan` or `capacity`.
 `${VAR}` in `url`, `query` and `headers` is filled from the runner's environment, which includes
 `~/.config/spore/environment`; the agent never sees the value. Without `methods` and `paths` a
 source is one URL and one method, and the agent adds query parameters. With them it is an API:
-a call names a method, a path matching a pattern, and a JSON body. The credential's own scopes,
-at the service, bound what those calls may do.
+a call names a method, a path matching a pattern, and a JSON body. Spore checks only the method
+and path; give the token no more scope at the service than the agent should have.
 
 Refused when a turn starts, before any call: a `${VAR}` that is not set
 (`SOURCE_SECRET_MISSING`), a source the definition grants and this file does not describe, a
 `requires` parameter the definition does not narrow, and a `query` default outside the values
 the definition allows. A response past 32 MB is refused, and a call times out after 30 s.
 
-Sources are outside every spend limit: an endpoint that costs money is bounded at the endpoint.
+Source calls count toward no spend limit; cap a paid endpoint at its provider.
 
 ## Accounts held by more than one spore
 
@@ -226,13 +226,12 @@ track who shares an account and cannot tell them: two entries of `sources.json` 
 same token under different names, and the `ssh-agent` socket is reachable by every spore of the
 user, whether its definition names the ssh plugin or not.
 
-So the holders of one account know they share it only if their identities say so, and agree only
-there which events each acts on and who answers what. Each should read the account's own history
+When spores share an account, say so in each one's identity, along with which events each handles
+and who answers what. Each should read the account's own history
 on the platform before acting, since that is the one record every holder sees; a hook per spore
 can send each only its events. Holders that do not know they share an account both answer the
-same event. A fork is a co-holder that does not know it: it holds every account of its origin
-and inherits the commitments made before the cut, a review promised or a reply owed, and neither
-it nor its origin is told.
+same event. A fork holds every account of its origin and inherits its open commitments (a review
+promised, a reply owed). Neither the fork nor its origin is told.
 
 ## Vector store: `memory.json`
 
@@ -257,8 +256,8 @@ turn; the agent never sees it, its URL or its credential.
 | `collectionField` | optional | the field of a create's body that names the collection; `collection` when absent |
 
 Any other key is refused. Put the token in `~/.config/spore/environment`, never in the file. A
-store whose API differs from the protocol only in where its operations live and what its create
-calls the id is described here rather than adapted; the protocol itself is ARCHITECTURE
+store that differs from the protocol only in its paths or in the name of the create's id field is
+set up with `paths` and `collectionField`; the protocol itself is ARCHITECTURE
 §The vector store protocol.
 
 A turn of a spore declaring `memory: vectors` is refused at its start (`START_FAILED`) when the
@@ -288,7 +287,7 @@ request, so a change needs no restart. `--check` reads them and exits.
 }
 ```
 
-A hook name is letters, digits, `.`, `-` and `_`. Unknown fields are refused.
+A hook name is letters, digits, `.`, `-` and `_`.
 
 | field | meaning | default |
 |---|---|---|
@@ -385,8 +384,8 @@ spore service log <svc> [-n <lines>] [-f] # its journal; -f follows it
 spore service rm <svc> [--yes]            # remove it; --yes when that stops instances running
 ```
 
-`spore service ls` offers the services of every installed plugin, allowed or not. Defining one is
-the operator's consent to run that plugin's program on the host, outside every sandbox. A service
+`spore service ls` offers the services of every installed plugin, allowed or not. Defining one
+runs that plugin's program on the host, outside every sandbox. A service
 name spore ships, or one two plugins claim, is given to neither plugin, and `spore service ls`
 says why.
 
@@ -428,8 +427,8 @@ spore unpause          # lift it; the next tick releases what was held and fires
 
 While paused:
 
-- `spore send`, `spore fork` and a release are refused, `PAUSED`, with nothing said or made. A
-  person's message through a chat plugin is refused and they are told why.
+- `spore send`, `spore fork` and a release are refused, `PAUSED`, and no message is recorded and no
+  spore created. A person's message through a chat plugin is refused and they are told why.
 - The webhook service answers `503` to every delivery without reading its body; nothing of it is
   kept, and whether it comes again is the sender's retry policy.
 - A job's message stays held, a schedule keeps its due slot, and `spore tick` passes without
@@ -438,8 +437,8 @@ While paused:
 
 A stopped turn is not resumed: what it had not answered is read by the next turn in its spore.
 A second `spore pause` keeps the first mark and stops whatever is running, which catches a turn
-that started beside the first. The file is the pause: creating `paused` by hand, empty, pauses
-as well, and deleting it unpauses.
+that started beside the first. Creating an empty `paused` file by hand also pauses, and deleting
+it unpauses.
 
 ## Jobs: `jobs` and `spore job`
 

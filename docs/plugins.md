@@ -2,15 +2,14 @@
 
 A plugin is an npm package that gives the spores using it more than the runtime ships: programs
 for the agent, libraries for the agent's own programs, endpoints the runner calls, a reference
-the agent reads, precursors, and services the host runs. This page is for the plugin's author: the
-manifest, each part it declares, and how to test and publish one.
+the agent reads, precursors, and services the host runs.
 
 How the mechanism works is in [ARCHITECTURE §Plugins](../ARCHITECTURE.md#plugins). What an
 operator does with a plugin is in
 [operating.md §Plugins on the host](operating.md#plugins-on-the-host) and
 [§Plugin services](operating.md#plugin-services), and the field a spore names one with is
 [definition.md §`plugins`](definition.md#plugins). The code is `packages/spore/src/core/plugins.js`
-and, for services, `packages/spore-cli/src/services.js`. This page states the rules.
+and, for services, `packages/spore-cli/src/services.js`.
 
 ## What a plugin gives
 
@@ -71,7 +70,7 @@ runs none of the plugin's code.
 
 Any other key is refused. A plugin is checked when it is allowed, when a turn of a spore using it
 starts, when `spore define` makes such a spore, by `spore plugin ls` and `spore plugin show`, and by
-`spore service` for its services. Each refusal says what is wrong, and its detail what to do:
+`spore service` for its services. The refusals:
 
 | type | when |
 |---|---|
@@ -214,7 +213,7 @@ A variable name follows [the rule for variables](#variables-a-plugin-may-set). I
 the plugin's prefix, and one program may be named twice: `ssh` gives its wrapper as both
 `SPORE_SSH` and `GIT_SSH`, so `git` uses it.
 
-The agent runs a program as it runs any other, with `exec` or `wsexec`, inside its sandbox and with
+A plugin adds no tool: the agent runs a program as it runs any other, with `exec` or `wsexec`, inside its sandbox and with
 its environment. That sandbox reads the plugin and every package it depends on, and nothing else
 of the `node_modules` they are installed in; it writes neither. A program that keeps files writes
 them where the agent may write: under `{data}`, `{sockets}`, or `$HOME`, the workspace's `home/`.
@@ -353,7 +352,7 @@ named b*).
 
 When `spore define` makes a spore using the plugin, and at every turn start, each is copied into the
 workspace's `precursors/` when no file of that name is there. One already there is never replaced,
-by a turn or by `spore upgrade`: the directory is the agent's.
+by a turn or by `spore upgrade`, since the agent may have changed it.
 
 A plugin's precursor follows every rule of a precursor, and a cell spawned from it is given nothing
 of the plugin: no program, no variable, no module. It may:
@@ -378,8 +377,7 @@ It may not name `plugins`, nor grant `ask` or `quiet`, as no precursor may.
 ```
 
 A service is a Node program the host runs under systemd, as the user spores run under, outside
-every sandbox. `spore service` offers the services of every installed plugin, allowed or not;
-defining one is the operator's consent to run it
+every sandbox. `spore service` offers the services of every installed plugin, allowed or not
 ([operating.md §Plugin services](operating.md#plugin-services)).
 
 | key | shape | | rule |
@@ -470,8 +468,8 @@ recordStarted(`telegram@${bot}`, { root: ROOT })
 A running program records the plugin version it started from with `recordStarted(name, { root })`:
 `name` is the service as `spore service` names it, `<service>` or `<service>@<instance>`, and `root`
 the plugin's own directory. `spore service ls` then says when the version installed has moved on,
-and `spore service restart --outdated` restarts it. Only the record of the process systemd started
-counts, so the program calls it itself, once it is past its checks.
+and `spore service restart --outdated` restarts it. Call it from the service process itself, after
+its checks pass.
 
 A program that imports the library declares `@rhizogrip/spore` as a peer dependency. In a global
 install it gets a copy of its own within that range, which may be another version than the one
@@ -545,23 +543,5 @@ the output shown there.
 
 ### Publishing
 
-A plugin is an ordinary npm package; nothing but the manifest makes it one. Its `files` carry every
-file the manifest names, and its programs keep their executable bit, which `allow` checks on the
-installed copy.
-
-## What a plugin cannot do
-
-- Run code in the core: no hook in `send`, the runner or the agent. The core reads the manifest.
-- Add a tool. A plugin gives programs, which the agent runs with `exec` or `wsexec`.
-- Give a cell a program, a variable or a module. A precursor naming `plugins` is refused, and a
-  cell's environment holds no plugin variable; a cell reaches a plugin's source only through a
-  precursor granting it.
-- Give a spore anything but its services when the spore's `spore.cmk` does not name it, or when
-  the machine has not allowed it.
-- Name a file outside itself, or a program outside itself and the packages it depends on.
-- Set `HOME`, `SPORE_PLUGIN_READS`, a variable the runtime passes, or another `SPORE_*`.
-- Write to itself or its dependencies from inside a spore: the agent's sandbox only reads them.
-- Declare an optional setting, a default, or a kind other than `port` and `text`.
-- Set a variable, offer a module or describe a source that another plugin the same spore uses does.
-- Replace a precursor already in a workspace, or a reference except through `spore upgrade`.
-- Write a unit line, or take a service name spore ships or another plugin claims.
+A plugin's `files` carry every file the manifest names, and its programs keep their executable bit,
+which `allow` checks on the installed copy.

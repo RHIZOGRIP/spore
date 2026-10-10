@@ -23,6 +23,5 @@ its own, holding the logins you give the agents and nothing else.
 **The port is shared on trust.** It has no authentication, and the sandbox leaves TCP
 connect open, so any process on the machine can reach it — every spore, whether its
 definition names this plugin or not. `plugins: [browser]` says which spores are offered the
-browser, not which can reach it. That is accepted because the profile is the agents' own:
-nothing in it is more than an agent already has. Use a profile that holds nothing you would
+browser, not which can reach it. Use a profile that holds nothing you would
 not hand to every spore on the machine.

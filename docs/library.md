@@ -1,31 +1,27 @@
 # The library, export by export
 
-This page lists every name `@rhizogrip/spore` exports from its package root
-(`packages/spore/src/index.js`), each once, with its signature, what it returns and what it
-throws. Start with [INTEGRATION.md](../INTEGRATION.md): it is the guide to driving spores from a
-program and covers what most integrators need. Where it explains something at length, the entry
-here is short and links to it.
+Every export of `@rhizogrip/spore` (`packages/spore/src/index.js`): signature, return value,
+errors. For a walkthrough, start with [INTEGRATION.md](../INTEGRATION.md).
 
 Conventions that hold throughout:
 
 - **A workspace is a path.** `send`, `watch`, `stateOf`, the readers and every other function
   that takes `ws` as its first argument want the workspace's **path**. Resolve a name with
-  `workspaceFor(name).path`, and check `isWorkspace(path)` first, as the command does. A function
-  that takes `{ ws }` in an options object instead accepts a name (resolved under `home`) or a
-  path, and with no `ws` the current directory; it throws `NOT_A_WORKSPACE` for a spore that is
-  not there.
+  `workspaceFor(name).path`, and check `isWorkspace(path)` first. A function that takes `{ ws }`
+  in an options object instead accepts a name (resolved under `home`) or a path, and with no `ws`
+  the current directory; it throws `NOT_A_WORKSPACE` for a spore that is not there.
 - **Load the environment first.** A program calls `loadEnvironment()` once at start, so provider
   keys and plugin settings the operator keeps reach the turns it starts.
-- **Errors are `SporeError`**, branched on `err.type`, with `detail` saying what to do. An entry
-  says so where a function throws anything else. A reader opening a workspace database for the
-  first time in a process throws `SQLITE_TOO_OLD` when Node's SQLite is too old (`checkSqlite`).
+- **Errors are `SporeError`**, branched on `err.type`, with `detail` saying what to do. A reader
+  opening a workspace database for the first time in a process throws `SQLITE_TOO_OLD` when
+  Node's SQLite is too old (`checkSqlite`).
 - **`configFile`** is the host's `config.json` and defaults to `CONFIG_FILE` wherever it appears.
   **`roots`** is where plugins are looked for and defaults to `pluginRoots()`. **`env`** defaults
   to `process.env`.
 - Money is in dollars unless a field ends in `Micros`; times are ISO 8601 strings unless a field
   ends in `Ms`.
-- `SLOT_DIR`, a default below, is not exported: it is the directory of this user's admission
-  slots, `$XDG_STATE_HOME/spore/slots` (else `~/.local/state/spore/slots`).
+- `SLOT_DIR` is not exported: it is the directory of this user's admission slots,
+  `$XDG_STATE_HOME/spore/slots` (else `~/.local/state/spore/slots`).
 
 ## Groups
 
@@ -75,8 +71,8 @@ position, `started` says whether this call started a turn, `pid` is the runner's
 - `schedule` (`{ name, due }`) and `hook` (`{ name, delivery, event? }`): record the message as
   said by the clock or by a webhook, as `tick` and the webhook service do.
 - `unsafe`: turns off all confinement for the turn — no Landlock, no namespaces of its own, no
-  seccomp filter. It is what `spore send --unsafe` passes, an operator's decision, for a host
-  without Landlock. `debug`: starts the runner with debug output.
+  seccomp filter. For a host without Landlock; `spore send --unsafe` sets it. `debug`: starts
+  the runner with debug output.
 
 Throws `ADMISSION_FULL`, `SPEND_LIMIT`, `PAUSED` (each `retryable`; when the message was already
 said, `detail` says so), `MESSAGE_EMPTY`, `REQUEST_ID_INVALID`, `TRACEPARENT_INVALID`,
@@ -154,9 +150,10 @@ watchAll(spores, { cursors = {}, tick = 1000, signal })
 → AsyncGenerator<{ ws, cursor, event } | { ws, cursor, turn: { record, asked } }>
 ```
 
-Follows many spores with one iterator, for as long as the caller wants. `spores` is a list of
-paths or a function returning one, read again on every wake. `cursor` is `{ seq, turn, database }`
-and is what a caller saves and hands back in `cursors`, keyed by path. Details:
+Follows many spores with one iterator. It never ends by itself; abort `signal` to stop it.
+`spores` is a list of paths or a function returning one, read again on every wake. `cursor` is
+`{ seq, turn, database }` and is what a caller saves and hands back in `cursors`, keyed by path.
+Details:
 [INTEGRATION §A service in front of many spores](../INTEGRATION.md#a-service-in-front-of-many-spores).
 
 ### `turnsSince`
@@ -183,7 +180,7 @@ outbox(ws, { kind, state }) → [{ outboxNo, at, turnId, turnNo, recipient, answ
 ```
 
 The outbox entries whose recipient is of `kind` (`'chat'` for `chat:…`) and in `state`
-(`pending`, `delivered` or `refused`), either left out for all, oldest first.
+(`pending`, `delivered` or `refused`), oldest first. Omit `kind` or `state` to match any.
 
 ### `settleOutbox`
 
@@ -591,21 +588,10 @@ Where the operator's default sporangium `spore.cmk` is: `sporangia/default/spore
 
 ### `DEFAULT_SPORANGIUM`
 
-The string `'default'`: the name of the sporangium every spore is made from first.
+The string `'default'`: the name of the sporangium applied to every new spore before the one it
+names.
 
 ---
-
-### `openWorkspace`
-
-```
-openWorkspace(dir, { cwd = process.cwd(), definition, allowGranted = false })
-→ { ws, granting, model, reads, writes, sources, scopes, limits, identity, excludeTools, retain,
-    history, memory, images, schedules, plugins, domainRules } | { error }
-```
-
-Prepares a workspace for a turn and says what the turn gets. It writes: it creates `data/`, links
-`reads` and `writes` grants in, copies missing root documents and seeds precursors. `definition`
-installs a `.cmk` into a directory that has none. It returns `error` rather than throwing.
 
 ## Stopping, pausing and running many
 
@@ -667,7 +653,7 @@ replace `send`, the clock and the pause between polls. Throws `BATCH_USAGE`, and
 
 ## Limits on a running turn
 
-A change answers the row written, `{ turnId, dimension, why, soft, hard, was: { soft, hard } }`,
+Each returns the change it recorded, `{ turnId, dimension, why, soft, hard, was: { soft, hard } }`,
 or a refusal `{ refused, dimension, … }`: `idle` (nothing running), `unrecorded`, `ungranted` (no
 `extend.<dimension>`), `ceiling` (with `ceiling`, `hard` and `room`) or `later` (it already wraps
 sooner, with `soft`). Rounds are counts, cost dollars, wall milliseconds
@@ -766,9 +752,9 @@ The path of the lock one `tick` pass holds: `tick.lock` in spore's state directo
 release(ws, { now = Date.now(), env }) → { ws, released, started, pid? }
 ```
 
-Moves the held deliveries that are due into the inbox and starts a turn to read them, through the
-same lock race as `send`. While a turn runs, only deliveries past their deadline move, into that
-turn. Throws `ADMISSION_FULL`, `SPEND_LIMIT`, `PAUSED` and the plugin refusals of `send`.
+Moves the held deliveries that are due into the inbox, then starts a turn to read them or joins
+the running one, as `send` does. While a turn runs, only deliveries past their deadline move,
+into that turn. Throws `ADMISSION_FULL`, `SPEND_LIMIT`, `PAUSED` and the plugin refusals of `send`.
 
 ### `survey`
 
@@ -779,7 +765,7 @@ survey(ws, { spore, grant, now = Date.now() })
 
 Where every schedule of a workspace stands, given `spore` (its `stateOf`) and `grant` (the
 definition's `schedules`, `{ count, interval }`, or `null`): `refused`, `held`, `due`, `later`,
-`stale` or `spent`. `show`, `schedules` and `tick` all read it.
+`stale` or `spent`.
 
 ### `parseSchedule`
 
@@ -1017,7 +1003,7 @@ Where services record what they started from: `services/` in spore's state direc
 
 The guide:
 [INTEGRATION §Setting up models for your user](../INTEGRATION.md#setting-up-models-for-your-user).
-The first seven come from mohdel and throw mohdel's errors, not `SporeError`.
+Entries marked "From mohdel" throw mohdel's errors, not `SporeError`.
 
 ### `MO`
 
@@ -1031,7 +1017,8 @@ loadMohdelEnvironment()
 ```
 
 Loads mohdel's `environment` file, where `mo onboard` writes keys, into `process.env`. A missing
-file loads nothing. Call it before a reading. From mohdel (`loadDefaultEnv`).
+file loads nothing. Call it before `providerReadiness`, `modelReadiness` or `modelsOf`. From
+mohdel (`loadDefaultEnv`).
 
 ### `providerReadiness`
 
@@ -1048,8 +1035,8 @@ Whether a provider can be called: its credential, how many catalog models it has
 modelsOf(provider = null) → Promise<[{ model, billing, priced }]>
 ```
 
-The catalog's models, or one provider's, deprecated ones left out: the list to offer a user.
-`priced` is `null` for a model whose calls are not metered. From mohdel.
+The catalog's models, or one provider's, deprecated ones left out. `priced` is `null` for a
+model whose calls are not metered. From mohdel.
 
 ### `modelReadiness`
 
@@ -1093,7 +1080,8 @@ How the model's calls are paid for, as mohdel declares it (`kind` is `metered`, 
 unmetered(billing) → boolean
 ```
 
-True when a `billingFor` answer carries no per-call price, so spending $0 is not free.
+True when a `billingFor` answer carries no per-call price. The calls then record $0 spend, but
+they are still paid for some other way.
 
 ### `doctor`
 
@@ -1105,7 +1093,8 @@ doctor({ configFile, env, abi, contain, root, slots = SLOT_DIR })
 What is wrong on this machine for spore, read and never repaired: the kernel's confinement, the
 operator's files, each spore, the plugins, a pause or spend stop. `severity` is `problem` or
 `note`. `needsTick` says why the tick timer is wanted; `replies` lists default reply-to places and
-pending outbox entries. `abi`, `contain` and `root` replace what the machine is read as.
+pending outbox entries. `abi`, `contain` and `root` override what `doctor` detects: the Landlock
+ABI, whether namespaces work, and whether it runs as root.
 
 ### `modelFindings`
 
@@ -1155,7 +1144,19 @@ The string `'precursors'`: the directory of a workspace that holds its precursor
 
 ## Low-level readers and helpers
 
-These read or prepare a workspace below the verbs. Most programs need none of them.
+Lower-level pieces the functions above are built on. Most programs need none of them.
+
+### `openWorkspace`
+
+```
+openWorkspace(dir, { cwd = process.cwd(), definition, allowGranted = false })
+→ { ws, granting, model, reads, writes, sources, scopes, limits, identity, excludeTools, retain,
+    history, memory, images, schedules, plugins, domainRules } | { error }
+```
+
+Prepares a workspace for a turn and says what the turn gets. It writes: it creates `data/`, links
+`reads` and `writes` grants in, copies missing root documents and seeds precursors. `definition`
+installs a `.cmk` into a directory that has none. It returns `error` rather than throwing.
 
 ### `definitionPath`
 
@@ -1216,9 +1217,8 @@ yet opened, as `define({ from })` does. Throws `CLONE_INCOMPLETE`.
 grantedPathContaining(target, extra = []) → string | null
 ```
 
-The sandbox-granted path that contains `target`, or `null`. A spore there could reach everything
-around it, so `define` refuses one. Throws a plain `Error` with `code` when `target` cannot be
-resolved.
+The sandbox-granted path that contains `target`, or `null`. `define` refuses to make a spore
+there. Throws a plain `Error` with `code` when `target` cannot be resolved.
 
 ### `durationText`
 
@@ -1254,8 +1254,8 @@ new SporeError(message, { type, detail, severity = 'error', retryable = false, r
                           context, cause })
 ```
 
-The one error class. Branch on `type`, never on `message`. `context` stays in the process:
-`toJSON()` returns `{ message, severity, retryable, detail?, type?, retryAfterMs? }`, and
+Spore's error class. Branch on `type`, never on `message`. `toJSON()` leaves out `context` and
+returns `{ message, severity, retryable, detail?, type?, retryAfterMs? }`, and
 `SporeError.fromJSON(data, context)` makes one back. The refusals:
 [INTEGRATION §Refusals](../INTEGRATION.md#refusals).
 

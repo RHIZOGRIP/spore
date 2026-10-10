@@ -15,8 +15,8 @@ A spore uses it once its `spore.cmk` says `plugins: [documents]`. Its workspace 
 library under `node_modules/`, which its programs import by name, and `plugins/documents.md`,
 one worked example per library. A cell is not given them.
 
-It is apart from spore because it is most of what an install weighs: two PDF engines, each with
-a native canvas, and an OCR engine come with these libraries.
+It is a large install: these libraries bring two PDF engines, each with a native canvas, and an
+OCR engine.
 
 ## License
 

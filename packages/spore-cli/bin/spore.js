@@ -88,7 +88,7 @@ const VERBS = `Usage:
   spore doctor                              what is wrong on this machine, and the command that fixes each`
 
 if (!process.argv.slice(2).length) {
-  console.log(`spore — an agent in a workspace\n\n${VERBS}\n\n  spore --help                              all of it: the flags, and why\n  spore --version                           the installed version\n`)
+  console.log(`spore — AI agents you run on your own machines\n\n${VERBS}\n\n  spore --help                              all of it: the flags, and why\n  spore --version                           the installed version\n`)
   process.exit(0)
 }
 
@@ -98,84 +98,28 @@ if (argv.version) {
 }
 
 if (argv.help) {
-  console.log(`spore — run an agent in a workspace, and see the workspaces you have
+  console.log(`spore — AI agents you run on your own machines
 
 ${VERBS}
 
-  name          a spore in your home, or a path to one. The read verbs default to
-                the one you are standing in, except usage, which without one covers
-                every spore, and ls, which takes a directory; define does not,
-                because it makes something and has to be told what
+  name          a spore in your home, or a path to one; the read verbs default to the
+                one you are standing in
   message       read from stdin when not given
-  --            ends the options: what follows is words, so a message may start with -
+  --            ends the options, for a message that starts with -
   --definition  the .cmk to give it, instead of your default
-  --from        another spore to cut it from: its definition, its precursors and the
-                programs those grant. What it can do, never what it did — the
-                conversation, the trail and data/memory stay where they are
-  --json        for a program: what the verb answers, as one JSON object, and the
-                exit code the same as without it
-  --unsafe      skip the Landlock sandbox and the namespaces: no confinement at all
+  --from        the spore to cut it from: what it can do, never what it did
+  --json        for a program: the answer as JSON, with the same exit code
+  --unsafe      no Landlock sandbox and no namespaces: no confinement at all
   --debug       verbose logging on stderr
 
-A verb refuses an option it does not take, and an argument more than it takes.
+send, attach and fork exit 0 when the turn answered, 1 when it ended with no answer,
+3 when you walked away — Ctrl-C leaves the turn running, spore attach picks it up —
+and 4 when it wrapped up at a soft limit, its answer saying what remains.
 
-Defining a spore and sending to it are separate acts. spore define makes one,
-and given --definition again it revises one, keeping the conversation and
-everything in data/. spore send only reaches one that already exists, so a
-mistyped name is an error rather than a second spore.
+  ~/.config/spore   what you write: config.json, sporangia/, sources.json, environment
+  home              what spore keeps: one folder per spore; spore setup offers ~/.spore
 
-A turn runs in the background and spore send follows it. Ctrl-C walks away and
-leaves it running; spore attach picks it up again, replaying the last few lines.
-spore stop ends it mid-round. spore send exits 0 when the turn answered, 1 when it
-ended with no answer, 3 when you walked away, and 4 when it wrapped up at a soft
-limit: what it printed then says what remains, and sending again carries on.
-spore attach and spore fork exit the same way.
-
-What a message means is the spore's to decide: the first one is the job, a later
-one continues the conversation, one sent to a spore that ended on a question is
-the answer to it, and one sent mid-turn arrives between rounds — including
-"stop", which asks it to wrap up rather than killing it.
-
-The workspace carries the rest. <ws>/spore.cmk is the agent's definition — its
-identity and, when it lists tools, its tool grant; <ws>/state.sqlite holds the
-conversation, so sending to it again continues it. The agent works in <ws>/data.
-
-A spore runs on the model its definition names, because choosing one is
-configuration rather than something a caller decides per turn. The key stays in
-this process — the agent reaches the model through a socket, so what it spends is
-counted somewhere it cannot reach.
-
-~/.config/spore/ holds what you author: config.json says where workspaces live
-and what your spores may use, sporangia/ holds your sporangia, sources.json
-says what each source name means, and memory.json where memory: vectors keeps
-its index. "home" is a directory that holds your spores, one per subdirectory
-and nothing else, and is where a new one is made. "workspaces" lists the odd
-spore living somewhere else. What is
-running, what it cost and what it is called are read from the directories
-themselves, because a file recording those is wrong as soon as something
-crashes.
-
-A spore is made from a sporangium: a spore's layout with nothing run yet — its
-spore.cmk, and any precursors, schedules or starting files. Every spore is made the
-same way: the default sporangium, then the one named with --sporangium laid over it,
-file by file. Each sporangium is the package's, then yours in
-~/.config/spore/sporangia/<name>/, yours winning. Your default sporangium,
-~/.config/spore/sporangia/default/spore.cmk, is copied from the package's the first
-time. It names no model, so the first define stops and says to set one — spore config
-set model <provider>/<name> writes it into that file, and a sporangium naming no model
-runs on it. What a spore runs
-on, what it may call and what it may spend all live in a .cmk and are changed by
-editing one. define --model and --plugin (repeatable) fill them into the spore.cmk it
-is making, and only then: a spore that exists is changed by editing its file.
-
-A plugin is a package named spore-plugin-<name>, installed where spore is —
-npm i -g @rhizogrip/spore-plugin-browser. spore plugin allow makes it available on this
-machine, and a spore uses it once its spore.cmk says plugins: [browser]. What spore
-copies to a spore's root — reference.md and libraries.md from its sporangium,
-plugins/<name>.md — is copied once and replaced only by spore upgrade; send and
-show say when a copy differs from what is installed.
-
-  spore config set home ~/work/spores`)
+Everything else: https://github.com/RHIZOGRIP/spore/blob/main/packages/spore/README.md`)
   process.exit(0)
 }
 

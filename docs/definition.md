@@ -13,9 +13,9 @@ at one level and refused at the other. A schedule uses the same grammar with thr
 own (§[A schedule](#a-schedule)).
 
 The parser is `rust/definition` (`src/lib.rs`, `src/schedule.rs`). The JavaScript runtime and the
-Rust runner both call it, so one file always means one thing. Why the format is shaped this way is
+Rust runner both call it. Why the format is shaped this way is
 in [ARCHITECTURE §Precursors](../ARCHITECTURE.md#format) and
-[PRINCIPLES.md](../PRINCIPLES.md). This page states the rules.
+[PRINCIPLES.md](../PRINCIPLES.md).
 
 A definition is parsed when it is written by `spore define --definition` or `spore edit`, when a
 turn starts, when a precursor is listed or spawned, and wherever a plugin carrying precursors is
@@ -84,8 +84,8 @@ The grammar has nothing else: no nesting, no multi-line values, no defaults.
 
 ### Body
 
-The body is the agent's **identity**: the whole of what the agent is told it is, written as
-instruction rather than as a description of one. It is trimmed, and an empty identity is refused.
+The body is the agent's **identity**: the whole of what the agent is told it is, addressed to the
+agent ("You …"). It is trimmed, and an empty identity is refused.
 For a schedule, the body is the message instead (§[A schedule](#a-schedule)).
 
 Two kinds of line in a `spore.cmk` or precursor body are block markers rather than text:
@@ -176,7 +176,7 @@ model: low
 ```
 
 **In `spore.cmk`**, `model` is required: a single model id, `<provider>/<name>`, which is what the
-spore runs on. Left out, the file is refused (*declares no model*). There is one exception. A
+spore runs on. Left out, the file is refused (*declares no model*). A
 sporangium's `spore.cmk` is a template, not a spore, and may leave `model` out. A spore made from
 it then runs on the model in the operator's default sporangium, which
 `spore config set model <provider>/<name>` writes.
@@ -300,8 +300,7 @@ wall: [10m, 12m]
 
 Required at both levels. Each is a two-item list `[soft, hard]`. Soft must be greater than zero,
 and hard must be strictly greater than soft. A limit that is missing, a scalar, one item, three
-items, unreadable or inverted is refused, and the message names it. There is no default in code
-([principle 19](../PRINCIPLES.md#19-each-default-is-written-once)).
+items, unreadable or inverted is refused, and the message names it.
 
 - **`rounds`**: two counts.
 - **`cost`**: two amounts, in dollars.
@@ -328,8 +327,7 @@ what a cell's answer is worth when the cell wrapped at a soft limit instead of f
 - `keep` writes that answer to `--answer`.
 - `discard` throws it away and writes the continuation record instead.
 
-Choose `discard` when a partial result cannot be told from a complete one by whatever reads it. At
-the spore level, a wrapped answer goes to the user, who judges it.
+Choose `discard` when a partial result cannot be told from a complete one by whatever reads it.
 
 ### `extend.*`
 
@@ -348,7 +346,7 @@ cannot be raised. `spore wrap` only tightens, so it needs no grant
 
 ## Material
 
-The material grants are `reads`, `writes` and `sources`. A name not granted is not reachable
+The material grants are `reads`, `writes` and `sources`
 ([Material it does not own](../ARCHITECTURE.md#material-it-does-not-own)). What a source name
 means is the host's, in [operating.md §Sources](operating.md#sources-sourcesjson).
 
@@ -370,7 +368,7 @@ name. The agent may read it and never write it.
   refused. A path is normalized lexically: `.` and `..` are resolved without touching the disk.
   Existence is not checked here.
 
-In a precursor, `reads` is the cell's own kernel grant.
+In a precursor, `reads` is enforced on the cell itself, unlike `sources` below.
 
 ### `writes`
 
@@ -401,8 +399,8 @@ through `$SPORE_SOURCE`. The agent never learns the URL or the credential.
 - **What a name means** comes from `~/.config/spore/sources.json` or from a plugin's manifest
   ([operating.md §Sources](operating.md#sources-sourcesjson)). When a turn starts, a granted name
   the host does not describe is refused.
-- **In a precursor**, `sources` is a view within the spore's grant: what the cell is shown. It is
-  not a boundary of its own. A precursor naming a source the spore was not granted fails at spawn.
+- **In a precursor**, `sources` picks which of the spore's sources the cell is told about and
+  filled in for; it does not restrict the cell. A precursor naming a source the spore was not granted fails at spawn.
 
 ### `<source>.<param>`
 
@@ -581,7 +579,8 @@ is refused.
 plugins: [browser, ssh]
 ```
 
-**`spore.cmk` only.** What a plugin offers is given to the spore alone. Each entry is a plugin's
+**`spore.cmk` only.** Cells the spore spawns get none of the plugin's programs, variables or
+modules. Each entry is a plugin's
 name after `spore-plugin-`: lowercase letters, digits, `.`, `-` and `_`, starting with a letter or
 digit. No entry may appear twice. A plugin must also be allowed on the machine
 (`spore plugin allow <name>`), or `send` refuses the turn before anything is said
@@ -630,7 +629,7 @@ failed its last turn ([README §Turns the clock starts](../packages/spore/README
 
 ## Checked after parsing
 
-A file that parses can still be refused later, by code that knows things the parser does not.
+A file that parses is checked again later:
 
 **When a precursor is spawned:**
 

@@ -1,8 +1,7 @@
 # PRINCIPLES
 
-These are the ideas spore is built on. Each one says what spore promises, and what it will not
-do. If a change would break one of them, the principle is discussed first, here. How each idea is
-built is in [ARCHITECTURE.md](ARCHITECTURE.md).
+These are the ideas spore is built on. How each idea is built is in
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## A few words first
 
@@ -25,8 +24,7 @@ built is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 When a job repeats, the spore does not redo it by thinking each time. It writes a small program,
 tests it and runs it. A program costs almost nothing to run again and gives the same result. So
-the spore's real job is to write, test and run programs, and much of what follows exists to make
-that easy.
+the spore's real job is to write, test and run programs.
 
 ### 2. One general assistant, which creates specialists
 
@@ -39,7 +37,7 @@ One general level on top and specialists below lets the top one keep the others 
 
 A program the spore wrote looks different from each side. The spore sees the file, and can change,
 run and test it. A cell knows only its name and how to use it. The cell is never told where the
-file is, so there is nothing to hide from it.
+file is.
 
 ### 3. An enzyme is used by its name
 
@@ -143,8 +141,8 @@ its limit because of it. Only the computer's owner can set a time after which a 
 ### 13. A spore cannot rewrite its own history
 
 A spore cannot change its own description file or erase the record of what it did. Its records are
-written by the part of spore that watches over it. This is not about limiting what it can do; it is
-about being able to check, afterwards, what it did.
+written by the part of spore that watches over it. So what it did can always be checked
+afterwards.
 
 ### 14. The computer's limits belong to its owner
 
@@ -186,9 +184,8 @@ of keeping each record, used by every part of spore.
 ### 19. Each default is written once
 
 A default value lives in one place: the description file that comes with spore, or the documented
-setting of the computer. The code never keeps a second opinion. A missing limit is an error, not
-silently filled in. Where "nothing set" has a meaning of its own, it is a real answer, not a number
-standing in for one.
+setting of the computer. The code holds no default of its own. A missing limit is an error, not
+silently filled in. Where "no limit" is meant, it is written as none, never as a very large number.
 
 ### 20. Complete or not at all
 

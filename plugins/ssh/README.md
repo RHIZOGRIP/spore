@@ -12,8 +12,7 @@ The socket is the one `spore service define ssh-agent` sets up, below; it prints
 
 A spore uses it once its `spore.cmk` says `plugins: [ssh]`. Its agent is given `SSH_AUTH_SOCK`,
 pointing at the agent below, and `$SPORE_SSH` — also `GIT_SSH`, so git uses it — an `ssh` that
-keeps known hosts and config in the workspace's `home/.ssh/`, since `ssh` finds its own through
-the account's home, which the sandbox refuses. It reads how to use them in `plugins/ssh.md`.
+keeps known hosts and config in the workspace's `home/.ssh/`. It reads how to use them in `plugins/ssh.md`.
 
 ## The agent, on the host
 

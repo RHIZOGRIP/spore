@@ -15,8 +15,7 @@ commands and answers, then exits. An idle spore runs nothing.
 When the work has many similar parts it starts **sub-agents**, each confined to a directory
 of its own.
 
-This README is the consumer reference. For why it is shaped this way, see
-[ARCHITECTURE.md](https://github.com/RHIZOGRIP/spore/blob/main/ARCHITECTURE.md).
+Design and internals: [ARCHITECTURE.md](https://github.com/RHIZOGRIP/spore/blob/main/ARCHITECTURE.md).
 
 ## Install
 
@@ -61,7 +60,7 @@ so running it again is a check. The same by hand:
 # a provider key where mo finds it: the environment, or ~/.config/mohdel/environment
 export ANTHROPIC_API_SK=...
 
-spore config set home ~/work/spores
+spore config set home ~/.spore
 spore config set model anthropic/claude-sonnet-5-5   # what new spores run on
 spore define q3
 spore send q3 "summarize the reports in data/"
@@ -88,30 +87,24 @@ gives a long turn more time, as far as its definition allows. `spore pause` stop
 and job of your spores and lets none start until `spore unpause`: a message or a webhook sent meanwhile is
 refused, and schedules wait.
 
-Defining a spore and sending to it are separate acts. `spore define` says what one is —
+`spore define` says what a spore is —
 and given `--definition` again, revises one, keeping its conversation and everything in
 `data/`. `spore edit` opens its `spore.cmk` in your editor and saves it only once it parses.
-`spore send` only reaches one that exists, so a mistyped name is an error rather
-than a second spore. `spore ls` shows what you have, and `.` names the one you are
+`spore send` never makes a spore: a name that does not exist is an error. `spore ls` shows what you have, and `.` names the one you are
 standing in. `spore rm` removes one. It refuses while the spore is running, and wants `--yes`
 once the spore has turns: its conversation, its records and what it made. `spore remake`
 makes one again from its sporangium, keeping `spore.cmk`, `data/`, `home/`, its precursors and
 schedules, and setting its database, trail and inbox aside in `<name>.before-remake` — how a
 spore made by another development version, whose database cannot be opened, is brought back.
 
-The verb is `send` because what a message means is the spore's to decide: the first is
-the job, a later one continues the conversation, and one sent to a spore that stopped on
-a question is the answer to it.
-
-**The directory is the state.**
+A message sent to a spore that stopped on a question is the answer to that question.
 
 The model is part of the definition — `model:` in `spore.cmk`, beside the tools and the limits. The
 first `spore define` copies the default sporangium to `~/.config/spore/sporangia/default/spore.cmk`
 and stops, asking for a model: `spore config set model <provider>/<name>` writes the `model:` line
 into that file, and every spore after that runs on it unless its sporangium names another.
-`spore define <name> --model <m> --plugin <p>` fills those two into the `spore.cmk` it is making,
-and only then: a spore that exists is changed by editing its file. `spore send -m …` fails and says
-so rather than being quietly ignored.
+`spore define <name> --model <m> --plugin <p>` fills those two into a new spore's `spore.cmk`. To
+change an existing spore, use `spore edit`.
 
 A definition can offer more than one:
 
@@ -127,8 +120,6 @@ when it says nothing. The runner refuses a call to any model the definition does
 neither the agent nor a precursor it wrote can choose another.
 
 ## The workspace
-
-Flat and undotted:
 
 ```
 <ws>/spore.cmk        the agent's identity, its tool grant, its model, its limits
@@ -164,24 +155,20 @@ which `usage()` returns to an embedder.
 spore is made the same way — the default sporangium, then the one named with `--sporangium` over it,
 file by file — and each sporangium is the package's `sporangia/<name>/`, then yours in
 `~/.config/spore/sporangia/<name>/`, yours winning. Your default sporangium is copied from the package's
-the first time and is yours to edit after that, so an upgrade cannot quietly change what your
-spores are. The package ships `default`, `reviewer`, `security` and `commit` — the last drafts
+on first use. Edit it freely: upgrades do not touch it. The package ships `default`, `reviewer`, `security` and `commit` — the last drafts
 git commit messages: `spore define commit --sporangium commit`, then install the hook it carries,
 `data/prepare-commit-msg`, in a repository's `.git/hooks/` or in `core.hooksPath`. `--definition <file>` gives a
-`spore.cmk` directly, which is the same thing as writing it by hand. `reference.md` comes
-from the sporangium likewise — the agent-facing spec of everything on this page, so the identity can
-stay short without the agent going ignorant. It is replaced only by `spore upgrade <name>`,
+`spore.cmk` directly. `reference.md`, which the agent reads to learn its runtime, also comes from
+the sporangium. It is replaced only by `spore upgrade <name>`,
 which `spore send` and `spore show` name when it differs from what is installed.
 
 **The root is read-only to the agent.** It writes in `data/`, `precursors/` and `home/`,
 its `$HOME`, and the runtime writes the streams of its calls in `calls/` from inside its process;
 the runtime keeps the rest, so `spore.cmk`, `lock` and the transcript outlive the
-agent — it can read all three and change none. That is auditability, not
-capability control: what it may *do* is bounded by Landlock, not by the tool list.
+agent — it can read all three and change none. The tool list is not a security boundary;
+Landlock is.
 
 ## The call contract
-
-Most of the design follows from this.
 
 - **A tool call names the file it is about.** `path` is the file a call acts on;
   `out` is where a *stream* goes — stdout from `exec` or `wsexec` — and never
@@ -192,8 +179,7 @@ Most of the design follows from this.
 - Every call leaves a record under `calls/`. What the caller sees is a view of it;
   hashes, mtimes and timings stay on disk.
 
-`read` is the one exception: its result *is* the content, because context is its
-product rather than a side effect.
+`read` is the exception: it returns the file's content into the conversation.
 
 ## Tools
 
@@ -216,7 +202,7 @@ A tool the definition does not list is not offered at all.
 ## The definition
 
 `spore.cmk` is frontmatter plus a body, and the body is the agent's identity —
-written as instruction, not as description of one. Every field, for a spore and for a precursor,
+written as instructions to it ("You are…"). Every field, for a spore and for a precursor,
 and the schedule files, is in [docs/definition.md](https://github.com/RHIZOGRIP/spore/blob/main/docs/definition.md).
 
 ```
@@ -250,7 +236,7 @@ rise through `spore extend` only as far as the definition's `extend.*` fields al
 | `cancelled` | it was stopped — `spore stop`, Ctrl-C twice in the terminal, a stop from the HTTP API |
 | `error` | it could not run, or died: the turn record's `error` says why (`START_FAILED`, `DISK_FULL`, `CONTAIN_FAILED`, …) and its message waits unread |
 
-Soft wraps, hard stops. Crossing a soft bound appends a message telling the agent
+Crossing a soft bound appends a message telling the agent
 to answer now and say what is unfinished — you get a partial answer. Crossing a hard bound
 writes a **continuation record** to `calls/<run>/continuation.md`, assembled from the trail,
 the transcript and the files on disk with no model call.
@@ -258,8 +244,7 @@ the transcript and the files on disk with no model call.
 A tool that fails five times running is `soft:progress`. The loop wraps and the
 tool stays available.
 
-Every ending leaves the same thing: a directory holding a transcript. Continuing from any of them
-is `spore send` again.
+However a turn ends, `spore send` again continues the conversation.
 
 **What all your spores may spend** is optional, and off until you set it:
 
@@ -305,10 +290,9 @@ spore service define tick && spore service enable tick && spore service start ti
 That writes `spore-tick.service` and `spore-tick.timer` under `~/.config/systemd/user/`; the
 service runs the package's `bin/spore-tick.js`, the same pass as `spore tick`. Like every spore
 command, it reads `~/.config/spore/environment` itself, which is where
-the runner finds the provider keys. The unit carries **`KillMode=process`**, which is not
-optional: a turn is a detached process, but detached does not leave the unit's control group,
-and by default systemd kills everything left in it when the unit stops — for a oneshot, the
-moment `spore tick` exits, taking every turn it just started with it.
+the runner finds the provider keys. The unit carries **`KillMode=process`**. If you
+write your own unit, keep `KillMode=process`. Without it, systemd kills every turn the tick started
+as soon as `spore tick` exits.
 
 A slot fires once: a spore that could not be reached for three days gets one firing, for
 today. It does not fire into a running turn, a question waiting for its answer, or a turn
@@ -364,13 +348,13 @@ reduce:
  "elapsedMs":41230}
 ```
 
-The instruction is in the precursor and the material is in the prompt file, which
-is why one definition serves fifty parts.
+Put the instructions in the precursor and each part's material in its prompt file; one
+precursor then serves every part.
 
 **A sub-agent's world is its directory.** It cannot see its parent, its siblings,
 or anything outside. So put everything it needs inside before starting — and give
-`--answer` a path it can write, under its own `data/`. One level of fan-out is the
-design: a cell cannot spawn, and a parent wanting two levels flattens them.
+`--answer` a path it can write, under its own `data/`. A cell cannot spawn. To run two
+levels, flatten them into one.
 
 ## Plugins
 
@@ -391,7 +375,7 @@ gives. The core ships no precursors; a plugin carries them.
 
 ## Confinement
 
-Three layers, and they are not interchangeable:
+Three layers:
 
 - **`safe-path.js`** — canonical containment, gates the tools
 - **Landlock** on the process — kernel-enforced filesystem confinement
@@ -399,13 +383,7 @@ Three layers, and they are not interchangeable:
   read-only. Every turn, job and router also starts through it in user, PID and mount namespaces of
   its own, so it sees only its own processes
 
-Landlock gates path resolution rather than writes to an already-open descriptor,
-which is why a child with no writable path still delivers output through the file
-the runtime opened for it. It does not gate unix-socket connect.
-
-Landlock only ever grants, so a read rule cannot revoke write inherited from an
-enclosing one. Making the workspace root read-only therefore means the inverse:
-the root is a read path and each writable directory is granted back as an island.
+Landlock does not gate unix-socket connect.
 
 `--unsafe` skips it, and the namespaces with it: the turn runs with no confinement at all.
 
@@ -417,7 +395,7 @@ systempaths=unconfined` for the spore container, whose syscalls spore filters it
 no one else's spores run as your user, turn it off: `spore config set contain off`. `spore doctor`
 says which applies.
 
-**The network is open, on purpose.** Confinement is about files and credentials, not hosts:
+**The network is open.** spore confines files and credentials, not network access:
 an agent fetches pages, calls APIs, clones and installs with `curl`, `git` and `npm`, and the
 runtime has no proxy and no list of allowed hosts. So an agent can send anything it can read
 to anywhere. What bounds that is what it was given to read, and that it holds none of your
@@ -434,8 +412,8 @@ your sources through, since the runner reaches them as that same user.
 the provider keys and hosts a **model broker**; the inner one is the agent and
 holds neither — it reaches a model through a socket.
 
-With the key outside, every call is counted where the agent cannot reach the counter, and `cost` in
-`spore.cmk` is one limit for the whole tree — the agent's own calls and every sub-agent's, against
+The runner counts every model call, out of the agent's reach, so `cost` in `spore.cmk` is one
+limit for the whole tree — the agent's own calls and every sub-agent's, against
 one number the agent cannot rewrite. Once the tree's settled spend reaches it, the broker refuses
 every new model call; model calls already running finish and are paid, so a turn can end past it by
 what was in flight. What a call costs is mohdel's catalog price for its model. A model the catalog
@@ -504,13 +482,13 @@ spore here [<dir>]      # the spore that works in that directory, in place
 
 One spore per screen: its conversation, the running turn as it goes, a status line with its
 model, state and limits, and a line to talk to it. Enter sends: to an idle spore it starts a
-turn, to a running one it lands between its rounds — the same key, because it is the same thing.
+turn, to a running one it lands between its rounds.
 Esc twice stops the running turn, Ctrl+P opens another spore, and the status line says when
 another one answers or asks. `/` lists the commands; every key is in
 [the screen's README](https://github.com/RHIZOGRIP/spore/blob/main/packages/spore-cli/tui/README.md).
 
-It is an application against this package rather than part of it, so it is also the worked
-example of driving a spore from code: `send`, `watchAll`, `list`, `show`, `stop`. An application
+It uses only the library's exports (`send`, `watchAll`, `list`, `show`, `stop`), so its source is
+a worked example of driving a spore from code. An application
 embeds the same screen with `runTui`
 ([INTEGRATION.md](https://github.com/RHIZOGRIP/spore/blob/main/INTEGRATION.md#a-terminal-for-your-application)).
 
@@ -520,9 +498,6 @@ embeds the same screen with `runTui`
 npm test          # vitest over test/
 npx vitest run test/exec-readonly.test.js
 ```
-
-Tests assert against the layer that owns the fact: model-facing behaviour from a
-tool's return value, trail facts from the `calls` record.
 
 ## See also
 

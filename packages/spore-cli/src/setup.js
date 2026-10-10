@@ -124,7 +124,7 @@ export async function setup ({
   if (home) {
     line('home', home)
   } else {
-    const dir = await prompt('where should your spores live?', '~/spores')
+    const dir = await prompt('where should your spores live?', '~/.spore')
     setKey('home', dir)
     line('home', `${readConfig().home} — spore config set home <dir> moves where new ones are made`)
   }

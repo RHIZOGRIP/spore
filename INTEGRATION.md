@@ -1,10 +1,8 @@
 # Driving spores from a program
 
-This guide is for a program that drives spores: an application, a service, a relay, a bot, a CI
-job. A person typing commands reads the [README](packages/spore/README.md); an operator setting up
-a host reads [docs/operating.md](docs/operating.md); someone writing a `spore.cmk` reads
-[docs/definition.md](docs/definition.md). Why spore is built the way it is is in
-[ARCHITECTURE.md](ARCHITECTURE.md) and [PRINCIPLES.md](PRINCIPLES.md).
+Other docs: [README](packages/spore/README.md) (the command), [docs/operating.md](docs/operating.md)
+(host setup), [docs/definition.md](docs/definition.md) (`spore.cmk`), [ARCHITECTURE.md](ARCHITECTURE.md)
+(design).
 
 ## Choosing a way in
 
@@ -16,11 +14,8 @@ a host reads [docs/operating.md](docs/operating.md); someone writing a `spore.cm
 | Follows a turn with | JSON lines on stdout | an async iterator | NDJSON |
 | Best for | scripts, CI, another machine over `ssh` | a long-lived service in front of many spores | a caller in a container or on another machine |
 
-All three are the same functions. The command and the API are argument parsing over the library,
-so the same refusals arrive in all three, and a conversation started through one carries on
-through another.
-
-Three facts hold whichever you use:
+All three call the same functions: they refuse the same things, and a conversation started
+through one continues through another.
 
 - **A spore is its workspace.** A name like `triage` is a directory under the host's `home`
   (`spore config get home`). What the spore remembers, what it is doing and how its turns ended
@@ -85,8 +80,7 @@ that read your message. A plain `spore send`, `spore fork` and `spore attach`, a
 <name>` exits 0 once it has signalled the running turn, and 1 when nothing is running, as do
 `spore wrap`, `spore extend` and `spore job stop`.
 
-Every other verb exits the same with `--json` as without it: the JSON replaces the text, not the
-code.
+Every other verb exits with the same code with or without `--json`.
 
 A refusal (exit 2) prints `spore: <message> — <detail>` on stderr. The error's `type` is not
 printed. A program that has to branch on the type uses the library or the API.
@@ -137,9 +131,8 @@ The command takes no trace context. To trace across the boundary, use the librar
 npm install @rhizogrip/spore
 ```
 
-Every function the command uses is exported from the package root. The exports are grouped by
-purpose below; [docs/library.md](docs/library.md) lists every export, with its signature, what it
-returns and what it throws.
+Every function the command uses is exported from the package root; [docs/library.md](docs/library.md)
+gives each one's signature, return value and errors.
 A function that takes `{ ws }` accepts a name (resolved under `home`) or a path.
 `send`, `watch`, `stateOf` and the other functions that take `ws` as their first argument want a
 **path**: resolve a name with `workspaceFor(name).path`, and check `isWorkspace(path)` first, as
@@ -149,6 +142,9 @@ Call `loadEnvironment()` once at start. It loads the `environment` file beside `
 (`~/.config/spore/` unless `XDG_CONFIG_HOME` says otherwise) into `process.env` (a variable already
 set wins), which is where the operator keeps provider keys and plugin settings. A turn started by
 `send` inherits `process.env` unless you pass `env`.
+
+A turn is always asynchronous: start it with `send`, `fork` or `runBatch`, then watch it or read
+its record.
 
 ### Saying something and following it
 
@@ -348,12 +344,6 @@ a wire, hiding the message of an untyped one. `formatTraceparent(span)` and
 `parseTraceparent(header)` convert between an OpenTelemetry span and a W3C `traceparent`.
 `cliLogger(debug)` and `silent` are the two loggers the command uses.
 
-### What is not exported
-
-**`runSpore` is not exported.** It is the confined half of a supervisor and a worker. `send`, `fork`
-and `runBatch` start the supervisor, which starts the worker confined, the same way the command
-does. A turn is therefore always asynchronous: send, then watch or read its record.
-
 ### A terminal for your application
 
 `@rhizogrip/spore-cli` carries the terminal screen `spore tui` opens. It is reachable from an
@@ -478,9 +468,9 @@ does not carry it.
 
 ## Events
 
-The event log is the contract between a turn and everything outside it. The command's `--json`,
-the library's `watch` and `watchAll`, and the API's `events` route all hand out the same objects.
-Every consumer outside the turn's process follows it through this log, including one that renders
+The command's `--json`, the library's `watch` and `watchAll`, and the API's `events` route all hand
+out the same event objects.
+Every consumer outside the turn's process follows a turn through this event log, including one that renders
 an answer as it streams.
 
 ### The envelope
@@ -518,7 +508,7 @@ All but `turn_end` are written by the agent's loop. `turn_end` is written by the
 | `turn_end` | `turnNo`, `stopReason`, `concluded`, `error`, `rounds`, `ownUsd`, `treeUsd`, `workUnits`, `settled`, `inboxFrom`, `inboxTo` |
 
 `tool_start` and `tool_end` carry the agent's arguments and the start of its results: paths,
-queries, command lines. A relay decides what of them leaves the machine.
+queries, command lines. Filter them before sending them off the machine.
 
 ### `complete` and `turn_end`
 
@@ -535,16 +525,13 @@ sender's message, or close the turn.
 | after a crash | can be in the log for a turn that is not final until the next runner starts | absent until the turn is final, on recovery if need be, with `settled` false |
 | a turn that never started its agent | absent | present, with `error` (`START_FAILED`, `KILLED`, …) |
 
-Why the two are separate:
-[ARCHITECTURE §The event schema is a contract](ARCHITECTURE.md#the-event-schema-is-a-contract).
-
 ### `produced`
 
 Written once per turn, before the turn is made final: the files this turn wrote under the
 workspace's `data/` and `precursors/` that are still there, newest first, with those under
 `data/out/` first and marked `delivered: true`. Files written in `home/`, `calls/`, `schedules/`
 or a `writes` directory are not listed. At most 50 are listed; `more` counts the rest. `path` is relative to the workspace. The same list is on the
-turn record as `produced` and `producedMore`. Which files to pass on to a user is your decision.
+turn record as `produced` and `producedMore`.
 
 ### The turn record
 
@@ -590,8 +577,8 @@ traced under your span in your own exporter's view. Details:
 ## Setting up models for your user
 
 A spore runs on the model its definition names, through [`mohdel`](https://www.npmjs.com/package/mohdel).
-An application that sets spore up for its user does not have to send them to `mo`: the package
-re-exports mohdel's readings and the `mo` it is installed with.
+To set up models for your user from your application, use these re-exports of mohdel's checks and
+its `mo` command:
 
 | export | what it does |
 |---|---|
@@ -629,8 +616,8 @@ INTEGRATION.md, §Setting up your user, has the rest.
 
 ### One runner per workspace
 
-Never start a turn yourself, and never add a row to the inbox by hand. `send` decides whether to
-start a turn or deliver to the one running, and that race is solved once, in `send`.
+Never start a turn yourself, and never add a row to the inbox by hand. Always go through `send`: it
+decides whether to start a turn or deliver to the one running.
 ([PRINCIPLES 16](PRINCIPLES.md#16-every-message-lands-in-the-same-inbox),
 [18](PRINCIPLES.md#18-each-rule-is-written-once))
 
@@ -645,8 +632,8 @@ inbox positions of its own messages, and nothing else.
 ### A turn outlives its caller
 
 `send` returns once the runner has started. Exiting, crashing or aborting a `watch` does not stop
-the turn; `stop(ws)` does. Nothing queues inside spore, and nothing retries for you: whether to
-wait, retry or give up is yours.
+the turn; `stop(ws)` does. spore never retries a refused `send` or a failed turn; retrying is up to
+you.
 
 ### Idempotency
 
@@ -678,7 +665,7 @@ program driving spores meets most; every function's own list is in [docs/library
 | `BATCH_USAGE` | `runBatch` | an errand without an `id` or messages, or a bad `atOnce` |
 | `SQLITE_TOO_OLD` | `checkSqlite` | Node's SQLite is older than spore needs |
 
-`retryable` is true on `ADMISSION_FULL`, `SPEND_LIMIT` and `PAUSED`; what clears each differs.
+`retryable` is true on `ADMISSION_FULL`, `SPEND_LIMIT` and `PAUSED`.
 
 A turn that fails is not a thrown error. It is a record with `stopReason: 'error'` and `error`
 naming why (`START_FAILED`, `DISK_FULL`, `CONTAIN_FAILED`, …), and its message waits unread for the

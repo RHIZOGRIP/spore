@@ -40,10 +40,3 @@ time from a sporangium you pick. It adds two commands:
 screen, with an application's own slash commands added and its own way of drawing a tool call;
 [INTEGRATION.md](../../../INTEGRATION.md#a-terminal-for-your-application) has its options. It is
 not a declared entry point yet, so the path may change in a release.
-
-## What it is not
-
-It is an **application against the package**, not part of the runtime. Everything it does
-goes through `@rhizogrip/spore`'s exports, and it knows nothing the library does not export.
-If it ever needs something it cannot get that way, the gap is in the library rather than
-here.

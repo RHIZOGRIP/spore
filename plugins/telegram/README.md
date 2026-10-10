@@ -1,8 +1,7 @@
 # @rhizogrip/spore-plugin-telegram
 
 A service that puts your spores in Telegram chats. It runs on the machine the spores are
-on, once per bot, as a systemd user unit, and it is an application against the package:
-everything it does goes through `@rhizogrip/spore`'s exports. It gives spores nothing, so it needs
+on, once per bot, as a systemd user unit. It gives spores nothing, so it needs
 no `spore plugin allow`: `spore service` offers it once it is installed.
 
 ```bash
@@ -36,9 +35,8 @@ passed to a spore's runner.
   message rather than losing one. One Telegram will not take is settled refused, with
   Telegram's reason, and one it still had not taken when its retries ran out is tried again
   after the spore's next turn or the service's next start.
-- **A reply is its own turn's.** The answer, how the turn ended and what it handed back
-  come from the turn as `watchAll` yields it — its record, whose `output` is the answer, and
-  the messages it answered as `asked`.
+- **A reply never mixes turns.** Each chat message gets the answer, the end state and the files
+  of the turn that answered it.
 - **A restart loses nothing.** A turn running when the service stopped finishes into the
   chat's `working…` message; a turn that ended while it was down is posted when it is back.
 - **Nothing fails in silence.** A message a spore refuses is told to the chat; a message
@@ -53,8 +51,8 @@ or a stop. A longer answer than Telegram's 4096 continues in further messages. W
 turn left in `data/out/` follows as documents; a file over Telegram's 50 MB is named
 instead.
 
-A message sent while a turn runs lands between its rounds, because that is what `send`
-does, and its `working…` message says it was heard. A turn ending in a question posts the
+A message sent while a turn runs lands between its rounds, and its `working…` message says it
+was heard. A turn ending in a question posts the
 question, and the reply answers it. The conversation is the spore's transcript; the service
 keeps none.
 
@@ -84,14 +82,14 @@ except when the turn ended `quiet`, which chose to say nothing. A turn that ende
 answer any other way is told. A spore with no default tells no chat. A default naming a chat
 that does not reach the spore through this bot is refused, and the log says why.
 
-A turn a terminal asked for is the terminal's: `spore send` follows it, and no chat is told.
+A turn started with `spore send` is shown only there; no chat is told.
 
 ## The allow-list is the routing
 
 A bot's `chats` say which chats may talk to it and which spore each reaches, as
 `{ "<chat id>": "<spore>" }`. They are read on every message and followed as they change, so
 a chat is added, moved or removed by editing a line. It lives beside `config.json` and
-`sources.json`: it says who reaches what, and nothing a confined agent reads may say that.
+`sources.json`. Spores cannot read or change it.
 
 While a turn works, its chat is shown what kind of call ran — `reading a file`, `running a
 command`, `asking forgejo` by the source's name, a run of the same one counted, a slow one
@@ -118,24 +116,18 @@ refused chat 148392011 (@alice) — to allow it, add "148392011": "<a spore>" to
 which is also how you learn your own chat id: start with `"chats": {}` and message the bot. A
 group's id is negative, and it is the group you add rather than the people in it.
 
-## What a chat is told
-
-Which tool ran, and whether it worked — never its arguments or its result. On a console
-those are the point; in a chat they are a path or a command line leaving the machine.
-`forward.js` is that rule. The answer and the stop reason cross in full.
-
 ## What it keeps
 
 `$XDG_STATE_HOME/spore/telegram/<bot>/state.json`, one per bot, written whole and renamed into
 place: where it stands in each spore it follows, in that spore's database, and every message a chat sent that no turn has answered
-yet, with the `working…` message its answer goes into. What a turn owes a chat is not kept
-here: it is the spore's outbox. A spore it starts following starts from where it is. Nothing
-is kept in the repository or in the spores' home.
+yet, with the `working…` message its answer goes into. A spore added later is followed from its
+latest turn; earlier answers are not posted. Nothing is kept in the repository or in the spores'
+home.
 
 ## Busy
 
 A turn that would start with no admission slot free is refused, and the chat is told it is
-busy. There is no bound of the service's own: the user's slots are the one bound, shared with every other caller.
+busy. The only limit is the machine's admission slots, which every other caller shares.
 
 ## Running it as a service
 
@@ -146,18 +138,16 @@ spore service enable telegram@triage     # and at every login
 spore service log telegram@triage -f
 ```
 
-`define` runs the service's own start-up checks (`spore-telegram.js <bot> --check`) first, so a
-missing bot file or token is refused there rather than as a unit that keeps failing. The unit it
+`define` first runs the service's start-up checks (`--check`) and refuses a missing bot file or
+token. The unit it
 writes is the template `~/.config/systemd/user/spore-telegram@.service`, marked as spore's, and
 each bot is an instance of it; `spore service` never touches a unit it did not write. `spore
 service rm telegram@<bot>` stops and disables one bot; `spore service rm telegram` stops them all
 and removes the template — each given `--yes` when a bot it stops is running. `spore service ls` says where each service
 stands, and whether lingering is on — without it, user services stop when you log out.
 
-The unit keeps a restart of the service from being a stop of every turn it started
-(`KillMode=process`): their runners are in its control group, and systemd otherwise kills
-the whole group. The service picks them up again from what it saved. A refusal — exit 2 —
-is left refused rather than retried every few seconds.
+Restarting the service does not stop the turns it started (`KillMode=process`). The service
+picks them up again from what it saved. After a refusal (exit 2), systemd does not restart it.
 
 `~/.config/spore/environment` is what the service and every runner it starts need, since a
 systemd user session starts with almost nothing: each bot's token, `PATH`, the provider

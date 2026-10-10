@@ -22,9 +22,9 @@ A spore uses it once its `spore.cmk` says `plugins: [sluice]`. Its agent is give
 - `~/.config/sluice/spore.rules` — what the broker runs. Every rule is a whole command line, each
   variable part a slot with a regex; `sluice match spore.rules <argv…>` says whether one would run.
   The [rules reference](https://github.com/clbrge/sluicify/blob/main/REFERENCE.md) has the rest.
-- `~/.config/sluice/spore.md` — what the agent reads with `--list`. The broker cannot be asked for
-  its rules, and the rules may hold what an agent should not read (an `env` value), so this list is
-  written for it, by you. The unit copies it beside the socket each time it starts.
+- `~/.config/sluice/spore.md` — what the agent reads with `--list`. You write it yourself. Leave
+  out anything secret in the rules, such as an `env` value. The unit copies it beside the socket
+  each time it starts.
 
 Change either, then `spore service restart sluice`.
 
