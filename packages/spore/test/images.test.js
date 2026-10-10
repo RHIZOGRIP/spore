@@ -79,10 +79,16 @@ describe('read returns the picture', () => {
     expect(result).toMatch(/images: \[count, size\]/)
   })
 
-  it('refuses to slice one, because a picture has no lines', async () => {
+  it('comes back whole whatever slice is asked for, and the record says what was ignored', async () => {
     writeFileSync(resolve(WS, 'data/shot.png'), PNG)
     const read = tools({ images: { count: 4, bytes: 1_000_000 } }).read
-    expect(await read({ path: 'data/shot.png', offset: 1, length: 2 })).toMatch(/comes back whole/)
+    const sliced = await read({ path: 'data/shot.png', offset: 1, length: 1, encoding: 'utf-8', unit: 'lines' })
+    expect(sliced.images).toHaveLength(1)
+    expect(JSON.parse(sliced.content).ignored).toEqual(['offset', 'length', 'encoding', 'unit'])
+    const blank = await read({ path: 'data/shot.png', offset: 0, length: 0, encoding: '', unit: '' })
+    expect(blank.images).toHaveLength(1)
+    expect(JSON.parse(blank.content).ignored).toEqual(['offset', 'length'])
+    expect(JSON.parse((await read({ path: 'data/shot.png' })).content).ignored).toBeUndefined()
   })
 
   it('still reads text as text', async () => {
@@ -113,11 +119,11 @@ describe('the cap is per turn, and both halves of it bite', () => {
   })
 
   it('counts nothing against a turn that was refused', async () => {
-    writeFileSync(resolve(WS, 'data/big.png'), PNG)
+    writeFileSync(resolve(WS, 'data/big.png'), Buffer.concat([PNG, Buffer.alloc(16)]))
     writeFileSync(resolve(WS, 'data/ok.png'), Buffer.concat([PNG.subarray(0, 8), Buffer.alloc(2)]))
-    const read = tools({ images: { count: 10, bytes: PNG.length } }).read
+    const read = tools({ images: { count: 1, bytes: PNG.length } }).read
 
-    expect(await read({ path: 'data/big.png', offset: 1 })).toMatch(/comes back whole/)
+    expect(await read({ path: 'data/big.png' })).toMatch(/byte image budget left/)
     expect((await read({ path: 'data/ok.png' })).images).toHaveLength(1)
   })
 })

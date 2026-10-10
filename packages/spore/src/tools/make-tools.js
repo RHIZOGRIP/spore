@@ -272,9 +272,12 @@ export function makeTools (WS, maxOutput, trail, {
   }
 
   const fns = {
-    read: async ({ path, offset, length, encoding = 'utf-8', unit = 'lines' }) => {
+    read: async ({ path, offset, length, encoding, unit }) => {
       if (hasDotSegment(path, WS)) return refuse('cannot read dotfiles or dotdirs')
-      if (unit !== 'lines' && unit !== 'bytes') return refuse(`unit must be lines or bytes — got ${unit}`)
+      // A model that fills every field sends "" for the ones it does not mean to use.
+      const given = Object.entries({ offset, length, encoding, unit }).filter(([, value]) => value !== undefined && value !== '').map(([name]) => name)
+      encoding = encoding || 'utf-8'
+      unit = unit || 'lines'
       const abs = safe(path)
       if (!existsSync(abs)) return refuse(`not found — ${path}`)
       const st = statSync(abs)
@@ -285,9 +288,6 @@ export function makeTools (WS, maxOutput, trail, {
       if (mime) {
         if (!images) {
           return refuse(`${path} is an image (${mime}), and this spore is not granted images — its definition needs an images: [count, size] line before it can look at one`)
-        }
-        if (offset !== undefined || length !== undefined) {
-          return refuse(`${path} is an image and comes back whole — offset and length slice text`)
         }
         if (looked.count >= images.count) {
           return refuse(`${images.count} image(s) is all this turn may look at — the rest of the work has to happen without another, or in the next turn`)
@@ -300,12 +300,14 @@ export function makeTools (WS, maxOutput, trail, {
           path: relative(WS, abs),
           bytes: st.size,
           mime,
-          hash: await hashFile(abs)
+          hash: await hashFile(abs),
+          ...(given.length ? { ignored: given } : {})
         }
         looked.count += 1
         looked.bytes += st.size
         return recorded(contextView(trail.finish(call, observed)), [{ fileUri: pathToFileURL(abs).href, mimeType: mime }])
       }
+      if (unit !== 'lines' && unit !== 'bytes') return refuse(`unit must be lines or bytes — got ${unit}`)
       // What the model receives is the whole record, not the slice of file inside it.
       // Budgeting only the content let a read that just fit come back as a record over
       // budget, which the transcript sanitiser then cut mid-JSON. Measured here, before

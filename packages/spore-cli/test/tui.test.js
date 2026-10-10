@@ -180,6 +180,11 @@ describe('parseCommand', () => {
     expect(parseCommand('//etc/hosts is odd')).toBe(null)
     expect(parseCommand('/')).toBe(null)
   })
+
+  it('leaves a path alone, as a dropped file arrives', () => {
+    expect(parseCommand('/home/clb/Pictures/Screenshots/Screenshot From 2026-10-10 08-09-21.png what is this?')).toBe(null)
+    expect(parseCommand('/tmp/notes.txt')).toBe(null)
+  })
 })
 
 describe('what an edit or a write changes', () => {

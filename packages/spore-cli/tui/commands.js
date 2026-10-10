@@ -13,10 +13,13 @@ export const COMMANDS = [
   { name: 'quit', description: 'leave (Ctrl+D)' }
 ]
 
-/** `/name args…` as `{ name, args }`; null for a message — `//…` being one that starts with `/`. */
+/**
+ * `/name args…` as `{ name, args }`; null for a message — `//…` being one that starts with `/`,
+ * and a path such as a dropped file's, whose first word is no command name.
+ */
 export function parseCommand (text) {
   const trimmed = text.trim()
   if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return null
   const [name, ...args] = trimmed.slice(1).split(/\s+/)
-  return name ? { name: name.toLowerCase(), args } : null
+  return /^[a-z][a-z-]*$/i.test(name) ? { name: name.toLowerCase(), args } : null
 }

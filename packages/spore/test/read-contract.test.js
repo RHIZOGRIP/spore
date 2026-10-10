@@ -108,6 +108,14 @@ describe('read as the contract exception', () => {
     expect(await read({ path: 'a.txt', unit: 'words' })).toMatch(/unit must be lines or bytes/)
   })
 
+  it('takes an empty unit or encoding as not given', async () => {
+    writeFileSync(resolve(WS, 'a.txt'), 'one\ntwo\n')
+    const meta = JSON.parse(await read({ path: 'a.txt', unit: '', encoding: '' }))
+    expect(meta.content).toBe('one\ntwo\n')
+    expect(meta.unit).toBe('lines')
+    expect(meta.encoding).toBe('utf-8')
+  })
+
   it('reports a missing file and refuses dotpaths', async () => {
     expect(await read({ path: 'nope.txt' })).toMatch(/not found/)
     expect(await read({ path: '.hidden/x' })).toMatch(/dotfile/)

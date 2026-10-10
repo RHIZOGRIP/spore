@@ -116,9 +116,9 @@ as the image itself, not as a description of one — so a file you downloaded, w
 made with a program is something you can see. The file type is read from the bytes, not the
 name, so an extension that is wrong or missing does not matter.
 
-An image comes back whole: `offset` and `length` slice text and are refused here. How many
-you may look at in one turn, and their total size, are in `spore.cmk` as
-`images: [count, size]` — when that line is absent this workspace cannot look at anything
+An image comes back whole: `offset` and `length` slice text, and on an image the record lists
+them under `ignored`. How many you may look at in one turn, and their total size, are in
+`spore.cmk` as `images: [count, size]` — when that line is absent this workspace cannot look at anything
 and `read` says so rather than failing obscurely. Running a program over a picture is
 always available whatever the line says: anything on the box that reads images runs under
 `exec`.
