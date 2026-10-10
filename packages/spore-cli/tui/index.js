@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
-import { CombinedAutocompleteProvider, Editor, Input, isKeyRelease, Markdown, matchesKey, ProcessTerminal, ScrollView, SelectList, truncateToWidth, TuiAltScreen, visibleWidth, VStack, wrapTextWithAnsi } from '@earendil-works/pi-tui'
+import { CombinedAutocompleteProvider, Input, isKeyRelease, Markdown, matchesKey, ProcessTerminal, ScrollView, SelectList, truncateToWidth, TuiAltScreen, visibleWidth, VStack, wrapTextWithAnsi } from '@earendil-works/pi-tui'
 import { changeText, curate, durationText, extendTurn, grantOf, list, loadMohdelEnvironment, outbox, pause, paused, readEvents, readInbox, readTurns, RUNNING, send, SERVICE_STATE_DIR, show, stateOf, stop, switchModel, unpause, upstream, watchAll, wrapTurn } from '@rhizogrip/spore'
 import chalk from 'chalk'
 
@@ -12,6 +12,7 @@ import { COMMANDS, parseCommand } from './commands.js'
 import { applyEvent, createLive, history } from './conversation.js'
 import { changeOf, counts, hunks } from './diff.js'
 import { printable } from './printable.js'
+import { PromptEditor } from './prompt.js'
 import { matching, priceText, statusParts } from './status.js'
 
 const REFRESH_MS = 1000
@@ -263,7 +264,7 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
   const tui = new TuiAltScreen(terminal)
   const conversation = new Conversation({ renderTool })
   const status = new StatusLine()
-  const editor = new Editor(tui, editorTheme)
+  const editor = new PromptEditor(tui, editorTheme)
   const view = new ScrollView(conversation, { follow: 'end', primary: true })
   tui.setLayoutRoot(new VStack([
     { component: view, basis: 0, grow: 1, minSize: 1 },

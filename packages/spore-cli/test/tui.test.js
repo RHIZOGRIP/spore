@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { visibleWidth } from '@earendil-works/pi-tui'
 
 import { parseCommand } from '../tui/commands.js'
 import { changeOf, counts, hunks, lineDiff } from '../tui/diff.js'
 import { applyEvent, createLive, history, originOf } from '../tui/conversation.js'
 import { limitsText, matching, priceText, spendText, stateText, statusParts } from '../tui/status.js'
+import { PromptEditor } from '../tui/prompt.js'
 
 const turn = (turnNo, inboxFrom, inboxTo, extra = {}) => ({
   turnNo,
@@ -207,5 +209,25 @@ describe('what an edit or a write changes', () => {
     expect(changeOf({ name: 'edit', args: { path: 'here/a.js', old: 'x = 1', new: 'x = 2' } })).toMatchObject({ path: 'here/a.js', whole: false, diff: [{ op: '-', text: 'x = 1' }, { op: '+', text: 'x = 2' }] })
     expect(changeOf({ name: 'write', args: { path: 'here/b.js', content: 'one\ntwo\n' } })).toMatchObject({ whole: true, diff: [{ op: '+', text: 'one' }, { op: '+', text: 'two' }] })
     expect(changeOf({ name: 'exec', args: { command: 'ls' } })).toBe(null)
+  })
+})
+
+describe('the line you type on', () => {
+  const typed = (text) => {
+    const editor = new PromptEditor({ terminal: { rows: 24 }, requestRender () {} }, { borderColor: (line) => line, selectList: {} })
+    editor.setText(text)
+    return editor.render(20)
+  }
+
+  it('starts with > and is as wide as the screen, borders included', () => {
+    const lines = typed('hello')
+    expect(lines[1].startsWith('> hello')).toBe(true)
+    for (const line of lines) expect(visibleWidth(line)).toBe(20)
+  })
+
+  it('wraps under the text, not under the >', () => {
+    const lines = typed('a'.repeat(30))
+    expect(lines[1].startsWith('> a')).toBe(true)
+    expect(lines[2].startsWith('  a')).toBe(true)
   })
 })

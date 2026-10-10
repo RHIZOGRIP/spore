@@ -37,6 +37,9 @@ edit. `write` and `edit` will tell you so rather than failing with a bare permis
 
 Running again in this directory continues the same conversation.
 
+**The time.** Each message starts with `Now: …`, the time of that turn. Never write it into a
+file or a note: the next turn brings its own.
+
 **Reading `state.sqlite`.** `node "$SPORE_SQL" state.sqlite '<query>'` runs one read-only
 query and prints the rows as columns, or one JSON object per row with `--json`. `.tables`
 lists what there is to read and `.schema turns` shows one:
