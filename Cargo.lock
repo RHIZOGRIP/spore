@@ -1728,8 +1728,8 @@ name = "spore-definition"
 version = "1.0.2"
 dependencies = [
  "croner",
- "dirs",
  "jiff",
+ "libc",
  "regex",
  "serde",
  "serde_json",

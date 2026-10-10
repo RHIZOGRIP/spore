@@ -340,14 +340,41 @@ fn normalize(p: &str) -> String {
     format!("/{}", parts.join("/"))
 }
 
+/// The home of the account this runs as, from the password database. Not `$HOME`: inside a
+/// turn that is the agent's own home, and a definition has to name the same path wherever it is
+/// read.
+fn account_home() -> Option<String> {
+    let mut entry: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut found: *mut libc::passwd = std::ptr::null_mut();
+    let mut buf = vec![0 as libc::c_char; 16 * 1024];
+    // SAFETY: every pointer is to a live local, and buf's length is passed with it.
+    let rc = unsafe {
+        libc::getpwuid_r(
+            libc::getuid(),
+            &mut entry,
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut found,
+        )
+    };
+    if rc != 0 || found.is_null() || entry.pw_dir.is_null() {
+        return None;
+    }
+    // SAFETY: getpwuid_r succeeded, so pw_dir points into buf, NUL-terminated.
+    let dir = unsafe { std::ffi::CStr::from_ptr(entry.pw_dir) }
+        .to_string_lossy()
+        .into_owned();
+    (!dir.is_empty()).then_some(dir)
+}
+
 /// `~` is expanded here rather than left to a shell: nothing between the definition and the
 /// kernel runs one, and a precursor shared between machines is the ordinary case.
 fn host_path(declared: &str) -> Result<String, String> {
     if let Some(rest) = declared.strip_prefix('~') {
-        let home = dirs::home_dir().ok_or_else(|| {
-            format!("reads \"{declared}\" from home, and this process has no home directory")
+        let home = account_home().ok_or_else(|| {
+            format!("names \"{declared}\" from home, and this account has no home directory — write it from /")
         })?;
-        return Ok(normalize(&format!("{}/{}", home.to_string_lossy(), rest)));
+        return Ok(normalize(&format!("{home}/{rest}")));
     }
     if declared.starts_with('/') {
         return Ok(normalize(declared));
@@ -1714,6 +1741,26 @@ mod tests {
             cell(&CHART.replace("on-wrap: keep\n", "on-wrap: keep\nschedules: [4, 1h]\n"))
                 .unwrap_err()
                 .contains("root definition's")
+        );
+    }
+
+    #[test]
+    fn takes_home_from_the_account_whatever_home_says() {
+        let home = account_home().expect("the test runs as an account with a home");
+        let saved = std::env::var_os("HOME");
+        std::env::set_var("HOME", "/nowhere/agent-home");
+        let read =
+            parse(&WELL_FORMED.replace("tools: [read]\n", "tools: [read]\nreads: [~/bin]\n"));
+        match saved {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        assert_eq!(
+            read.unwrap().reads,
+            vec![Grant {
+                name: "bin".into(),
+                path: format!("{home}/bin")
+            }]
         );
     }
 
