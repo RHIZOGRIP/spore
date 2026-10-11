@@ -19,7 +19,10 @@ export function containCheck () {
 }
 
 const SAMPLE_MS = 2000
-const KILL_GRACE_MS = 250
+// Long enough for a spawned cell's supervisor to stop its worker and record how it ended; short
+// of the 5 s the runner gives the agent itself, so the agent still records its own turn.
+const KILL_GRACE_MS = 2000
+const GROUP_POLL_MS = 50
 
 function cpuTicks (pid, depth = 3) {
   let total = 0
@@ -75,6 +78,14 @@ export async function runShell ({ command, cwd, inAbs, outAbs, errAbs, confine, 
   // record to finish, and SIGKILL gives it no chance to do either. SIGKILL
   // follows for anything that ignores the ask.
   const signalGroup = (s) => { try { process.kill(-child.pid, s) } catch { child.kill(s) } }
+  const groupAlive = () => {
+    try {
+      process.kill(-child.pid, 0)
+      return true
+    } catch (e) {
+      return e.code !== 'ESRCH'
+    }
+  }
   // The shell dying on SIGTERM is exactly when escalation still matters: a
   // descendant that ignores the signal outlives it, and the group persists while
   // any member does. So the call does not finish until the escalation has run —
@@ -84,10 +95,15 @@ export async function runShell ({ command, cwd, inAbs, outAbs, errAbs, confine, 
   const killGroup = () => {
     if (escalation) return
     signalGroup('SIGTERM')
-    escalation = new Promise((resolve) => setTimeout(() => {
-      signalGroup('SIGKILL')
-      resolve()
-    }, KILL_GRACE_MS))
+    const deadline = Date.now() + KILL_GRACE_MS
+    escalation = new Promise((resolve) => {
+      const waiting = setInterval(() => {
+        if (groupAlive() && Date.now() < deadline) return
+        clearInterval(waiting)
+        if (groupAlive()) signalGroup('SIGKILL')
+        resolve()
+      }, GROUP_POLL_MS)
+    })
   }
 
   let seen = { bytes: 0, cpu: 0 }
