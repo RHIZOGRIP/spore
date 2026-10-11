@@ -14,7 +14,7 @@ import { changeOf, counts, hunks } from './diff.js'
 import { printable } from './printable.js'
 import { PromptEditor } from './prompt.js'
 import { Answer } from './answer.js'
-import { matching, priceText, statusParts } from './status.js'
+import { matching, priceText, sporeLabel, statusParts } from './status.js'
 
 const REFRESH_MS = 1000
 const TWICE_MS = 1500
@@ -283,8 +283,8 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
   const view = new ScrollView(conversation, { follow: 'end', primary: true })
   tui.setLayoutRoot(new VStack([
     { component: view, basis: 0, grow: 1, minSize: 1 },
-    { component: status, basis: 'auto' },
-    { component: editor, basis: 'auto', shrink: 1, minSize: 3 }
+    { component: editor, basis: 'auto', shrink: 1, minSize: 3 },
+    { component: status, basis: 'auto' }
   ]))
   const allCommands = [...COMMANDS, ...commands]
   editor.setAutocompleteProvider(new CombinedAutocompleteProvider(allCommands.map(({ name, description, argumentHint }) => ({ name, description, argumentHint })), process.cwd()))
@@ -308,7 +308,9 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
     else if (!state.limits) state.limits = show({ ws: state.ws }).turnLimits
     state.shown = { ws: state.ws, model: state.grant.model, billing: state.grant.billing, ...now, turnLimits: state.limits }
     const live = conversation.live ?? createLive()
-    status.parts = statusParts({ shown: state.shown, live, paused: Boolean(paused()), attention: [...state.attention.values()], now: Date.now() })
+    const at = Date.now()
+    editor.label = sporeLabel({ shown: state.shown, paused: Boolean(paused()), now: at })
+    status.parts = statusParts({ shown: state.shown, live, attention: [...state.attention.values()], now: at })
     tui.requestRender()
   }
 

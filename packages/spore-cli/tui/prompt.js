@@ -1,8 +1,17 @@
-import { Editor } from '@earendil-works/pi-tui'
+import { Editor, visibleWidth } from '@earendil-works/pi-tui'
 
 export const PROMPT = '> '
 
 export class PromptEditor extends Editor {
+  label = ''
+
+  renderBottomBorder (width, hiddenLineCount) {
+    const tag = this.label ? ` ${this.label} ` : ''
+    const room = width - visibleWidth(tag) - 1
+    if (!tag || room < 4) return super.renderBottomBorder(width, hiddenLineCount)
+    return super.renderBottomBorder(room, hiddenLineCount) + tag + this.borderColor('─')
+  }
+
   render (width) {
     const lines = super.render(width - PROMPT.length)
     const bottom = this.renderedVisibleLineCount + 1

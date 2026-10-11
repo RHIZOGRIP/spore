@@ -34,8 +34,10 @@ export function spendText (shown) {
 
 export const attentionText = (attention) => attention.map(({ name, asked }) => `${name} ${asked ? 'asked' : 'answered'}`).join(' · ')
 
-export function statusParts ({ shown, live, paused, attention, now }) {
-  const parts = [basename(shown.ws), stateText(shown, { paused, now })]
+export const sporeLabel = ({ shown, paused, now }) => `${basename(shown.ws)} · ${stateText(shown, { paused, now })}`
+
+export function statusParts ({ shown, live, attention, now }) {
+  const parts = []
   if (attention.length) parts.push(`${attentionText(attention)} — Ctrl+P`)
   const limited = Boolean(shown.turnLimits) && !shown.draining
   if (limited) parts.push(limitsText(shown.turnLimits, { rounds: live.rounds, cost: unmetered(shown) ? null : live.cost, now }))

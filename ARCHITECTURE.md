@@ -1018,7 +1018,18 @@ one-tenant case needs nothing from the agent. `<source>.path` narrows an API sou
 same way, as patterns a call must match within the host's. What a host could get wrong is refused **when the
 runner starts**, before a socket exists, rather than at the first call: a `${VAR}` that is not
 set, a parameter the host marks `requires` that the definition does not narrow, a host default
-outside the grant, and a granted name the host does not describe.
+outside the grant, a granted name the host does not describe, and a field an entry should not
+carry.
+
+**A source may be reached on a unix socket.** A host entry naming `socket` is called on that
+socket instead of the url's host, the url still giving the `host` header, the path and the
+query, in plain http. It is for a service a container reaches only through a socket mounted into
+it, where opening a TCP path through the container's firewall would undo the rule that it
+reaches nothing local. The socket is the host's to name: a plugin's source naming one is refused.
+Landlock does not gate a connect to a socket the agent can name, so the agent's own commands can
+reach it too. The credential is what keeps them out: a service behind a socket source refuses a
+call without it, and the credential reaches only the broker. A socket missing at call time is
+an unreachable source, as a host down is, since the service may start after the runner.
 
 **A source is an address or an API.** By default the agent adds query parameters to one URL
 and one method. A host entry that lists `methods` and `paths` makes it an API: a call names a
@@ -2463,7 +2474,8 @@ forms a fact takes.
 
 What `memory: vectors` asks of a store, over http or https (`rust/runner/src/vectors.rs`). Where
 the store is, and how its API differs from the defaults below, is the host's `memory.json`
-(`docs/operating.md`), which the runner reads and the agent never sees.
+(`docs/operating.md`), which the runner reads and the agent never sees. Like a source, the store
+may be reached on a unix socket that `memory.json` names.
 
 | operation | default path | body | answer |
 |---|---|---|---|

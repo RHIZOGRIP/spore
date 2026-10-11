@@ -4,7 +4,7 @@ import { visibleWidth } from '@earendil-works/pi-tui'
 import { parseCommand } from '../tui/commands.js'
 import { changeOf, counts, hunks, lineDiff } from '../tui/diff.js'
 import { applyEvent, createLive, history, originOf } from '../tui/conversation.js'
-import { limitsText, matching, priceText, spendText, stateText, statusParts } from '../tui/status.js'
+import { limitsText, matching, priceText, spendText, sporeLabel, stateText, statusParts } from '../tui/status.js'
 import { PromptEditor } from '../tui/prompt.js'
 import { Answer } from '../tui/answer.js'
 
@@ -135,14 +135,19 @@ describe('status', () => {
     expect(spendText({ ...shown, billing: { kind: 'subscription', label: 'ChatGPT' } })).toBe('not metered · ChatGPT')
   })
 
-  it('names the spore by its directory and who else answered, the model last', () => {
-    const parts = statusParts({ shown, live: { ...createLive(), rounds: 3, input: 12345, cost: 0.0042 }, paused: false, attention: [{ name: 'ledger', asked: true }], now })
-    expect(parts).toEqual(['triage', 'running 1m', 'ledger asked — Ctrl+P', 'round 3/40 · ≈$0.0042/$0.50', '12.3k in', 'anthropic/claude-sonnet-5-5'])
+  it('names the spore by its directory, with its state', () => {
+    expect(sporeLabel({ shown, paused: false, now })).toBe('triage · running 1m')
+    expect(sporeLabel({ shown, paused: true, now })).toBe('triage · paused')
+  })
+
+  it('says who else answered, the model last', () => {
+    const parts = statusParts({ shown, live: { ...createLive(), rounds: 3, input: 12345, cost: 0.0042 }, attention: [{ name: 'ledger', asked: true }], now })
+    expect(parts).toEqual(['ledger asked — Ctrl+P', 'round 3/40 · ≈$0.0042/$0.50', '12.3k in', 'anthropic/claude-sonnet-5-5'])
   })
 
   it('shows the spore\'s spend between turns', () => {
-    const parts = statusParts({ shown: { ...shown, state: 'idle', turnLimits: null }, live: createLive(), paused: false, attention: [], now })
-    expect(parts).toEqual(['triage', 'idle', '$0.1234', 'anthropic/claude-sonnet-5-5'])
+    const parts = statusParts({ shown: { ...shown, state: 'idle', turnLimits: null }, live: createLive(), attention: [], now })
+    expect(parts).toEqual(['$0.1234', 'anthropic/claude-sonnet-5-5'])
   })
 })
 
@@ -229,6 +234,14 @@ describe('the line you type on', () => {
     const lines = typed('hello')
     expect(lines[1].startsWith('> hello')).toBe(true)
     for (const line of lines) expect(visibleWidth(line)).toBe(20)
+  })
+
+  it('names the spore at the right of its bottom border, and drops it when there is no room', () => {
+    const editor = new PromptEditor({ terminal: { rows: 24 }, requestRender () {} }, { borderColor: (line) => line, selectList: {} })
+    editor.label = 'triage · idle'
+    expect(editor.render(30).at(-1)).toBe(`${'─'.repeat(14)} triage · idle ─`)
+    for (const line of editor.render(30)) expect(visibleWidth(line)).toBe(30)
+    expect(editor.render(18).at(-1)).toBe('─'.repeat(18))
   })
 
   it('wraps under the text, not under the >', () => {

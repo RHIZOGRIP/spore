@@ -213,6 +213,7 @@ model mohdel declares billed by `plan` or `capacity`.
 | field | |
 |---|---|
 | `url` | required; `http://` or `https://` |
+| `socket` | an absolute path: the call goes to this unix socket instead of the url's host, the url still giving the `host` header, the path and the query; the url is then `http://` |
 | `query` | parameters sent with every call, as a host default |
 | `headers` | headers sent with every call |
 | `method` | the one method of a plain source; `GET` when absent |
@@ -220,7 +221,7 @@ model mohdel declares billed by `plan` or `capacity`.
 | `paths` | path patterns under `url` a call may name: `*` one segment, `**` one or more; `url` must then end in `/` |
 | `requires` | parameters a definition granting the source must narrow with `<source>.<param>` |
 
-`${VAR}` in `url`, `query` and `headers` is filled from the runner's environment, which includes
+`${VAR}` in `url`, `socket`, `query` and `headers` is filled from the runner's environment, which includes
 `~/.config/spore/environment`; the agent never sees the value. Without `methods` and `paths` a
 source is one URL and one method, and the agent adds query parameters. With them it is an API:
 a call names a method, a path matching a pattern, and a JSON body. Spore checks only the method
@@ -228,8 +229,14 @@ and path; give the token no more scope at the service than the agent should have
 
 Refused when a turn starts, before any call: a `${VAR}` that is not set
 (`SOURCE_SECRET_MISSING`), a source the definition grants and this file does not describe, a
-`requires` parameter the definition does not narrow, and a `query` default outside the values
-the definition allows. A response past 32 MB is refused, and a call times out after 30 s.
+`requires` parameter the definition does not narrow, a `query` default outside the values
+the definition allows, a field not in the table, and a `socket` that is not an absolute path or
+comes with an `https://` url. A socket that does not exist at call time fails that call
+(`SOURCE_UNREACHABLE`), as an unreachable host does.
+
+A socket mounted where a spore runs is one its agent's commands can connect to as well; the
+credential in `headers` is what keeps them out, so the service behind it must refuse a call
+without it. A response past 32 MB is refused, and a call times out after 30 s.
 
 Source calls count toward no spend limit; cap a paid endpoint at its provider.
 
@@ -266,6 +273,7 @@ turn; the agent never sees it, its URL or its credential.
 | key | | |
 |---|---|---|
 | `url` | required | the store, `http` or `https` |
+| `socket` | optional | an absolute path: the store is reached on this unix socket instead of the url's host, the url then `http` |
 | `headers` | optional | sent on every request; each `${VAR}` is filled from the runner's environment, and an unset one is an error |
 | `paths` | optional | where `ready`, `create`, `fetch`, `upsert` and `query` live, each starting with `/`; `fetch`, `upsert` and `query` must contain `{collection}`. Absent ones are the protocol's defaults |
 | `collectionField` | optional | the field of a create's body that names the collection; `collection` when absent |

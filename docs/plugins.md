@@ -285,7 +285,9 @@ Endpoints described as the host's `sources.json` describes one: `url`, and `quer
 `method`, `methods`, `paths` and `requires`
 ([operating.md §Sources](operating.md#sources-sourcesjson)). The plugin check takes a name of
 lowercase letters, digits and `-`, starting with a letter, and a `url` beginning with `http://` or
-`https://`; the runner checks the rest when a turn starts, by the rules of `sources.json`.
+`https://`; the runner checks the rest when a turn starts, by the rules of `sources.json`. A
+plugin's source may not name a `socket`: where one is mounted is the host's to say, in its own
+`sources.json`.
 
 A source is granted to every spore using the plugin, whether or not its `spore.cmk` lists it under
 `sources`; listing it there is how a spore narrows it, with `<source>.<param>` or `<source>.path`. The runner holds it: the agent asks for it by name through `$SPORE_SOURCE` and never sees

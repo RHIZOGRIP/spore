@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,14 +14,12 @@ use std::time::Duration;
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use hyper::{Method, Request, StatusCode};
-use hyper_rustls::HttpsConnector;
-use hyper_util::client::legacy::connect::HttpConnector;
-use hyper_util::client::legacy::Client;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::broker::Refusal;
-use crate::source::{fill_variables, https_client};
+use crate::dial::{https_client, socket_path, Dial};
+use crate::source::fill_variables;
 
 pub const MEMORY_FILE: &str = "memory.json";
 pub const MAX_RECORDS: usize = 256;
@@ -58,12 +56,14 @@ impl Default for Paths {
     }
 }
 
-/// The host's `memory.json`: `url`, and each optional — `headers` (`${VAR}` filled from the
-/// runner's environment), `paths`, and `collectionField`, the field of a create's body that
-/// names the collection. Absent paths and field are the protocol's own.
+/// The host's `memory.json`: `url`, and each optional — `socket`, the unix socket the store is
+/// reached on instead of the url's host, `headers` (`${VAR}` filled from the runner's
+/// environment), `paths`, and `collectionField`, the field of a create's body that names the
+/// collection. Absent paths and field are the protocol's own.
 #[derive(Clone, Debug)]
 pub struct Config {
     pub url: String,
+    pub socket: Option<PathBuf>,
     pub headers: Vec<(String, String)>,
     pub paths: Paths,
     pub collection_field: String,
@@ -84,16 +84,15 @@ impl Config {
             Ok(Value::Object(given)) => given,
             Ok(_) => {
                 return Err(format!(
-                    "{where_} holds {{ url, headers?, paths?, collectionField? }}"
+                    "{where_} holds {{ url, socket?, headers?, paths?, collectionField? }}"
                 ))
             }
             Err(e) => return Err(format!("{where_} is not readable JSON — {e}")),
         };
-        if let Some(unknown) = given
-            .keys()
-            .find(|k| !["url", "headers", "paths", "collectionField"].contains(&k.as_str()))
-        {
-            return Err(format!("{where_} has \"{unknown}\", which is not one of url, headers, paths, collectionField"));
+        if let Some(unknown) = given.keys().find(|k| {
+            !["url", "socket", "headers", "paths", "collectionField"].contains(&k.as_str())
+        }) {
+            return Err(format!("{where_} has \"{unknown}\", which is not one of url, socket, headers, paths, collectionField"));
         }
         let text = |value: &Value, what: &str| {
             value
@@ -109,6 +108,16 @@ impl Config {
                 "{where_}: {url} — the store is reached over http or https"
             ));
         }
+        let socket = match given.get("socket") {
+            None => None,
+            Some(value) => {
+                let raw = text(value, "socket")?;
+                let filled = fill_variables(&raw, &env).map_err(|variable| {
+                    format!("{where_}: socket wants ${variable}, which is not set for the runner")
+                })?;
+                Some(socket_path(&filled, &parsed).map_err(|why| format!("{where_}: {why}"))?)
+            }
+        };
 
         let mut headers = Vec::new();
         if let Some(given) = given.get("headers") {
@@ -162,6 +171,7 @@ impl Config {
         };
         Ok(Config {
             url: parsed.as_str().trim_end_matches('/').to_string(),
+            socket,
             headers,
             paths,
             collection_field,
@@ -171,7 +181,7 @@ impl Config {
 
 pub struct VectorStore {
     config: Config,
-    client: Client<HttpsConnector<HttpConnector>, Full<Bytes>>,
+    dial: Dial,
     pause: Pause,
     timeout: Duration,
 }
@@ -295,9 +305,13 @@ fn describe_failure(status: StatusCode, body: &[u8], operation: &str) -> Refusal
 
 impl VectorStore {
     pub fn new(config: Config) -> VectorStore {
+        let dial = match &config.socket {
+            Some(path) => Dial::Socket(path.clone()),
+            None => Dial::Net(https_client()),
+        };
         VectorStore {
             config,
-            client: https_client(),
+            dial,
             pause: Arc::new(|d: Duration| -> Paused { Box::pin(tokio::time::sleep(d)) }),
             timeout: TIMEOUT,
         }
@@ -373,11 +387,7 @@ impl VectorStore {
                 .retryable()
             };
             let exchange = async {
-                let response = self
-                    .client
-                    .request(req)
-                    .await
-                    .map_err(|e| unreachable(e.to_string()))?;
+                let response = self.dial.send(req).await.map_err(unreachable)?;
                 let status = response.status();
                 let bytes = response
                     .into_body()
@@ -437,7 +447,7 @@ impl VectorStore {
             return false;
         };
         matches!(
-            tokio::time::timeout(self.timeout, self.client.request(req)).await,
+            tokio::time::timeout(self.timeout, self.dial.send(req)).await,
             Ok(Ok(r)) if r.status().is_success()
         )
     }
@@ -568,7 +578,7 @@ pub(crate) mod fake {
     use hyper::service::service_fn;
     use hyper::{Request, Response};
     use hyper_util::rt::TokioIo;
-    use tokio::net::TcpListener;
+    use tokio::net::{TcpListener, UnixListener};
 
     use super::*;
 
@@ -591,6 +601,50 @@ pub(crate) mod fake {
         }
     }
 
+    type Reply = Arc<dyn Fn(&Seen, usize) -> (u16, String) + Send + Sync>;
+
+    async fn answer<S>(stream: S, reply: Reply, log: Arc<Mutex<Vec<Seen>>>)
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
+        let service = service_fn(move |req: Request<Incoming>| {
+            let (reply, log) = (reply.clone(), log.clone());
+            async move {
+                let method = req.method().to_string();
+                let path = req.uri().path().to_string();
+                let headers = req
+                    .headers()
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+                    .collect();
+                let bytes = req.into_body().collect().await.unwrap().to_bytes();
+                let body = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+                let seen = Seen {
+                    method,
+                    path,
+                    headers,
+                    body,
+                };
+                let at = {
+                    let mut log = log.lock().unwrap();
+                    log.push(seen.clone());
+                    log.len() - 1
+                };
+                let (status, body) = reply(&seen, at);
+                Ok::<_, Infallible>(
+                    Response::builder()
+                        .status(status)
+                        .header("content-type", "application/json")
+                        .body(Full::new(Bytes::from(body)))
+                        .unwrap(),
+                )
+            }
+        });
+        let _ = http1::Builder::new()
+            .serve_connection(TokioIo::new(stream), service)
+            .await;
+    }
+
     pub async fn serve<F>(reply: F) -> Fake
     where
         F: Fn(&Seen, usize) -> (u16, String) + Send + Sync + 'static,
@@ -598,52 +652,33 @@ pub(crate) mod fake {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let seen: Arc<Mutex<Vec<Seen>>> = Arc::default();
-        let reply = Arc::new(reply);
+        let reply: Reply = Arc::new(reply);
         let log = seen.clone();
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
-                let (reply, log) = (reply.clone(), log.clone());
-                tokio::spawn(async move {
-                    let service = service_fn(move |req: Request<Incoming>| {
-                        let (reply, log) = (reply.clone(), log.clone());
-                        async move {
-                            let method = req.method().to_string();
-                            let path = req.uri().path().to_string();
-                            let headers = req
-                                .headers()
-                                .iter()
-                                .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
-                                .collect();
-                            let bytes = req.into_body().collect().await.unwrap().to_bytes();
-                            let body = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
-                            let seen = Seen {
-                                method,
-                                path,
-                                headers,
-                                body,
-                            };
-                            let at = {
-                                let mut log = log.lock().unwrap();
-                                log.push(seen.clone());
-                                log.len() - 1
-                            };
-                            let (status, body) = reply(&seen, at);
-                            Ok::<_, Infallible>(
-                                Response::builder()
-                                    .status(status)
-                                    .header("content-type", "application/json")
-                                    .body(Full::new(Bytes::from(body)))
-                                    .unwrap(),
-                            )
-                        }
-                    });
-                    let _ = http1::Builder::new()
-                        .serve_connection(TokioIo::new(stream), service)
-                        .await;
-                });
+                tokio::spawn(answer(stream, reply.clone(), log.clone()));
             }
         });
         Fake { url, seen }
+    }
+
+    pub async fn serve_socket<F>(socket: &Path, reply: F) -> Fake
+    where
+        F: Fn(&Seen, usize) -> (u16, String) + Send + Sync + 'static,
+    {
+        let listener = UnixListener::bind(socket).unwrap();
+        let seen: Arc<Mutex<Vec<Seen>>> = Arc::default();
+        let reply: Reply = Arc::new(reply);
+        let log = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(answer(stream, reply.clone(), log.clone()));
+            }
+        });
+        Fake {
+            url: "http://vectors.local".into(),
+            seen,
+        }
     }
 
     pub fn recording() -> (Pause, Arc<Mutex<Vec<Duration>>>) {
@@ -659,6 +694,7 @@ pub(crate) mod fake {
     pub fn config(url: &str) -> Config {
         Config {
             url: url.to_string(),
+            socket: None,
             headers: vec![("authorization".into(), "Bearer tok".into())],
             paths: Paths::default(),
             collection_field: "collection".into(),
@@ -680,7 +716,7 @@ pub(crate) mod fake {
 
 #[cfg(test)]
 mod tests {
-    use super::fake::{config, error, recording, serve, store};
+    use super::fake::{config, error, recording, serve, serve_socket, store};
     use super::*;
 
     fn record(id: &str) -> Value {
@@ -956,6 +992,42 @@ mod tests {
             refused(r#"{ "url": "http://x", "paths": { "delete": "/d" } }"#)
                 .contains("paths.delete")
         );
+    }
+
+    #[tokio::test]
+    async fn speaks_to_a_store_on_the_socket_memory_json_names() {
+        let socket =
+            std::env::temp_dir().join(format!("spore-vectors-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&socket);
+        let fake = serve_socket(&socket, |_, _| (200, json!({ "matches": [] }).to_string())).await;
+        let raw = json!({
+            "url": fake.url.as_str(),
+            "socket": socket.to_str().unwrap(),
+            "headers": { "authorization": "Bearer ${TOKEN}" }
+        })
+        .to_string();
+        let (pause, _) = recording();
+        let r = VectorStore::new(parsed(&raw).unwrap()).with_pause(pause);
+        assert!(r.ready().await);
+        r.query("l", &[1.0], 1, None).await.unwrap();
+        let seen = fake.seen();
+        assert_eq!(seen[1].path, "/v1/collections/l/query");
+        assert_eq!(seen[1].headers["host"], "vectors.local");
+        assert_eq!(seen[1].headers["authorization"], "Bearer t0k");
+        std::fs::remove_file(&socket).unwrap();
+    }
+
+    #[test]
+    fn refuses_a_socket_it_cannot_use() {
+        let refused = |raw: &str| parsed(raw).unwrap_err();
+        assert!(
+            refused(r#"{ "url": "http://x", "socket": "run/v.sock" }"#).contains("absolute path")
+        );
+        assert!(
+            refused(r#"{ "url": "https://x", "socket": "/run/v.sock" }"#).contains("plain http")
+        );
+        assert!(refused(r#"{ "url": "http://x", "socket": 7 }"#).contains("socket is a string"));
+        assert!(refused(r#"{ "url": "http://x", "socket": "${UNSET}" }"#).contains("$UNSET"));
     }
 
     #[test]

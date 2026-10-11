@@ -22,8 +22,9 @@ ctrl+d         leave, on an empty line
 //text         a message that starts with /
 ```
 
-The status line names the spore, its model, its state and the running turn's limits. When
-another spore answers or asks, the status line says so and the terminal gets a notification
+The line you type on names the spore and its state at its right. The status line under it gives
+the running turn's limits, the spend and the model. When another spore answers or asks, the
+status line says so and the terminal gets a notification
 (OSC 9); so does the open one when a turn ran longer than a minute.
 
 ## In a directory

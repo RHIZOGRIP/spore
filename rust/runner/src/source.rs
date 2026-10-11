@@ -30,34 +30,24 @@ use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
 use hyper::header::{HeaderName, HeaderValue, CONTENT_TYPE};
 use hyper::{Method, Request, Response, StatusCode, Uri};
-use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
-use hyper_util::client::legacy::connect::HttpConnector;
-use hyper_util::client::legacy::Client;
-use hyper_util::rt::TokioExecutor;
 use mohdel_thin_gate::prelude::{not_found_response, Body};
 use serde_json::{json, Map, Value};
 use spore_definition::Ordered;
 use url::Url;
 
 use crate::broker::{answer, read_json, Refusal};
+use crate::dial::{https_client, socket_path, Dial, Net};
 
 pub const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 pub const TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Mozilla's roots, fixed in the binary, over ring: a named provider rather than whichever
-/// one rustls would take as its default.
-pub(crate) fn https_client() -> Client<HttpsConnector<HttpConnector>, Full<Bytes>> {
-    let connector = HttpsConnectorBuilder::new()
-        .with_provider_and_webpki_roots(rustls::crypto::ring::default_provider())
-        .expect("ring supports the default protocol versions")
-        .https_or_http()
-        .enable_http1()
-        .build();
-    Client::builder(TokioExecutor::new()).build(connector)
-}
+const FIELDS: [&str; 8] = [
+    "url", "socket", "method", "methods", "paths", "requires", "query", "headers",
+];
 
 struct Source {
     url: Url,
+    dial: Dial,
     method: Method,
     /// The methods a call may ask for; none means the one `method`.
     methods: Option<Vec<Method>>,
@@ -110,7 +100,6 @@ pub struct Sources {
     granted: Vec<String>,
     resolved: HashMap<String, Source>,
     scopes: Ordered<Ordered<Vec<String>>>,
-    client: Client<HttpsConnector<HttpConnector>, Full<Bytes>>,
 }
 
 fn invalid(message: impl Into<String>, detail: impl Into<String>) -> Refusal {
@@ -181,8 +170,22 @@ fn resolve(
     name: &str,
     spec: &Value,
     env: &impl Fn(&str) -> Option<String>,
+    net: &Net,
 ) -> Result<Source, Refusal> {
-    let shape = "a source is { url, query?, headers?, method?, methods?, paths? }";
+    let shape =
+        "a source is { url, socket?, query?, headers?, method?, methods?, paths?, requires? }";
+    if let Some(unknown) = spec
+        .as_object()
+        .and_then(|fields| fields.keys().find(|k| !FIELDS.contains(&k.as_str())))
+    {
+        return Err(invalid(
+            format!(
+                "source \"{name}\" has \"{unknown}\", which is not one of {}",
+                FIELDS.join(", ")
+            ),
+            shape,
+        ));
+    }
     let raw = match spec.get("url") {
         Some(Value::String(url)) if !url.is_empty() => url,
         _ => return Err(invalid(format!("source \"{name}\" has no url"), shape)),
@@ -200,6 +203,21 @@ fn resolve(
             shape,
         ));
     }
+    let dial = match spec.get("socket") {
+        None => Dial::Net(net.clone()),
+        Some(Value::String(raw)) => {
+            let path = socket_path(&fill(name, raw, env)?, &url).map_err(|why| {
+                invalid(format!("source \"{name}\" has a socket it cannot use"), why)
+            })?;
+            Dial::Socket(path)
+        }
+        Some(_) => {
+            return Err(invalid(
+                format!("source \"{name}\" has a socket that is not a path"),
+                shape,
+            ))
+        }
+    };
     let method = spec
         .get("method")
         .map(text)
@@ -313,6 +331,7 @@ fn resolve(
         .collect::<Result<_, Refusal>>()?;
     Ok(Source {
         url,
+        dial,
         method,
         methods,
         paths,
@@ -416,6 +435,12 @@ impl Sources {
         };
         let mut declared = declared;
         for (name, spec) in plugins {
+            if spec.get("socket").is_some() {
+                return Err(invalid(
+                    format!("a plugin's source \"{name}\" names a socket"),
+                    "where a socket is mounted is this host's to say — describe the source in sources.json",
+                ));
+            }
             if declared.contains_key(name) {
                 return Err(invalid(
                     format!("{where_} and a plugin both describe \"{name}\""),
@@ -431,6 +456,7 @@ impl Sources {
             }
         }
 
+        let net = https_client();
         let mut resolved = HashMap::new();
         for name in &granted {
             let spec = declared.get(name).ok_or_else(|| {
@@ -441,7 +467,7 @@ impl Sources {
                     format!("the definition grants it and {where_} does not describe it"),
                 )
             })?;
-            let source = resolve(name, spec, &env)?;
+            let source = resolve(name, spec, &env, &net)?;
             let narrowed = scopes.get(name);
             for param in &source.requires {
                 if narrowed
@@ -481,7 +507,6 @@ impl Sources {
             granted,
             resolved,
             scopes: scopes.clone(),
-            client: https_client(),
         }))
     }
 
@@ -844,13 +869,7 @@ impl Sources {
         }
 
         let exchange = async {
-            let response = self.client.request(outgoing).await.map_err(|e| {
-                let mut detail = e.to_string();
-                let mut cause = std::error::Error::source(&e);
-                while let Some(inner) = cause {
-                    detail.push_str(&format!(": {inner}"));
-                    cause = inner.source();
-                }
+            let response = source.dial.send(outgoing).await.map_err(|detail| {
                 Refusal::new(
                     StatusCode::BAD_GATEWAY,
                     "SOURCE_UNREACHABLE",
@@ -921,7 +940,7 @@ mod tests {
     use hyper::server::conn::http1;
     use hyper::service::service_fn;
     use hyper_util::rt::TokioIo;
-    use tokio::net::{TcpListener, UnixStream};
+    use tokio::net::{TcpListener, UnixListener, UnixStream};
 
     static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -993,9 +1012,16 @@ mod tests {
         }
     }
 
-    /// What the endpoint was sent: the uri, the authorization, the method, the content type
-    /// and the body.
-    type Call = (String, Option<String>, String, Option<String>, String);
+    /// What the endpoint was sent: the uri, the authorization, the method, the content type,
+    /// the body and the host.
+    type Call = (
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+    );
 
     #[derive(Clone, Default)]
     struct Seen(Arc<Mutex<Vec<Call>>>);
@@ -1011,6 +1037,46 @@ mod tests {
         }
     }
 
+    async fn record<S>(stream: S, body: Bytes, log: Seen)
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
+        let service = service_fn(move |req: Request<Incoming>| {
+            let header = |name: &str| {
+                req.headers()
+                    .get(name)
+                    .map(|v| v.to_str().unwrap().to_string())
+            };
+            let (authorization, content_type, host) = (
+                header("authorization"),
+                header("content-type"),
+                header("host"),
+            );
+            let (uri, method) = (req.uri().to_string(), req.method().to_string());
+            let (body, log) = (body.clone(), log.clone());
+            async move {
+                let sent = req.into_body().collect().await.unwrap().to_bytes();
+                log.0.lock().unwrap().push((
+                    uri,
+                    authorization,
+                    method,
+                    content_type,
+                    String::from_utf8_lossy(&sent).into_owned(),
+                    host,
+                ));
+                Ok::<_, Infallible>(
+                    Response::builder()
+                        .header("content-type", "text/plain")
+                        .body(Full::new(body))
+                        .unwrap(),
+                )
+            }
+        });
+        let _ = http1::Builder::new()
+            .serve_connection(TokioIo::new(stream), service)
+            .await;
+    }
+
     async fn endpoint(body: Bytes) -> (String, Seen) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
@@ -1018,42 +1084,22 @@ mod tests {
         let log = seen.clone();
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
-                let (body, log) = (body.clone(), log.clone());
-                tokio::spawn(async move {
-                    let service = service_fn(move |req: Request<Incoming>| {
-                        let header = |name: &str| {
-                            req.headers()
-                                .get(name)
-                                .map(|v| v.to_str().unwrap().to_string())
-                        };
-                        let (authorization, content_type) =
-                            (header("authorization"), header("content-type"));
-                        let (uri, method) = (req.uri().to_string(), req.method().to_string());
-                        let (body, log) = (body.clone(), log.clone());
-                        async move {
-                            let sent = req.into_body().collect().await.unwrap().to_bytes();
-                            log.0.lock().unwrap().push((
-                                uri,
-                                authorization,
-                                method,
-                                content_type,
-                                String::from_utf8_lossy(&sent).into_owned(),
-                            ));
-                            Ok::<_, Infallible>(
-                                Response::builder()
-                                    .header("content-type", "text/plain")
-                                    .body(Full::new(body))
-                                    .unwrap(),
-                            )
-                        }
-                    });
-                    let _ = http1::Builder::new()
-                        .serve_connection(TokioIo::new(stream), service)
-                        .await;
-                });
+                tokio::spawn(record(stream, body.clone(), log.clone()));
             }
         });
         (base, seen)
+    }
+
+    async fn socket_endpoint(socket: &Path, body: Bytes) -> Seen {
+        let listener = UnixListener::bind(socket).unwrap();
+        let seen = Seen::default();
+        let log = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(record(stream, body.clone(), log.clone()));
+            }
+        });
+        seen
     }
 
     #[tokio::test]
@@ -1323,6 +1369,129 @@ mod tests {
         assert!(!answer.to_string().contains("127.0.0.1"));
     }
 
+    #[tokio::test]
+    async fn calls_a_source_on_the_socket_the_host_names() {
+        let dir = scratch();
+        let socket = dir.0.join("service.sock");
+        let seen = socket_endpoint(&socket, Bytes::from_static(b"hi")).await;
+        let path = file(
+            &dir,
+            json!({ "docs": {
+                "url": "http://service.local/v1/",
+                "socket": "${SERVICE_SOCKET}",
+                "headers": { "authorization": "Bearer ${TOKEN}" },
+                "paths": ["docs/*"],
+                "requires": ["collection"]
+            } }),
+        );
+        let socket_text = socket.to_str().unwrap().to_string();
+        let sources = Sources::load(
+            Some(&path),
+            &granted(&["docs"]),
+            &scopes(&[("docs", "collection", &["lake"])]),
+            &Map::new(),
+            move |name| match name {
+                "SERVICE_SOCKET" => Some(socket_text.clone()),
+                "TOKEN" => Some("abc".into()),
+                _ => None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(sources.list(None).unwrap()["sources"][0]["name"], "docs");
+        assert!(!sources.list(None).unwrap().to_string().contains("sock"));
+        let answer = sources
+            .fetch(&json!({ "source": "docs", "path": "docs/7" }))
+            .await
+            .unwrap();
+
+        assert_eq!(answer["body"], "hi");
+        let (uri, authorization, _, _, _, host) = seen.last();
+        assert_eq!(uri, "/v1/docs/7?collection=lake");
+        assert_eq!(authorization.as_deref(), Some("Bearer abc"));
+        assert_eq!(host.as_deref(), Some("service.local"));
+    }
+
+    #[tokio::test]
+    async fn caps_what_a_socket_source_answers() {
+        let dir = scratch();
+        let socket = dir.0.join("service.sock");
+        socket_endpoint(&socket, Bytes::from(vec![b'x'; MAX_RESPONSE_BYTES + 1])).await;
+        let sources = load(
+            json!({ "docs": { "url": "http://service.local/", "socket": socket.to_str().unwrap() } }),
+            &["docs"],
+            &[],
+        )
+        .unwrap();
+        let refusal = sources
+            .fetch(&json!({ "source": "docs" }))
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(refusal.kind, "SOURCE_TOO_LARGE");
+    }
+
+    #[tokio::test]
+    async fn a_socket_nobody_serves_is_unreachable_without_saying_where_it_is() {
+        let dir = scratch();
+        let socket = dir.0.join("absent.sock");
+        let sources = load(
+            json!({ "docs": { "url": "http://service.local/", "socket": socket.to_str().unwrap() } }),
+            &["docs"],
+            &[],
+        )
+        .unwrap();
+        let refusal = sources
+            .fetch(&json!({ "source": "docs" }))
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(refusal.kind, "SOURCE_UNREACHABLE");
+        assert!(refusal.retryable);
+        assert!(refusal.detail.contains("its socket"), "{}", refusal.detail);
+        assert!(
+            !refusal.detail.contains("absent.sock"),
+            "{}",
+            refusal.detail
+        );
+    }
+
+    #[tokio::test]
+    async fn refuses_a_socket_it_cannot_use_and_a_field_it_does_not_know() {
+        let refused = |declared: Value| load(declared, &["docs"], &[]).err().unwrap();
+        let relative =
+            refused(json!({ "docs": { "url": "http://x.invalid", "socket": "run/s.sock" } }));
+        assert_eq!(relative.kind, "SOURCE_INVALID");
+        assert!(relative.detail.contains("absolute path"));
+        let tls =
+            refused(json!({ "docs": { "url": "https://x.invalid", "socket": "/run/s.sock" } }));
+        assert!(tls.detail.contains("plain http"));
+        let number = refused(json!({ "docs": { "url": "http://x.invalid", "socket": 7 } }));
+        assert!(number.message.contains("not a path"));
+        let unset = refused(json!({ "docs": { "url": "http://x.invalid", "socket": "${UNSET}" } }));
+        assert_eq!(unset.kind, "SOURCE_SECRET_MISSING");
+        let typo =
+            refused(json!({ "docs": { "url": "http://x.invalid", "sockt": "/run/s.sock" } }));
+        assert_eq!(typo.kind, "SOURCE_INVALID");
+        assert!(typo.message.contains("\"sockt\""));
+    }
+
+    #[tokio::test]
+    async fn refuses_a_plugins_source_that_names_a_socket() {
+        let plugins = json!({ "web": { "url": "http://x.invalid", "socket": "/run/s.sock" } });
+        let refusal = Sources::load(
+            None,
+            &[],
+            &Ordered::default(),
+            plugins.as_object().unwrap(),
+            no_env,
+        )
+        .err()
+        .unwrap();
+        assert_eq!(refusal.kind, "SOURCE_INVALID");
+        assert!(refusal.message.contains("names a socket"));
+    }
+
     fn api(base: &str) -> Value {
         json!({ "forge": {
             "url": format!("{base}/api/v1/"),
@@ -1348,7 +1517,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(answer["body"], "{\"number\":7}");
-        let (uri, authorization, method, content_type, body) = seen.last();
+        let (uri, authorization, method, content_type, body, _) = seen.last();
         assert_eq!(uri, "/api/v1/repos/team/project/issues");
         assert_eq!(authorization.as_deref(), Some("token abc"));
         assert_eq!(method, "POST");
