@@ -196,6 +196,24 @@ describe('a confined turn', () => {
     }
   })
 
+  it('refuses the turn when its commands would be handed more paths to read than confine takes', async () => {
+    const corpora = outsideRoot('spore-cli-many-reads')
+    try {
+      const reads = Array.from({ length: 260 }, (_, i) => `c${i}=${resolve(corpora, String(i))}`)
+      for (const read of reads) mkdirSync(read.slice(read.indexOf('=') + 1), { recursive: true })
+      writeFileSync(resolve(ws, 'spore.cmk'), readFileSync(resolve(ws, 'spore.cmk'), 'utf8')
+        .replace(/^---\n/, `---\nreads: [${reads.join(', ')}]\n`))
+      await start(async () => answers('never'))
+
+      const r = await spore('read them all')
+      expect(r.code).not.toBe(0)
+      expect(mo.seen).toHaveLength(0)
+      expect(readTurns(ws).at(-1)).toMatchObject({ error: 'START_FAILED', detail: expect.stringMatching(/past the 256 confine takes — 260 it reads/) })
+    } finally {
+      rmSync(corpora, { recursive: true, force: true })
+    }
+  })
+
   it('replays the first turn into the second, and records both', async () => {
     await start(async (input, round) => round === 0
       ? calls('write', { path: 'data/first.txt', content: 'material' })

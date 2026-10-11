@@ -83,7 +83,7 @@
 #define LL_SCOPE_ABSTRACT_UNIX_SOCKET (1ULL << 0)
 #define LL_SCOPE_SIGNAL               (1ULL << 1)
 
-#define MAX_PATHS 64
+#define MAX_PATHS 256
 
 struct ll_ruleset_attr {
   uint64_t handled_access_fs;

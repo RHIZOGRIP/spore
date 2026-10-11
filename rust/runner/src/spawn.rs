@@ -24,9 +24,9 @@ use spore_runner::supervise::{confined, owner_token, owners_with, supervise, GRA
 use spore_workspace::spend::Limits;
 use spore_workspace::{
     acquire_lock, agent_env, begin_turn, broker_socket_path, end_channel, finalize_turn,
-    granted_path_containing, hand_over, iso_now, leave_wal, provision_modules, release_lock, serve,
-    slot_dir, spore_socket_path, turn_state, unanswered, write_model_key, write_outcome, Acquired,
-    Unanswered, CELL_MODELS_ENV, HOME_DIR, MODEL_KEY_FILE, STATE_FD,
+    granted_path_containing, hand_over, iso_now, leave_wal, provision_modules, read_paths_refusal,
+    release_lock, serve, slot_dir, spore_socket_path, turn_state, unanswered, write_model_key,
+    write_outcome, Acquired, Unanswered, CELL_MODELS_ENV, HOME_DIR, MODEL_KEY_FILE, STATE_FD,
 };
 use tokio::process::Command;
 use tokio::signal::unix::{signal, SignalKind};
@@ -258,6 +258,12 @@ async fn main() {
         |ws, reads| granted_path_containing(&root, ws, reads).ok().flatten(),
     )
     .unwrap_or_else(|problem| fail(problem));
+    if let Some(problem) = read_paths_refusal(&root, plan.precursor.reads.len(), 0, 0) {
+        fail(format!(
+            "precursor {} {problem}",
+            plan.precursor_path.display()
+        ));
+    }
 
     let standalone = args.standalone.then(|| {
         let need = |value: &Option<String>, flag: &str| {

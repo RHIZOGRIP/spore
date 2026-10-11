@@ -440,8 +440,11 @@ own `node_modules`, every `node_modules` it is installed under (inside `@rhizogr
 the global one `npm i -g` puts a plugin in), or a checkout's. **The grant is the plugin, not the
 directory it sits in**: an agent's sandbox reads each plugin its definition uses and every package
 that plugin depends on, as Node resolves them from it, by their real directories — never the
-`node_modules` they share with whatever else is installed. A program outside that set is refused
-when the plugin is checked, not at the agent's first call.
+`node_modules` they share with whatever else is installed. A directory inside one every sandbox
+reads already — the `node_modules` spore is installed in — or inside another directory of the set
+is left out, since its grant would add nothing: a plugin installed beside spore, its dependencies
+hoisted with spore's, adds no path at all. A program outside that set is refused when the plugin
+is checked, not at the agent's first call.
 
 **A plugin is a manifest.** The `spore` field of its `package.json` says what it gives:
 `works`, the `@rhizogrip/spore` versions it works with, which is required; and, each optional,
@@ -993,6 +996,13 @@ adds rights up along a path: a write grant holding a corpus would make the corpu
 one holding the workspace would make its root writable. Staging replaces only a link, never
 what the workspace holds under that name, and the parser refuses the names the workspace uses
 (`data`, `home`, `calls`, `precursors`, `schedules`, `node_modules`, `lock`) for either kind.
+
+`confine` takes at most 256 paths to read (`CONFINE_MAX_PATHS`, `rust/workspace`), and runs
+nothing past it. Every command `exec` runs is handed the system's and the runtime's read paths,
+node's directory, each `reads` and `writes` path, the plugins' reads and the workspace, so the
+runner counts them when a turn starts and refuses one past the limit with the count and what made
+it (`read_paths_refusal`), and `spore-spawn` refuses a precursor the same way — once, rather than
+every command failing with exit 126.
 What changed in the directory is not part of `produced` — git, not a walk, says what a turn did
 there.
 

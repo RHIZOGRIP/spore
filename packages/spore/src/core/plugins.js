@@ -20,6 +20,7 @@ import { PROVISIONED_MODULES } from '../delegation/agent-env.js'
 import { copyAbsent } from '../delegation/precursor-catalog.js'
 import { SporeError } from '../observability/errors.js'
 import { native } from '../native.js'
+import { systemReadPaths } from '../isolation/sandbox.js'
 import { sporangiumOf, sporangiumTree } from './sporangia.js'
 import { DATA_DIR, definitionPath, LIBRARIES_FILE, PASSED_THROUGH, PLUGINS_DIR, REFERENCE_FILE, RUNTIME_ENV } from './spore-dir.js'
 import { TOOL_NAMES } from './tool-names.js'
@@ -361,6 +362,16 @@ function allowedPlugin (name, allowed, roots) {
 }
 
 /**
+ * A path inside one the sandbox grants already, or inside another plugin's, would add nothing
+ * but a rule toward the most `confine` takes: a plugin installed beside spore adds none.
+ */
+function readsOf (plugins) {
+  const reads = [...new Set(plugins.flatMap(plugin => plugin.reads))]
+  const granted = systemReadPaths().filter(path => existsSync(path)).map(path => realpathSync(path))
+  return reads.filter(path => !granted.some(dir => within(path, dir)) && !reads.some(other => other !== path && within(path, other)))
+}
+
+/**
  * A definition that does not parse gets nothing here: the agent refuses it, and the turn it
  * records says why.
  *
@@ -413,7 +424,7 @@ export function preparePlugins (ws, { config = readConfig(), roots = pluginRoots
     plugins.push(plugin)
   }
   linkModules(ws, Object.fromEntries(Object.entries(modules).map(([module, { dir }]) => [module, dir])))
-  if (plugins.length) env[PLUGIN_READS] = JSON.stringify([...new Set(plugins.flatMap(plugin => plugin.reads))])
+  if (plugins.length) env[PLUGIN_READS] = JSON.stringify(readsOf(plugins))
   return { env, plugins, sources }
 }
 

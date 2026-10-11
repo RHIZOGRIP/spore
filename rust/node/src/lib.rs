@@ -550,6 +550,11 @@ pub fn node_modules_root(root: String) -> Option<String> {
 }
 
 #[napi]
+pub fn confine_max_paths() -> u32 {
+    workspace::CONFINE_MAX_PATHS as u32
+}
+
+#[napi]
 pub fn system_read_paths(root: String) -> Vec<String> {
     strings(workspace::system_read_paths(Path::new(&root)))
 }

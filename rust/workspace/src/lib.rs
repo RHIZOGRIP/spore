@@ -275,9 +275,13 @@ pub const RUNTIME_ENV: [&str; 21] = [
     "SPORE_SOURCE_SOCKET",
     "SPORE_STATE_FD",
     "SPORE_STORE_SOCKET",
-    "SPORE_PLUGIN_READS",
+    PLUGIN_READS,
     PLUGIN_ENV,
 ];
+
+/// What the agent reads of its plugins, a JSON array of paths: their packages and what they
+/// depend on, less what the system's read paths already grant.
+pub const PLUGIN_READS: &str = "SPORE_PLUGIN_READS";
 
 /// The variable a runner reads its spore's plugin environment from, a JSON object of name to
 /// value: a process's environment is readable by its own user alone, its arguments by anyone.
@@ -938,6 +942,30 @@ pub fn granted_path_containing(
         }
     }
     Ok(None)
+}
+
+/// How many paths `confine` takes to read: past it, it runs nothing. `MAX_PATHS` in
+/// `confine.c` is the same number; the JS suite runs `confine` at both sides of it.
+pub const CONFINE_MAX_PATHS: usize = 256;
+
+/// Why every command an agent runs under `exec` would be refused, or none: `confine` is handed
+/// the system's read paths, the directory of the node running the agent, what the definition
+/// reads and writes, the plugins' reads and the workspace, and takes no more than
+/// `CONFINE_MAX_PATHS`.
+pub fn read_paths_refusal(
+    root: &Path,
+    reads: usize,
+    writes: usize,
+    plugin_reads: usize,
+) -> Option<String> {
+    let system = system_read_paths(root).len() + 1;
+    let total = system + reads + writes + plugin_reads + 1;
+    (total > CONFINE_MAX_PATHS).then(|| {
+        format!(
+            "would hand its commands {total} paths to read, past the {CONFINE_MAX_PATHS} confine takes — {reads} it reads, {writes} it writes, {plugin_reads} of its plugins, and {} the runtime's own",
+            system + 1
+        )
+    })
 }
 
 /// `~/.config/spore`: what the operator authors, which no agent may write.
@@ -1719,6 +1747,21 @@ mod tests {
         );
         let other = safe_path(&ws, "../elsewhere", &[corpus]).unwrap_err();
         assert!(other.detail.contains("declares it may reach"));
+    }
+
+    #[test]
+    fn refuses_more_read_paths_than_confine_takes() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let own = system_read_paths(root).len() + 2;
+        let room = CONFINE_MAX_PATHS - own;
+
+        assert_eq!(read_paths_refusal(root, room - 2, 1, 1), None);
+        let refused = read_paths_refusal(root, room - 1, 1, 1).unwrap();
+        assert!(refused.contains(&format!("{} paths", CONFINE_MAX_PATHS + 1)));
+        assert!(refused.contains(&format!(
+            "{} it reads, 1 it writes, 1 of its plugins",
+            room - 1
+        )));
     }
 
     #[test]

@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { closeSync, constants, mkdtempSync, openSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { closeSync, constants, existsSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { CONFINE_BIN, containCheck, runShell } from '../src/core/command.js'
+import { native } from '../src/native.js'
 
 const CONTAINED = containCheck().contained
 const confine = (args, options = {}) => spawnSync(CONFINE_BIN, args, { encoding: 'utf8', ...options })
@@ -122,5 +123,22 @@ describe('what a confined command may not call', () => {
     const ran = confine(['--', 'true'])
     expect(ran.status).toBe(126)
     expect(ran.stderr).toMatch(/--no-landlock/)
+  })
+})
+
+describe('the paths confine takes', () => {
+  it('are as many as the runner lets a turn hand it, and no more', () => {
+    const writeRoot = mkdtempSync(join(tmpdir(), 'spore-confine-paths-'))
+    const system = ['/usr', '/lib', '/lib64', '/bin'].filter(path => existsSync(path))
+    const reads = (count) => [...system, ...Array(count - system.length).fill('/usr')].flatMap(path => ['--read', path])
+    try {
+      const at = confine(['--write-root', writeRoot, ...reads(native.confineMaxPaths()), '--', 'true'])
+      expect(at.status, at.stderr).toBe(0)
+      const past = confine(['--write-root', writeRoot, ...reads(native.confineMaxPaths() + 1), '--', 'true'])
+      expect(past.status).toBe(126)
+      expect(past.stderr).toMatch(/too many read paths/)
+    } finally {
+      rmSync(writeRoot, { recursive: true, force: true })
+    }
   })
 })

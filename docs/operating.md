@@ -435,6 +435,12 @@ declares (present, and a `port` or `text` as declared) and every precursor it ca
 records the plugin under `plugins` in `config.json` with its version and the directory of the copy
 it checked.
 
+A plugin installed elsewhere grants the agent its own directory and each package it depends on
+that is not inside it, one read path each. A turn whose commands would be handed more than 256
+read paths in all — the system's, the definition's `reads` and `writes`, the plugins' — is refused
+at its start (`START_FAILED`), naming the count and what made it. Installing plugins beside spore,
+in one `npm install`, adds none.
+
 A turn uses exactly that copy. After a plugin's version or directory changes, a turn of a spore
 using it is refused with `PLUGIN_CHANGED` until `spore plugin allow` is run again. A definition
 naming a plugin that is not allowed is refused at `spore send`, and `spore define` does not make

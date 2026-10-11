@@ -225,6 +225,18 @@ describe('checking a plugin', () => {
     expect(checkPlugin(found).reads).toEqual([found.dir, join(MODULES, 'a'), join(MODULES, 'a/node_modules/b')].map(dir => realpathSync(dir)))
   })
 
+  it('leaves out of what the agent reads a package the sandbox grants already, or one inside another it reads', () => {
+    const found = plugin('spore-plugin-deep', {})
+    writeFileSync(join(found.dir, 'package.json'), JSON.stringify({ name: 'spore-plugin-deep', version: '0.1.0', dependencies: { a: '1', semver: '7' }, spore: { works: '^1' } }))
+    mkdirSync(join(found.dir, 'node_modules/a'), { recursive: true })
+    writeFileSync(join(found.dir, 'node_modules/a/package.json'), JSON.stringify({ name: 'a' }))
+    useIn(WS, ['deep'])
+
+    expect(checkPlugin(found).reads.filter(dir => dir.endsWith('/node_modules/semver'))).toHaveLength(1)
+    const { env } = preparePlugins(WS, { config: { plugins: { deep: allowed('deep') } }, roots })
+    expect(JSON.parse(env[PLUGIN_READS])).toEqual([realpathSync(found.dir)])
+  })
+
   it('refuses a placeholder it does not fill', () => {
     expect(refusal(() => checkPlugin(browser({ env: { X: '{home}' } }))).message).toMatch(/\{home\}, which spore does not fill/)
     expect(refusal(() => checkPlugin(browser({ env: { X: '{settings.port}' } }))).message).toMatch(/\{settings\.port\}/)

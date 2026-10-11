@@ -215,7 +215,8 @@ the plugin's prefix, and one program may be named twice: `ssh` gives its wrapper
 
 A plugin adds no tool: the agent runs a program as it runs any other, with `exec` or `wsexec`, inside its sandbox and with
 its environment. That sandbox reads the plugin and every package it depends on, and nothing else
-of the `node_modules` they are installed in; it writes neither. A program that keeps files writes
+of the `node_modules` they are installed in; it writes neither. A plugin installed in the
+`node_modules` spore is in is read through spore's own grant, and adds none of its own. A program that keeps files writes
 them where the agent may write: under `{data}`, `{sockets}`, or `$HOME`, the workspace's `home/`.
 A program reaches a source the plugin describes through `$SPORE_SOURCE`, as `brave`'s does:
 

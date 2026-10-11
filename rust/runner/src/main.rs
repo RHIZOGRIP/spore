@@ -26,11 +26,11 @@ use spore_workspace::spend::{spend_refusal, Limits};
 use spore_workspace::{
     acquire_lock, agent_env, begin_turn, crash_at, end_channel, finalize_turn, free_bytes,
     hand_over, iso_now, leave_wal, limit_file_size, make_spore_socket_dir, prune_trail,
-    record_unanswered, recover, release_lock, serve, spore_socket_dir, spore_socket_path,
-    start_limits, turn_limits, turn_state, unanswered, unanswered_traceparents, unread,
-    write_model_key, write_outcome, writes_refusal, yield_to_host, Acquired, Unanswered,
+    read_paths_refusal, record_unanswered, recover, release_lock, serve, spore_socket_dir,
+    spore_socket_path, start_limits, turn_limits, turn_state, unanswered, unanswered_traceparents,
+    unread, write_model_key, write_outcome, writes_refusal, yield_to_host, Acquired, Unanswered,
     CELL_MODELS_ENV, DEFAULT_FREE_FLOOR, DEFAULT_LARGEST_FILE, DEFAULT_MODEL_SESSIONS,
-    DEFINITION_FILE, HOME_DIR, MODEL_KEY_FILE, PLUGIN_ENV, STATE_FD,
+    DEFINITION_FILE, HOME_DIR, MODEL_KEY_FILE, PLUGIN_ENV, PLUGIN_READS, STATE_FD,
 };
 use tokio::process::Command;
 use tokio::signal::unix::{signal, SignalKind};
@@ -387,6 +387,26 @@ async fn main() {
         .map(|grant| PathBuf::from(&grant.path))
         .collect();
     if let Some(problem) = writes_refusal(&root(), &ws, &writes, &reads) {
+        refuse(
+            &ws,
+            lock,
+            &started_at,
+            &format!("{} {problem}", ws.display()),
+        );
+    }
+    let plugin_reads = match args.env.iter().find(|(name, _)| name == PLUGIN_READS) {
+        None => 0,
+        Some((_, given)) => match serde_json::from_str::<Vec<String>>(given) {
+            Ok(paths) => paths.len(),
+            Err(_) => refuse(
+                &ws,
+                lock,
+                &started_at,
+                &format!("{PLUGIN_READS} is not a JSON array of paths"),
+            ),
+        },
+    };
+    if let Some(problem) = read_paths_refusal(&root(), reads.len(), writes.len(), plugin_reads) {
         refuse(
             &ws,
             lock,
