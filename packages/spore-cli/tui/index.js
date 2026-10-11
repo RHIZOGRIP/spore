@@ -9,7 +9,7 @@ import chalk from 'chalk'
 
 import { runningJob, scheduleLine } from '../src/dispatch.js'
 import { COMMANDS, parseCommand } from './commands.js'
-import { applyEvent, createLive, history } from './conversation.js'
+import { applyEvent, createLive, history, liveOf } from './conversation.js'
 import { changeOf, counts, hunks } from './diff.js'
 import { printable } from './printable.js'
 import { PromptEditor } from './prompt.js'
@@ -320,12 +320,9 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
     state.limits = null
     if (stateOf(state.ws).state === RUNNING) {
       const ends = readEvents(state.ws, { event: 'turn_end' })
-      const live = createLive()
-      for (const event of readEvents(state.ws, { after: ends.at(-1)?.seq ?? 0 })) {
-        applyEvent(live, event)
-        state.lastSeq = event.seq
-      }
-      conversation.live = live
+      const events = readEvents(state.ws, { after: ends.at(-1)?.seq ?? 0 })
+      if (events.length) state.lastSeq = events.at(-1).seq
+      conversation.live = liveOf(events)
     }
     conversation.invalidate()
     refresh()

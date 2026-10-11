@@ -3,7 +3,7 @@ import { visibleWidth } from '@earendil-works/pi-tui'
 
 import { parseCommand } from '../tui/commands.js'
 import { changeOf, counts, hunks, lineDiff } from '../tui/diff.js'
-import { applyEvent, createLive, history, originOf } from '../tui/conversation.js'
+import { applyEvent, createLive, history, liveOf, originOf } from '../tui/conversation.js'
 import { limitsText, matching, priceText, spendText, sporeLabel, stateText, statusParts } from '../tui/status.js'
 import { PromptEditor } from '../tui/prompt.js'
 import { Answer } from '../tui/answer.js'
@@ -100,6 +100,17 @@ describe('applyEvent', () => {
     applyEvent(live, { event: 'complete', output: 'whole', stopReason: 'answer' })
     expect(live.text).toBe('whole')
     expect(live.complete).toEqual({ stopReason: 'answer', output: 'whole' })
+  })
+})
+
+describe('liveOf', () => {
+  it('shows no running turn when nothing follows the last turn_end, as when its lock is still held', () => {
+    expect(liveOf([])).toBeNull()
+  })
+
+  it('builds the running turn from its events', () => {
+    const live = liveOf([{ event: 'round', index: 0 }, { event: 'stream', kind: 'message', delta: 'so far' }])
+    expect(live).toMatchObject({ rounds: 1, text: 'so far', complete: null })
   })
 })
 

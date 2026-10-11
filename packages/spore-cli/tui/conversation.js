@@ -45,6 +45,14 @@ export function history ({ turns, inbox }) {
 
 export const createLive = () => ({ text: '', notes: [], tools: [], rounds: 0, input: null, cost: 0, complete: null })
 
+/** The running turn from its events so far, or null when there are none: a turn's end is recorded before its lock is let go. */
+export function liveOf (events) {
+  if (!events.length) return null
+  const live = createLive()
+  for (const event of events) applyEvent(live, event)
+  return live
+}
+
 /** False when the event changes nothing shown. Text written before a tool call is a note: the answer is what comes last. */
 export function applyEvent (live, event) {
   switch (event.event) {
