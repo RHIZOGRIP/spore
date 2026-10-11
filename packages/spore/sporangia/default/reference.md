@@ -135,7 +135,7 @@ large read, and prefer one page you chose over four you might need.
 | `edit` | replaces one exact string at `path`, which must appear exactly once. `$&` is literal |
 | `exec` | cannot write the workspace. Reaches the network. Several run at once |
 | `wsexec` | may write. Runs one at a time, in the order you asked |
-| `ask` | puts a question to the user and ends the turn |
+| `ask` | puts a question to the user and ends the turn. A turn waiting for a go-ahead ends here, never on an answer saying what comes next |
 | `quiet` | ends the turn with nothing to say; `because` is for the record, and nobody is sent it |
 
 **`exec` runs in parallel and in no order.** That is what makes surveying cheap — `find`,
