@@ -1008,7 +1008,8 @@ pass.
 
 The agent calls a source by running a program, `node "$SPORE_SOURCE" <name> …`
 (`bin/source.js`). The response goes to a file, the exit code is the signal, and the agent never
-learns the URL. The broker measures the response itself rather than trusting `content-length`, and
+learns the URL. The broker hands the response's bytes over unchanged, base64 in its JSON answer, so
+the file is what the endpoint sent: an image or a PDF as much as a JSON page. The broker measures the response itself rather than trusting `content-length`, and
 refuses one past 32 MB (`MAX_RESPONSE_BYTES`), because a workspace filled by an endpoint is a turn
 nobody can finish.
 

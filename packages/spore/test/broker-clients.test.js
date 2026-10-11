@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import http from 'node:http'
 import { execFile } from 'node:child_process'
-import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -86,11 +86,11 @@ describe('the store client', () => {
 
 describe('the source client', () => {
   it('lists, and fetches by name', async () => {
-    const seen = await serve((path) => [200, path === '/list' ? { sources: [{ name: 'pubmed', scope: {} }] } : { status: 200, ok: true, contentType: 'text/plain', body: 'hi' }])
+    const seen = await serve((path) => [200, path === '/list' ? { sources: [{ name: 'pubmed', scope: {} }] } : { status: 200, ok: true, contentType: 'text/plain', bodyBase64: Buffer.from('hi').toString('base64') }])
     const source = createSourceClient({ socketPath, key: KEY })
 
     expect((await source.list()).sources[0].name).toBe('pubmed')
-    expect((await source.fetch('pubmed', { term: 'x' })).body).toBe('hi')
+    expect((await source.fetch('pubmed', { term: 'x' })).bodyBase64).toBe(Buffer.from('hi').toString('base64'))
     expect(seen.map(s => [s.method, s.path])).toEqual([['POST', '/list'], ['POST', '/fetch']])
     expect(seen[1].body).toEqual({ source: 'pubmed', params: { term: 'x' } })
     expect(seen.every(s => s.key === KEY)).toBe(true)
@@ -112,7 +112,7 @@ describe('the source client', () => {
   })
 
   it('writes the body to stdout for --out -, and what the call did to stderr', async () => {
-    await serve(() => [200, { status: 200, ok: true, contentType: 'application/json', body: '{"hits":2}' }])
+    await serve(() => [200, { status: 200, ok: true, contentType: 'application/json', bodyBase64: Buffer.from('{"hits":2}').toString('base64') }])
     const ws = mkdtempSync(join(tmpdir(), 'spore-source-cli-'))
     try {
       writeFileSync(join(ws, 'model.key'), KEY)
@@ -127,8 +127,32 @@ describe('the source client', () => {
     }
   })
 
+  it('writes the bytes the endpoint sent to --out, text or not', async () => {
+    const image = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xd8])
+    await serve(() => [200, { status: 200, ok: true, contentType: 'image/png', bodyBase64: image.toString('base64') }])
+    const ws = mkdtempSync(join(tmpdir(), 'spore-source-cli-'))
+    try {
+      writeFileSync(join(ws, 'model.key'), KEY)
+      const { stdout } = await promisify(execFile)(process.execPath, [resolve(import.meta.dirname, '../bin/source.js'), 'pages', '--out', 'page.png'], {
+        cwd: ws,
+        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath }
+      })
+      expect(readFileSync(join(ws, 'page.png'))).toEqual(image)
+      expect(JSON.parse(stdout)).toEqual({ source: 'pages', status: 200, ok: true, bytes: 10, out: 'page.png' })
+
+      const piped = await promisify(execFile)(process.execPath, [resolve(import.meta.dirname, '../bin/source.js'), 'pages', '--out', '-'], {
+        cwd: ws,
+        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath },
+        encoding: 'buffer'
+      })
+      expect(piped.stdout).toEqual(image)
+    } finally {
+      rmSync(ws, { recursive: true, force: true })
+    }
+  })
+
   it('passes what it is asked as written, so an id too long for a number arrives whole', async () => {
-    const seen = await serve(() => [200, { status: 200, ok: true, contentType: 'application/json', body: '[]' }])
+    const seen = await serve(() => [200, { status: 200, ok: true, contentType: 'application/json', bodyBase64: Buffer.from('[]').toString('base64') }])
     const ws = mkdtempSync(join(tmpdir(), 'spore-source-cli-'))
     try {
       writeFileSync(join(ws, 'model.key'), KEY)
@@ -143,7 +167,7 @@ describe('the source client', () => {
   })
 
   it('sends the method, the path and the body an API source is asked with', async () => {
-    const seen = await serve(() => [200, { status: 201, ok: true, contentType: 'application/json', body: '{}' }])
+    const seen = await serve(() => [200, { status: 201, ok: true, contentType: 'application/json', bodyBase64: Buffer.from('{}').toString('base64') }])
     const source = createSourceClient({ socketPath, key: KEY })
     await source.fetch('tracker', {}, { method: 'POST', path: 'projects/web/issues', body: { title: 'a bug' } })
     expect(seen[0].body).toEqual({ source: 'tracker', params: {}, method: 'POST', path: 'projects/web/issues', body: { title: 'a bug' } })

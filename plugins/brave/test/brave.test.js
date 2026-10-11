@@ -54,14 +54,14 @@ describe('the brave plugin', () => {
   })
 
   it('asks the brave source through $SPORE_SOURCE and prints one block per result', async () => {
-    const { asked, search } = await broker({ status: 200, ok: true, contentType: 'application/json', body: FOUND })
+    const { asked, search } = await broker({ status: 200, ok: true, contentType: 'application/json', bodyBase64: Buffer.from(FOUND).toString('base64') })
     const { stdout } = await search('sprague', 'grundy')
     expect(asked).toEqual([{ path: '/fetch', body: { source: 'brave', params: { q: 'sprague grundy' } } }])
     expect(stdout).toBe('Grundy\nhttps://example.org/g\nnim values\n')
   })
 
   it('exits 1 and says why when the search did not happen', async () => {
-    const { search } = await broker({ status: 429, ok: false, contentType: 'application/json', body: '{"error":"slow down"}' })
+    const { search } = await broker({ status: 429, ok: false, contentType: 'application/json', bodyBase64: Buffer.from('{"error":"slow down"}').toString('base64') })
     const failed = await search('x').catch(err => err)
     expect(failed.code).toBe(1)
     expect(failed.stderr).toMatch(/search: 429 — \{"error":"slow down"\}/)

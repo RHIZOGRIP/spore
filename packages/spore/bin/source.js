@@ -31,8 +31,9 @@ Usage:
   node "$SPORE_SOURCE" <name> --method POST --path <path> --body <file.json> --out <file>
   node "$SPORE_SOURCE" --list
 
-  --out     where the response body is written, under data/ — or -, to stdout, for a
-            program run under exec, whose stdout the call's out already holds
+  --out     where the response is written, byte for byte, under data/ — or -, to
+            stdout, for a program run under exec, whose stdout the call's out
+            already holds
   --method  for a source that allows more than one, as --list shows
   --path    under the source's address, for a source that lists paths
   --body    a JSON file sent as the request body
@@ -87,12 +88,13 @@ if (argv.body) {
 
 try {
   const answer = await client.fetch(source, params, { method: argv.method, path: argv.path, body })
-  const summary = JSON.stringify({ source, status: answer.status, ok: answer.ok, bytes: Buffer.byteLength(answer.body), out: argv.out })
+  const said = Buffer.from(answer.bodyBase64, 'base64')
+  const summary = JSON.stringify({ source, status: answer.status, ok: answer.ok, bytes: said.length, out: argv.out })
   if (argv.out === '-') {
-    process.stdout.write(answer.body)
+    process.stdout.write(said)
     console.error(summary)
   } else {
-    writeFileSync(resolve(process.cwd(), argv.out), answer.body)
+    writeFileSync(resolve(process.cwd(), argv.out), said)
     console.log(summary)
   }
   // An endpoint that answered with an error answered: the file holds what it said, and

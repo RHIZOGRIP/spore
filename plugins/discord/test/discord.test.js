@@ -59,14 +59,14 @@ describe('the discord plugin', () => {
       { id: '12', timestamp: 't2', author: { username: 'triage' }, webhook_id: 'h', content: 'on it', mentions: [], attachments: [] },
       { id: '11', timestamp: 't1', author: { username: 'alice' }, content: 'payouts?', mentions: [], attachments: [] }
     ]
-    const { asked, history } = await broker({ status: 200, ok: true, contentType: 'application/json', body: JSON.stringify(page) })
+    const { asked, history } = await broker({ status: 200, ok: true, contentType: 'application/json', bodyBase64: Buffer.from(JSON.stringify(page)).toString('base64') })
     const { stdout } = await history('history', '100', '--before', '13', '--limit', '2')
     expect(asked).toEqual([{ path: '/fetch', body: { source: 'discord', path: '100/messages', params: { limit: '2', before: '13' } } }])
     expect(stdout).toBe('11 t1 alice: payouts?\n12 t2 triage (webhook): on it\n')
   })
 
   it('refuses what is not a channel, before asking anything', async () => {
-    const { asked, history } = await broker({ status: 200, ok: true, contentType: 'application/json', body: '[]' })
+    const { asked, history } = await broker({ status: 200, ok: true, contentType: 'application/json', bodyBase64: Buffer.from('[]').toString('base64') })
     await expect(history('history', 'general')).rejects.toMatchObject({ code: 2 })
     await expect(history('history', '100', '--limit', '500')).rejects.toMatchObject({ code: 2 })
     expect(asked).toEqual([])

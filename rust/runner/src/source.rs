@@ -25,6 +25,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use base64::Engine;
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
@@ -912,7 +913,7 @@ impl Sources {
                 "status": status.as_u16(),
                 "ok": status.is_success(),
                 "contentType": content_type,
-                "body": String::from_utf8_lossy(&bytes),
+                "bodyBase64": base64::engine::general_purpose::STANDARD.encode(&bytes),
             }))
         };
         tokio::time::timeout(TIMEOUT, exchange)
@@ -1088,6 +1089,12 @@ mod tests {
             }
         });
         (base, seen)
+    }
+
+    fn body(answer: &Value) -> Vec<u8> {
+        base64::engine::general_purpose::STANDARD
+            .decode(answer["bodyBase64"].as_str().unwrap())
+            .unwrap()
     }
 
     async fn socket_endpoint(socket: &Path, body: Bytes) -> Seen {
@@ -1363,10 +1370,23 @@ mod tests {
 
         assert_eq!(answer["status"], 200);
         assert_eq!(answer["ok"], true);
-        assert_eq!(answer["body"], "hi");
+        assert_eq!(body(&answer), b"hi");
         assert_eq!(answer["contentType"], "text/plain");
         assert_eq!(seen.last().0, "/search?term=crispr");
         assert!(!answer.to_string().contains("127.0.0.1"));
+    }
+
+    #[tokio::test]
+    async fn hands_back_bytes_that_are_not_text_as_they_came() {
+        let png_then_jpeg: &[u8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xd8];
+        let (base, _) = endpoint(Bytes::from_static(png_then_jpeg)).await;
+        let sources = load(json!({ "ledger": { "url": base } }), &["ledger"], &[]).unwrap();
+
+        let answer = sources.fetch(&json!({ "source": "ledger" })).await.unwrap();
+
+        assert_eq!(body(&answer), png_then_jpeg);
+        assert_eq!(answer["contentType"], "text/plain");
+        assert!(answer.get("body").is_none());
     }
 
     #[tokio::test]
@@ -1405,7 +1425,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(answer["body"], "hi");
+        assert_eq!(body(&answer), b"hi");
         let (uri, authorization, _, _, _, host) = seen.last();
         assert_eq!(uri, "/v1/docs/7?collection=lake");
         assert_eq!(authorization.as_deref(), Some("Bearer abc"));
@@ -1516,7 +1536,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(answer["body"], "{\"number\":7}");
+        assert_eq!(body(&answer), b"{\"number\":7}");
         let (uri, authorization, method, content_type, body, _) = seen.last();
         assert_eq!(uri, "/api/v1/repos/team/project/issues");
         assert_eq!(authorization.as_deref(), Some("token abc"));
@@ -1681,7 +1701,7 @@ mod tests {
         let answer = sources.fetch(&json!({ "source": "ledger" })).await.unwrap();
         assert_eq!(answer["status"], 404);
         assert_eq!(answer["ok"], false);
-        assert_eq!(answer["body"], "gone");
+        assert_eq!(body(&answer), b"gone");
     }
 
     #[tokio::test]
@@ -1839,7 +1859,7 @@ mod tests {
 
         let (status, fetched) = ask("POST", "/fetch", Some(json!({ "source": "ledger" }))).await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(fetched["body"], "hi");
+        assert_eq!(body(&fetched), b"hi");
 
         let (status, refused) = ask("POST", "/fetch", Some(json!({ "source": "other" }))).await;
         assert_eq!(status, StatusCode::FORBIDDEN);

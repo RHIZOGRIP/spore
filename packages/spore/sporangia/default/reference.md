@@ -260,6 +260,8 @@ node "$SPORE_SOURCE" ledger --term "crispr 2024" --out data/hits.json
 Anything else you pass becomes a query parameter. The response goes to the file, never
 into this conversation, and the exit code says whether the endpoint answered. Under `exec`,
 which cannot write `data/`, pass `--out -`: the response goes to the call's own `out`.
+The file holds the response byte for byte, so an image or a PDF a source returns can be
+saved and opened — an image with `read`, when this spore may look at images.
 
 `--list` shows what you were granted and what you may ask each source for:
 
