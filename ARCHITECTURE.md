@@ -65,7 +65,11 @@ program under `exec`: searching is `find` and `grep`, HTTP is `curl`, and web se
 program over a source whose key the runner holds (`plugins/brave`).
 
 **The tool list is fixed for the run.** With prefix caching the request is ordered
-`tools → system → messages`, and nothing mutates that prefix mid-run.
+`tools → system → messages`, and nothing mutates that prefix mid-run. Every call names its
+workspace to the provider by a hash of its path, mohdel's `identifier`, which an OpenAI call
+carries as `prompt_cache_key`: calls that share a prefix but no key are not routed to where it
+is cached, and most of a long conversation is then billed as new input
+(`src/infra/model-client.js`).
 
 **A tool that cannot work is not offered**
 ([principle 21](PRINCIPLES.md#21-when-something-fails-it-says-so)): the suite's tools a definition
@@ -253,8 +257,11 @@ the earlier turns it carries word for word, so that working set is paid for on e
 spore woken often by small events re-buys it every time. Past it, the oldest turns are summarized
 into a compaction entry and the transcript keeps them all. The working set is the root
 definition's `history` in tokens, or the runtime's 256k tokens when it is absent, capped either
-way at half the model's window so a turn's own work fits (`src/resilience/compaction.js`). A
-precursor may not declare it.
+way at half the model's window so a turn's own work fits (`src/resilience/compaction.js`). Past it,
+the summary takes all but the latest 24k tokens, or half the working set when that is less: cut
+only to just under it, every later turn would summarize again, and the start of the history — the
+prefix a provider caches — would change on every turn. Cut this far, it holds until the history
+has grown back. A precursor may not declare it.
 
 The trail never holds a copy of a workspace file beyond the short text the inline rule allows —
 only paths and hashes. Work product lives in the workspace, the record in `calls`, and they have

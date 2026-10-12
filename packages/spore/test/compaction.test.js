@@ -102,22 +102,22 @@ describe('compaction', () => {
   // The tail used to be a count of groups derived from `floor(budget / 30_000)`, so a
   // budget bought three groups whether a group weighed 30,000 tokens or 300. On a long
   // conversation that kept 905 tokens of a 100,000-token budget and summarized the rest.
-  it('spends the retention budget on the tail instead of guessing what a group weighs', async () => {
+  it('spends what it keeps on the tail instead of guessing what a group weighs', async () => {
     // 200 short exchanges: every message is its own group, none of them large.
     const messages = Array.from({ length: 200 }, (_, n) => ({
       role: n % 2 ? 'assistant' : 'user',
       content: `turn ${n}: ` + 'x'.repeat(400)
     }))
-    const contextLimit = 20000 // retention budget is half of it
+    const contextLimit = 20000 // retention budget is half of it, and half of that is kept
     const result = await compactHistory(messages, { model: mockModel('Older turns.'), contextLimit })
 
     const tail = result.slice(1)
     const kept = estimateTokens(tail)
     expect(marked(result[0], COMPACTED)).toBe(true)
-    // Most of the budget, not a rounding error of it.
-    expect(kept).toBeGreaterThan(contextLimit * 0.5 * 0.8)
-    expect(kept).toBeLessThanOrEqual(contextLimit * 0.5)
-    expect(tail.length).toBeGreaterThan(50)
+    // Most of what it keeps, not a rounding error of it.
+    expect(kept).toBeGreaterThan(contextLimit * 0.25 * 0.8)
+    expect(kept).toBeLessThanOrEqual(contextLimit * 0.25)
+    expect(tail.length).toBeGreaterThan(25)
     // And it is the *recent* end that survives.
     expect(tail.at(-1).content).toContain('turn 199')
   })
@@ -225,5 +225,26 @@ describe('the history a definition keeps', () => {
 
     const capped = await compactHistory(messages, { model: mockModel('S'), contextLimit: size, budget: 10 * size })
     expect(capped).not.toBe(messages)
+  })
+})
+
+describe('the history after a summary', () => {
+  const exchange = (n) => [
+    { role: 'user', content: `turn ${n}: ` + 'x'.repeat(4000) },
+    { role: 'assistant', content: `answer ${n}: ` + 'y'.repeat(4000) }
+  ]
+
+  it('keeps 24k word for word past the working set, and grows back for many turns before summarizing again', async () => {
+    const messages = Array.from({ length: 150 }, (_, n) => exchange(n)).flat()
+    expect(estimateTokens(messages)).toBeGreaterThan(256_000)
+    const contextLimit = 1_000_000
+
+    const compacted = await compactHistory(messages, { model: mockModel('Older turns.'), contextLimit })
+    expect(marked(compacted[0], COMPACTED)).toBe(true)
+    expect(estimateTokens(compacted.slice(1))).toBeLessThanOrEqual(24_000)
+    expect(compacted.at(-1).content).toContain('answer 149')
+
+    const grown = [...compacted, ...Array.from({ length: 50 }, (_, n) => exchange(150 + n)).flat()]
+    expect(await compactHistory(grown, { model: mockModel('Should not be called'), contextLimit })).toBe(grown)
   })
 })

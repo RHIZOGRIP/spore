@@ -61,7 +61,7 @@ if (!parsed.memory) fail(`this workspace keeps no long-term memory — add a mem
 const said = readSaidSoFar(ws).length
 const key = readModelKey(ws)
 const mo = parsed.memory.embedding
-  ? await createModelClient({ socketPath: process.env.SPORE_MODEL_SOCKET, modelIds: [parsed.memory.embedding], key })
+  ? await createModelClient({ socketPath: process.env.SPORE_MODEL_SOCKET, modelIds: [parsed.memory.embedding], key, workspace: ws })
   : null
 const hits = await openStore(ws, {
   ...parsed.memory,

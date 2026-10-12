@@ -16,7 +16,7 @@
  * is billed in full whoever stops it.
  */
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import { call, callEmbedding, coalesce } from 'mohdel/client'
 
@@ -34,8 +34,12 @@ const ask = (socketPath, key, method, path, body) => request(socketPath, { key, 
  * its ceiling a bound on the tree. A cell is measured against its own precursor's budget:
  * the difference between the tree's total and its own spend is its *parent's*. `precursor` names
  * the cell's on every call, so the tree's record can say what each precursor spent.
+ * `workspace` names the conversation to the provider, as mohdel's `identifier`, which an
+ * OpenAI call carries as `prompt_cache_key`: without one, calls that share a prefix are not
+ * routed to where it is cached.
  */
-export async function createModelClient ({ socketPath, modelIds = [], key, logger, tracksTree = false, precursor = null }) {
+export async function createModelClient ({ socketPath, modelIds = [], key, logger, tracksTree = false, precursor = null, workspace }) {
+  const identifier = createHash('sha256').update(workspace).digest('hex').slice(0, 32)
   const info = new Map()
   for (const modelId of modelIds) info.set(modelId, await ask(socketPath, key, 'POST', '/spore/info', { model: modelId }))
 
@@ -73,6 +77,7 @@ export async function createModelClient ({ socketPath, modelIds = [], key, logge
             callId: randomUUID(),
             authId: 'spore',
             model: modelId,
+            identifier,
             prompt,
             ...(tools?.length ? { tools } : {}),
             ...(traceparent ? { traceparent } : {})

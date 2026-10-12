@@ -34,7 +34,7 @@ const parentSpan = parseTraceparent(process.env.TRACEPARENT)
 // Which model runs behind that socket is the precursor's to say; a precursor that
 // names none inherits its parent's, which arrives as $MODEL from the spawning agent.
 const modelIds = [plan.precursor.model || process.env.MODEL].filter(Boolean)
-const mo = await createModelClient({ socketPath: process.env.SPORE_MODEL_SOCKET, modelIds, key: readModelKey(plan.ws), logger, precursor: plan.precursor.name })
+const mo = await createModelClient({ socketPath: process.env.SPORE_MODEL_SOCKET, modelIds, key: readModelKey(plan.ws), logger, precursor: plan.precursor.name, workspace: plan.ws })
 
 // cwd is the parent's workspace — `spawn` is invoked through its `wsexec`, which
 // runs there. A fan-out writes one of these lines per cell into a single log, so

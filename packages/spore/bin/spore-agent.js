@@ -48,6 +48,7 @@ try {
     socketPath: process.env.SPORE_MODEL_SOCKET,
     modelIds: [opened.model, ...(opened.memory?.embedding ? [opened.memory.embedding] : [])],
     key: readModelKey(opened.ws),
+    workspace: opened.ws,
     // This agent can spawn, so what its cells spend comes out of its allowance.
     tracksTree: true,
     logger

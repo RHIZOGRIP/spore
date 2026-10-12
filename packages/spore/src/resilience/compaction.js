@@ -28,8 +28,13 @@ import { silent } from '../observability/logger.js'
 const WORKING_SET_TOKENS = 256_000
 const RETENTION_CEILING_RATIO = 0.50
 
+// Well under the working set, so the summary and the cached prefix behind it hold for many turns.
+const KEPT_TOKENS = 24_000
+
 const retentionBudget = (contextLimit, workingSet) =>
   Math.min(workingSet ?? WORKING_SET_TOKENS, Math.floor(contextLimit * RETENTION_CEILING_RATIO))
+
+const keptOf = (budget) => Math.min(KEPT_TOKENS, Math.floor(budget / 2))
 
 // However little the budget pays for, the tail is never empty: a single enormous group
 // would otherwise leave the turn with a summary and nothing else.
@@ -66,7 +71,7 @@ export async function compactHistory (messages, { model, contextLimit, budget: w
 
   logger.debug({ estimated, budget }, '[compaction] history over budget — compacting')
 
-  const tailStart = findTailStart(messages, budget)
+  const tailStart = findTailStart(messages, keptOf(budget))
 
   if (tailStart <= 1) {
     const compacted = compactIfNeeded(messages, {
@@ -129,8 +134,7 @@ export async function compactHistory (messages, { model, contextLimit, budget: w
  * A turn-group starts at a user message or an assistant message with toolCalls.
  */
 /**
- * Where the verbatim tail begins: as many recent turn-groups as the retention budget
- * pays for.
+ * Where the verbatim tail begins: as many recent turn-groups as `budget` pays for.
  *
  * This was a count — `floor(budget / 30_000)`, capped at ten — which spent a token
  * budget through a guess about what a turn-group weighs. A group's weight is not
