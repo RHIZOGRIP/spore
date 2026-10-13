@@ -8,13 +8,18 @@ function zeroUsage () {
 }
 
 describe('accountUsage', () => {
+  it('returns everything the call sent, cached or not, which is what the history weighs', () => {
+    const sent = accountUsage({ inputTokens: 13_000, cacheReadInputTokens: 300_000, cacheWriteInputTokens: 500 }, { usage: zeroUsage(), emit: () => {}, modelId: 'm', elapsedMs: 1 })
+    expect(sent).toBe(313_500)
+  })
+
   it('accumulates tokens + cost and emits a usage event', () => {
     const usage = zeroUsage()
     const events = []
     const emit = (e, d) => events.push([e, d])
     const res = { inputTokens: 100, outputTokens: 20, thinkingTokens: 5, cacheWriteInputTokens: 3, cacheReadInputTokens: 2, cost: 0.01 }
     const inTok = accountUsage(res, { usage, emit, modelId: 'm/x', elapsedMs: 42 })
-    expect(inTok).toBe(100)
+    expect(inTok).toBe(105)
     expect(usage).toMatchObject({ input: 100, output: 20, thinking: 5, cacheWrite: 3, cacheRead: 2, cost: 0.01 })
     expect(events[0][0]).toBe('usage')
     expect(events[0][1]).toMatchObject({ model: 'm/x', input: 100, output: 20, cost: 0.01, elapsedMs: 42 })

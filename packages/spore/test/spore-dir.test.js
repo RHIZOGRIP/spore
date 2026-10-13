@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { acquireLock, appendEvents, appendTranscript, dataDir, definitionPath, lockPath, pruneTrail, readEvents, readLock, readTranscript, readTranscriptEntries, releaseLock, statePath, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
+import { acquireLock, appendEvents, appendTranscript, dataDir, definitionPath, lastSent, lockPath, pruneTrail, readEvents, readLock, readTranscript, readTranscriptEntries, releaseLock, statePath, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
 import { callRuns, writeCall } from '../src/core/call-record.js'
 import { compactionSummaryMessage, createCompactionEntry } from '../src/resilience/compaction.js'
 import { COMPACTED, WRAP, mark, marked } from '../src/core/marks.js'
@@ -120,6 +120,16 @@ describe('readTranscript', () => {
   it('offers no way to shorten the record', async () => {
     const dir = await import('../src/core/spore-dir.js')
     expect(dir.clearTranscript).toBeUndefined()
+  })
+})
+
+describe('lastSent', () => {
+  const usage = (runId, model, input, cacheRead, cacheWrite) => ({ v: 1, at: '2026-10-13T08:00:00.000Z', runId, event: 'usage', model, input, cacheRead, cacheWrite, output: 10 })
+
+  it('is what the provider counted for the last call, cached or not, and on which model', () => {
+    expect(lastSent(WS)).toBeNull()
+    appendEvents(WS, [usage('r1', 'm/a', 1000, 0, 0), { v: 1, at: '2026-10-13T08:00:01.000Z', runId: 'r1', event: 'round' }, usage('r2', 'm/b', 13_000, 300_000, 500)])
+    expect(lastSent(WS)).toEqual({ model: 'm/b', tokens: 313_500 })
   })
 })
 

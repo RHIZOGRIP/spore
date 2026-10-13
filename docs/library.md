@@ -210,8 +210,9 @@ Every spore the configuration points at: those directly under `home` and those n
 `workspaces`, one level further down with `homeSplit`. `where` lists the spores directly under
 that directory instead; `home` is then that
 directory, and `asked` is true. Each row of
-`workspaces` is `{ ws, from, writes, definitionError, …stateOf(ws) }`, with `bytes` when `disk` is
-true (a walk of the whole tree). `missing` is `[{ path, why }]` for listed paths that are gone or
+`workspaces` is `{ ws, from, writes, definitionError, historyOver, …stateOf(ws) }`, with `bytes`
+when `disk` is true (a walk of the whole tree). `historyOver` is true when the last turn carried
+more history than its bound, by more than a tenth. `missing` is `[{ path, why }]` for listed paths that are gone or
 not a spore. `paused` is `paused()`, `spend` is `spendSoFar()`. Throws the `CONFIG_*` refusals of
 `readConfig`.
 
@@ -226,10 +227,13 @@ One spore in detail, read from its files: `ws`, the `stateOf` fields, `name`, `d
 `extend`, `turnLimits` (the running turn's limits, as `{ startedAt, limits }`), `memory`, `reads`,
 `writes`, `messages` (transcript length), `waiting` (unread messages, a count), `paused`, `held`,
 `cells` (of the last 24 hours), `jobs` (`{ grant, running }`), `endedAt`, `produced`,
-`producedMore`, `workUnits`, `workUnitsOwn`, `workUnitsChildren`, `precursors`, `plugins`,
+`producedMore`, `history`, `workUnits`, `workUnitsOwn`, `workUnitsChildren`, `precursors`, `plugins`,
 `differs` (root documents that differ from the installed ones), `disk`, `schedules` and
-`scheduleBound` (the turns and nominal cost the schedule grant allows per day). Throws
-`NOT_A_WORKSPACE`, `DEFINITION_INVALID`.
+`scheduleBound` (the turns and nominal cost the schedule grant allows per day). `history` is the
+last turn that measured one, `{ turnNo, sent, bound, over, rounds, cacheShare }`: the history its
+first call sent as the provider counted it, the bound it was held to, whether it went over it by
+more than a tenth, and the share of everything the turn sent that the cache served; null before
+any. Throws `NOT_A_WORKSPACE`, `DEFINITION_INVALID`.
 
 ### `log`
 
@@ -1267,7 +1271,7 @@ The event schema version every event carries as `v`: `1`
 
 Every event name the log holds: `round`, `tool_start`, `tool_end`, `tool_block`, `wrap`,
 `interject`, `heartbeat`, `stream`, `usage`, `complete`, `produced`, `recall`, `compaction`,
-`empty_completion`, `recovery` and `turn_end`.
+`compaction_failed`, `estimate_drift`, `empty_completion`, `recovery` and `turn_end`.
 
 ### `PROMISED`
 

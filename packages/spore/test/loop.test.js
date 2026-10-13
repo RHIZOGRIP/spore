@@ -500,6 +500,27 @@ describe('tool loop', () => {
     expect(res.usage.thinking).toBe(5)
   })
 
+  it('says once a turn when the provider counted far more than the estimate, cached tokens included', async () => {
+    const m = mockModel([
+      { status: 'tool_use', output: '', toolCalls: [{ id: 'c0', name: 'echo', arguments: { text: 'x' } }], inputTokens: 1_000, cacheReadInputTokens: 300_000 },
+      { status: 'completed', output: 'done', inputTokens: 1_000, cacheReadInputTokens: 300_000 }
+    ])
+    const seen = []
+    const emitter = { emit: (event, data) => { if (event === 'estimate_drift') seen.push(data) }, on () {}, has: () => false }
+    await loop({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), emitter })
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ round: 0, sent: 301_000 })
+    expect(seen[0].estimated).toBeLessThan(2_000)
+  })
+
+  it('says nothing when the estimate holds', async () => {
+    const m = mockModel([{ status: 'completed', output: 'done', inputTokens: 300 }])
+    const seen = []
+    const emitter = { emit: (event) => { if (event === 'estimate_drift') seen.push(event) }, on () {}, has: () => false }
+    await loop({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), emitter })
+    expect(seen).toEqual([])
+  })
+
   it('returns zero usage when model omits token fields', async () => {
     const m = mockModel([completed('hi')])
     const res = await loop({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })

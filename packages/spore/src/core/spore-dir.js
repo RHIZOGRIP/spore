@@ -268,6 +268,17 @@ export function readEvents (ws, { after = 0, event = null, runIds = null, limit 
     .all(...params, limit).map(eventRecord))
 }
 
+/**
+ * What the provider counted for the last call this workspace made, cached or not, and on which
+ * model; null before any. The size of the history as it was last sent, which an estimate from
+ * the transcript is not: it cannot see what a provider's opaque parts weigh.
+ */
+export function lastSent (ws) {
+  const [usage] = reading(ws, [], db => db.prepare("SELECT * FROM events WHERE event = 'usage' ORDER BY seq DESC LIMIT 1").all().map(eventRecord))
+  if (!usage) return null
+  return { model: usage.model, tokens: usage.input + usage.cacheRead + usage.cacheWrite }
+}
+
 /** One call's record, through the turn's writer or from the host side; `call-record.js` shapes it. */
 export function recordCall (target, call) {
   writerOf(target).request('call.record', { call })

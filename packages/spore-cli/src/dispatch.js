@@ -42,7 +42,8 @@ const line = (row, under) => {
   const where = under && row.ws.startsWith(under) ? row.ws.slice(under.length + 1) || '.' : row.ws
   const spend = row.treeUsd ? `$${row.treeUsd.toFixed(4)}` : ''
   const works = row.definitionError ? '  (its spore.cmk does not parse)' : row.writes.map(path => `  → ${tilde(path)}`).join('')
-  return `  ${stateWord(row).padEnd(STATE_WIDTH)} ${String(row.lastTurnNo).padStart(4)} turns ${spend.padStart(9)} ${size(row.bytes).padStart(8)}  ${where}${works}`
+  const over = row.historyOver ? '  (history over its bound)' : ''
+  return `  ${stateWord(row).padEnd(STATE_WIDTH)} ${String(row.lastTurnNo).padStart(4)} turns ${spend.padStart(9)} ${size(row.bytes).padStart(8)}  ${where}${works}${over}`
 }
 
 const block = (title, rows, under) => {
@@ -171,6 +172,7 @@ function renderShow (result) {
     for (const [i, job] of result.jobs.running.entries()) line(i ? '' : 'jobs', runningJob(job))
   }
   line('turns', `${result.lastTurnNo}${result.last?.stopReason ? `  last ${result.last.stopReason}` : ''}${result.endedAt ? `  ${result.endedAt}` : ''}`)
+  if (result.history) line('history', historyLine(result.history))
   line('spend', unmetered(result.billing) ? `not metered · ${result.billing.label}` : `$${result.treeUsd.toFixed(6)}`)
   line('work', `${result.workUnits} units  (${result.workUnitsOwn} own rounds, ${result.workUnitsChildren} in cells)`)
   if (result.produced.length) {
@@ -519,6 +521,12 @@ const EIGHTHS = ' ▏▎▍▌▋▊▉'
 
 const dollars = (micros) => `$${(micros / 1e6).toFixed(4)}`
 const count = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n))
+
+function historyLine (history) {
+  const cache = history.cacheShare === null ? '' : ` · cache ${Math.round(history.cacheShare * 100)}% over ${plural(history.rounds ?? 0, 'round')}`
+  const over = history.over ? ' — OVER ITS BOUND, it was not summarized' : ''
+  return `${count(history.sent)} / ${count(history.bound)} at turn ${history.turnNo}${cache}${over}`
+}
 const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`
 
 const bar = (micros, most) => {

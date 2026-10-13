@@ -719,6 +719,18 @@ describe('the read verbs', () => {
     expect(result.workspaces).toEqual([])
   })
 
+  it('says how much history the last measured turn carried against its bound, and how much of it the cache served', () => {
+    setKey('home', resolve(DIR, 'home'), CONFIG)
+    const over = { stopReason: 'answer', concluded: true, rounds: 9, historySent: 313_000, historyBound: 256_000, inputTokens: 2_000_000, cacheReadTokens: 500_000, cacheWriteTokens: 0 }
+    workspace(resolve(DIR, 'home', 'test'), { turns: [over] })
+    workspace(resolve(DIR, 'home', 'held'), { turns: [{ ...over, historySent: 200_000 }, { stopReason: 'error', concluded: false }] })
+
+    expect(show({ ws: 'test', configFile: CONFIG }).history).toEqual({ turnNo: 1, sent: 313_000, bound: 256_000, over: true, rounds: 9, cacheShare: 0.2 })
+    expect(show({ ws: 'held', configFile: CONFIG }).history).toMatchObject({ turnNo: 1, sent: 200_000, over: false })
+    const rows = Object.fromEntries(list({ configFile: CONFIG }).workspaces.map(row => [row.ws.split('/').at(-1), row.historyOver]))
+    expect(rows).toEqual({ test: true, held: false })
+  })
+
   it('names a spore the way send does, so a bare name is the one in home', () => {
     setKey('home', resolve(DIR, 'home'), CONFIG)
     const ws = workspace(resolve(DIR, 'home', 'test'))

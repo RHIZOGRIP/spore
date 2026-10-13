@@ -510,7 +510,8 @@ history: 64000
 **`spore.cmk` only.** A whole number of tokens: how much of the earlier turns each round re-sends
 word for word. Past it, all but the latest 24k tokens (or half of `history`, when that is less) are
 summarized into a compaction entry, and the transcript keeps them all; the history then grows back
-for many turns before it is summarized again. Absent, the runtime carries up to 256k tokens. Either
+for many turns before it is summarized again. The history is measured by what the provider counted
+for the last call, cached tokens included. Absent, the runtime carries up to 256k tokens. Either
 way it is capped at half the model's context window ([Retention](../ARCHITECTURE.md#retention)).
 
 ## Looking

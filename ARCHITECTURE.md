@@ -259,11 +259,24 @@ the earlier turns it carries word for word, so that working set is paid for on e
 spore woken often by small events re-buys it every time. Past it, the oldest turns are summarized
 into a compaction entry and the transcript keeps them all. The working set is the root
 definition's `history` in tokens, or the runtime's 256k tokens when it is absent, capped either
-way at half the model's window so a turn's own work fits (`src/resilience/compaction.js`). Past it,
+way at half the model's window so a turn's own work fits (`src/resilience/compaction.js`). The
+history is weighed by what the provider counted for the last call on the same model, cached tokens
+included (`lastSent`), or by the estimate from the transcript when that is more; the estimate
+alone cannot see what a provider's opaque parts, such as encrypted reasoning, weigh, so it
+counts them by their size. Past it,
 the summary takes all but the latest 24k tokens, or half the working set when that is less: cut
 only to just under it, every later turn would summarize again, and the start of the history — the
 prefix a provider caches — would change on every turn. Cut this far, it holds until the history
 has grown back. A precursor may not declare it.
+
+A bound checked against an estimate holds only as long as the estimate does, so nothing about it
+is left silent. A history over its bound that is not summarized — the summary failed or came back
+empty, or nothing could be cut — is a `compaction_failed` event and a warning, with why. Every
+turn of the spore records `historySent`, what its first call sent as the provider counted it, and
+`historyBound`, the bound it was held to; `spore show` prints the last of them with the share the
+cache served, and `spore ls` marks a spore whose last turn went more than a tenth past its bound.
+The loop compares its estimate with what the provider counted after each call, and says so once a
+turn, `estimate_drift`, when the count is more than a quarter higher.
 
 The trail never holds a copy of a workspace file beyond the short text the inline rule allows —
 only paths and hashes. Work product lives in the workspace, the record in `calls`, and they have

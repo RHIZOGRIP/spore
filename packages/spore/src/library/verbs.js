@@ -21,6 +21,7 @@ import { openWorkspace } from '../core/workspace.js'
 import { grantedPathContaining, writesRefusal } from '../isolation/sandbox.js'
 import { parseDefinition, parseFrontmatter } from '../delegation/definition.js'
 import { RUNNING, stateOf, stop } from '../core/state.js'
+import { historyOver } from '../resilience/compaction.js'
 import { paused, pauseSpores, spendSoFar, unpauseSpores } from '../core/admission.js'
 import { dropSchedule, survey, writeSchedule } from '../core/schedule.js'
 import { DIMENSIONS, extendTurn, limitText, wrapTurn } from '../core/limits.js'
@@ -491,6 +492,23 @@ function worksIn (ws) {
   return parsed.error ? { writes: [], definitionError: parsed.error } : { writes: parsed.writes.map(w => w.path), definitionError: null }
 }
 
+/**
+ * The history a spore's last measured turn carried, as the provider counted its first call,
+ * against the bound it was held to, and how much of what the turn sent was read from the cache.
+ */
+function historyOf (turn) {
+  if (!turn) return null
+  const sent = (turn.inputTokens ?? 0) + (turn.cacheReadTokens ?? 0) + (turn.cacheWriteTokens ?? 0)
+  return {
+    turnNo: turn.turnNo,
+    sent: turn.historySent,
+    bound: turn.historyBound,
+    over: historyOver(turn.historySent, turn.historyBound),
+    rounds: turn.rounds,
+    cacheShare: sent ? (turn.cacheReadTokens ?? 0) / sent : null
+  }
+}
+
 export function list ({ where, disk = false, configFile = CONFIG_FILE } = {}) {
   const config = where
     ? { home: resolve(where), workspaces: [], file: CONFIG_FILE, exists: true }
@@ -501,7 +519,8 @@ export function list ({ where, disk = false, configFile = CONFIG_FILE } = {}) {
   const rows = (from, paths) => paths.flatMap(ws => {
     if (seen.has(ws)) return []
     seen.add(ws)
-    return [{ ws, from, ...stateOf(ws), ...worksIn(ws), ...(disk ? { bytes: diskUsage(ws).total } : {}) }]
+    const state = stateOf(ws)
+    return [{ ws, from, ...state, historyOver: historyOver(state.last?.historySent, state.last?.historyBound), ...worksIn(ws), ...(disk ? { bytes: diskUsage(ws).total } : {}) }]
   })
 
   const home = config.home && existsSync(config.home) ? rows(config.home, sporesInHome(config.home, config.homeSplit)) : []
@@ -580,6 +599,7 @@ export function show ({ ws, configFile = CONFIG_FILE } = {}) {
       running: jobsIn(path, { running: true }).map(job => ({ name: job.name, run: job.run, startedAt: job.startedAt, wallMs: job.wallMs, progress: progressOf(path, job) }))
     },
     endedAt: turns.at(-1)?.endedAt ?? null,
+    history: historyOf(turns.findLast(turn => turn.historySent != null)),
     produced: turns.at(-1)?.produced ?? [],
     producedMore: turns.at(-1)?.producedMore ?? 0,
     workUnits: sum('workUnits'),

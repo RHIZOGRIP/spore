@@ -10,7 +10,7 @@
 
 import minimist from 'minimist'
 
-import { openChannel, readModelKey, readTranscript } from '../src/core/spore-dir.js'
+import { lastSent, openChannel, readModelKey, readTranscript } from '../src/core/spore-dir.js'
 import { buildContinuation } from '../src/core/continuation.js'
 import { readFork } from '../src/core/fork.js'
 import { PLUGIN_READS } from '../src/core/plugins.js'
@@ -82,6 +82,7 @@ try {
     // operator's alone.
     schedules: opened.schedules,
     historyBudget: opened.history,
+    lastSent: lastSent(opened.ws),
     dated: true,
     sandbox: !argv.unsafe,
     initialMessages: readTranscript(opened.ws),

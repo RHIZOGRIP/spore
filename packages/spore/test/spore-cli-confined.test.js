@@ -19,7 +19,7 @@ import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { outcome } from '../src/library/watch.js'
 import { takeSlot } from '../src/core/admission.js'
 import { containCheck } from '../src/core/command.js'
-import { appendInbox, readEvents, readLock, readTranscript, readTurns } from '../src/core/spore-dir.js'
+import { appendInbox, readEvents, readLock, readTranscript, readTranscriptEntries, readTurns } from '../src/core/spore-dir.js'
 import { callRuns, readCalls } from '../src/core/call-record.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
@@ -452,5 +452,37 @@ describe('a confined turn', () => {
     expect(imageParts(mo.seen[1])).toHaveLength(0)
     const said = mo.seen[1].map(m => JSON.stringify(m.content)).join('\n')
     expect(said).toMatch(/not granted images/)
+  })
+})
+
+// The history is weighed by what the provider counted, never by the estimate alone: a transcript
+// that reads light can be sent heavy (encrypted reasoning, a provider's own parts), and a bound
+// checked against the estimate then never holds. Here the transcript reads under `history`
+// while the provider reports far over it, nearly all of it cached.
+describe('the history a spore carries', () => {
+  it('is summarized at the next turn when the provider counted it past its bound, however light it reads', async () => {
+    writeFileSync(resolve(ws, 'spore.cmk'), readFileSync(resolve(ws, 'spore.cmk'), 'utf8').replace(/^---\n/, '---\nhistory: 8000\n'))
+    const said = (input) => JSON.stringify(input.at(-1))
+    await start(async (input) => {
+      if (JSON.stringify(input).includes('Summarize the following conversation history')) return answers('Earlier: a long first answer.')
+      if (said(input).includes('gamma-turn')) return { ...answers('three'), inputTokens: 900 }
+      if (said(input).includes('beta-turn')) return { ...answers('two'), inputTokens: 1_000, cacheReadInputTokens: 8_000 }
+      return answers('one ' + 'y'.repeat(20_000))
+    })
+
+    for (const message of ['alpha-turn', 'beta-turn']) expect((await spore(message)).code).toBe(0)
+    expect(readTranscriptEntries(ws).some(entry => entry.kind === 'compaction')).toBe(false)
+
+    const third = await spore('gamma-turn')
+    expect(third.code, third.stderr).toBe(0)
+    expect(readTranscriptEntries(ws).filter(entry => entry.kind === 'compaction')).toHaveLength(1)
+    const sent = JSON.stringify(mo.seen.at(-1))
+    expect(sent).toContain('Earlier: a long first answer.')
+    expect(sent).not.toContain('y'.repeat(100))
+
+    const [, second, last] = readTurns(ws)
+    expect(second).toMatchObject({ historySent: 9_000, historyBound: 8_000 })
+    expect(last).toMatchObject({ historySent: 900, historyBound: 8_000 })
+    expect(readEvents(ws, { event: 'compaction' })).toHaveLength(1)
   })
 })

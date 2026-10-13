@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compactHistory } from '../src/resilience/compaction.js'
+import { compactHistory, historyOver } from '../src/resilience/compaction.js'
 import { COMPACTED, mark, marked } from '../src/core/marks.js'
 import { createSessionMemory } from '../src/resilience/session-memory.js'
 import { estimateTokens } from '../src/resilience/context-guard.js'
@@ -188,11 +188,11 @@ describe('compaction', () => {
     expect(result).toBe(messages)
   })
 
-  it('returns original when no contextLimit provided', async () => {
+  it('holds the working set alone when the model\'s window is not known', async () => {
     const messages = makeMessages(10)
     const model = mockModel('summary')
-    const result = await compactHistory(messages, { model })
-    expect(result).toBe(messages)
+    expect(await compactHistory(messages, { model })).toBe(messages)
+    expect(await compactHistory(messages, { model, budget: Math.floor(estimateTokens(messages) / 4) })).not.toBe(messages)
   })
 
   it('extracts session memory from head before summarization', async () => {
@@ -225,6 +225,56 @@ describe('the history a definition keeps', () => {
 
     const capped = await compactHistory(messages, { model: mockModel('S'), contextLimit: size, budget: 10 * size })
     expect(capped).not.toBe(messages)
+  })
+})
+
+describe('the history as the provider counted it', () => {
+  it('is summarized when what was last sent is past the budget, however light the transcript reads', async () => {
+    const messages = makeMessages(20)
+    const size = estimateTokens(messages)
+    const contextLimit = 100 * size
+    const budget = Math.floor(1.5 * size)
+
+    expect(await compactHistory(messages, { model: mockModel('S'), contextLimit, budget, sent: size })).toBe(messages)
+    const compacted = await compactHistory(messages, { model: mockModel('S'), contextLimit, budget, sent: 3 * size })
+    expect(compacted).not.toBe(messages)
+    expect(marked(compacted[0], COMPACTED)).toBe(true)
+  })
+})
+
+describe('a history over its budget that is not summarized', () => {
+  const over = { contextLimit: 1000 }
+  const failing = async (model, messages = makeMessages(10)) => {
+    const failures = []
+    const result = await compactHistory(messages, { model, ...over, onFailed: (failure) => failures.push(failure) })
+    return { result, messages, failures }
+  }
+
+  it('says so, and why, whatever stopped it', async () => {
+    const threw = await failing({ answer: async () => { throw new Error('provider error 400') } })
+    expect(threw.result).toBe(threw.messages)
+    expect(threw.failures).toEqual([expect.objectContaining({ why: 'summarizing failed: provider error 400', budget: 500 })])
+
+    const empty = await failing(mockModel(''))
+    expect(empty.failures).toEqual([expect.objectContaining({ why: 'the summary came back empty' })])
+
+    const whole = await failing(mockModel('S'), [{ role: 'user', content: 'x'.repeat(5000) }, { role: 'assistant', content: 'y'.repeat(5000) }])
+    expect(whole.failures).toEqual([expect.objectContaining({ why: expect.stringContaining('the whole history') })])
+  })
+
+  it('says nothing of a turn stopped while it summarized', async () => {
+    const stopped = new AbortController()
+    stopped.abort()
+    const failures = []
+    await compactHistory(makeMessages(10), { model: { answer: async () => { throw new Error('aborted') } }, ...over, signal: stopped.signal, onFailed: (f) => failures.push(f) })
+    expect(failures).toEqual([])
+  })
+
+  it('is over its bound only past a tenth more, since one turn may start a little past it', () => {
+    expect(historyOver(270_000, 256_000)).toBe(false)
+    expect(historyOver(313_000, 256_000)).toBe(true)
+    expect(historyOver(null, 256_000)).toBe(false)
+    expect(historyOver(313_000, null)).toBe(false)
   })
 })
 

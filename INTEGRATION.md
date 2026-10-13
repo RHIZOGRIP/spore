@@ -504,6 +504,8 @@ All but `turn_end` are written by the agent's loop. `turn_end` is written by the
 | `produced` | `files`, each `{ path, bytes, mtime, mime, delivered }`, and `more` |
 | `recall` | `hits`, `scores`, or `failed` |
 | `compaction` | `summaryChars`, `firstKeptIndex` |
+| `compaction_failed` | `why`, `estimated`, `sent`, `budget`: the history was over its bound and was not summarized |
+| `estimate_drift` | `round`, `model`, `estimated`, `sent`: once a turn, the provider counted far more than the estimate |
 | `empty_completion`, `recovery` | what the loop did about a bad or failed model answer |
 | `turn_end` | `turnNo`, `stopReason`, `concluded`, `error`, `rounds`, `ownUsd`, `treeUsd`, `workUnits`, `settled`, `inboxFrom`, `inboxTo` |
 

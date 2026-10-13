@@ -31,8 +31,17 @@ const RETENTION_CEILING_RATIO = 0.50
 // Well under the working set, so the summary and the cached prefix behind it hold for many turns.
 const KEPT_TOKENS = 24_000
 
-const retentionBudget = (contextLimit, workingSet) =>
-  Math.min(workingSet ?? WORKING_SET_TOKENS, Math.floor(contextLimit * RETENTION_CEILING_RATIO))
+/** The history a turn may carry word for word: the working set, capped at half a known window. */
+export const historyBound = (contextLimit, workingSet) => contextLimit
+  ? Math.min(workingSet ?? WORKING_SET_TOKENS, Math.floor(contextLimit * RETENTION_CEILING_RATIO))
+  : workingSet ?? WORKING_SET_TOKENS
+
+/**
+ * Whether a turn carried more history than its bound. One turn may start a little past it — the
+ * message that opened it, or the last answer before it, is not summarized until the next — so
+ * only past a tenth more is it a bound that did not hold.
+ */
+export const historyOver = (sent, bound) => sent != null && bound != null && sent > bound + bound / 10
 
 const keptOf = (budget) => Math.min(KEPT_TOKENS, Math.floor(budget / 2))
 
@@ -58,18 +67,25 @@ Be brief but complete. Use bullet points.`
  * @param {object} opts.model — mohdel model proxy (for summarization call)
  * @param {number} opts.contextLimit — model's context token limit
  * @param {number} [opts.budget] — tokens kept word for word, from the definition's `history:`
+ * @param {number} [opts.sent] — what the provider counted for the last call on this history, when known
+ * @param {Function} [opts.onFailed] — told why a history over its budget was not summarized
  * @param {object} [opts.logger]
  * @returns {Array} compacted messages (may be same array if no compaction needed)
  */
-export async function compactHistory (messages, { model, contextLimit, budget: workingSet, sessionMemory, onCompacted, onCost, signal, logger = silent } = {}) {
-  if (!contextLimit || !model) return messages
+export async function compactHistory (messages, { model, contextLimit, budget: workingSet, sent = null, sessionMemory, onCompacted, onFailed, onCost, signal, logger = silent } = {}) {
+  if (!model) return messages
 
-  const budget = retentionBudget(contextLimit, workingSet)
+  const budget = historyBound(contextLimit, workingSet)
   const estimated = estimateTokens(messages)
 
-  if (estimated <= budget) return messages
+  if (Math.max(estimated, sent ?? 0) <= budget) return messages
 
-  logger.debug({ estimated, budget }, '[compaction] history over budget — compacting')
+  logger.debug({ estimated, sent, budget }, '[compaction] history over budget — compacting')
+  const failed = (why) => {
+    logger.warn({ why, estimated, sent, budget }, '[compaction] history over budget and not summarized')
+    onFailed?.({ why, estimated, sent, budget })
+    return messages
+  }
 
   const tailStart = findTailStart(messages, keptOf(budget))
 
@@ -81,17 +97,14 @@ export async function compactHistory (messages, { model, contextLimit, budget: w
       logger
     })
     logger.debug({ compacted, estimated: estimateTokens(messages), budget }, '[compaction] tail-only path — stripped tool_results')
-    return messages
+    return compacted ? messages : failed('the latest two exchanges are the whole history, and nothing in them could be stripped')
   }
 
   const head = messages.slice(0, tailStart)
   const tail = messages.slice(tailStart)
 
   // Check if head is already just a compaction summary
-  if (head.length === 1 && marked(head[0], COMPACTED)) {
-    logger.debug('[compaction] head is already a compaction summary')
-    return messages
-  }
+  if (head.length === 1 && marked(head[0], COMPACTED)) return failed('only a summary is before the latest two exchanges')
 
   // Extract session memory from head before summarization
   if (sessionMemory) sessionMemory.extract(head)
@@ -113,14 +126,11 @@ export async function compactHistory (messages, { model, contextLimit, budget: w
     summary = res.output
     onCost?.(res?.cost || 0)
   } catch (e) {
-    logger.debug({ err: e }, '[compaction] summarization failed — keeping full history')
-    return messages
+    if (signal?.aborted) return messages
+    return failed(`summarizing failed: ${e.message}`)
   }
 
-  if (!summary) {
-    logger.debug('[compaction] empty summary — keeping full history')
-    return messages
-  }
+  if (!summary) return failed('the summary came back empty')
 
   logger.debug({ messages: head.length, summaryChars: summary.length }, '[compaction] compacted')
 

@@ -42,7 +42,7 @@ export function statusParts ({ shown, live, attention, now }) {
   if (attention.length) parts.push(`${attentionText(attention)} — Ctrl+P`)
   const limited = Boolean(shown.turnLimits) && !shown.draining
   if (limited) parts.push(limitsText(shown.turnLimits, { rounds: live.rounds, cost: unmetered(shown) ? null : live.cost, now }))
-  if (live.input !== null) parts.push(`${thousands(live.input)} in`)
+  if (live.input !== null) parts.push(`${thousands(live.input)} in${live.cached ? ` (${thousands(live.cached)} cached)` : ''}`)
   if (!limited || unmetered(shown)) parts.push(spendText(shown))
   parts.push(shown.model)
   return parts

@@ -1,6 +1,6 @@
 import { sanitizeTranscript, computeBudget } from '../resilience/transcript.js'
 import { createLoopGuard } from '../resilience/loop-guard.js'
-import { compactIfNeeded } from '../resilience/context-guard.js'
+import { compactIfNeeded, estimateTokens } from '../resilience/context-guard.js'
 import { markConversationForCaching } from './prompt-cache.js'
 import { REFUSED, WRAP, mark, marked } from './marks.js'
 import { refusedResult } from './refusal.js'
@@ -41,6 +41,12 @@ const LIMIT_TEXT = {
 }
 
 const HEARTBEAT_INTERVAL_MS = 10_000
+
+// Every bound on what a turn carries is checked against an estimate before the provider has
+// counted anything, so an estimate that reads well under what was counted is a bound that does
+// not hold. Past a quarter under, and by more than a few thousand tokens, it is said once a turn.
+const DRIFT_RATIO = 1.25
+const DRIFT_FLOOR = 2_000
 
 /**
  * Core tool loop — calls model, executes tools, repeats until done.
@@ -93,6 +99,7 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, lim
   // different context window picks up the new figures on the next round.
   const resilientModel = withRecovery(modelList, { messages, sessionMemory, logger, emitter, signal })
   let lastInputTokens = 0
+  let drifted = false
   const emptyState = { retries: 0 }
   const emit = (event, data) => emitter.emit(event, data)
   const startedAt = Date.now()
@@ -248,6 +255,14 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, lim
     // Usage accounting + per-call `usage` event — shared with run-turn.js so
     // the token/cost math and event shape can't drift between the two engines.
     lastInputTokens = accountUsage(res, { usage, emit, modelId: model?.id || 'unknown', elapsedMs })
+    if (!drifted) {
+      const estimated = estimateTokens([systemMessage, ...messages, { role: 'system', content: JSON.stringify(tools ?? []) }])
+      if (lastInputTokens > estimated * DRIFT_RATIO && lastInputTokens - estimated > DRIFT_FLOOR) {
+        drifted = true
+        logger.warn({ round: i, estimated, sent: lastInputTokens, model: model?.id }, '[loop] the provider counted far more than the estimate — bounds on the history read low')
+        emitter.emit('estimate_drift', { round: i, model: model?.id || 'unknown', estimated, sent: lastInputTokens })
+      }
+    }
     if (ledger) ledger.own = usage.cost
 
     if (res.status === 'incomplete') {

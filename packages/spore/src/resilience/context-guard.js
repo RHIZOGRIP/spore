@@ -27,14 +27,19 @@ const COMPACT_MARKER = '[compacted — re-read if needed]'
 const PROTECT_TAIL = 6 // never compact the last N messages
 
 /**
- * Estimate token count for a messages array.
+ * Estimate token count for a messages array. A part the estimate cannot read — encrypted
+ * reasoning, a provider's own item — is counted by its serialized size: over rather than
+ * under, for the reason images are.
  */
 export function estimateTokens (messages) {
   let chars = 0
   for (const msg of messages) {
     chars += textOf(msg).length
     if (Array.isArray(msg.content)) {
-      chars += msg.content.filter(p => p?.type === 'image').length * CHARS_PER_IMAGE
+      for (const part of msg.content) {
+        if (part?.type === 'image') chars += CHARS_PER_IMAGE
+        else if (part?.type !== 'text') chars += JSON.stringify(part).length
+      }
     }
     if (msg.toolCalls) {
       for (const tc of msg.toolCalls) {

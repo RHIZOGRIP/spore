@@ -17,7 +17,7 @@ import { createLedger, micros, totalSpend, workUnits } from '../infra/ledger.js'
 import { openStore } from '../memory/store.js'
 import { recallBlock } from '../memory/recall.js'
 import { maxResultSizeForContext } from '../resilience/transcript.js'
-import { compactHistory } from '../resilience/compaction.js'
+import { compactHistory, historyBound, historyOver } from '../resilience/compaction.js'
 import { createSessionMemory } from '../resilience/session-memory.js'
 import { makeTools, recordRefusals } from '../tools/make-tools.js'
 import { loop } from './loop.js'
@@ -74,6 +74,8 @@ export async function runSpore ({
   schedules = null,
   // `history:` from the root definition: tokens of earlier turns carried word for word.
   historyBudget = null,
+  // `lastSent(ws)`: what the provider counted for the call before this turn, and on which model.
+  lastSent = null,
   // A root turn is told when it started; a cell's prompt was written by a parent that knew.
   dated = false,
   workspace,
@@ -215,6 +217,8 @@ export async function runSpore ({
   const models = modelIds.map(id => mo.use(id))
 
   const contextLimit = effectiveContextLimit(models[0].info?.())
+  // Only the spore carries a history; a cell is handed its prompt and used once.
+  const carried = prompt === undefined ? historyBound(contextLimit, historyBudget) : null
   const maxOutput = maxResultSizeForContext(contextLimit)
 
   // Whoever keeps the books says so. A brokered client reports what the host has
@@ -229,6 +233,10 @@ export async function runSpore ({
   const own = createEmitter()
   const eventLog = attachEventLog(own, { state, runId: trailRunId, logger })
   own.on('round', ({ index }) => { trail.round = index + 1 })
+  // What the provider counted for the turn's first call is the history it carried, measured
+  // rather than estimated: what the turn record holds against the bound.
+  let historySent = null
+  if (carried !== null) own.on('usage', ({ input, cacheRead, cacheWrite }) => { historySent ??= input + cacheRead + cacheWrite })
   if (emitter) own.on('*', (type, data) => emitter.emit(type, data))
   const events = {
     emit: own.emit,
@@ -332,6 +340,7 @@ export async function runSpore ({
       model: models[0],
       contextLimit,
       budget: historyBudget,
+      sent: lastSent !== null && lastSent.model === models[0].id ? lastSent.tokens : null,
       sessionMemory,
       signal: wallStop.signal,
       onCost: (cost) => { setupCost += cost },
@@ -339,6 +348,7 @@ export async function runSpore ({
         appendCompaction(state, entry)
         events.emit('compaction', { summaryChars: entry.summary.length, firstKeptIndex: entry.firstKeptIndex })
       },
+      onFailed: (failure) => events.emit('compaction_failed', failure),
       logger
     })
   }
@@ -441,6 +451,7 @@ export async function runSpore ({
     // What the turn left behind, read from the islands rather than from the trail: a call
     // records the streams it redirected, never what a program wrote while it ran, and a
     // rendered report is exactly that case.
+    if (historyOver(historySent, carried)) logger.warn({ sent: historySent, bound: carried }, '[spore] this turn carried more history than its bound')
     const { produced, more: producedMore, dataBytes } = producedIn(WS, turnStartedAt)
     events.emit('produced', { files: produced, more: producedMore })
 
@@ -480,6 +491,8 @@ export async function runSpore ({
       produced,
       ...(producedMore ? { producedMore } : {}),
       dataBytes,
+      historySent,
+      historyBound: carried,
       inputTokens: result.usage?.input || 0,
       outputTokens: result.usage?.output || 0,
       thinkingTokens: result.usage?.thinking || 0,
@@ -543,7 +556,9 @@ export async function runSpore ({
       // A turn that died still made whatever it made, and that is most of what the next
       // one has to work from.
       produced: left.produced,
-      dataBytes: left.dataBytes
+      dataBytes: left.dataBytes,
+      historySent,
+      historyBound: carried
     })
     endSpanError(sporeDispatchSpan, err)
     throw err

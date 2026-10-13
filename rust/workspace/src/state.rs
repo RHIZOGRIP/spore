@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -110,6 +110,8 @@ CREATE TABLE t_turns (
   byPrecursor        TEXT,
   replyDefault       TEXT,
   dataBytes          INTEGER,
+  historySent        INTEGER,
+  historyBound       INTEGER,
   CHECK ((state = 'final') = (turnNo IS NOT NULL))
 );
 
@@ -173,7 +175,7 @@ CREATE VIEW turns AS
          workUnits, workUnitsOwn, workUnitsChildren,
          inputTokens, outputTokens, thinkingTokens, cacheWriteTokens, cacheReadTokens,
          inboxFrom, inboxTo, cut, settled, produced, producedMore, recall, traceparent, model,
-         byPrecursor, dataBytes
+         byPrecursor, dataBytes, historySent, historyBound
     FROM t_turns
    WHERE state = 'final';
 
@@ -275,7 +277,7 @@ CREATE VIEW outbox AS
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 2] = [
+const MIGRATIONS: [(i64, &str); 3] = [
     (
         1,
         r#"
@@ -333,6 +335,25 @@ CREATE VIEW cells AS
   SELECT cellNo, at, precursor, origin, ref, cellWs, answer, error,
          costMicros, costMicros / 1e6 AS costUsd, durationMs, afterTurn, dataBytes, changed
     FROM t_cells;
+"#,
+    ),
+    (
+        3,
+        r#"
+ALTER TABLE t_turns ADD COLUMN historySent INTEGER;
+ALTER TABLE t_turns ADD COLUMN historyBound INTEGER;
+
+DROP VIEW turns;
+CREATE VIEW turns AS
+  SELECT turnNo, turnId, runId, startedAt, endedAt, stopReason, concluded, because, output,
+         error, detail, rounds,
+         ownMicros, ownMicros / 1e6 AS ownUsd, treeMicros, treeMicros / 1e6 AS treeUsd,
+         workUnits, workUnitsOwn, workUnitsChildren,
+         inputTokens, outputTokens, thinkingTokens, cacheWriteTokens, cacheReadTokens,
+         inboxFrom, inboxTo, cut, settled, produced, producedMore, recall, traceparent, model,
+         byPrecursor, dataBytes, historySent, historyBound
+    FROM t_turns
+   WHERE state = 'final';
 "#,
     ),
 ];
@@ -568,7 +589,7 @@ const INBOX_COLUMNS: [(&str, Kind); 18] = [
 
 /// What a turn record carries into its row. `turnNo` and `inboxFrom` are finalization's to
 /// assign, and `ownUsd` and `treeUsd` are the view's reading of the micros.
-const TURN_COLUMNS: [(&str, Kind); 30] = [
+const TURN_COLUMNS: [(&str, Kind); 32] = [
     ("turnId", Kind::Text),
     ("runId", Kind::Text),
     ("startedAt", Kind::Text),
@@ -599,6 +620,8 @@ const TURN_COLUMNS: [(&str, Kind); 30] = [
     ("model", Kind::Text),
     ("byPrecursor", Kind::Json),
     ("dataBytes", Kind::Integer),
+    ("historySent", Kind::Integer),
+    ("historyBound", Kind::Integer),
 ];
 
 const ASSIGNED: [&str; 2] = ["turnNo", "inboxFrom"];

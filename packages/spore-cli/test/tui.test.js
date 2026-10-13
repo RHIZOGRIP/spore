@@ -86,12 +86,18 @@ describe('applyEvent', () => {
     expect(live).toEqual(createLive())
   })
 
-  it('adds up what each model call cost, and keeps the last call\'s input', () => {
+  it('adds up what each model call cost, and keeps everything the last call sent, cached or not', () => {
     const live = createLive()
-    applyEvent(live, { event: 'usage', input: 1000, cost: 0.001 })
-    applyEvent(live, { event: 'usage', input: 1500, cost: 0.002 })
-    expect(live.input).toBe(1500)
+    applyEvent(live, { event: 'usage', input: 1000, cacheRead: 0, cacheWrite: 0, cost: 0.001 })
+    applyEvent(live, { event: 'usage', input: 1500, cacheRead: 300_000, cacheWrite: 500, cost: 0.002 })
+    expect(live).toMatchObject({ input: 302_000, cached: 300_000 })
     expect(live.cost).toBeCloseTo(0.003)
+  })
+
+  it('says when earlier turns over their bound were not summarized', () => {
+    const live = createLive()
+    expect(applyEvent(live, { event: 'compaction_failed', why: 'the summary came back empty' })).toBe(true)
+    expect(live.notes.at(-1).text).toMatch(/not summarized — the summary came back empty/)
   })
 
   it('takes the complete event as the answer', () => {
@@ -152,8 +158,8 @@ describe('status', () => {
   })
 
   it('says who else answered, the model last', () => {
-    const parts = statusParts({ shown, live: { ...createLive(), rounds: 3, input: 12345, cost: 0.0042 }, attention: [{ name: 'ledger', asked: true }], now })
-    expect(parts).toEqual(['ledger asked — Ctrl+P', 'round 3/40 · ≈$0.0042/$0.50', '12.3k in', 'anthropic/claude-sonnet-5-5'])
+    const parts = statusParts({ shown, live: { ...createLive(), rounds: 3, input: 12345, cached: 10000, cost: 0.0042 }, attention: [{ name: 'ledger', asked: true }], now })
+    expect(parts).toEqual(['ledger asked — Ctrl+P', 'round 3/40 · ≈$0.0042/$0.50', '12.3k in (10.0k cached)', 'anthropic/claude-sonnet-5-5'])
   })
 
   it('shows the spore\'s spend between turns', () => {

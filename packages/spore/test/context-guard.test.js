@@ -25,6 +25,13 @@ describe('context guard', () => {
     expect(tokens).toBeGreaterThan(5)
   })
 
+  it('counts a part it cannot read by its size, so an encrypted one never reads as free', () => {
+    const encrypted = 'gAAAAAB' + 'x'.repeat(4000)
+    const plain = { role: 'assistant', content: [{ type: 'text', text: 'done' }] }
+    const reasoned = { role: 'assistant', content: [{ type: 'reasoning', text: '', id: 'rs_1', encrypted }, { type: 'text', text: 'done' }] }
+    expect(estimateTokens([reasoned])).toBeGreaterThan(estimateTokens([plain]) + 1000)
+  })
+
   // ── Compaction ────────────────────────────────────────────────
 
   it('does nothing when under budget', () => {

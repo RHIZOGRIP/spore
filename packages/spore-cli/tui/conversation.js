@@ -43,7 +43,7 @@ export function history ({ turns, inbox }) {
   return items
 }
 
-export const createLive = () => ({ text: '', notes: [], tools: [], rounds: 0, input: null, cost: 0, complete: null })
+export const createLive = () => ({ text: '', notes: [], tools: [], rounds: 0, input: null, cached: 0, cost: 0, complete: null })
 
 /** The running turn from its events so far, or null when there are none: a turn's end is recorded before its lock is let go. */
 export function liveOf (events) {
@@ -75,7 +75,8 @@ export function applyEvent (live, event) {
       return true
     }
     case 'usage':
-      live.input = event.input
+      live.input = event.input + event.cacheRead + event.cacheWrite
+      live.cached = event.cacheRead
       live.cost += event.cost
       return true
     case 'interject':
@@ -86,6 +87,9 @@ export function applyEvent (live, event) {
       return true
     case 'compaction':
       live.notes.push({ kind: 'note', text: 'earlier turns summarized' })
+      return true
+    case 'compaction_failed':
+      live.notes.push({ kind: 'note', text: `earlier turns are over their bound and were not summarized — ${event.why}` })
       return true
     case 'complete':
       live.complete = { stopReason: event.stopReason ?? 'answer', output: event.output == null ? null : printable(event.output) }

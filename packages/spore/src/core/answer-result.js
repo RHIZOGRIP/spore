@@ -46,7 +46,7 @@ export function accountUsage (res, { usage, emit, modelId, elapsedMs }) {
     idleMaxMs: res.idleMaxMs || 0
   })
 
-  return res.inputTokens || 0
+  return (res.inputTokens || 0) + (res.cacheReadInputTokens || 0) + (res.cacheWriteInputTokens || 0)
 }
 
 /**
