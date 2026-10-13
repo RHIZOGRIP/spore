@@ -94,6 +94,12 @@ describe('applyEvent', () => {
     expect(live.cost).toBeCloseTo(0.003)
   })
 
+  it('says while earlier turns are being summarized, which holds the first round back', () => {
+    const live = createLive()
+    expect(applyEvent(live, { event: 'compaction_started', messages: 820, kept: 85 })).toBe(true)
+    expect(live.notes.at(-1).text).toBe('summarizing 820 earlier messages before the first round…')
+  })
+
   it('says when earlier turns over their bound were not summarized', () => {
     const live = createLive()
     expect(applyEvent(live, { event: 'compaction_failed', why: 'the summary came back empty' })).toBe(true)

@@ -503,6 +503,7 @@ All but `turn_end` are written by the agent's loop. `turn_end` is written by the
 | `complete` | `output`, `usage`, `rounds`, `stopReason`, `cancelled`, `terminal`, and `because` for a `quiet` turn |
 | `produced` | `files`, each `{ path, bytes, mtime, mime, delivered }`, and `more` |
 | `recall` | `hits`, `scores`, or `failed` |
+| `compaction_started` | `messages` to summarize, `kept` word for word, `estimated`, `sent`, `budget`: the summary is asked for, before the turn's first round |
 | `compaction` | `summaryChars`, `firstKeptIndex` |
 | `compaction_failed` | `why`, `estimated`, `sent`, `budget`: the history was over its bound and was not summarized |
 | `estimate_drift` | `round`, `model`, `estimated`, `sent`: once a turn, the provider counted far more than the estimate |

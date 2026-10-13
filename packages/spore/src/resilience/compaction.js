@@ -68,11 +68,12 @@ Be brief but complete. Use bullet points.`
  * @param {number} opts.contextLimit — model's context token limit
  * @param {number} [opts.budget] — tokens kept word for word, from the definition's `history:`
  * @param {number} [opts.sent] — what the provider counted for the last call on this history, when known
+ * @param {Function} [opts.onStarted] — told as the summary is asked for, which can take minutes
  * @param {Function} [opts.onFailed] — told why a history over its budget was not summarized
  * @param {object} [opts.logger]
  * @returns {Array} compacted messages (may be same array if no compaction needed)
  */
-export async function compactHistory (messages, { model, contextLimit, budget: workingSet, sent = null, sessionMemory, onCompacted, onFailed, onCost, signal, logger = silent } = {}) {
+export async function compactHistory (messages, { model, contextLimit, budget: workingSet, sent = null, sessionMemory, onStarted, onCompacted, onFailed, onCost, signal, logger = silent } = {}) {
   if (!model) return messages
 
   const budget = historyBound(contextLimit, workingSet)
@@ -112,6 +113,7 @@ export async function compactHistory (messages, { model, contextLimit, budget: w
   // Summarize head via LLM
   const headText = formatMessagesForSummary(head)
   logger.debug({ messages: head.length, chars: headText.length }, '[compaction] summarizing')
+  onStarted?.({ messages: head.length, kept: tail.length, estimated, sent, budget })
 
   let summary
   try {

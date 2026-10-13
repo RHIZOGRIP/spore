@@ -1270,8 +1270,8 @@ The event schema version every event carries as `v`: `1`
 ### `EVENTS`
 
 Every event name the log holds: `round`, `tool_start`, `tool_end`, `tool_block`, `wrap`,
-`interject`, `heartbeat`, `stream`, `usage`, `complete`, `produced`, `recall`, `compaction`,
-`compaction_failed`, `estimate_drift`, `empty_completion`, `recovery` and `turn_end`.
+`interject`, `heartbeat`, `stream`, `usage`, `complete`, `produced`, `recall`, `compaction_started`,
+`compaction`, `compaction_failed`, `estimate_drift`, `empty_completion`, `recovery` and `turn_end`.
 
 ### `PROMISED`
 

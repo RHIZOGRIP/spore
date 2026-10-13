@@ -104,10 +104,13 @@ describe('idle detection', () => {
     expect(meta.files.out.content).toBe('done\n')
   }, 20000)
 
-  it('never sets the idle window past the deadline', async () => {
-    expect(await wsexec({ command: 'true', out: 'data/o.txt', timeout: 10, idle: 20 })).toMatch(/idle must be between/)
+  it('never sets the idle window past the deadline, whether asked for or by default', async () => {
+    const asked = JSON.parse(await wsexec({ command: 'true', out: 'data/o.txt', timeout: 10, idle: 120 }))
+    expect(asked.exit).toBe(0)
+    expect(readCall(WS, 'test', asked.call).idleMs).toBe(10000)
     const meta = JSON.parse(await wsexec({ command: 'true', out: 'data/o.txt' }))
     expect(readCall(WS, 'test', meta.call).idleMs).toBe(30000)
+    expect(await wsexec({ command: 'true', out: 'data/o.txt', idle: 0 })).toMatch(/idle must be more than 0 seconds/)
   })
 
   // Outlives the 2s sampler tick with an idle window shorter than it, so the

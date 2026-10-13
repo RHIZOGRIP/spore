@@ -93,7 +93,7 @@ The caller names paths at call time. There are no fixed filenames.
 | `out` | optional workspace path, receives stdout |
 | `err` | optional workspace path, receives stderr |
 | `timeout` | optional seconds, default 30, ceiling 3600 — a fan-out declares its own |
-| `idle` | optional seconds without output or CPU before the command is killed, default 120, at most `timeout` |
+| `idle` | optional seconds without output or CPU before the command is killed, default 120; past `timeout`, the timeout ends it first |
 
 `out` and `err` are auto-named `calls/<runId>/<seq>/out` and `.../err` when the caller
 omits them — extensionless. They sit beside the record: a stream the caller did not name is the

@@ -454,10 +454,8 @@ export function makeTools (WS, maxOutput, trail, {
       if (!(timeoutMs > 0) || timeoutMs > EXEC_TIMEOUT_MAX_MS) {
         return refuse(`timeout must be between 1 and ${EXEC_TIMEOUT_MAX_MS / 1000} seconds`)
       }
-      const callIdleMs = idle === undefined ? Math.min(idleMs, timeoutMs) : idle * 1000
-      if (!(callIdleMs > 0) || callIdleMs > timeoutMs) {
-        return refuse(`idle must be between 1 second and the call's timeout (${timeoutMs / 1000})`)
-      }
+      if (idle !== undefined && !(idle > 0)) return refuse('idle must be more than 0 seconds')
+      const callIdleMs = Math.min(idle === undefined ? idleMs : idle * 1000, timeoutMs)
       return runCommand({ tool: 'exec', command, inPath, out, err, confined: true, timeoutMs, idleMs: callIdleMs, sig })
     },
     wsexec: async ({ command, in: inPath, out, err, timeout, idle, ...rest }, { signal: sig } = {}) => {
@@ -467,10 +465,8 @@ export function makeTools (WS, maxOutput, trail, {
       if (!(timeoutMs > 0) || timeoutMs > EXEC_TIMEOUT_MAX_MS) {
         return refuse(`timeout must be between 1 and ${EXEC_TIMEOUT_MAX_MS / 1000} seconds`)
       }
-      const callIdleMs = idle === undefined ? Math.min(idleMs, timeoutMs) : idle * 1000
-      if (!(callIdleMs > 0) || callIdleMs > timeoutMs) {
-        return refuse(`idle must be between 1 second and the call's timeout (${timeoutMs / 1000})`)
-      }
+      if (idle !== undefined && !(idle > 0)) return refuse('idle must be more than 0 seconds')
+      const callIdleMs = Math.min(idle === undefined ? idleMs : idle * 1000, timeoutMs)
       return runCommand({ tool: 'wsexec', command, inPath, out, err, confined: false, timeoutMs, idleMs: callIdleMs, sig })
     },
 
@@ -560,7 +556,7 @@ export function makeTools (WS, maxOutput, trail, {
           in: { type: 'string', description: 'Workspace file to redirect to stdin (optional)' },
           err: { type: 'string', description: 'Workspace path to receive stderr, under data/ (optional)' },
           timeout: { type: 'number', description: 'Seconds to allow, default 30.' },
-          idle: { type: 'number', description: 'Seconds a command may go with no new output and no CPU time before it is killed, default 120, at most the timeout. Waiting on a model call or the network uses neither.' }
+          idle: { type: 'number', description: 'Seconds a command may go with no new output and no CPU time before it is killed, default 120; past the timeout, the timeout ends it first. Waiting on a model call or the network uses neither.' }
         },
         required: ['command']
       }
@@ -576,7 +572,7 @@ export function makeTools (WS, maxOutput, trail, {
           in: { type: 'string', description: 'Workspace file to redirect to stdin (optional)' },
           err: { type: 'string', description: 'Workspace path to receive stderr, under data/ (optional)' },
           timeout: { type: 'number', description: 'Seconds to allow, default 30.' },
-          idle: { type: 'number', description: 'Seconds a command may go with no new output and no CPU time before it is killed, default 120, at most the timeout. Waiting on a model call or the network uses neither.' }
+          idle: { type: 'number', description: 'Seconds a command may go with no new output and no CPU time before it is killed, default 120; past the timeout, the timeout ends it first. Waiting on a model call or the network uses neither.' }
         },
         required: ['command']
       }

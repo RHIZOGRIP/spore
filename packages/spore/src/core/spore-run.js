@@ -348,6 +348,7 @@ export async function runSpore ({
         appendCompaction(state, entry)
         events.emit('compaction', { summaryChars: entry.summary.length, firstKeptIndex: entry.firstKeptIndex })
       },
+      onStarted: (started) => events.emit('compaction_started', started),
       onFailed: (failure) => events.emit('compaction_failed', failure),
       logger
     })

@@ -352,8 +352,8 @@ which kills a fan-out and every cell in it. Your own limits bound the whole thin
 work that cannot fit inside them wants fewer parts per batch, not a longer timeout.
 
 **A silent command is killed as idle.** `exec` and `wsexec` also stop a command that has
-written nothing and used no CPU for `idle` seconds — 120 by default, never more than its
-`timeout`, and recorded as `killed: idle`. Waiting on a model call or the network uses
+written nothing and used no CPU for `idle` seconds — 120 by default, and never past its
+`timeout`, which ends the command first — recorded as `killed: idle`. Waiting on a model call or the network uses
 neither, so a wait of your own prints as it goes, as the loop above does, or asks for a
 longer `idle`. `$SPORE_FANOUT` and a blocking `$SPORE_SPAWN` print their own progress.
 

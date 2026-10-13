@@ -236,8 +236,10 @@ describe('the history as the provider counted it', () => {
     const budget = Math.floor(1.5 * size)
 
     expect(await compactHistory(messages, { model: mockModel('S'), contextLimit, budget, sent: size })).toBe(messages)
-    const compacted = await compactHistory(messages, { model: mockModel('S'), contextLimit, budget, sent: 3 * size })
+    const started = []
+    const compacted = await compactHistory(messages, { model: mockModel('S'), contextLimit, budget, sent: 3 * size, onStarted: (s) => started.push(s) })
     expect(compacted).not.toBe(messages)
+    expect(started).toEqual([expect.objectContaining({ messages: messages.length - compacted.length + 1, kept: compacted.length - 1, sent: 3 * size, budget })])
     expect(marked(compacted[0], COMPACTED)).toBe(true)
   })
 })

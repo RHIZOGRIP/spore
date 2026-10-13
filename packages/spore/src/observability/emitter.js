@@ -9,6 +9,7 @@
  *   stream            { kind, delta }
  *   heartbeat         { phase, elapsedMs }
  *   usage             { … }
+ *   compaction_started { messages, kept, estimated, sent, budget } — before the first round
  *   estimate_drift    { round, model, estimated, sent } — once a turn, the provider counted far more
  *   empty_completion  { round, retry }
  *   recovery          { action, reason, attempt, delay, from, to }

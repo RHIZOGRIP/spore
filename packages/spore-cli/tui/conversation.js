@@ -85,6 +85,9 @@ export function applyEvent (live, event) {
     case 'wrap':
       live.notes.push({ kind: 'note', text: `wrapping up — reached its ${event.dimension} limit` })
       return true
+    case 'compaction_started':
+      live.notes.push({ kind: 'note', text: `summarizing ${event.messages} earlier messages before the first round…` })
+      return true
     case 'compaction':
       live.notes.push({ kind: 'note', text: 'earlier turns summarized' })
       return true
