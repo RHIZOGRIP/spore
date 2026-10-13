@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -109,6 +109,7 @@ CREATE TABLE t_turns (
   model              TEXT,
   byPrecursor        TEXT,
   replyDefault       TEXT,
+  dataBytes          INTEGER,
   CHECK ((state = 'final') = (turnNo IS NOT NULL))
 );
 
@@ -172,7 +173,7 @@ CREATE VIEW turns AS
          workUnits, workUnitsOwn, workUnitsChildren,
          inputTokens, outputTokens, thinkingTokens, cacheWriteTokens, cacheReadTokens,
          inboxFrom, inboxTo, cut, settled, produced, producedMore, recall, traceparent, model,
-         byPrecursor
+         byPrecursor, dataBytes
     FROM t_turns
    WHERE state = 'final';
 
@@ -223,13 +224,16 @@ CREATE TABLE t_cells (
   error       TEXT,
   costMicros  INTEGER NOT NULL,
   durationMs  INTEGER NOT NULL,
+  afterTurn   INTEGER,
+  dataBytes   INTEGER,
+  changed     TEXT,
   CHECK ((answer IS NULL) <> (error IS NULL))
 );
 CREATE INDEX t_cells_origin ON t_cells (origin, at);
 
 CREATE VIEW cells AS
   SELECT cellNo, at, precursor, origin, ref, cellWs, answer, error,
-         costMicros, costMicros / 1e6 AS costUsd, durationMs
+         costMicros, costMicros / 1e6 AS costUsd, durationMs, afterTurn, dataBytes, changed
     FROM t_cells;
 
 CREATE TABLE t_jobs (
@@ -271,9 +275,10 @@ CREATE VIEW outbox AS
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 1] = [(
-    1,
-    r#"
+const MIGRATIONS: [(i64, &str); 2] = [
+    (
+        1,
+        r#"
 ALTER TABLE t_inbox ADD COLUMN replyTo TEXT;
 ALTER TABLE t_turns ADD COLUMN replyDefault TEXT;
 
@@ -302,7 +307,35 @@ CREATE INDEX t_outbox_pending ON t_outbox (state, recipient);
 CREATE VIEW outbox AS
   SELECT outboxNo, at, turnId, recipient, answers, state, settledAt, reason FROM t_outbox;
 "#,
-)];
+    ),
+    (
+        2,
+        r#"
+ALTER TABLE t_turns ADD COLUMN dataBytes INTEGER;
+ALTER TABLE t_cells ADD COLUMN afterTurn INTEGER;
+ALTER TABLE t_cells ADD COLUMN dataBytes INTEGER;
+ALTER TABLE t_cells ADD COLUMN changed TEXT;
+
+DROP VIEW turns;
+CREATE VIEW turns AS
+  SELECT turnNo, turnId, runId, startedAt, endedAt, stopReason, concluded, because, output,
+         error, detail, rounds,
+         ownMicros, ownMicros / 1e6 AS ownUsd, treeMicros, treeMicros / 1e6 AS treeUsd,
+         workUnits, workUnitsOwn, workUnitsChildren,
+         inputTokens, outputTokens, thinkingTokens, cacheWriteTokens, cacheReadTokens,
+         inboxFrom, inboxTo, cut, settled, produced, producedMore, recall, traceparent, model,
+         byPrecursor, dataBytes
+    FROM t_turns
+   WHERE state = 'final';
+
+DROP VIEW cells;
+CREATE VIEW cells AS
+  SELECT cellNo, at, precursor, origin, ref, cellWs, answer, error,
+         costMicros, costMicros / 1e6 AS costUsd, durationMs, afterTurn, dataBytes, changed
+    FROM t_cells;
+"#,
+    ),
+];
 
 /// Opens the workspace's database for writing — creating it and its schema the first time —
 /// in WAL, with foreign keys and full sync. Refuses a schema this runtime does not know.
@@ -535,7 +568,7 @@ const INBOX_COLUMNS: [(&str, Kind); 18] = [
 
 /// What a turn record carries into its row. `turnNo` and `inboxFrom` are finalization's to
 /// assign, and `ownUsd` and `treeUsd` are the view's reading of the micros.
-const TURN_COLUMNS: [(&str, Kind); 29] = [
+const TURN_COLUMNS: [(&str, Kind); 30] = [
     ("turnId", Kind::Text),
     ("runId", Kind::Text),
     ("startedAt", Kind::Text),
@@ -565,6 +598,7 @@ const TURN_COLUMNS: [(&str, Kind); 29] = [
     ("traceparent", Kind::Text),
     ("model", Kind::Text),
     ("byPrecursor", Kind::Json),
+    ("dataBytes", Kind::Integer),
 ];
 
 const ASSIGNED: [&str; 2] = ["turnNo", "inboxFrom"];
@@ -853,8 +887,9 @@ pub fn end_job(
 
 /// One cell run outside any turn, in the spore whose precursor it ran — who asked for it and what
 /// for, where it ran, what it answered or why it did not, and what it cost — as JSON `{ precursor,
-/// origin, ref?, cellWs, answer | error, costUsd, durationMs }`. Every such run is recorded, so its
-/// spend is the spore's whatever asked for it.
+/// origin, ref?, cellWs, answer | error, costUsd, durationMs, afterTurn?, dataBytes?, changed? }`,
+/// the last three a dream's: the turn it ran after, the bytes in `data/` then, and what it changed.
+/// Every such run is recorded, so its spend is the spore's whatever asked for it.
 pub fn record_cell(ws: &Path, run: &str) -> Result<i64, String> {
     let run: Value =
         serde_json::from_str(run).map_err(|e| format!("a cell run is a JSON object — {e}"))?;
@@ -876,11 +911,26 @@ pub fn record_cell(ws: &Path, run: &str) -> Result<i64, String> {
     let duration = run["durationMs"]
         .as_i64()
         .ok_or("a cell run says how long it took")?;
+    let count = |field: &str| -> Result<Option<i64>, String> {
+        match &run[field] {
+            Value::Null => Ok(None),
+            value => value
+                .as_i64()
+                .filter(|n| *n >= 0)
+                .map(Some)
+                .ok_or_else(|| format!("a cell run's {field} is a whole number, got {value}")),
+        }
+    };
+    let (after_turn, data_bytes) = (count("afterTurn")?, count("dataBytes")?);
+    let changed = match &run["changed"] {
+        Value::Null => None,
+        value => Some(value.to_string()),
+    };
     writing(ws, |conn| {
         conn.execute(
-            "INSERT INTO t_cells (at, precursor, origin, ref, cellWs, answer, error, costMicros, durationMs)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            (crate::iso_now(), &precursor, &origin, text("ref"), &cell_ws, &answer, &error, cost, duration),
+            "INSERT INTO t_cells (at, precursor, origin, ref, cellWs, answer, error, costMicros, durationMs, afterTurn, dataBytes, changed)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            (crate::iso_now(), &precursor, &origin, text("ref"), &cell_ws, &answer, &error, cost, duration, after_turn, data_bytes, changed),
         )
         .map_err(failed_to("record the cell"))?;
         Ok(conn.last_insert_rowid())
@@ -2646,6 +2696,34 @@ mod tests {
             row(&ws, "SELECT ref FROM cells WHERE cellNo = 2")["ref"],
             "d-1"
         );
+        assert!(row(&ws, "SELECT afterTurn FROM cells WHERE cellNo = 1")["afterTurn"].is_null());
+    }
+
+    #[test]
+    fn records_where_a_dream_started_from_and_what_it_changed() {
+        let ws = scratch("dream-cell");
+        let run = |extra: Value| {
+            let mut run = json!({ "precursor": "tidy", "origin": "dream", "cellWs": "/state/spore/cells/x/dream/1", "answer": "moved", "costUsd": 0.2, "durationMs": 60000 });
+            run.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            record_cell(&ws, &run.to_string())
+        };
+        run(json!({ "afterTurn": 105, "dataBytes": 800_000_000, "changed": { "removed": [{ "path": "data/pipx", "files": 28113, "bytes": 697_000_000 }] } }))
+            .unwrap();
+        let dream = row(
+            &ws,
+            "SELECT afterTurn, dataBytes, json_extract(changed, '$.removed[0].path') AS path FROM cells",
+        );
+        assert_eq!(dream["afterTurn"], 105);
+        assert_eq!(dream["dataBytes"], 800_000_000);
+        assert_eq!(dream["path"], "data/pipx");
+        assert!(run(json!({ "afterTurn": -1 }))
+            .unwrap_err()
+            .contains("afterTurn is a whole number"));
+        assert!(run(json!({ "dataBytes": "lots" }))
+            .unwrap_err()
+            .contains("dataBytes is a whole number"));
     }
 
     #[test]

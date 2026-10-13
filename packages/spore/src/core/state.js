@@ -30,16 +30,25 @@ export function stateOf (ws) {
     // A runner writes its pid just after it takes the lock, so for that instant the file
     // still names whoever held it before.
     const startedAt = lock?.pid === holder ? lock.startedAt : null
-    return { ...base, state: RUNNING, pid: holder, startedAt, ...(pending ? { draining: true, last: pending } : {}) }
+    // A dream holds the lock as a turn does, and says so in it.
+    const dreaming = lock?.pid === holder && lock.dream === true
+    return { ...base, state: RUNNING, pid: holder, startedAt, ...(dreaming ? { dreaming: true } : {}), ...(pending ? { draining: true, last: pending } : {}) }
   }
   if (lock?.pid) return { ...base, state: 'crashed', pid: lock.pid, startedAt: lock.startedAt }
-  if (!last) return { ...base, state: 'idle' }
+  return { ...base, state: endedIn(last) }
+}
 
-  if (last.stopReason === 'question') return { ...base, state: 'waiting' }
-  if (last.stopReason === 'cancelled') return { ...base, state: 'cancelled' }
-  if (last.stopReason?.startsWith('hard:')) return { ...base, state: 'halted' }
-  if (last.stopReason?.startsWith('soft:')) return { ...base, state: 'wrapped' }
-  return { ...base, state: last.concluded ? 'idle' : 'failed' }
+/** A state as a person reads it: a spore dreaming is running, and says it is dreaming. */
+export const stateWord = (state) => (state.dreaming ? 'dreaming' : state.state)
+
+/** How the last turn left the spore — what it is when nothing runs. */
+export function endedIn (last) {
+  if (!last) return 'idle'
+  if (last.stopReason === 'question') return 'waiting'
+  if (last.stopReason === 'cancelled') return 'cancelled'
+  if (last.stopReason?.startsWith('hard:')) return 'halted'
+  if (last.stopReason?.startsWith('soft:')) return 'wrapped'
+  return last.concluded ? 'idle' : 'failed'
 }
 
 /**

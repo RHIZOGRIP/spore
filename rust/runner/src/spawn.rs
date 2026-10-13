@@ -19,7 +19,7 @@ use serde_json::json;
 use spore_runner::broker::{self, Served};
 use spore_runner::enzymes::{hash_enzyme, Enzyme, Enzymes};
 use spore_runner::model::{self, Model};
-use spore_runner::plan::{plan_spawn, Asked, Plan};
+use spore_runner::plan::{dream_for, plan_spawn, Asked, Plan};
 use spore_runner::supervise::{confined, owner_token, owners_with, supervise, GRACE, OWNERS};
 use spore_workspace::spend::Limits;
 use spore_workspace::{
@@ -57,6 +57,11 @@ Usage:
                in dollars, are the operator's limits on that; --no-contain when the
                operator turned containment off; --gate with --auth on a host whose
                model calls go through a mohdel gate, under the spore's auth
+  --super      with --standalone: a super cell, which reaches what the spore's root
+               agent reaches one notch lower — its writes grants and its precursors
+               read and never written — as spore/. Run from the spore's workspace,
+               for its dream: only the precursor dream.precursor names, under the
+               lower of that precursor's limits and dream.cost and dream.wall
 
 The sub-agent runs on $MODEL, inherited from the environment. There is no flag
 for it: choosing a model is configuration, not something a caller decides.";
@@ -71,6 +76,7 @@ struct Args {
     detach: bool,
     help: bool,
     standalone: bool,
+    dream: bool,
     node: Option<String>,
     session: Option<String>,
     chatgpt_helper: Option<String>,
@@ -118,6 +124,7 @@ fn parse_args(given: &[String]) -> Args {
             "--debug" => args.debug = true,
             "--detach" => args.detach = true,
             "--standalone" => args.standalone = true,
+            "--super" => args.dream = true,
             "--node" => args.node = Some(value()),
             "--session" => args.session = Some(value()),
             "--chatgpt-helper" => args.chatgpt_helper = Some(value()),
@@ -226,6 +233,9 @@ async fn main() {
     if args.standalone && std::env::var(OWNERS).is_ok_and(|owners| !owners.is_empty()) {
         fail("--standalone is a host's, run outside any turn — a turn's cells go through its own model socket, where what they spend is counted");
     }
+    if args.dream && !args.standalone {
+        fail("--super is a dream's, run outside any turn — it needs --standalone");
+    }
     if !args.standalone && (args.gate.is_some() || args.auth.is_some()) {
         fail("--gate and --auth are a cell's outside any turn — a turn's cells reach the gate through its own model socket");
     }
@@ -246,7 +256,7 @@ async fn main() {
         }),
         Err(_) => BTreeMap::new(),
     };
-    let plan = plan_spawn(
+    let mut plan = plan_spawn(
         &Asked {
             precursor: args.precursor.as_deref(),
             ws: args.ws.as_deref(),
@@ -258,7 +268,19 @@ async fn main() {
         |ws, reads| granted_path_containing(&root, ws, reads).ok().flatten(),
     )
     .unwrap_or_else(|problem| fail(problem));
-    if let Some(problem) = read_paths_refusal(&root, plan.precursor.reads.len(), 0, 0) {
+    if args.dream {
+        dream_for(&cwd, &mut plan).unwrap_or_else(|problem| fail(problem));
+    }
+    let (super_reads, super_writes) = plan
+        .super_reach
+        .as_ref()
+        .map_or((0, 0), |reach| (1 + reach.reads.len(), reach.writes.len()));
+    if let Some(problem) = read_paths_refusal(
+        &root,
+        plan.precursor.reads.len() + super_reads,
+        super_writes,
+        0,
+    ) {
         fail(format!(
             "precursor {} {problem}",
             plan.precursor_path.display()

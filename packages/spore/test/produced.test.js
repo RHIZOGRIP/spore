@@ -42,6 +42,14 @@ describe('what a turn left behind', () => {
     expect(produced).toEqual([])
   })
 
+  it('counts everything data/ holds, old or new, and nothing outside it', () => {
+    write('data/old.txt', '12345')
+    write('data/new/part.json', '{}')
+    write('home/.cache/pip/blob', 'cached')
+    write('calls/r1/0001/out', 'streamed')
+    expect(producedIn(WS, new Date(Date.now() + 60_000).toISOString()).dataBytes).toBe(7)
+  })
+
   it('leaves out what the turn wrote and then deleted', () => {
     write('data/scratch.tmp')
     rmSync(resolve(WS, 'data/scratch.tmp'))
@@ -83,7 +91,7 @@ describe('what a turn left behind', () => {
 
   it('says nothing rather than throwing when there is nothing to walk', () => {
     rmSync(resolve(WS, 'data'), { recursive: true, force: true })
-    expect(producedIn(WS, since())).toEqual({ produced: [], more: 0 })
+    expect(producedIn(WS, since())).toEqual({ produced: [], more: 0, dataBytes: 0 })
   })
 })
 

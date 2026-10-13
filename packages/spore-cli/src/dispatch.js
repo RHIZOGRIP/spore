@@ -17,7 +17,7 @@ import {
   addTo, allowPlugin, billingFor, changeText, define, defaultModel, disallowPlugin, durationText,
   edit, extend, getKey, jobs, list, listPlugins, log, pause, precursors, remake, remove,
   removeFrom, removeSchedule, runningLines, saidOf, schedules, setDefaultModel, setKey, setSchedule, settings,
-  show, showPlugin, sql, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM
+  show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM
 } from '@rhizogrip/spore'
 import { diagnose, renderDoctor } from './doctor.js'
 import { hook } from './hooks.js'
@@ -42,7 +42,7 @@ const line = (row, under) => {
   const where = under && row.ws.startsWith(under) ? row.ws.slice(under.length + 1) || '.' : row.ws
   const spend = row.treeUsd ? `$${row.treeUsd.toFixed(4)}` : ''
   const works = row.definitionError ? '  (its spore.cmk does not parse)' : row.writes.map(path => `  → ${tilde(path)}`).join('')
-  return `  ${row.state.padEnd(STATE_WIDTH)} ${String(row.lastTurnNo).padStart(4)} turns ${spend.padStart(9)} ${size(row.bytes).padStart(8)}  ${where}${works}`
+  return `  ${stateWord(row).padEnd(STATE_WIDTH)} ${String(row.lastTurnNo).padStart(4)} turns ${spend.padStart(9)} ${size(row.bytes).padStart(8)}  ${where}${works}`
 }
 
 const block = (title, rows, under) => {
@@ -137,7 +137,7 @@ export function renderHeader (ws, grant) {
 function renderShow (result) {
   const line = (label, value) => console.log(`  ${label.padEnd(10)} ${value}`)
   console.log(result.ws)
-  line('state', `${result.state}${result.pid ? `  pid ${result.pid}  since ${result.startedAt}` : ''}`)
+  line('state', `${stateWord(result)}${result.pid ? `  pid ${result.pid}  since ${result.startedAt}` : ''}`)
   line('name', result.name)
   if (result.description) line('description', result.description)
   line('sporangium', result.sporangium)

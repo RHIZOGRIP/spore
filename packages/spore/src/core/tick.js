@@ -1,8 +1,9 @@
 /**
  * The pass that fires schedules and lets held deliveries go: every workspace `spore ls` finds,
  * every schedule in it, a `send` for each one that is due, a `release` of what its routers
- * held, and a word for each job whose supervisor died. Contract: ARCHITECTURE.md, "Turns the
- * clock starts", "Deliveries nobody typed" and "Jobs".
+ * held, a word for each job whose supervisor died, and a dream for a spore that is due one.
+ * Contract: ARCHITECTURE.md, "Turns the clock starts", "Deliveries nobody typed", "Jobs" and
+ * "Dreams".
  *
  * It keeps nothing between passes. What fired last is on the inbox, when a schedule changed
  * is its file's, and what a spore is doing is `stateOf` — so a pass that dies loses nothing,
@@ -18,9 +19,11 @@ import { parseDefinition } from '../delegation/definition.js'
 import { native } from '../native.js'
 import { survey, scheduleDir } from './schedule.js'
 import { paused } from './admission.js'
+import { dreamDue } from './dream.js'
 import { reportInterrupted } from './job.js'
 import { definitionPath, heldIn } from './spore-dir.js'
-import { release, send } from './send.js'
+import { release, send, startDream } from './send.js'
+import { stateOf } from './state.js'
 import { TOOL_NAMES } from './tool-names.js'
 
 export const TICK_LOCK = native.tickLockPath()
@@ -32,7 +35,8 @@ export const TICK_LOCK = native.tickLockPath()
  * Each line is one schedule: `fired`, `held` with why, `refused` with why, `stale`, `later`,
  * `spent`, or `failed` when `send` refused for a reason other than every slot taken — or one
  * spore's held deliveries: `released`, with how many and whether a turn started — or one job whose
- * supervisor is gone: `interrupted`, said to its spore.
+ * supervisor is gone: `interrupted`, said to its spore — or one spore's dream: `dreaming` once
+ * started, `held` with why while every slot is taken or the spend limit reached.
  *
  * While spores are paused, a pass fires and releases nothing: `paused` carries the mark, and what was due
  * goes at the first pass after `spore unpause` — one catch-up slot per schedule, never a burst.
@@ -45,7 +49,7 @@ export function tick ({ now = Date.now(), configFile, lock = TICK_LOCK, env = pr
   try {
     const pause = paused()
     if (pause) return { ran: true, paused: pause, lines: [] }
-    const lines = list({ configFile }).workspaces.flatMap(spore => [...interruptedIn(spore, { env }), ...releaseIn(spore, { now, env }), ...fireIn(spore, { now, env })])
+    const lines = list({ configFile }).workspaces.flatMap(spore => [...interruptedIn(spore, { env }), ...releaseIn(spore, { now, env }), ...fireIn(spore, { now, env }), ...dreamIn(spore, { now, env })])
     return { ran: true, lines }
   } finally {
     closeSync(fd)
@@ -98,6 +102,21 @@ function fireIn (spore, { now, env }) {
       return { ...line, state: 'failed', why: err.detail ? `${err.message} — ${err.detail}` : err.message }
     }
   })
+}
+
+// After the schedules and the releases, so a turn either started takes the spore first: the state
+// is read again, and a running spore is due no dream.
+function dreamIn ({ ws }, { now, env }) {
+  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+  if (definition.error || !definition.dream) return []
+  if (!dreamDue(ws, { dream: definition.dream, spore: stateOf(ws), now }).due) return []
+  try {
+    const { started } = startDream(ws, { env })
+    return started ? [{ ws, state: 'dreaming' }] : []
+  } catch (err) {
+    if (HELD_BY[err.type]) return [{ ws, state: 'held', why: HELD_BY[err.type] }]
+    return [{ ws, state: 'failed', why: err.detail ? `${err.message} — ${err.detail}` : err.message }]
+  }
 }
 
 /**

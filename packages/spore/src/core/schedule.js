@@ -132,7 +132,7 @@ export function lastFired (ws) {
 // A turn the clock starts is a new turn. Every other state would take the message as
 // something else: an interjection into a running turn, the answer to a question, or a
 // retry of a turn that failed.
-const FIRES_INTO = new Set(['idle', 'wrapped', 'halted', 'cancelled'])
+export const FIRES_INTO = new Set(['idle', 'wrapped', 'halted', 'cancelled'])
 
 /**
  * Where every schedule of one workspace stands: refused (it breaks the grammar or the

@@ -18,7 +18,7 @@ pub use schedule::{parse_schedule, Due, Schedule};
 /// The tool suite, by name. Contract: ARCHITECTURE.md, "Tools".
 pub const TOOL_NAMES: [&str; 7] = ["read", "write", "edit", "exec", "wsexec", "ask", "quiet"];
 
-const FIELDS: [&str; 32] = [
+const FIELDS: [&str; 36] = [
     "name",
     "description",
     "model",
@@ -50,6 +50,10 @@ const FIELDS: [&str; 32] = [
     "jobs.maxWait",
     "jobs.perDay",
     "jobs.writes",
+    "dream",
+    "dream.cost",
+    "dream.wall",
+    "dream.precursor",
     "plugins",
 ];
 
@@ -86,6 +90,8 @@ static SIZE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^([0-9]+)(B|KB|MB|GB)?$").unwrap());
 static PLUGIN_NAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z0-9][a-z0-9._-]*$").unwrap());
+static PRECURSOR_NAME: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9._-]*$").unwrap());
 static COUNT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9]+$").unwrap());
 static AMOUNT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9]+(\.[0-9]+)?$").unwrap());
 
@@ -228,6 +234,18 @@ pub struct Jobs {
     pub writes: Vec<String>,
 }
 
+/// When the spore dreams — after how many turns, and how much quiet, at the pressure the
+/// two make together — what one dream may spend and how long it may hold the spore, and the
+/// precursor it runs.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Dream {
+    pub turns: u64,
+    pub quiet: f64,
+    pub cost: Pair,
+    pub wall: Pair,
+    pub precursor: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Definition {
@@ -270,6 +288,8 @@ pub struct Definition {
     pub schedules: Option<Schedules>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub jobs: Option<Jobs>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dream: Option<Dream>,
     pub plugins: Vec<String>,
 }
 
@@ -634,6 +654,8 @@ fn parse_limit(
     let shape = match key {
         "rounds" => "rounds: [40, 45]",
         "cost" => "cost: [0.50, 0.75]",
+        "dream.cost" => "dream.cost: [0.50, 1.00]",
+        "dream.wall" => "dream.wall: [10m, 15m]",
         _ => "wall: [10m, 12m]",
     };
     let Some(raw) = raw else {
@@ -794,6 +816,69 @@ fn parse_jobs(fields: &Fields, cell: bool, granted: &[Grant]) -> Result<Option<J
         max_wait,
         per_day,
         writes,
+    }))
+}
+
+// Absent, the spore never dreams. Its limits are declared beside it, never defaulted: a dream
+// spends the owner's money and holds the spore, and the agent writes the precursor it runs.
+fn parse_dream(fields: &Fields, cell: bool) -> Result<Option<Dream>, String> {
+    let raw = match fields.get("dream") {
+        None => {
+            return match ["dream.cost", "dream.wall", "dream.precursor"]
+                .into_iter()
+                .find(|key| fields.get(key).is_some())
+            {
+                Some(key) => Err(format!("declares {key} without dream — it bounds or names the dream this spore may have, as dream: [50, 1h]")),
+                None => Ok(None),
+            };
+        }
+        Some(_) if cell => {
+            return Err("declares dream, which is the root definition's — a dream reorganizes the spore, and a cell is not one".into());
+        }
+        Some(Value::List(raw)) if raw.len() == 2 => raw,
+        Some(_) => return Err("needs dream as turns and a quiet, dream: [50, 1h]".into()),
+    };
+    let Some(turns) = whole_number(&raw[0], 1) else {
+        return Err(format!(
+            "has a dream turns it cannot read — got \"{}\", expected how many turns make a dream due after the quiet, at least 1",
+            raw[0]
+        ));
+    };
+    let quiet = match duration_ms(&raw[1]) {
+        Some(ms) if ms > 0.0 => ms,
+        _ => {
+            return Err(format!(
+                "has a dream quiet it cannot read — got \"{}\", expected how long without a turn makes a dream due after the turns, as 1h",
+                raw[1]
+            ));
+        }
+    };
+    for (key, shape) in [
+        ("dream.cost", "dream.cost: [0.50, 1.00]"),
+        ("dream.wall", "dream.wall: [10m, 15m]"),
+        ("dream.precursor", "dream.precursor: dream"),
+    ] {
+        if fields.get(key).is_none() {
+            return Err(format!("declares dream without {key} — a dream is a precursor the spore names, run within limits its owner sets, as {shape}"));
+        }
+    }
+    let spend = parse_limit("dream.cost", fields.get("dream.cost"), cost)?;
+    let held = parse_limit("dream.wall", fields.get("dream.wall"), duration_ms)?;
+    let precursor = match fields.get("dream.precursor") {
+        Some(Value::Scalar(name)) if PRECURSOR_NAME.is_match(name) => name.clone(),
+        other => {
+            return Err(format!(
+                "has a dream.precursor it cannot read — got \"{}\", expected the name of one of its precursors, as dream.precursor: dream",
+                other.map(Value::text).unwrap_or_default()
+            ));
+        }
+    };
+    Ok(Some(Dream {
+        turns,
+        quiet,
+        cost: spend,
+        wall: held,
+        precursor,
     }))
 }
 
@@ -990,6 +1075,9 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         }
         if source == "jobs" {
             return Err("grants a source named \"jobs\" — jobs.maxWait is the field that bounds how long a job's deliveries wait, so rename the source".into());
+        }
+        if source == "dream" {
+            return Err("grants a source named \"dream\" — dream.cost is the field that bounds what a dream spends, so rename the source".into());
         }
     }
 
@@ -1254,6 +1342,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
     };
 
     let jobs = parse_jobs(&fields, opts.cell, &writes)?;
+    let dream = parse_dream(&fields, opts.cell)?;
 
     // Named here and resolved by the host, which knows which plugins are enabled on this
     // machine: a definition only says which of them this spore uses.
@@ -1295,6 +1384,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         images,
         schedules,
         jobs,
+        dream,
         plugins,
     })
 }
@@ -1427,6 +1517,7 @@ mod tests {
             "images",
             "schedules",
             "jobs",
+            "dream",
         ] {
             assert!(json.get(key).is_none(), "{key} is present");
         }
@@ -1622,6 +1713,60 @@ mod tests {
             refused("sources: [chart]\n").contains("a source and an enzyme both named \"chart\"")
         );
         assert!(refused("other.with: [a]\n").contains("without granting the source"));
+    }
+
+    #[test]
+    fn reads_the_dream_its_limits_and_its_precursor_at_the_root_only() {
+        let with = |lines: &str| {
+            parse(&WELL_FORMED.replace("tools: [read]\n", &format!("tools: [read]\n{lines}")))
+        };
+        const COST: &str = "dream.cost: [0.50, 1.00]\n";
+        const WALL: &str = "dream.wall: [10m, 15m]\n";
+        const NAMED: &str = "dream.precursor: tidy\n";
+        let dream = |lines: &str| format!("dream: [50, 1h]\n{lines}");
+        assert_eq!(
+            with(&dream(&format!("{COST}{WALL}{NAMED}"))).unwrap().dream,
+            Some(Dream {
+                turns: 50,
+                quiet: 3_600_000.0,
+                cost: Pair {
+                    soft: 0.5,
+                    hard: 1.0
+                },
+                wall: Pair {
+                    soft: 600_000.0,
+                    hard: 900_000.0
+                },
+                precursor: "tidy".into()
+            })
+        );
+        let refused = |lines: &str| with(lines).unwrap_err();
+        assert!(refused(NAMED).contains("without dream"));
+        assert!(refused(&format!("{COST}{WALL}")).contains("without dream"));
+        assert!(refused(&dream(&format!("{WALL}{NAMED}"))).contains("without dream.cost"));
+        assert!(refused(&dream(&format!("{COST}{NAMED}"))).contains("without dream.wall"));
+        assert!(refused(&dream(&format!("{COST}{WALL}"))).contains("without dream.precursor"));
+        assert!(refused(&format!("dream: [0, 1h]\n{COST}{WALL}{NAMED}")).contains("dream turns"));
+        assert!(refused(&format!("dream: [50, soon]\n{COST}{WALL}{NAMED}")).contains("dream quiet"));
+        assert!(refused(&format!("dream: 50\n{COST}{WALL}{NAMED}")).contains("turns and a quiet"));
+        assert!(
+            refused(&dream(&format!("dream.cost: [1.00, 0.50]\n{WALL}{NAMED}")))
+                .contains("hard dream.cost")
+        );
+        assert!(
+            refused(&dream(&format!("{COST}{WALL}dream.precursor: ../spore\n")))
+                .contains("dream.precursor it cannot read")
+        );
+        assert!(
+            refused(&dream(&format!("{COST}{WALL}{NAMED}sources: [dream]\n")))
+                .contains("source named \"dream\"")
+        );
+        assert!(cell(&CHART.replace(
+            "on-wrap: keep\n",
+            &format!("on-wrap: keep\n{}", dream(&format!("{COST}{WALL}{NAMED}")))
+        ))
+        .unwrap_err()
+        .contains("root definition's"));
     }
 
     #[test]

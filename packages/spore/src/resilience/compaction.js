@@ -169,7 +169,7 @@ function findTailStart (messages, budget) {
 /**
  * Format messages into readable text for the summarizer.
  */
-function formatMessagesForSummary (messages) {
+export function formatMessagesForSummary (messages) {
   const lines = []
   for (const msg of messages) {
     const text = textOf(msg)

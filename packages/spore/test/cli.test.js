@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { closeSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, symlinkSync, utimesSync } from 'node:fs'
+import { closeSync, lstatSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, symlinkSync, utimesSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -995,6 +995,26 @@ describe('reads, as a corpus the workspace points at', () => {
     rmSync(resolve(ws, 'notes'), { recursive: true })
     symlinkSync(resolve(OUT, 'elsewhere'), resolve(ws, 'notes'))
     expect(linkGrants(ws, [{ name: 'notes', path: corpus }])).toEqual([{ name: 'notes', path: corpus, missing: false }])
+  })
+
+  it('drops the link of a grant the definition no longer declares, and of one whose directory is gone', () => {
+    const corpus = resolve(OUT, 'corpus')
+    const gone = resolve(OUT, 'gone')
+    mkdirSync(corpus, { recursive: true })
+    mkdirSync(gone, { recursive: true })
+    const ws = withReads(`notes=${corpus},old=${gone}`)
+    openWorkspace(ws)
+    expect(lstatSync(resolve(ws, 'notes')).isSymbolicLink()).toBe(true)
+    symlinkSync(resolve(ws, 'data'), resolve(ws, 'inside'))
+
+    rmSync(gone, { recursive: true })
+    withReads(`old=${gone}`)
+    openWorkspace(ws)
+
+    expect(lstatSync(resolve(ws, 'notes'), { throwIfNoEntry: false })).toBeUndefined()
+    expect(lstatSync(resolve(ws, 'old'), { throwIfNoEntry: false })).toBeUndefined()
+    expect(existsSync(corpus)).toBe(true)
+    expect(lstatSync(resolve(ws, 'inside')).isSymbolicLink()).toBe(true)
   })
 })
 

@@ -17,7 +17,7 @@ import { autoLogger } from '../src/observability/logger.js'
 import { ensureOtelInitialized, parseTraceparent, shutdownOtel } from '../src/observability/tracing.js'
 import { SporeError, toWireError } from '../src/observability/errors.js'
 import { SPAWN_FILE, openChannel, readModelKey } from '../src/core/spore-dir.js'
-import { linkGrants } from '../src/core/workspace.js'
+import { linkGrants, superGrants } from '../src/core/workspace.js'
 
 const plan = JSON.parse(process.env.SPORE_PLAN)
 const logger = autoLogger({ debug: Boolean(process.env.SPORE_DEBUG) })
@@ -69,7 +69,10 @@ for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => stopping.abort())
 // declares: the definition is the grant at either level, root or cell.
 const reads = linkGrants(plan.ws, plan.precursor.reads).filter(r => !r.missing)
 
+const granted = plan.superReach ? superGrants(plan.ws, plan.superReach) : null
+
 try {
+  if (granted?.spore.missing) throw new SporeError('the super cell cannot reach its spore', { type: 'SUPER_UNREACHABLE', detail: granted.spore.error ?? `${plan.superReach.spore} is gone` })
   const result = await runSpore({
     prompt: readFileSync(plan.promptPath, 'utf8'),
     identity: plan.precursor.identity,
@@ -83,7 +86,8 @@ try {
     // hosts nothing; the cell supervisor is what refuses a spawn from inside one.
     modelSocket: process.env.SPORE_MODEL_SOCKET,
     sourceSocket: process.env.SPORE_SOURCE_SOCKET,
-    reads,
+    reads: granted ? [...reads, ...granted.reads] : reads,
+    writes: granted ? granted.writes : [],
     excludeTools: TOOL_NAMES.filter(name => !plan.precursor.tools.includes(name)),
     limits: plan.precursor.limits,
     images: plan.precursor.images,

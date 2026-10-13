@@ -29,7 +29,7 @@ export const DELIVER_DIR = `${DATA_DIR}/out`
 // count survives when the list does not.
 export const PRODUCED_CAP = 50
 
-const walk = (dir, out = []) => {
+export const walk = (dir, out = []) => {
   let entries
   try {
     entries = readdirSync(dir, { withFileTypes: true })
@@ -49,13 +49,16 @@ const walk = (dir, out = []) => {
  * with anything it deliberately delivered ahead of the rest so the cap takes scratch.
  *
  * `since` is the turn's start, and the file has to still be there: something written and
- * then deleted was working, not produced.
+ * then deleted was working, not produced. `dataBytes` is everything under `data/` at the end,
+ * counted on the same walk.
  */
 export function producedIn (ws, since, { cap = PRODUCED_CAP } = {}) {
   const startedAt = new Date(since).getTime()
   const deliverAt = resolve(ws, DELIVER_DIR)
+  const dataAt = resolve(ws, DATA_DIR)
 
   const found = []
+  let dataBytes = 0
   for (const island of writableDirs(ws)) {
     // The trail is the runtime's own record of the turn, and `home/` is where the programs it
     // ran keep their settings: neither is something the turn made.
@@ -67,6 +70,7 @@ export function producedIn (ws, since, { cap = PRODUCED_CAP } = {}) {
       } catch {
         continue
       }
+      if (island === dataAt) dataBytes += st.size
       if (st.mtimeMs < startedAt) continue
       found.push({
         path: relative(ws, full),
@@ -79,5 +83,5 @@ export function producedIn (ws, since, { cap = PRODUCED_CAP } = {}) {
   }
 
   found.sort((a, b) => (Number(b.delivered) - Number(a.delivered)) || b.mtime.localeCompare(a.mtime))
-  return { produced: found.slice(0, cap), more: Math.max(0, found.length - cap) }
+  return { produced: found.slice(0, cap), more: Math.max(0, found.length - cap), dataBytes }
 }

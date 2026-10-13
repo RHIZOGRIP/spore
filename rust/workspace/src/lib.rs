@@ -203,6 +203,7 @@ pub const CALLS_DIR: &str = "calls";
 pub const MODEL_KEY_FILE: &str = "model.key";
 pub const DATA_DIR: &str = "data";
 pub const PRECURSOR_DIR: &str = "precursors";
+pub const SCHEDULE_DIR: &str = "schedules";
 /// The agent's `$HOME`: where the programs it runs keep their settings and caches — git's
 /// identity, npm's cache — writable, and the workspace's own rather than the host's.
 pub const HOME_DIR: &str = "home";
@@ -375,11 +376,17 @@ pub fn acquire_lock(ws: &Path) -> io::Result<Acquired> {
         return Ok(Acquired::Taken(refusal));
     }
     let held = json!({ "pid": std::process::id(), "startedAt": iso_now() });
+    write_lock(&file, &held)?;
+    Ok(Acquired::Held(file, held))
+}
+
+/// What the lock says to a reader outside the run, said again by its holder: who holds it, since
+/// when, and — for a dream — that the spore is dreaming rather than in a turn.
+pub fn write_lock(file: &File, held: &Value) -> io::Result<()> {
     // Through the descriptor held, not the path: resolving it again is a window for
     // another process to open and truncate between the lock and the write.
     file.set_len(0)?;
-    file.write_all_at(serde_json::to_string_pretty(&held)?.as_bytes(), 0)?;
-    Ok(Acquired::Held(file, held))
+    file.write_all_at(serde_json::to_string_pretty(held)?.as_bytes(), 0)
 }
 
 fn text_of(value: &Value) -> String {
@@ -1407,6 +1414,9 @@ mod tests {
         let lock = scratch("held-at").join("jobs").join("r-1.lock");
         assert_eq!(holder_at(&lock).unwrap(), None);
         let held = hold(&lock).unwrap().expect("free");
+        // As a job's supervisor does: the pid is what names the holder when `/proc/locks`,
+        // read while this process's other tests take and drop locks, skips the entry.
+        write_lock(&held, &json!({ "pid": std::process::id() })).unwrap();
         assert_eq!(holder_at(&lock).unwrap(), Some(std::process::id()));
         assert_eq!(
             signal_holder_at(&lock, 0).unwrap(),

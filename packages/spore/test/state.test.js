@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { stateOf, stop } from '../src/core/state.js'
+import { stateOf, stateWord, stop } from '../src/core/state.js'
 import { acquireLock, hostState, releaseLock, writePendingRecord, writeTurnRecords } from '../src/core/spore-dir.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '.state-workspaces')
@@ -96,6 +96,14 @@ describe('stopping a spore', () => {
     expect(stop(spore('quiet', { lock: '' }))).toEqual({ stopped: false, pid: null })
     expect(stop(spore('gone', { lock: JSON.stringify({ pid: 2 ** 22 + 7 }) }))).toEqual({ stopped: false, pid: null })
     expect(readFileSync(resolve(ROOT, 'gone', 'lock'), 'utf8')).toMatch(/pid/)
+  })
+
+  it('says a spore whose lock holder is dreaming is running, and dreaming', () => {
+    const ws = spore('dreaming', { running: true })
+    expect(stateOf(ws).dreaming).toBeUndefined()
+    writeFileSync(resolve(ws, 'lock'), JSON.stringify({ pid: process.pid, startedAt: '2026-10-12T00:00:00.000Z', dream: true }))
+    expect(stateOf(ws)).toMatchObject({ state: 'running', dreaming: true, pid: process.pid })
+    expect(stateWord(stateOf(ws))).toBe('dreaming')
   })
 
   it('never signals a live process the lock only names', () => {

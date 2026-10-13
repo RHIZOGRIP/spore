@@ -42,7 +42,7 @@ export { CLI as MO } from 'mohdel/cli'
 export { curate, upstream } from 'mohdel/curate'
 
 // What one is doing now, stopping it, and running many at once.
-export { stateOf, stop, RUNNING } from './core/state.js'
+export { stateOf, stateWord, stop, RUNNING } from './core/state.js'
 export { changeText, extendTurn, runningLines, wrapTurn } from './core/limits.js'
 export { runBatch } from './core/batch.js'
 

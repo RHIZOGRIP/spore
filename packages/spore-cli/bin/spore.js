@@ -435,6 +435,9 @@ try {
 // the record.
 const settled = sent.repeated && !sent.started && stateOf(ws).state !== RUNNING
 
+const dreaming = !sent.started && !settled && stateOf(ws).dreaming
+if (dreaming) console.error('spore: it is dreaming — your message waits for it to wake, and the turn after the dream reads it')
+
 if (argv.unsafe && !sent.started && !settled) {
   console.error('spore: --unsafe took no effect — the message went to the turn already running, which keeps the confinement it was started with')
 }

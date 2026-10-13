@@ -16,6 +16,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde_json::json;
 use spore_definition::{parse_definition, Definition, Options, TOOL_NAMES};
 use spore_runner::broker::Served;
 use spore_runner::supervise::{
@@ -28,8 +29,8 @@ use spore_workspace::{
     hand_over, iso_now, leave_wal, limit_file_size, make_spore_socket_dir, prune_trail,
     read_paths_refusal, record_unanswered, recover, release_lock, serve, spore_socket_dir,
     spore_socket_path, start_limits, turn_limits, turn_state, unanswered, unanswered_traceparents,
-    unread, write_model_key, write_outcome, writes_refusal, yield_to_host, Acquired, Unanswered,
-    CELL_MODELS_ENV, DEFAULT_FREE_FLOOR, DEFAULT_LARGEST_FILE, DEFAULT_MODEL_SESSIONS,
+    unread, write_lock, write_model_key, write_outcome, writes_refusal, yield_to_host, Acquired,
+    Unanswered, CELL_MODELS_ENV, DEFAULT_FREE_FLOOR, DEFAULT_LARGEST_FILE, DEFAULT_MODEL_SESSIONS,
     DEFINITION_FILE, HOME_DIR, MODEL_KEY_FILE, PLUGIN_ENV, PLUGIN_READS, STATE_FD,
 };
 use tokio::process::Command;
@@ -56,6 +57,7 @@ struct Args {
     unsafe_: bool,
     no_contain: bool,
     continuing: bool,
+    dream: bool,
 }
 
 fn fail(problem: impl std::fmt::Display) -> ! {
@@ -84,6 +86,7 @@ fn parse_args() -> Args {
         unsafe_: false,
         no_contain: false,
         continuing: false,
+        dream: false,
     };
     let mut given = std::env::args().skip(1);
     while let Some(arg) = given.next() {
@@ -132,6 +135,7 @@ fn parse_args() -> Args {
             "--unsafe" => args.unsafe_ = true,
             "--no-contain" => args.no_contain = true,
             "--continue" => args.continuing = true,
+            "--dream" => args.dream = true,
             other => fail(format!("unknown argument {other}")),
         }
     }
@@ -371,6 +375,29 @@ async fn main() {
         let_go(&ws, lock);
         fail(format!("cannot carry over the turns a runner left — {e}"));
     }
+
+    // A dream holds the lock as a turn does, so what is said meanwhile waits for it; once it
+    // ends, anything said is read by a turn under the same lock, as after a turn.
+    let mut lock = lock;
+    let started_at = if args.dream {
+        let (code, stopped) = dream(&ws, &node, &lock).await;
+        match unread(&ws) {
+            Ok(true) if !stopped => {}
+            _ => {
+                let_go(&ws, lock);
+                if stopped || !matches!(unread(&ws), Ok(true)) {
+                    std::process::exit(code)
+                }
+                lock = match acquire_lock(&ws) {
+                    Ok(Acquired::Held(file, _)) => file,
+                    _ => std::process::exit(code),
+                };
+            }
+        }
+        iso_now()
+    } else {
+        started_at
+    };
 
     let def = match definition(&ws) {
         Ok(def) => def,
@@ -977,6 +1004,53 @@ fn leave(ws: &Path, lock: std::fs::File, started_at: &str) -> ! {
     );
     let_go(ws, lock);
     std::process::exit(143)
+}
+
+/// The spore's dream, under the lock this runner holds — which says so while it lasts:
+/// `bin/spore-dream.js` runs it as a super cell, and a stop reaches it as it reaches a turn's
+/// agent. Its exit code, and whether it was stopped.
+async fn dream(ws: &Path, node: &str, lock: &std::fs::File) -> (i32, bool) {
+    let held = |dreaming: bool| {
+        let mut held = json!({ "pid": std::process::id(), "startedAt": iso_now() });
+        if dreaming {
+            held["dream"] = json!(true);
+        }
+        held
+    };
+    if let Err(e) = write_lock(lock, &held(true)) {
+        eprintln!("spore: cannot say the spore is dreaming — {e}");
+        return (1, false);
+    }
+    let mut sigterm = signal(SignalKind::terminate()).unwrap_or_else(|e| fail(e));
+    let mut sigint = signal(SignalKind::interrupt()).unwrap_or_else(|e| fail(e));
+    let started = Command::new(node)
+        .arg(root().join("bin").join("spore-dream.js"))
+        .arg("--ws")
+        .arg(ws)
+        .stdin(Stdio::null())
+        .spawn();
+    let mut child = match started {
+        Ok(child) => child,
+        Err(e) => {
+            eprintln!("spore: cannot start the dream — {e}");
+            let _ = write_lock(lock, &held(false));
+            return (1, false);
+        }
+    };
+    let mut stopped = false;
+    let status = loop {
+        tokio::select! {
+            status = child.wait() => break status,
+            _ = sigterm.recv() => stopped = true,
+            _ = sigint.recv() => stopped = true,
+        }
+        if let Some(pid) = child.id() {
+            unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+        }
+    };
+    let _ = write_lock(lock, &held(false));
+    let code = status.ok().and_then(|status| status.code()).unwrap_or(1);
+    (code, stopped)
 }
 
 /// The workspace handed back: its database a single file again, then its lock.

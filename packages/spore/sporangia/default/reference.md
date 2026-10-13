@@ -24,8 +24,9 @@ node_modules/    those libraries, put there for you
 data/            everything you make
 data/bin/        programs your sub-agents run, kept where a precursor can grant them
 data/out/        the part of it you are handing back
-home/            your $HOME: where the programs you run keep their settings and caches —
-                 git's identity, npm's cache — kept between turns, never handed back
+home/            your $HOME: where the programs you run keep their settings, caches and
+                 installs — git's identity, npm's cache, a pipx tool — kept between turns,
+                 never handed back
 ```
 
 **You can write `data/`, `precursors/` and `home/`, and nothing else** — and `schedules/` when
@@ -101,7 +102,9 @@ Every tool call names the file it is about.
   named for you under `calls/<run>/<seq>/out`.
 - **Both go under `data/`.** A bare filename like `out.txt` lands at the workspace root,
   which you cannot write, and the call is refused before it runs.
-- `err` is the same for stderr, and is dropped when nothing was written.
+- `err` is the same for stderr. Unnamed, it is dropped when nothing was written; a named one
+  stays, empty or not. Name `out` or `err` only for a stream you mean to keep: unnamed, you
+  still see what it holds.
 - `in` names a workspace file that `exec` or `wsexec` sends to the command's stdin.
 - The exit code is the only success signal. A command that printed a friendly message
   and exited 1 failed.

@@ -9,6 +9,7 @@
 export const WRAP = 'wrap'
 export const CONTEXT_NOTICE = 'context-notice'
 export const COMPACTED = 'compacted'
+export const DREAMT = 'dreamt'
 export const REFUSED = 'refused'
 export const RECORD = 'record'
 

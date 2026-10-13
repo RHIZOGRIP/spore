@@ -151,7 +151,7 @@ What the user's spores share while they run, under `$XDG_STATE_HOME/spore/`, els
 | `tick.lock` | held by the pass that fires schedules |
 | `jobs/<run>.lock` | held by a job's supervisor while the job runs |
 | `services/<name>.json` | the plugin version each service started with, read by `spore service restart --outdated` |
-| `cells/` | the workspaces of cells run outside any turn, such as a router's |
+| `cells/` | the workspaces of cells run outside any turn, such as a router's, and of dreams |
 | `telegram/<bot>/`, `discord/<bot>/` | each chat bot's position |
 
 The spend ledger is written whether or not a limit is set, so a limit set at noon counts the
@@ -480,6 +480,17 @@ spore job stop <spore> <job>    # ask the job's supervisor to stop it; how it en
 ```
 
 A running job also shows in `spore show`, with its last progress line.
+
+## Dreams
+
+A spore dreams only when its `spore.cmk` says so, with `dream` and its `dream.*` fields
+([definition.md](definition.md#dreams)). The `tick` pass starts a dream that is due, as it fires a
+schedule: it takes an admission slot, and waits while the spores are paused or a spend limit is
+reached. While it runs, `spore ls`, `spore show` and the TUI say `dreaming`; `spore send` queues
+the message and says so, and the turn after the dream reads it. `spore stop` stops a dream as it
+stops a turn. Each dream is a row in the `cells` view with origin `dream`, what it cost, and what
+it changed; its workspace is under `$XDG_STATE_HOME/spore/cells/<spore>/dream/`, and the runner's
+`spore.err` says how it ended.
 
 ## Driving `spore` from a program
 

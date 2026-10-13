@@ -134,6 +134,10 @@ that level. **Absent** says what leaving the field out means where it is accepte
 | [`jobs.maxWait`](#jobsmaxwait) | duration | optional² | refused | delivered at once | longest a job's delivery may be held | [Deliveries nobody typed](../ARCHITECTURE.md#deliveries-nobody-typed) |
 | [`jobs.perDay`](#jobsperday) | whole number | optional² | refused | 100 | triage cells a job's deliveries may start a day | same |
 | [`jobs.writes`](#jobswrites) | list of `writes` names | optional² | refused | none | `writes` directories a job may write | [Jobs](../ARCHITECTURE.md#jobs) |
+| [`dream`](#dream) | `[turns, quiet]` | optional | refused | never dreams | when a dream is due: the turns and the quiet that together make it | [Dreams](../ARCHITECTURE.md#dreams) |
+| [`dream.cost`](#dreamcost-and-dreamwall) | `[soft, hard]` amounts | with `dream` | refused | — | dollars one dream may spend | same |
+| [`dream.wall`](#dreamcost-and-dreamwall) | `[soft, hard]` durations | with `dream` | refused | — | how long one dream may hold the spore | same |
+| [`dream.precursor`](#dreamprecursor) | precursor name | with `dream` | refused | — | the precursor a dream runs | same |
 | [`plugins`](#plugins) | list of names | optional | refused | none | allowed plugins the spore uses | [Plugins](../ARCHITECTURE.md#plugins) |
 
 ¹ A sporangium's `spore.cmk`, the template spores are made from, may leave `model` out
@@ -588,6 +592,80 @@ grant is refused. A job may write these directories as well as read them. Absent
 `jobs.maxWait`, `jobs.perDay` and `jobs.writes` each require `jobs`. Declared without it, the file
 is refused.
 
+## Dreams
+
+### `dream`
+
+```
+dream: [50, 1h]
+```
+
+**`spore.cmk` only.** A two-item list: `turns`, a whole number from 1, and `quiet`, a duration
+greater than zero. A dream is due when the turns since the last dream, weighed by how much `data/`
+grew, times the time since the last turn, reaches `turns × quiet`: 50 turns after an hour without
+one, 100 after half an hour, 13 after about four hours. Neither counts below a quarter of its own: fewer
+than 13 turns never make a dream due, and nor do 15 minutes of quiet. A dream holds the spore:
+what is sent while it runs waits for its end. Absent, the spore never dreams
+([Dreams](../ARCHITECTURE.md#dreams)).
+
+### `dream.cost` and `dream.wall`
+
+```
+dream.cost: [0.50, 1.00]
+dream.wall: [10m, 15m]
+```
+
+Required with `dream`, in the shape of [`cost` and `wall`](#rounds-cost-wall): what one dream may
+spend, and how long it may hold the spore. They bound a dream whatever its precursor declares:
+the agent may rewrite its precursors, so a dream may ask for more and never gets it.
+
+### `dream.precursor`
+
+```
+dream.precursor: tidy
+```
+
+Required with `dream`: the precursor a dream runs, `precursors/tidy.cmk`. Its body is what the
+dream is told, and its model and tools are its own; what a dream may reach, and the limits above,
+are not its to change. A name with no precursor is refused when the dream starts.
+
+A dream reaches what the spore's own agent reaches, one notch lower: it sees the spore at
+`spore/`, and what `writes` grants and the precursors — the dream's own among them — it reads and
+never writes. So it writes `spore/data/` and `spore/home/`, and `spore/schedules/` when the spore
+may write its own. Beside its prompt it finds `transcript.md`,
+what was said since the last dream, and `facts.json`, what those directories hold: sizes by
+directory, files untouched for 30 days, empty files, the memory notes. A dream precursor, whole:
+
+```
+---
+name: tidy
+description: Puts the spore's workspace in order while it is idle
+tools: [read, write, edit, exec, wsexec]
+rounds: [30, 40]
+cost: [0.40, 0.80]
+wall: [8m, 10m]
+on-wrap: keep
+---
+
+You dream for the spore at spore/: you put its workspace in order, so that its next turns find
+what they need and carry nothing they do not use.
+
+In this order:
+
+1. Read transcript.md. What was decided, learned or promised there that the spore will need
+   again, and that spore/data/memory/ does not hold yet, write there: one short note per subject,
+   updating a note rather than adding a second.
+2. Read facts.json. Remove what can be made again and serves no open task: caches, programs
+   installed for a task that is done, empty files, the scratch and logs of finished work. Never
+   remove what the person made or asked to keep, or the only copy of a result.
+3. Group what is left so it can be found: a directory per subject or task under spore/data/,
+   not hundreds of loose files.
+4. What you are unsure of, leave, and say so.
+
+Answer with what you wrote down, what you removed and why, what you moved and where to, and what
+you left for the person to decide.
+```
+
 ## `plugins`
 
 ```
@@ -662,6 +740,8 @@ A file that parses is checked again later:
 - with `memory: vectors`, `memory.json` is missing or the store does not answer.
 
 **On every model call:** the model broker refuses any model the spore's definition does not name.
+
+**When a dream starts:** `dream.precursor` names a precursor that is missing, or does not parse.
 
 **For a triage cell outside any turn:** a precursor named `route-<origin>.cmk` is also refused
 `sources`, `enzymes` and `reads` when it runs

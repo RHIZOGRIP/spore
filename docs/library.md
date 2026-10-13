@@ -307,14 +307,24 @@ The model, tools and limits a turn starts with, and the model's `billing` (`bill
 ### `stateOf`
 
 ```
-stateOf(ws) → { state, lastTurnNo, treeUsd, last, pid?, startedAt?, draining? }
+stateOf(ws) → { state, lastTurnNo, treeUsd, last, pid?, startedAt?, draining?, dreaming? }
 ```
 
 What the spore is doing now. `state` is `running`, `idle`, `waiting` (its last turn asked a
 question), `wrapped`, `halted`, `cancelled`, `failed` or `crashed` (a runner died without
 recording its turn). `last` is the last turn record; while `draining`, the turn has ended and its
-record waits for model calls still in flight, and `last` is that pending record. `treeUsd` is
-every finished turn's spend, cells included.
+record waits for model calls still in flight, and `last` is that pending record. While
+`dreaming`, the lock is held by the spore's dream rather than a turn
+([ARCHITECTURE §Dreams](../ARCHITECTURE.md#dreams)); `stateWord` says `dreaming` where `state`
+says `running`. `treeUsd` is every finished turn's spend, cells included.
+
+### `stateWord`
+
+```
+stateWord(state) → string
+```
+
+A `stateOf` result as a person reads it: `dreaming` while the spore dreams, its `state` otherwise.
 
 ### `RUNNING`
 

@@ -141,7 +141,7 @@ export function release (ws, { now = Date.now(), env = process.env } = {}) {
  * Node this process runs on, and is told where the host describes its sources and what the
  * spore's plugins add to its agent's environment.
  */
-export function startRunner (workspace, { slot, plugins, unsafe = false, debug = false, continuing = false, env = process.env }) {
+export function startRunner (workspace, { slot, plugins, unsafe = false, debug = false, continuing = false, dream = false, env = process.env }) {
   const config = readConfig()
   const largestFile = bytesOf(config, 'largestFile')
   const freeFloor = bytesOf(config, 'freeFloor')
@@ -170,12 +170,32 @@ export function startRunner (workspace, { slot, plugins, unsafe = false, debug =
       ...(replyTo === null ? [] : ['--reply-to', replyTo]),
       ...(unsafe ? ['--unsafe'] : []),
       ...(debug ? ['--debug'] : []),
-      ...(continuing ? ['--continue'] : [])
+      ...(continuing ? ['--continue'] : []),
+      ...(dream ? ['--dream'] : [])
     ], { detached: true, stdio: ['ignore', out, err, slot.fd], env: Object.keys(plugins.env).length ? { ...env, [PLUGIN_ENV]: JSON.stringify(plugins.env) } : env })
     runner.unref()
     return runner.pid
   } finally {
     closeSync(out)
     closeSync(err)
+  }
+}
+
+/**
+ * The spore's dream started, through the lock race a turn uses, and refused as a turn is while the
+ * spores are paused, past a spend limit, or with every slot taken. Its runner looks again under the
+ * lock: a dream started a moment too late runs the turn that came first, or nothing.
+ *
+ * @returns {{ ws: string, started: boolean, pid?: number }}
+ */
+export function startDream (ws, { env = process.env } = {}) {
+  const workspace = resolve(ws)
+  if (stateOf(workspace).state === RUNNING) return { ws: workspace, started: false }
+  const plugins = preparePlugins(workspace)
+  const slot = takeSlot()
+  try {
+    return { ws: workspace, started: true, pid: startRunner(workspace, { slot, plugins, env, dream: true }) }
+  } finally {
+    closeSync(slot.fd)
   }
 }

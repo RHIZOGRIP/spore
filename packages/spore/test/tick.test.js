@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { closeSync, mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -10,7 +10,7 @@ import { calls, answers, scriptedMo } from './fixtures/scripted-model.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { native } from '../src/native.js'
-import { acquireLock, heldIn, holdDelivery, readInbox, readTurns, releaseLock, writePendingRecord, writeTurnRecords } from '../src/core/spore-dir.js'
+import { acquireLock, appendInbox, heldIn, holdDelivery, readInbox, readTurns, releaseLock, writePendingRecord, writeTurnRecords } from '../src/core/spore-dir.js'
 import { RUNNING, stateOf } from '../src/core/state.js'
 import { tick, TICK_LOCK } from '../src/core/tick.js'
 
@@ -197,5 +197,46 @@ describe('a pass over a spore that cannot take a new turn', () => {
   it('refuses a hand-written file it cannot read, and names it', () => {
     schedule('broken', '---\nwhen: sometimes\ntz: UTC\n---\nx\n')
     expect(pass().lines).toEqual([expect.objectContaining({ name: 'broken', state: 'refused', why: expect.stringMatching(/not a cron expression/) })])
+  })
+})
+
+describe('a dream', () => {
+  const dreaming = () => {
+    const cmk = resolve(ws, 'spore.cmk')
+    writeFileSync(cmk, readFileSync(cmk, 'utf8').replace(/\nmodel: .*\n/, (line) => `${line}dream: [1, 1m]\ndream.cost: [0.10, 0.20]\ndream.wall: [1m, 2m]\ndream.precursor: tidy\n`))
+    const ended = new Date(Date.now() - 10 * 60_000).toISOString()
+    writeTurnRecords(ws, [{ startedAt: ended, endedAt: ended, stopReason: 'answer', concluded: true }])
+  }
+  const said = () => {
+    const err = resolve(ws, 'spore.err')
+    return existsSync(err) ? readFileSync(err, 'utf8') : ''
+  }
+
+  it('starts through its runner when due, which looks again under the lock and lets go', async () => {
+    dreaming()
+    expect(pass().lines).toEqual([{ ws, state: 'dreaming' }])
+    await until(() => said().includes('the dream did not start'))
+    await until(() => stateOf(ws).state !== RUNNING)
+    expect(said()).toContain('precursors/tidy.cmk is not there')
+    expect(readTurns(ws)).toHaveLength(1)
+  })
+
+  it('leaves what is said meanwhile to a turn under the same lock, once the dream ends', async () => {
+    await start(() => answers('still here'))
+    dreaming()
+    expect(pass().lines).toEqual([{ ws, state: 'dreaming' }])
+    appendInbox(ws, 'are you there?')
+    await until(() => readTurns(ws).length === 2)
+    await until(() => stateOf(ws).state !== RUNNING)
+    expect(readTurns(ws)[1]).toMatchObject({ stopReason: 'answer', output: 'still here' })
+    expect(readInbox(ws).every(entry => entry.consumed)).toBe(true)
+  })
+
+  it('is not due while something said waits unread, nor for a spore that declares none', () => {
+    dreaming()
+    appendInbox(ws, 'hello')
+    expect(pass().lines.filter(line => line.state === 'dreaming')).toEqual([])
+    writeFileSync(resolve(ws, 'spore.cmk'), readFileSync(resolve(ws, 'spore.cmk'), 'utf8').replace(/dream[^\n]*\n/g, ''))
+    expect(pass().lines.filter(line => line.state === 'dreaming')).toEqual([])
   })
 })

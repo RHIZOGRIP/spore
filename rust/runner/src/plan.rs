@@ -7,9 +7,10 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
 use serde_json::{json, Value};
-use spore_definition::{parse_definition, Definition, Options, TOOL_NAMES};
+use spore_definition::{parse_definition, Definition, Options, Pair, TOOL_NAMES};
 use spore_workspace::{
-    safe_path, writable_dirs, DATA_DIR, PRECURSOR_DIR, PRECURSOR_EXT, SPAWN_FILE,
+    safe_path, writable_dirs, CALLS_DIR, DATA_DIR, DEFINITION_FILE, PRECURSOR_DIR, PRECURSOR_EXT,
+    SCHEDULE_DIR, SPAWN_FILE,
 };
 
 pub struct Asked<'a> {
@@ -33,6 +34,43 @@ pub struct Plan {
     pub precursor_path: PathBuf,
     pub precursor: Definition,
     pub enzymes: Vec<Enzyme>,
+    pub super_reach: Option<SuperReach>,
+}
+
+/// What a super cell reaches beyond its own directory, as real paths: the spore, read whole, with
+/// the directories its `reads` and `writes` grant; and the directories it writes.
+pub struct SuperReach {
+    pub spore: PathBuf,
+    pub reads: Vec<(String, PathBuf)>,
+    pub writes: Vec<PathBuf>,
+}
+
+/// A super cell reaches what the root agent of the spore at `spore` reaches, one notch lower: the
+/// root's `writes` grants and its precursors are read and never written. It writes the rest of
+/// what the root writes — `data/`, `home/`, and `schedules/` when the root may write its own.
+pub fn super_reach(spore: &Path, root: &Definition) -> Result<SuperReach, String> {
+    let spore = std::fs::canonicalize(spore).map_err(|e| format!("{} — {e}", spore.display()))?;
+    let real = |path: &Path| std::fs::canonicalize(path).ok();
+    // The trail is the runtime's: the root's agent names nothing there either.
+    let root_writes = writable_dirs(&spore)
+        .into_iter()
+        .filter(|dir| !dir.ends_with(CALLS_DIR))
+        .chain(root.schedules.is_some().then(|| spore.join(SCHEDULE_DIR)));
+    let writes = root_writes
+        .filter(|dir| !dir.ends_with(PRECURSOR_DIR))
+        .filter_map(|dir| real(&dir))
+        .collect();
+    let reads = root
+        .reads
+        .iter()
+        .chain(&root.writes)
+        .filter_map(|grant| real(Path::new(&grant.path)).map(|path| (grant.name.clone(), path)))
+        .collect();
+    Ok(SuperReach {
+        spore,
+        reads,
+        writes,
+    })
 }
 
 /// Lexical, as `path.resolve` is: `..` is taken off the path, never looked up.
@@ -222,7 +260,48 @@ pub fn plan_spawn(
         precursor_path,
         precursor: definition,
         enzymes,
+        super_reach: None,
     })
+}
+
+/// The plan made the dream of the spore at `spore`: a super cell, granted only to the precursor
+/// that spore's `dream.precursor` names, run under the lower of its own limits and the dream's —
+/// the agent writes its precursors, so its dream may ask for more and never gets it.
+pub fn dream_for(spore: &Path, plan: &mut Plan) -> Result<(), String> {
+    let source = std::fs::read_to_string(spore.join(DEFINITION_FILE)).map_err(|e| {
+        format!(
+            "cannot read {} — {e}",
+            spore.join(DEFINITION_FILE).display()
+        )
+    })?;
+    let known: Vec<String> = TOOL_NAMES.iter().map(|t| t.to_string()).collect();
+    let root = parse_definition(
+        &source,
+        &Options {
+            known_tools: &known,
+            cell: false,
+            seed: false,
+        },
+    )
+    .map_err(|e| format!("{DEFINITION_FILE} {e}"))?;
+    let Some(dream) = &root.dream else {
+        return Err(format!("a super cell is a dream's, and this spore declares none — dream: [turns, quiet] in its {DEFINITION_FILE}"));
+    };
+    if dream.precursor != plan.precursor.name {
+        return Err(format!(
+            "a super cell runs the spore's dream, precursor {}, not {}",
+            dream.precursor, plan.precursor.name
+        ));
+    }
+    let lower = |own: &Pair, cap: &Pair| Pair {
+        soft: own.soft.min(cap.soft),
+        hard: own.hard.min(cap.hard),
+    };
+    let limits = &mut plan.precursor.limits;
+    limits.cost = lower(&limits.cost, &dream.cost);
+    limits.wall = lower(&limits.wall, &dream.wall);
+    plan.super_reach = Some(super_reach(spore, &root)?);
+    Ok(())
 }
 
 impl Plan {
@@ -258,7 +337,12 @@ impl Plan {
             "answerPath": self.answer_path,
             "precursorPath": self.precursor_path,
             "precursor": precursor,
-            "answer": answer
+            "answer": answer,
+            "superReach": self.super_reach.as_ref().map(|reach| json!({
+                "spore": reach.spore,
+                "reads": reach.reads.iter().map(|(name, path)| json!({ "name": name, "path": path })).collect::<Vec<_>>(),
+                "writes": reach.writes
+            }))
         })
     }
 }
@@ -376,6 +460,87 @@ mod tests {
                 "enzymes": []
             })
         );
+    }
+
+    fn dreaming_spore(r: &Root, extra: &str) {
+        for dir in ["data", "home", "corpus", "here", "schedules"] {
+            fs::create_dir_all(r.0.join(dir)).unwrap();
+        }
+        let at = |dir: &str| r.0.join(dir).display().to_string();
+        fs::write(
+            r.0.join("spore.cmk"),
+            format!(
+                "---\nname: main\nmodel: m/1\ntools: [read]\nreads: [corpus={}]\nwrites: [here={}]\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\n{extra}---\n\nYou work.\n",
+                at("corpus"),
+                at("here")
+            ),
+        )
+        .unwrap();
+    }
+
+    const DREAM: &str = "dream: [50, 1h]\ndream.cost: [0.05, 1.00]\ndream.wall: [10m, 15m]\ndream.precursor: summarize\n";
+
+    #[test]
+    fn makes_a_dream_read_the_spore_and_its_grants_and_write_only_its_data_and_home() {
+        let r = root("dream");
+        dreaming_spore(&r, DREAM);
+        let mut p = plan_with(&r, &[]).unwrap();
+        dream_for(&r.0, &mut p).unwrap();
+        let reach = p.super_reach.as_ref().unwrap();
+        assert_eq!(reach.spore, r.0);
+        assert_eq!(
+            reach.reads,
+            vec![
+                ("corpus".to_string(), r.0.join("corpus")),
+                ("here".to_string(), r.0.join("here"))
+            ]
+        );
+        assert_eq!(reach.writes, vec![r.0.join("data"), r.0.join("home")]);
+        assert_eq!(
+            (p.precursor.limits.cost.soft, p.precursor.limits.cost.hard),
+            (0.05, 0.15)
+        );
+        assert_eq!(
+            (p.precursor.limits.wall.soft, p.precursor.limits.wall.hard),
+            (120_000.0, 180_000.0)
+        );
+        let worker = p.for_worker("data/out.json", &[]);
+        assert_eq!(worker["superReach"]["reads"][1]["name"], "here");
+        assert_eq!(worker["superReach"]["writes"].as_array().unwrap().len(), 2);
+        assert!(
+            plan_with(&r, &[]).unwrap().for_worker("data/out.json", &[])["superReach"].is_null()
+        );
+    }
+
+    #[test]
+    fn writes_the_schedules_of_a_spore_that_grants_them() {
+        let r = root("dream-schedules");
+        dreaming_spore(&r, &format!("schedules: [4, 1h]\n{DREAM}"));
+        let mut p = plan_with(&r, &[]).unwrap();
+        dream_for(&r.0, &mut p).unwrap();
+        assert!(p
+            .super_reach
+            .unwrap()
+            .writes
+            .contains(&r.0.join("schedules")));
+    }
+
+    #[test]
+    fn refuses_a_super_cell_but_for_the_dream_the_spore_names() {
+        let r = root("dream-refused");
+        dreaming_spore(&r, "");
+        let mut p = plan_with(&r, &[]).unwrap();
+        assert!(dream_for(&r.0, &mut p)
+            .unwrap_err()
+            .contains("declares none"));
+        dreaming_spore(
+            &r,
+            &DREAM.replace("precursor: summarize", "precursor: tidy"),
+        );
+        assert!(dream_for(&r.0, &mut p)
+            .unwrap_err()
+            .contains("precursor tidy, not summarize"));
+        assert!(p.super_reach.is_none());
     }
 
     #[test]

@@ -226,7 +226,8 @@ holds its notes: a conventional directory it writes and the runtime reads, with 
 `data/` working space. Deliverables sort first, so when `PRODUCED_CAP` (50) bites — a fan-out
 writes one directory per part — the list keeps the answer and drops the scratch, with
 `producedMore` carrying the count that did not fit. Files outside `data/out/` are listed all the
-same.
+same. The same walk adds up everything under `data/`, `dataBytes` on the turn record: how much
+the spore keeps, read later without walking it again.
 
 Delivering those files is the **invoker's** problem. The workspace is the delivery
 surface and already holds everything; a terminal lists what changed, a bot attaches it, a
@@ -981,7 +982,9 @@ already exist — `sandbox()` adds the target to its read paths, `confine` gets 
 `exec` can grep it, and `safePath` (`safe_path`, `rust/workspace`) resolves into it. It is staged
 as a symlink under the name the definition gave it (`linkGrants`, `src/core/workspace.js`), the
 way `provisionModules()` links libraries into `node_modules/`, so the agent works in
-workspace-relative paths and no identity carries a host layout.
+workspace-relative paths and no identity carries a host layout. Opening a spore drops the links
+of grants its definition no longer declares, and of one whose directory is gone: a name for a
+directory the agent cannot open reads as material it was given.
 
 Writing to it fails twice: the islands check refuses it before a syscall
 (`src/tools/make-tools.js`), and Landlock refuses it at the kernel. `grantedPathContaining()`
@@ -1443,7 +1446,8 @@ latest slot. One firing per spore per pass. `ADMISSION_FULL` and `SPEND_LIMIT` l
 pass is the caller, and waiting is the caller's
 ([principle 14](PRINCIPLES.md#14-the-computers-limits-belong-to-its-owner)). It never waits on a
 turn — `send` starts the runner detached — so the lock is held for as long as reading the
-directories takes, and a pass that dies loses nothing. The same pass releases what routers held
+directories takes, and a pass that dies loses nothing. After the schedules it starts a spore's
+dream when one is due (§Dreams). The same pass releases what routers held
 (§Deliveries nobody typed) and reports a job whose supervisor is gone (§Jobs).
 
 Nothing idle is resident, so the host runs the pass: one timer per machine, not one per
@@ -2052,6 +2056,52 @@ with `spore-spawn --standalone`.
   the spend is the spore's and is counted; `spore show` adds up the last day by origin.
 - **What a caller keeps is its policy**: which precursor, how often, what it is told, what its
   answer means.
+
+### Dreams
+
+**A dream is a super cell: a turn's reach and lock, a cell's fresh context.** A spore that declares
+`dream` ([definition.md](docs/definition.md#dreams)) is, while idle, handed to a precursor it names,
+which puts its workspace in order — writes down what the transcript says that its memory notes do
+not hold, removes what can be made again and serves nothing, groups the rest — and leaves the
+conversation a note. The runtime never deletes anything in `data/`: it cannot tell what a file is
+for, and the agent can.
+
+- **When.** Two quantities rise. Pressure is the turns since the last dream, weighed by how much
+  `data/` grew, over `dream.turns`; quiet is the time since the last turn ended, over
+  `dream.quiet`, and every turn sets it back to nothing. A dream is due when their product
+  reaches 1, each at least a quarter: the more a spore did, the sooner it dreams once left alone,
+  never in the middle of a conversation and never on too little. It is due only in a state a
+  schedule fires into, with nothing unread and no held delivery released before its hard wall
+  would end. `dreamDue()` (`src/core/dream.js`) reads it from the records alone — `dataBytes` on
+  the turn record, the last dream's row in `t_cells` — because the `tick` pass asks every spore
+  every minute.
+- **Under the lock.** The pass starts `spore-runner --dream` as `send` starts a runner, through
+  an admission slot. The runner takes the lock, writes `dream: true` into it, and runs
+  `bin/spore-dream.js` where a turn runs the agent; that looks again under the lock, since a
+  message may have landed in between, and runs the dream. What is said meanwhile waits in the
+  inbox: a spore dreaming does not act. Once it ends, anything said is read by a turn under the
+  same lock, and the runner lets go and looks again as after a turn. `stateOf` reports a lock
+  that says `dream` as running and `dreaming`; `spore stop` stops it as it stops a turn.
+- **A super cell is the root, one notch lower.** It reaches what the spore's root agent
+  reaches, except that the root's `writes` grants and its precursors are read and never written:
+  it sees the spore at `spore/`, the directories its grants link included, and writes `data/` and
+  `home/`, and `schedules/` when the root may write its own. One rule, computed from the root's
+  own reach (`super_reach`, `rust/runner/src/plan.rs`), not a list. What a turn serves — sources,
+  recall, spawn, jobs — is not reach, and a super cell has none of it. Super is the runtime's to
+  grant: `spore-spawn --super` runs only the precursor `dream.precursor` names, under the lower of
+  its own limits and `dream.cost` / `dream.wall`, since the agent writes its precursors and could
+  make its dream ask for more.
+- **Its own context.** It runs as a standalone cell (§A cell outside any turn), so the
+  conversation's history and the cached prefix behind it are untouched. It is handed
+  `transcript.md`, what was said since the last dream as compaction formats it, and `facts.json`,
+  what the directories it writes hold: sizes, files untouched for 30 days, empty files, the memory
+  notes.
+- **Observed, not reported.** The directories it writes are walked before and after it, and the
+  difference — a directory removed whole as one line — is recorded on its `t_cells` row with the
+  turn it ran after and the bytes its `data/` came to, the base the next growth is weighed from.
+- **The note.** Its answer and the observed changes are appended to the transcript as a message
+  marked `dreamt`, at the end, where the next turn reads it with its own message and no prefix
+  moves. A dream that said and changed nothing leaves the conversation alone.
 
 ### Reaching spawn
 

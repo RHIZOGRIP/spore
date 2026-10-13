@@ -441,7 +441,7 @@ export async function runSpore ({
     // What the turn left behind, read from the islands rather than from the trail: a call
     // records the streams it redirected, never what a program wrote while it ran, and a
     // rendered report is exactly that case.
-    const { produced, more: producedMore } = producedIn(WS, turnStartedAt)
+    const { produced, more: producedMore, dataBytes } = producedIn(WS, turnStartedAt)
     events.emit('produced', { files: produced, more: producedMore })
 
     writeOutcome(state, {
@@ -479,6 +479,7 @@ export async function runSpore ({
       // and never parses prose to find the file the turn made.
       produced,
       ...(producedMore ? { producedMore } : {}),
+      dataBytes,
       inputTokens: result.usage?.input || 0,
       outputTokens: result.usage?.output || 0,
       thinkingTokens: result.usage?.thinking || 0,
@@ -519,6 +520,7 @@ export async function runSpore ({
     // member as idle, which is indistinguishable from never having been launched.
     // Found by a conformance run against a provider that was refusing: fourteen spores
     // died and left no trace of why, or that they had.
+    const left = producedIn(WS, turnStartedAt)
     writeOutcome(state, {
       runId: trailRunId,
       startedAt: turnStartedAt,
@@ -540,7 +542,8 @@ export async function runSpore ({
       treeMicros: micros(totalSpend(ledger) + setupCost),
       // A turn that died still made whatever it made, and that is most of what the next
       // one has to work from.
-      produced: producedIn(WS, turnStartedAt).produced
+      produced: left.produced,
+      dataBytes: left.dataBytes
     })
     endSpanError(sporeDispatchSpan, err)
     throw err

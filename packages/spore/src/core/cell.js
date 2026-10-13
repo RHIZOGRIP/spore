@@ -39,13 +39,14 @@ export const cellsRoot = (env) => join(env.XDG_STATE_HOME || join(homedir(), '.l
  *
  * @returns {Promise<{ answer: string|null, costUsd: number, durationMs: number, failed: string|null }>}
  */
-export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model, auth, env, wallMs }) {
+export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model, auth, env, wallMs, dream = false, signal = null }) {
   const startedAt = Date.now()
   const config = readConfig()
   const spend = spendLimits(config)
   return new Promise(resolve => {
     const child = spawn(SPAWN_BIN, [
       '--standalone',
+      ...(dream ? ['--super'] : []),
       '--node', process.execPath,
       '--session', SESSION,
       '--chatgpt-helper', CHATGPT_HELPER,
@@ -62,8 +63,11 @@ export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model
     let stderr = ''
     child.stderr.on('data', chunk => { stderr += chunk })
     const timer = setTimeout(() => child.kill('SIGTERM'), wallMs + BEYOND_WALL_MS)
+    const stop = () => child.kill('SIGTERM')
+    signal?.addEventListener('abort', stop, { once: true })
     const done = (failure) => {
       clearTimeout(timer)
+      signal?.removeEventListener('abort', stop)
       const [turn] = existsSync(join(cellWs, 'state.sqlite')) ? readTurns(cellWs) : []
       const written = join(cellWs, answer)
       resolve({
@@ -83,13 +87,18 @@ export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model
 
 /**
  * Runs `precursor` — `precursors/<precursor>.cmk` in `ws` — outside any turn: in a directory of its
- * own under the state home, holding `files` (`{ name: path }`) and `briefing` as its prompt, on the
- * precursor's model or the spore's. `origin` says who asked (`hook:forge`), `ref` what for.
- * `starting(wallMs)` is told before it starts. Every run that starts is recorded in `ws`.
+ * own under the state home, holding `files` (`{ name: path }`), `contents` (`{ name: text }`) and
+ * `briefing` as its prompt, on the precursor's model or the spore's. `origin` says who asked
+ * (`hook:forge`), `ref` what for. `starting(wallMs)` is told before it starts. Every run that
+ * starts is recorded in `ws`.
+ *
+ * `dream`, `{ wallMs, recorded }`, runs it as the spore's dream: a super cell, its wall the lower
+ * of its own and `wallMs`, and `recorded()`'s fields added to its record once it has ended.
+ * `signal` stops it as a stop reaches a turn, and the run is recorded as it ended.
  *
  * @returns {Promise<{ answer: string|null, failed: string|null, started: boolean, costUsd: number, durationMs: number, cellWs: string|null }>}
  */
-export async function runCell ({ ws, precursor, origin, ref = null, files = {}, briefing, env, starting = () => {}, launch = launchStandalone, now = Date.now }) {
+export async function runCell ({ ws, precursor, origin, ref = null, files = {}, contents = {}, briefing, env, starting = () => {}, launch = launchStandalone, now = Date.now, dream = null, signal = null }) {
   const unstarted = (failed) => ({ answer: null, failed, started: false, costUsd: 0, durationMs: 0, cellWs: null })
   if (paused()) return unstarted('spores are paused')
   const stopped = spendStop()
@@ -107,10 +116,12 @@ export async function runCell ({ ws, precursor, origin, ref = null, files = {}, 
   const cellWs = join(cellsRoot(env), basename(ws), slugOf(origin), `${now()}-${randomBytes(3).toString('hex')}`)
   mkdirSync(join(cellWs, 'data'), { recursive: true })
   for (const [name, from] of Object.entries(files)) copyFileSync(from, join(cellWs, name))
+  for (const [name, text] of Object.entries(contents)) writeFileSync(join(cellWs, name), text)
   writeFileSync(join(cellWs, PROMPT), briefing)
 
-  starting(cell.limits.wall.hard)
-  const ran = await launch({ ws, precursor, cellWs, prompt: PROMPT, answer: ANSWER, model, auth: root.auth, env: { ...env, ...(naming ? { SPORE_CELL_MODELS: JSON.stringify(named) } : {}) }, wallMs: cell.limits.wall.hard })
+  const wallMs = dream ? Math.min(cell.limits.wall.hard, dream.wallMs) : cell.limits.wall.hard
+  starting(wallMs)
+  const ran = await launch({ ws, precursor, cellWs, prompt: PROMPT, answer: ANSWER, model, auth: root.auth, env: { ...env, ...(naming ? { SPORE_CELL_MODELS: JSON.stringify(named) } : {}) }, wallMs, dream: Boolean(dream), signal })
   const failed = ran.failed ?? (ran.answer === null ? 'gave no answer' : null)
   recordCell(ws, {
     precursor,
@@ -119,7 +130,8 @@ export async function runCell ({ ws, precursor, origin, ref = null, files = {}, 
     cellWs,
     ...(failed ? { error: failed } : { answer: ran.answer }),
     costUsd: ran.costUsd,
-    durationMs: ran.durationMs
+    durationMs: ran.durationMs,
+    ...(dream ? dream.recorded() : {})
   })
   return { answer: failed ? null : ran.answer, failed, started: true, costUsd: ran.costUsd, durationMs: ran.durationMs, cellWs }
 }

@@ -3,9 +3,9 @@
  * Contract: ARCHITECTURE.md, "The spore command".
  */
 
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync } from 'node:fs'
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { userInfo } from 'node:os'
-import { resolve } from 'node:path'
+import { basename, resolve, sep } from 'node:path'
 
 import { provisionModules } from '../delegation/agent-env.js'
 import { describePrecursors, cellModelRules, precursorRules, seedPrecursors } from '../delegation/precursor-catalog.js'
@@ -40,6 +40,7 @@ export function linkGrants (ws, declared = []) {
   for (const { name, path } of declared) {
     const at = resolve(ws, name)
     if (!existsSync(path)) {
+      if (lstatSync(at, { throwIfNoEntry: false })?.isSymbolicLink()) rmSync(at)
       staged.push({ name, path, missing: true })
       continue
     }
@@ -58,6 +59,36 @@ export function linkGrants (ws, declared = []) {
     staged.push({ name, path: realpathSync(path), missing: false })
   }
   return staged
+}
+
+/**
+ * What a super cell at `ws` is granted of its spore, from `reach` as `spore-spawn --super` planned
+ * it: the spore linked in at `spore/`, read with what its grants link to, and the directories it
+ * writes. `spore.missing` says the spore could not be linked.
+ */
+export function superGrants (ws, reach) {
+  const [spore] = linkGrants(ws, [{ name: 'spore', path: reach.spore }])
+  return {
+    spore,
+    reads: [spore, ...reach.reads.map(({ name, path }) => ({ name: `spore/${name}`, path }))],
+    writes: reach.writes.map(path => ({ name: `spore/${basename(path)}`, path }))
+  }
+}
+
+/**
+ * The links of grants the definition no longer declares. The agent cannot write the workspace
+ * root, so a link there that leads out of the workspace is one a grant staged, and without the
+ * grant it names a directory the agent cannot open.
+ */
+function unlinkUndeclared (ws, declared) {
+  const names = new Set(declared.map(({ name }) => name))
+  const roots = [resolve(ws), realpathSync(ws)]
+  const inside = (path) => roots.some(root => path === root || path.startsWith(root + sep))
+  for (const entry of readdirSync(ws, { withFileTypes: true })) {
+    if (!entry.isSymbolicLink() || names.has(entry.name)) continue
+    const at = resolve(ws, entry.name)
+    if (!inside(resolve(ws, readlinkSync(at)))) rmSync(at)
+  }
 }
 
 function seededRules (ws) {
@@ -152,6 +183,7 @@ export function openWorkspace (dir, { cwd = process.cwd(), definition: given, al
   provisionModules(ws)
   const reads = linkGrants(ws, definition.reads)
   const writes = linkGrants(ws, definition.writes)
+  unlinkUndeclared(ws, [...definition.reads, ...definition.writes])
   const unstaged = writes.find(w => w.missing)
   if (unstaged) {
     return { error: `${definitionPath(ws)} writes ${unstaged.name}=${unstaged.path}, which cannot be staged — ${unstaged.error ?? 'it is not there'}` }

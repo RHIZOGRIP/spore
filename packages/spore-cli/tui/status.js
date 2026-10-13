@@ -11,6 +11,7 @@ const unmetered = (shown) => shown.billing && shown.billing.kind !== 'metered'
 export function stateText (shown, { paused, now }) {
   if (paused) return 'paused'
   if (shown.state !== RUNNING) return shown.state
+  if (shown.dreaming) return `dreaming ${durationText(now - Date.parse(shown.startedAt))}`
   if (shown.draining) return 'finishing'
   if (shown.turnLimits?.limits.wall) return 'running'
   return `running ${durationText(now - Date.parse(shown.startedAt))}`
