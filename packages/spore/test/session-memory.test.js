@@ -117,6 +117,13 @@ describe('session-memory', () => {
       .toContain('exec(grep -c ERROR big.log) — exit 7')
   })
 
+  it('says a command was killed, rather than what it wrote before it was', () => {
+    expect(factFor('wsexec', { command: 'npm test' }, record({ tool: 'wsexec', signal: 'SIGTERM', killed: 'idle', files: { out: { path: 'data/t.log', bytes: 812 } } })))
+      .toContain('wsexec(npm test) — killed: idle')
+    expect(factFor('exec', { command: 'node crash.js' }, record({ tool: 'exec', signal: 'SIGSEGV', files: { out: { path: 'data/c.log', bytes: 0 } } })))
+      .toContain('exec(node crash.js) — ended by SIGSEGV')
+  })
+
   it('names what a write wrote, and how much', () => {
     expect(factFor('write', { out: 'data/answer.txt' }, record({ tool: 'write', exit: 0, files: { out: { path: 'data/answer.txt', bytes: 240 } } })))
       .toContain('write(data/answer.txt) — 240 bytes out')

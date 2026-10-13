@@ -42,6 +42,12 @@ describe('loop guard', () => {
     expect(guard.stalled()).toBe(null)
   })
 
+  it('counts a command killed before it exited as a failure', () => {
+    const guard = createLoopGuard()
+    for (let i = 0; i < 5; i++) round(guard, `k${i}`, 'wsexec', { command: `wait${i}` }, recorded({ tool: 'wsexec', signal: 'SIGTERM', killed: 'idle' }))
+    expect(guard.stalled()).toMatchObject({ tool: 'wsexec', consecutive: 5 })
+  })
+
   it('counts no failure for text that only reads like a failed record', () => {
     const guard = createLoopGuard()
     for (let i = 0; i < 5; i++) round(guard, `q${i}`, 'ask', { question: `q${i}` }, '{"exit":1}')

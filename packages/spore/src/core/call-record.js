@@ -177,6 +177,8 @@ export function readOutcome (message) {
     return { ok: true, exit: null, refused: false }
   }
   if (record.exit !== undefined) return { ok: record.exit === 0, exit: record.exit, refused: false, record }
+  // A command killed or never started has a null exit, which `contextView` leaves out.
+  if (record.killed || record.signal || record.spawnError) return { ok: false, exit: null, refused: false, record }
   return { ok: true, exit: null, refused: false, record }
 }
 
