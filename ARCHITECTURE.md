@@ -53,7 +53,7 @@ runs, not an enzyme; it becomes one only when a precursor grants it to a cell (�
 | `read` | reader | the one exception — returns content, not a file |
 | `write` | producer | content in, file at `path` |
 | `edit` | producer | unique-string replace; refuses when absent or repeated |
-| `exec` | workspace reader | **cannot write the workspace**, runs under `confine`, parallel, outbound network |
+| `exec` | workspace reader | **cannot write the workspace** but the turn's `tmp/`, runs under `confine`, parallel, outbound network |
 | `wsexec` | mutator | read-write in the workspace, serialised |
 | `ask` | terminal | ends the turn; its result is the question |
 | `quiet` | terminal | ends the turn with nothing to say; its result is the reason, kept for the record |
@@ -90,7 +90,7 @@ The caller names paths at call time. There are no fixed filenames.
 | | |
 |---|---|
 | `in` | optional, workspace path, redirected to stdin |
-| `out` | workspace path, receives stdout |
+| `out` | optional workspace path, receives stdout |
 | `err` | optional workspace path, receives stderr |
 | `timeout` | optional seconds, default 30, ceiling 3600 — a fan-out declares its own |
 | `idle` | optional seconds without output or CPU before the command is killed, default 120, at most `timeout` |
@@ -99,7 +99,8 @@ The caller names paths at call time. There are no fixed filenames.
 omits them — extensionless. They sit beside the record: a stream the caller did not name is the
 call's leftover, not a workspace product, so one directory is one call and dropping a run takes its
 streams with it. Either is removed when it ends up empty. A path the caller named is kept even
-when empty. `wsexec` requires `out`: producing a named artifact is the point of that tool.
+when empty. Neither tool requires `out`: what a `wsexec` makes is the files its program writes,
+not its stdout, and a required name left a file in `data/` for every call.
 
 **No stream enters context directly**
 ([principle 5](PRINCIPLES.md#5-big-results-stay-in-files)): `out` is work product, in the
@@ -283,7 +284,7 @@ model call:
   `writes`, and its broker socket directory. The workspace root is read-only to it
   ([principle 13](PRINCIPLES.md#13-a-spore-cannot-rewrite-its-own-history)).
 - **a command under `exec`** runs through `confine` (below), which narrows it further: what the
-  agent reads stays readable, and it writes only a per-call scratch directory.
+  agent reads stays readable, and it writes only the turn's `tmp/`.
 - **a command under `wsexec`** is a shell under the agent's own ruleset.
 - `sandbox(ws, { writeDir })` implements the split root: Landlock resolves a path against its
   most nested matching rule, so a read-only workspace with a read-write subdirectory beneath it
@@ -326,10 +327,13 @@ every attempt to create a file fails with EACCES.
 command already has (`git -C`, `make -C`, `tar -C`)
 ([principle 4](PRINCIPLES.md#4-only-seven-built-in-tools)).
 
-The per-call directory that does exist is `scratch`, `calls/<runId>/<seq>/scratch`, a temp
-directory rather than a working one: it is `exec`'s `--write-root`, exported as `TMPDIR` to both
-`exec` and `wsexec` and removed when the call ends, so programs that spill (`sort` on a large
-input) work without touching the workspace, and nothing leaks between calls.
+**`tmp/` is the turn's scratch.** At the root, a link the runtime points afresh each turn at
+`calls/<runId>/tmp/`, before the sandbox goes up: a program written to be run once is written,
+edited and run there, `exec`'s `--write-root` is that directory, and both `exec` and `wsexec`
+have it as `TMPDIR`, so a program that spills (`sort` on a large input) works without touching
+`data/`. It lives with the turn's calls and goes when `retain` drops the run, as an unnamed stream
+does; `produced` does not walk it, and no grant may be named `tmp`. What is meant to last is
+written under `data/`.
 
 Exit codes are `126` for a confinement failure and `127` for a failed exec; otherwise the
 command's own.
@@ -424,8 +428,8 @@ include `ask` or `quiet`.
 ### Knowing they exist
 
 The default sporangium ships no precursors, only their format, `precursors/README.md`. A
-precursor someone else wrote arrives with the sporangium a spore is made from (`reviewer` and
-`security` carry theirs) or from a plugin the spore uses (§Plugins), **copied into the
+precursor someone else wrote arrives with the sporangium a spore is made from (`reviewer`,
+`security` and `perennial` carry theirs) or from a plugin the spore uses (§Plugins), **copied into the
 workspace** when absent and never overwritten.
 
 The list reaches the agent through **`domainRules`** — each precursor's name, first line, the
@@ -660,6 +664,7 @@ The workspace is flat and undotted:
     /model.key        this tree's key to its brokers
     /lock             pid + startedAt while a run is live
     /calls/           the streams each call did not name
+    /tmp              this turn's scratch: a link to calls/<run>/tmp/
     /precursors/      sub-agent definitions
     /schedules/       what the clock says to it, and when; the agent's only when granted
     /node_modules/    the libraries an agent's programs may import, linked

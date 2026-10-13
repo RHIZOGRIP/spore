@@ -70,6 +70,14 @@ describe('precursor catalog', () => {
     expect(rules).toMatch(/broken \(precursors\/broken\.cmk\) — unusable until fixed: unknown field "weather"/)
   })
 
+  it('names the dream as the runtime\'s to run, not a sub-agent to spawn', () => {
+    give('review')
+    copyFileSync(resolve(__dirname, '../sporangia/perennial/precursors/tidy.cmk'), resolve(WS, 'precursors/tidy.cmk'))
+    const rules = precursorRules(describePrecursors(WS), 'tidy')
+    expect(rules).toMatch(/- tidy \(precursors\/tidy\.cmk\) — your dream: the runtime runs it while you are idle, never --precursor/)
+    expect(rules).toMatch(/- review \(precursors\/review\.cmk\) — .*\(tools: read, exec\)/)
+  })
+
   it('says nothing when a workspace has none', () => {
     expect(describePrecursors(WS)).toEqual([])
     expect(precursorRules([])).toBe('')

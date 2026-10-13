@@ -446,6 +446,18 @@ describe('recovery supervisor', () => {
     expect(model.callCount).toBe(1)
   })
 
+  it('passes a cancellation on as it came, logging no error', async () => {
+    const errors = []
+    const logger = { child: () => logger, trace: () => {}, debug: () => {}, info: () => {}, warn: () => {}, error: (obj, msg) => errors.push(msg), fatal: () => {} }
+    const model = mockModel(() => {
+      throw typedError('OPERATION_CANCELLED', { detail: 'the call was left to finish without it' })
+    })
+    const wrapped = withRecovery([model], { messages: [], backoffMs: 10, logger })
+    await expect(wrapped.answer({}, {})).rejects.toMatchObject({ type: 'OPERATION_CANCELLED' })
+    expect(model.callCount).toBe(1)
+    expect(errors).toEqual([])
+  })
+
   it('untyped 400 is fatal', async () => {
     const model = mockModel(() => {
       const err = new Error('Bad Request')

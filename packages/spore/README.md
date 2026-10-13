@@ -155,7 +155,7 @@ which `usage()` returns to an embedder.
 spore is made the same way — the default sporangium, then the one named with `--sporangium` over it,
 file by file — and each sporangium is the package's `sporangia/<name>/`, then yours in
 `~/.config/spore/sporangia/<name>/`, yours winning. Your default sporangium is copied from the package's
-on first use. Edit it freely: upgrades do not touch it. The package ships `default`, `reviewer`, `security` and `commit` — the last drafts
+on first use. Edit it freely: upgrades do not touch it. The package ships `default`, `perennial`, `code`, `reviewer`, `security` and `commit` — the last drafts
 git commit messages: `spore define commit --sporangium commit`, then install the hook it carries,
 `data/prepare-commit-msg`, in a repository's `.git/hooks/` or in `core.hooksPath`. `--definition <file>` gives a
 `spore.cmk` directly. `reference.md`, which the agent reads to learn its runtime, also comes from

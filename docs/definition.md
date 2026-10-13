@@ -634,37 +634,9 @@ A dream reaches what the spore's own agent reaches, one notch lower: it sees the
 never writes. So it writes `spore/data/` and `spore/home/`, and `spore/schedules/` when the spore
 may write its own. Beside its prompt it finds `transcript.md`,
 what was said since the last dream, and `facts.json`, what those directories hold: sizes by
-directory, files untouched for 30 days, empty files, the memory notes. A dream precursor, whole:
-
-```
----
-name: tidy
-description: Puts the spore's workspace in order while it is idle
-tools: [read, write, edit, exec, wsexec]
-rounds: [30, 40]
-cost: [0.40, 0.80]
-wall: [8m, 10m]
-on-wrap: keep
----
-
-You dream for the spore at spore/: you put its workspace in order, so that its next turns find
-what they need and carry nothing they do not use.
-
-In this order:
-
-1. Read transcript.md. What was decided, learned or promised there that the spore will need
-   again, and that spore/data/memory/ does not hold yet, write there: one short note per subject,
-   updating a note rather than adding a second.
-2. Read facts.json. Remove what can be made again and serves no open task: caches, programs
-   installed for a task that is done, empty files, the scratch and logs of finished work. Never
-   remove what the person made or asked to keep, or the only copy of a result.
-3. Group what is left so it can be found: a directory per subject or task under spore/data/,
-   not hundreds of loose files.
-4. What you are unsure of, leave, and say so.
-
-Answer with what you wrote down, what you removed and why, what you moved and where to, and what
-you left for the person to decide.
-```
+directory, files untouched for 30 days, empty files, the memory notes. The `perennial` sporangium
+ships one, [`precursors/tidy.cmk`](../packages/spore/sporangia/perennial/precursors/tidy.cmk), with
+the `dream` lines that run it.
 
 ## `plugins`
 

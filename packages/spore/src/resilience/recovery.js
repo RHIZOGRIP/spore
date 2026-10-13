@@ -158,6 +158,8 @@ export function withRecovery (models, { messages, sessionMemory, logger, emitter
             throw err
           }
 
+          if (kind === 'cancelled') throw err
+
           if (kind === 'fatal') {
             log.error({ err }, '[recovery] fatal error')
             throw err
@@ -198,6 +200,8 @@ export function withRecovery (models, { messages, sessionMemory, logger, emitter
  *
  * Untyped errors (socket transport, system) use status code fallback.
  *
+ * `OPERATION_CANCELLED` is an ending someone asked for: passed on as it came, logged as no error.
+ *
  * `RATE_LIMIT_TIER` (mohdel >= 0.105.0) means the caller's own quota
  * dimension is exhausted on this provider — retrying inside the
  * rate-limit window can't succeed. When there's a next model in the
@@ -206,6 +210,7 @@ export function withRecovery (models, { messages, sessionMemory, logger, emitter
  * exhausts after MAX_RETRIES).
  */
 function classify (err, hasNext) {
+  if (err.type === 'OPERATION_CANCELLED') return 'cancelled'
   if (err.type === 'CONTEXT_OVERFLOW') return 'overflow'
   if (err.type === 'RATE_LIMIT_TIER' && hasNext) return 'fallback'
   if (err.retryable) return 'retryable'

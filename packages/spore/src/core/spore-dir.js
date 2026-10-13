@@ -4,8 +4,8 @@
  */
 
 import { randomBytes } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readSync, statSync, writeFileSync, writeSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from 'node:fs'
+import { basename, relative, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 import { headAndTail } from './preview.js'
@@ -62,9 +62,33 @@ export const RECORD_FILES = Object.freeze({
   lock: [LOCK_FILE]
 })
 
+/** A turn's scratch, as the agent names it: a link the runtime points at a directory of the turn's run. */
+export const TMP_DIR = 'tmp'
+
 export const RUNTIME_FILES = Object.freeze([
-  ...STATE_FILES, LOCK_FILE, MODEL_KEY_FILE, SPAWN_FILE, OUT_FILE, ERR_FILE
+  ...STATE_FILES, LOCK_FILE, MODEL_KEY_FILE, SPAWN_FILE, OUT_FILE, ERR_FILE, TMP_DIR
 ])
+
+/** Where the turn whose calls are under `runRoot` keeps its scratch. */
+export const turnTmpOf = (runRoot) => resolve(runRoot, TMP_DIR)
+
+/**
+ * `tmp/` pointed at a fresh directory beside the turn's calls, `calls/<run>/tmp/`, so what it
+ * holds goes when `retain` drops the run, as an unnamed stream does. Done before the sandbox, while
+ * the root can still be written. Answers the directory.
+ */
+export function linkTurnTmp (ws, runRoot) {
+  const dir = turnTmpOf(runRoot)
+  mkdirSync(dir, { recursive: true })
+  const at = resolve(ws, TMP_DIR)
+  const there = lstatSync(at, { throwIfNoEntry: false })
+  if (there && !there.isSymbolicLink()) {
+    throw new SporeError(`${at} is not the runtime's link`, { type: 'WORKSPACE_TMP_TAKEN', detail: `${TMP_DIR}/ at a workspace's root is where each turn's scratch is linked — move what is there under data/` })
+  }
+  if (there) rmSync(at)
+  symlinkSync(relative(ws, dir), at)
+  return dir
+}
 
 const bytesUnder = (path) => {
   const entry = lstatSync(path, { throwIfNoEntry: false })

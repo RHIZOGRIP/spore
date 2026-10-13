@@ -1,8 +1,8 @@
-import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { resolve, dirname, relative, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { safePath, hasDotSegment } from '../isolation/safe-path.js'
-import { CALLS_DIR, DATA_DIR, PRECURSOR_DIR, writableDirs } from '../core/spore-dir.js'
+import { CALLS_DIR, DATA_DIR, PRECURSOR_DIR, TMP_DIR, turnTmpOf, writableDirs } from '../core/spore-dir.js'
 import { SCHEDULE_DIR, refuseScheduleWrite, scheduleDir } from '../core/schedule.js'
 import { CONFINE_BIN, runShell } from '../core/command.js'
 import { contextView, dropIfEmpty, fileRecord, hashFile, recorded } from '../core/call-record.js'
@@ -139,8 +139,9 @@ export function makeTools (WS, maxOutput, trail, {
   // The workspace root is read-only to the agent, so a path outside the islands
   // would fail as a bare EACCES several rounds later.
   const callsDir = resolve(WS, CALLS_DIR)
-  // `calls/` is writable for the streams the runtime names itself; a path the agent names there is refused.
-  const runtimes = (abs) => under(abs, callsDir) ? refuse(`${CALLS_DIR}/ is the runtime's, where the streams of a call that named none land — write under ${DATA_DIR}/`) : null
+  const tmp = turnTmpOf(trail.root)
+  // `calls/` is writable for the streams the runtime names itself and for the turn's `tmp/`; any other path the agent names there is refused.
+  const runtimes = (abs) => under(abs, callsDir) && !under(abs, tmp) ? refuse(`${CALLS_DIR}/ is the runtime's, where the streams of a call that named none land — write under ${DATA_DIR}/`) : null
   const unwritable = (abs) => {
     if (islands.some(d => under(abs, d))) return null
     const corpus = reads.find(r => under(abs, r.path))
@@ -223,8 +224,7 @@ export function makeTools (WS, maxOutput, trail, {
     const targets = openTargets(tool, { out, err })
     if (targets.refusal) return targets.refusal
     const { call, outAbs, errAbs } = targets
-    const scratch = resolve(call.dir, 'scratch')
-    mkdirSync(scratch, { recursive: true })
+    mkdirSync(tmp, { recursive: true })
 
     const ran = await runShell({
       command,
@@ -232,26 +232,25 @@ export function makeTools (WS, maxOutput, trail, {
       inAbs,
       outAbs,
       errAbs,
-      confine: confined ? { writeRoot: scratch, reads: [...readRoots, ...writeRoots, ...pluginReads, WS] } : null,
+      confine: confined ? { writeRoot: tmp, reads: [...readRoots, ...writeRoots, ...pluginReads, WS] } : null,
       // W3C trace context, by the environment because that is the only channel a
       // subprocess shares with us. A spawned cell picks it up and makes its own
       // dispatch span a child of this one, which is what joins a fan-out into one
       // trace instead of fifty roots.
-      env: { ...process.env, TMPDIR: scratch, SPORE_SPAWN: SPAWN_BIN, SPORE_FANOUT: FANOUT_BIN, SPORE_RECALL: RECALL_BIN, SPORE_SOURCE: SOURCE_BIN, SPORE_SQL: SQL_BIN, SPORE_JOB: JOB_BIN, MODEL: modelIds[0] || process.env.MODEL, ...(traceparent ? { TRACEPARENT: traceparent } : {}), ...(modelSocket ? { SPORE_MODEL_SOCKET: modelSocket } : {}), ...(storeSocket ? { SPORE_STORE_SOCKET: storeSocket } : {}), ...(sourceSocket ? { SPORE_SOURCE_SOCKET: sourceSocket } : {}) },
+      env: { ...process.env, TMPDIR: tmp, SPORE_SPAWN: SPAWN_BIN, SPORE_FANOUT: FANOUT_BIN, SPORE_RECALL: RECALL_BIN, SPORE_SOURCE: SOURCE_BIN, SPORE_SQL: SQL_BIN, SPORE_JOB: JOB_BIN, MODEL: modelIds[0] || process.env.MODEL, ...(traceparent ? { TRACEPARENT: traceparent } : {}), ...(modelSocket ? { SPORE_MODEL_SOCKET: modelSocket } : {}), ...(storeSocket ? { SPORE_STORE_SOCKET: storeSocket } : {}), ...(sourceSocket ? { SPORE_SOURCE_SOCKET: sourceSocket } : {}) },
       timeoutMs,
       idleMs,
       signal: sig
     })
 
     const hint = confined && ran.exit !== 0 && refusedWrite(errAbs)
-      ? `exec is read-only: nothing it runs can write. ${[DATA_DIR, PRECURSOR_DIR, ...writes.map(w => w.name)].map(dir => `${dir}/`).join(', ')} are writable — make the same write with write, edit or wsexec.`
+      ? `exec is read-only: nothing it runs can write but ${TMP_DIR}/. ${[DATA_DIR, PRECURSOR_DIR, ...writes.map(w => w.name)].map(dir => `${dir}/`).join(', ')} are writable — make the same write with write, edit or wsexec.`
       : null
 
     // The runtime removes only what the runtime named; a caller-named path
     // stays even when empty, because its emptiness is a fact about the run.
     if (!out) dropIfEmpty(outAbs)
     if (!err) dropIfEmpty(errAbs)
-    rmSync(scratch, { recursive: true, force: true })
 
     return recorded(contextView(trail.finish(call, {
       command,
@@ -462,7 +461,7 @@ export function makeTools (WS, maxOutput, trail, {
       return runCommand({ tool: 'exec', command, inPath, out, err, confined: true, timeoutMs, idleMs: callIdleMs, sig })
     },
     wsexec: async ({ command, in: inPath, out, err, timeout, idle, ...rest }, { signal: sig } = {}) => {
-      const bad = checkTargets({ command, out, err, in: inPath, timeout, idle, ...rest }, { accepts: ['command', 'out', 'in', 'err', 'timeout', 'idle'] })
+      const bad = checkTargets({ command, out, err, in: inPath, timeout, idle, ...rest }, { outRequired: false, accepts: ['command', 'out', 'in', 'err', 'timeout', 'idle'] })
       if (bad) return bad
       const timeoutMs = (timeout ?? EXEC_TIMEOUT_MS / 1000) * 1000
       if (!(timeoutMs > 0) || timeoutMs > EXEC_TIMEOUT_MAX_MS) {
@@ -552,7 +551,7 @@ export function makeTools (WS, maxOutput, trail, {
     },
     {
       name: 'exec',
-      description: 'Run a shell command that cannot write to the workspace. It can read anything there, run any installed program, and reach the network: use it to look around — find, grep, wc, git log, ls — and to fetch with curl. stdout goes to the file you name in `out`, or to an automatic one if you name none. Several exec calls run at once and in no particular order, so keep requests whose order matters, or that change something outside the workspace, in separate rounds. Returns the call record, with the output inline when it is short.',
+      description: 'Run a shell command that cannot write to the workspace, but for this turn\'s tmp/. It can read anything there, run any installed program, and reach the network: use it to look around — find, grep, wc, git log, ls — and to fetch with curl. stdout goes to the file you name in `out`, or to an automatic one if you name none. Several exec calls run at once and in no particular order, so keep requests whose order matters, or that change something outside the workspace, in separate rounds. Returns the call record, with the output inline when it is short.',
       parameters: {
         type: 'object',
         properties: {
@@ -568,18 +567,18 @@ export function makeTools (WS, maxOutput, trail, {
     },
     {
       name: 'wsexec',
-      description: 'Run a shell command that may write to the workspace — compilers, generators, anything producing files. Name the file that receives stdout in `out`. Prefer exec when the command only reads, because several exec calls run at once while wsexec calls run one after another.',
+      description: 'Run a shell command that may write to the workspace — compilers, generators, anything producing files. stdout goes to the file you name in `out`, or to an automatic one if you name none. Prefer exec when the command only reads, because several exec calls run at once while wsexec calls run one after another.',
       parameters: {
         type: 'object',
         properties: {
           command: { type: 'string', description: 'Shell command line. Pipes, redirects, && and ; all work.' },
-          out: { type: 'string', description: 'Workspace path to receive stdout, under data/ — a bare filename lands at the workspace root, which you cannot write' },
+          out: { type: 'string', description: 'Workspace path to receive stdout, under data/ (optional; kept automatically when omitted)' },
           in: { type: 'string', description: 'Workspace file to redirect to stdin (optional)' },
           err: { type: 'string', description: 'Workspace path to receive stderr, under data/ (optional)' },
           timeout: { type: 'number', description: 'Seconds to allow, default 30.' },
           idle: { type: 'number', description: 'Seconds a command may go with no new output and no CPU time before it is killed, default 120, at most the timeout. Waiting on a model call or the network uses neither.' }
         },
-        required: ['command', 'out']
+        required: ['command']
       }
     },
     {

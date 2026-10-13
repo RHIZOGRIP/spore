@@ -64,7 +64,7 @@ const AUTH_MAX_BYTES: usize = 128;
 
 /// What sits at the workspace root under a name a grant could take: staging a grant there would
 /// replace the workspace's own directory with a link.
-const WORKSPACE_NAMES: [&str; 7] = [
+const WORKSPACE_NAMES: [&str; 8] = [
     "data",
     "home",
     "calls",
@@ -72,6 +72,7 @@ const WORKSPACE_NAMES: [&str; 7] = [
     "schedules",
     "node_modules",
     "lock",
+    "tmp",
 ];
 
 const MEMORY_BACKENDS: [&str; 2] = ["bm25", "vectors"];

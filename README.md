@@ -81,6 +81,7 @@ kind of spore it is:
 | `security` | security review: finds vulnerabilities and says how to fix them |
 | `commit` | writes the commit message for what is staged |
 | `default` | general work: answers, files and shell commands |
+| `perennial` | long-lived general work: remembers what it learns, follows up on its own, tidies itself while idle |
 
 Then a terminal screen opens and you talk to it. It reads the project, edits files where they
 are, and runs commands. Your message reaches it even while it works, between its steps. Close the

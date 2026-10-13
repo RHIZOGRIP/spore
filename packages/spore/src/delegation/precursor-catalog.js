@@ -71,11 +71,13 @@ export function cellModelRules (cellModels, model) {
   ].join('\n')
 }
 
-export function precursorRules (precursors) {
+export function precursorRules (precursors, dream = null) {
   if (!precursors.length) return ''
   const lines = precursors.map(p => p.error
     ? `- ${p.name} (${PRECURSOR_DIR}/${p.name}${PRECURSOR_EXT}) — unusable until fixed: ${p.error}`
-    : `- ${p.name} (${PRECURSOR_DIR}/${p.name}${PRECURSOR_EXT}) — ${p.summary} (tools: ${p.tools.length ? p.tools.join(', ') : 'none'}${p.model ? `; model: ${p.model}` : ''})`)
+    : p.name === dream
+      ? `- ${p.name} (${PRECURSOR_DIR}/${p.name}${PRECURSOR_EXT}) — your dream: the runtime runs it while you are idle, never --precursor`
+      : `- ${p.name} (${PRECURSOR_DIR}/${p.name}${PRECURSOR_EXT}) — ${p.summary} (tools: ${p.tools.length ? p.tools.join(', ') : 'none'}${p.model ? `; model: ${p.model}` : ''})`)
   return [
     'Sub-agents you can spawn, named by --precursor <name>:',
     ...lines,

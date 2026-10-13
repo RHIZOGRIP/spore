@@ -16,6 +16,8 @@ inbox.d/         files that came with those messages, and any message too long t
 lock             the pid running here, while one is
 model.key        this tree's key to its model broker
 calls/           any stream a tool call did not name, one directory per call
+tmp/             this turn's scratch: a program you run once, a file a command spills —
+                 fresh each turn, gone once the turn's record is pruned
 precursors/      sub-agent definitions, and their format in README.md
 plugins/         one file per plugin you use: the programs it gives you, and how to use them
 schedules/       what the clock says to you, and when — one <name>.cmk per schedule
@@ -29,7 +31,7 @@ home/            your $HOME: where the programs you run keep their settings, cac
                  never handed back
 ```
 
-**You can write `data/`, `precursors/` and `home/`, and nothing else** — and `schedules/` when
+**You can write `data/`, `tmp/`, `precursors/` and `home/`, and nothing else** — and `schedules/` when
 `spore.cmk` grants it (below). `calls/` is the runtime's: the streams of a call that named no
 `out` land there. Leave it to the runtime and name your own files under `data/`; the record of
 each call is in the database, which you can read and not change. The rest is readable and kept by
@@ -136,7 +138,7 @@ large read, and prefer one page you chose over four you might need.
 | `read` | returns content. `offset`/`length` slice by line, or by byte with `unit: bytes`. `encoding` reads text that is not UTF-8 (`latin1`, `utf-16le`, …); a file that does not decode is refused. An image comes back as the picture |
 | `write` | `content` in, file at `path`. It does not read the content back to you — you wrote it |
 | `edit` | replaces one exact string at `path`, which must appear exactly once. `$&` is literal |
-| `exec` | cannot write the workspace. Reaches the network. Several run at once |
+| `exec` | cannot write the workspace but `tmp/`. Reaches the network. Several run at once |
 | `wsexec` | may write. Runs one at a time, in the order you asked |
 | `ask` | puts a question to the user and ends the turn. A turn waiting for a go-ahead ends here, never on an answer saying what comes next |
 | `quiet` | ends the turn with nothing to say; `because` is for the record, and nobody is sent it |
@@ -510,13 +512,24 @@ the last line is shown to your operator without a turn. When something needs you
 is read. It waits while what the job said before is still unread, and a newer `say` replaces it meanwhile, so say only what needs attention. When your operator grants `jobs.maxWait`, a
 job's messages are routed like a webhook's, by `data/routes/job-<name>.route`.
 
+## Dreams
+
+Only when `spore.cmk` says `dream:`. After enough turns and enough quiet, while you are idle, the
+runtime runs the precursor `dream.precursor` names over your workspace. It reads what was said since
+the last dream, writes notes into `data/memory/`, and removes and moves things in `data/` and
+`home/`; it never writes your precursors, your definition or what `writes` grants. A message sent
+while it runs waits for its end. Its account then reaches you as a message headed
+`[While idle, you dreamt]`, with what changed as observed. That precursor is yours to refine like
+any other; `dream.cost` and `dream.wall` bound it whatever it declares, and it is never spawned
+with `--precursor`.
+
 ## What the runtime will refuse
 
 These are refusals, not errors to work around:
 
-- writing outside `data/`, `precursors/` and `home/`, `schedules/` when granted, and the
+- writing outside `data/`, `tmp/`, `precursors/` and `home/`, `schedules/` when granted, and the
   directory your definition `writes` — `/tmp` included: every command you run has `$TMPDIR`
-  pointing at a scratch directory of its own, so a temporary file goes there
+  pointing at the turn's `tmp/`, so a temporary file goes there
 - signalling a process you did not start, or that is not of your spore; on most hosts you do
   not see such processes at all — `ps` and `/proc` show your turn's own
 - making namespaces, mounting, and the other calls a process uses to leave a sandbox

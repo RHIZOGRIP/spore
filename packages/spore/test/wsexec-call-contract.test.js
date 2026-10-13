@@ -115,8 +115,10 @@ describe('wsexec under the call contract', () => {
     expect(typeof recorded.durationMs).toBe('number')
   })
 
-  it('requires out, and refuses dotpaths', async () => {
-    expect(await wsexec({ command: 'echo x' })).toMatch(/out is required/)
+  it('names stdout itself when out is not given, and refuses dotpaths', async () => {
+    const meta = JSON.parse(await wsexec({ command: 'echo x' }))
+    expect(meta.exit).toBe(0)
+    expect(meta.files.out.path).toMatch(/^calls\/[^/]+\/[^/]+\/out$/)
     expect(await exec({ command: 'echo x', out: 'data/.hidden/o.txt' })).toMatch(/dotfile/)
   })
 

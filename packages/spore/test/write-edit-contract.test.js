@@ -134,8 +134,8 @@ describe('errors that name the mistake', () => {
       .toMatch(/unexpected parameter "outt" — this tool takes command, out, in, err, timeout/)
   })
 
-  it('still asks for out when nothing stray was passed', async () => {
-    expect(await tools.wsexec({ command: 'true' })).toMatch(/out is required/)
+  it('asks for nothing more when nothing stray was passed', async () => {
+    expect(JSON.parse(await tools.wsexec({ command: 'true' })).exit).toBe(0)
   })
 
   it('keeps timings, hashes and mime out of what the caller sees', async () => {

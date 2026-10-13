@@ -107,8 +107,8 @@ describe('wsexec may write', () => {
     expect(meta.files.out.content).toBe('done\n')
   })
 
-  it('requires out, unlike exec', async () => {
-    expect(await wsexec({ command: 'echo x' })).toMatch(/out is required/)
+  it('names stdout itself when out is not given, as exec does', async () => {
+    expect(JSON.parse(await wsexec({ command: 'echo x' })).files.out.path).toMatch(/^calls\//)
   })
 })
 

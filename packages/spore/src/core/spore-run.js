@@ -22,7 +22,7 @@ import { createSessionMemory } from '../resilience/session-memory.js'
 import { makeTools, recordRefusals } from '../tools/make-tools.js'
 import { loop } from './loop.js'
 import { COMPACTED, marked } from './marks.js'
-import { DATA_DIR, appendCompaction, appendTranscript, fromPerson, inboxConsumed, readInbox, readInboxFrom, readModelKey, readSaidSoFar, runningLimits, writableDirs, writeOutcome } from './spore-dir.js'
+import { DATA_DIR, appendCompaction, linkTurnTmp, appendTranscript, fromPerson, inboxConsumed, readInbox, readInboxFrom, readModelKey, readSaidSoFar, runningLimits, writableDirs, writeOutcome } from './spore-dir.js'
 import { producedIn } from './produced.js'
 import { scheduleDir } from './schedule.js'
 import { composeSystem } from './system-prompt.js'
@@ -204,6 +204,11 @@ export async function runSpore ({
   // island has to be on disk before the ruleset is built or it is never granted.
   const islands = [...writableDirs(WS), ...(schedules ? [scheduleDir(WS)] : [])]
   for (const dir of islands) mkdirSync(dir, { recursive: true })
+  const trail = resume
+    ? createCallTrail(WS, { runId: resume.runId, seq: callsIn(WS, resume.runId), round: resume.rounds, state })
+    : createCallTrail(WS, { state })
+  const trailRunId = trail.runId
+  linkTurnTmp(WS, trail.root)
   const turnStartedAt = resume ? resume.startedAt : new Date().toISOString()
   if (applySandbox) sandbox(WS, { writeDir: DATA_DIR, extraWritePaths: [...islands, ...writes.map(w => w.path), socketDir], extraReadPaths: [...reads.map(r => r.path), ...pluginReads], logger })
 
@@ -216,11 +221,6 @@ export async function runSpore ({
   // served; an in-process host hands its broker's ledger down. Neither is built here —
   // this half holds no keys and outlives nothing.
   const ledger = mo.ledger || hostLedger || createLedger()
-
-  const trail = resume
-    ? createCallTrail(WS, { runId: resume.runId, seq: callsIn(WS, resume.runId), round: resume.rounds, state })
-    : createCallTrail(WS, { state })
-  const trailRunId = trail.runId
 
   // The log listens on an emitter of its own and forwards to the caller's, so an embedder
   // keeps whatever shape it passed — `emit` alone was always enough — and the record is
