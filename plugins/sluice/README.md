@@ -1,36 +1,44 @@
 # @rhizogrip/spore-plugin-sluice
 
 Host commands for spores, through [sluice](https://github.com/clbrge/sluicify): a broker on the
-host runs the commands its rules allow — a service's status, a restart, its journal — with the
-spore's input and output, and refuses everything else.
+host runs the commands a spore's rules allow — a service's status, a restart, its journal — with
+the spore's input and output, and refuses everything else. Each spore has its own rules and its
+own socket, and sees no other.
 
 ```
-cargo install sluicify                       # sluice, the broker, and sluicify, its client
+cargo install sluicify                       # sluice, the broker, and sluicify, its client (0.4 or later)
 npm i -g @rhizogrip/spore-plugin-sluice
-mkdir -p ~/.config/sluice
-cp "$(npm root -g)/@rhizogrip/spore-plugin-sluice/examples/spore."* ~/.config/sluice/
-sluice check ~/.config/sluice/spore.rules
+mkdir -p ~/.config/spore/sluice
+cp "$(npm root -g)/@rhizogrip/spore-plugin-sluice/examples/spore.rules" ~/.config/spore/sluice/main.rules
+sluice check ~/.config/spore/sluice/main.rules
 spore service define sluice                  # writes the unit, prints the next line
-spore plugin allow sluice socket=/run/user/$(id -u)/sluice/spore.sock
+spore plugin allow sluice dir=/run/user/$(id -u)/sluice
 ```
 
-A spore uses it once its `spore.cmk` says `plugins: [sluice]`. Its agent is given
-`$SPORE_SLUICE`, the client, and reads how to use it in `plugins/sluice.md`.
+A spore uses it once its `spore.cmk` says `plugins: [sluice]` and
+`~/.config/spore/sluice/<spore>.rules` says what it may run. Its agent is given `$SPORE_SLUICE`,
+the client, and reads how to use it in `plugins/sluice.md`.
 
-## Two files, both yours
+## One file per spore, yours
 
-- `~/.config/sluice/spore.rules` — what the broker runs. Every rule is a whole command line, each
-  variable part a slot with a regex; `sluice match spore.rules <argv…>` says whether one would run.
-  The [rules reference](https://github.com/clbrge/sluicify/blob/main/REFERENCE.md) has the rest.
-- `~/.config/sluice/spore.md` — what the agent reads with `--list`. You write it yourself. Leave
-  out anything secret in the rules, such as an `env` value. The unit copies it beside the socket
-  each time it starts.
+`~/.config/spore/sluice/<spore>.rules` is what the broker runs for that spore, on its own socket,
+`/run/user/<uid>/sluice/spores/<spore>/sluice.sock`. Every rule is a whole command line, each
+variable part a slot with a regex; `sluice match <spore>.rules <argv…>` says whether one would
+run. The comment lines written directly above a rule are what the agent reads it is for, with
+`--list`; nothing else in the file reaches it. The
+[rules reference](https://github.com/clbrge/sluicify/blob/main/REFERENCE.md) has the rest.
 
-Change either, then `spore service restart sluice`.
+Adding, changing or removing a file takes effect within a second, with no restart. A spore whose
+file is missing, or whose rules do not parse, has no socket, and its turns are refused, saying
+so.
 
-## What it does not isolate
+## What it isolates
 
-sluice authorises by socket: whoever can connect to one may run its rules. A spore's sandbox does
-not gate connecting to a unix socket, so a spore can reach **every** sluice broker of the user it
-runs as — this one, and any other, such as an agent broker's — if it knows the path and writes a
-client. Write every broker's rules for that. What spores must not reach runs as another user.
+A spore using the plugin runs contained, in a mount namespace of its own, where
+`/run/user/<uid>/sluice` is an empty directory with only `spores/<spore>/` put back. It reaches its
+own socket and no other spore's, and none of the other sluice brokers of its user, an agent
+broker's included. A spore that is not contained (`spore config set contain off`, or a host
+without user namespaces) would see them all, so its turns, jobs and routers are refused instead.
+
+Processes of the user outside spore are not contained: they reach every socket, as they could run
+the commands themselves. What must stay out of reach of those runs as another user.

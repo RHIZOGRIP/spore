@@ -1,3 +1,0 @@
-- `systemctl --user --no-pager status <unit>` — how `shop.service` or `shop-worker.service` is doing.
-- `systemctl --user restart <unit>` — restarts one of those two.
-- `journalctl --user --no-pager -u <unit> -n <lines>` — the last lines of its journal, at most 999.

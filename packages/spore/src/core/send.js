@@ -160,6 +160,7 @@ export function startRunner (workspace, { slot, plugins, unsafe = false, debug =
       '--sources', resolve(dirname(config.file), SOURCES_FILE),
       '--memory', resolve(dirname(config.file), MEMORY_FILE),
       ...(Object.keys(plugins.sources).length ? ['--plugin-sources', JSON.stringify(plugins.sources)] : []),
+      ...(plugins.contain.length ? ['--contain-keep', JSON.stringify(plugins.contain)] : []),
       ...(largestFile === null ? [] : ['--largest-file', String(largestFile)]),
       ...(freeFloor === null ? [] : ['--free-floor', String(freeFloor)]),
       ...(spend.day === null ? [] : ['--spend-per-day', String(spend.day)]),

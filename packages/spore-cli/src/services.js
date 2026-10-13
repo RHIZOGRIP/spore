@@ -46,20 +46,18 @@ const sshKeysCheck = (keys) => [
 ].join('\n')
 
 /**
- * The sluice broker spores reach: its rules and the list its agents read are the operator's, in
- * sluice's own config folder; the binary is the one on PATH, or where `cargo install` puts it.
+ * The sluice broker spores reach: one socket per spore, each serving `<spore>.rules` from this
+ * folder beside `config.json`; the binary is the one on PATH, or where `cargo install` puts it.
  */
-const SLUICE_DIR = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'sluice')
-const SLUICE_RULES = join(SLUICE_DIR, 'spore.rules')
-const SLUICE_LIST = join(SLUICE_DIR, 'spore.md')
+export const SLUICE_RULES_DIR = join(CONFIG_DIR, 'sluice')
 const sluiceBinary = () => (process.env.PATH ?? '').split(':').filter(Boolean).map(dir => join(dir, 'sluice')).find(path => existsSync(path)) ??
   join(homedir(), '.cargo', 'bin', 'sluice')
 
-const sluiceCheck = (binary) => [
+const sluiceCheck = (binary, rules) => [
   `[ -x ${quoted(binary)} ] || { echo "no sluice at ${binary} — cargo install sluicify" >&2; exit 1; }`,
-  `[ -f ${quoted(SLUICE_RULES)} ] || { echo "no ${SLUICE_RULES} — the commands spores may run; the plugin's examples/spore.rules is a start" >&2; exit 1; }`,
-  `[ -f ${quoted(SLUICE_LIST)} ] || { echo "no ${SLUICE_LIST} — what the agent reads with --list; the plugin's examples/spore.md is a start" >&2; exit 1; }`,
-  `${quoted(binary)} check ${quoted(SLUICE_RULES)}`
+  `${quoted(binary)} serve --help | grep -q -- --rules-dir || { echo "${binary} serves one rules file only — cargo install sluicify for 0.4 or later" >&2; exit 1; }`,
+  `[ -d ${quoted(rules)} ] || { echo "no ${rules} — mkdir -m 700 -p ${rules}, then one <spore>.rules per spore; the plugin's examples/spore.rules is a start" >&2; exit 1; }`,
+  `${quoted(binary)} check --rules-dir ${quoted(rules)}`
 ].join('\n')
 
 /**
@@ -147,21 +145,19 @@ export const SERVICES = Object.freeze({
     })
   },
   sluice: {
-    what: 'runs the host commands spores may ask for, as ~/.config/sluice/spore.rules allows',
+    what: 'runs the host commands each spore may ask for, as ~/.config/spore/sluice/<spore>.rules allows',
     primary: 'spore-sluice.service',
     runs: 'spore-sluice.service',
-    check: () => ['/bin/sh', ['-c', sluiceCheck(sluiceBinary())]],
-    next: ({ uid }) => `spore plugin allow sluice socket=/run/user/${uid}/sluice/spore.sock`,
+    check: () => ['/bin/sh', ['-c', sluiceCheck(sluiceBinary(), SLUICE_RULES_DIR)]],
+    next: ({ uid }) => `spore plugin allow sluice dir=/run/user/${uid}/sluice`,
     units: () => ({
       'spore-sluice.service': [
         '[Unit]',
-        'Description=spore sluice: the host commands spores may ask for',
+        'Description=spore sluice: the host commands each spore may ask for',
         `${MARKER}=sluice`,
         '',
         '[Service]',
-        'ExecStartPre=/bin/mkdir -p %t/sluice',
-        `ExecStartPre=/bin/cp ${quoted(SLUICE_LIST)} %t/sluice/spore.md`,
-        `ExecStart=${quoted(sluiceBinary())} serve --rules ${quoted(SLUICE_RULES)} --socket %t/sluice/spore.sock`,
+        `ExecStart=${quoted(sluiceBinary())} serve --rules-dir ${quoted(SLUICE_RULES_DIR)} --socket-dir %t/sluice/spores`,
         'Restart=on-failure',
         '',
         '[Install]',

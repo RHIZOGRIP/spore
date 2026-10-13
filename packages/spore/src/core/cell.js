@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { parseDefinition } from '../delegation/definition.js'
 import { containing, readConfig, spendLimits } from '../library/config.js'
 import { paused, spendStop } from './admission.js'
+import { containOf } from './plugins.js'
 import { CHATGPT_HELPER, SESSION } from './send.js'
 import { PRECURSOR_DIR, definitionPath, readTurns, recordCell } from './spore-dir.js'
 import { TOOL_NAMES } from './tool-names.js'
@@ -43,6 +44,12 @@ export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model
   const startedAt = Date.now()
   const config = readConfig()
   const spend = spendLimits(config)
+  let keep
+  try {
+    keep = containOf(ws, { config })
+  } catch (err) {
+    return Promise.resolve({ answer: null, costUsd: 0, durationMs: 0, failed: `could not start — ${err.message}` })
+  }
   return new Promise(resolve => {
     const child = spawn(SPAWN_BIN, [
       '--standalone',
@@ -57,6 +64,7 @@ export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model
       ...(spend.day === null ? [] : ['--spend-per-day', String(spend.day)]),
       ...(spend.month === null ? [] : ['--spend-per-month', String(spend.month)]),
       ...(containing(config) ? [] : ['--no-contain']),
+      ...(keep.length ? ['--contain-keep', JSON.stringify(keep)] : []),
       ...(config.gate ? ['--gate', config.gate] : []),
       ...(config.gate && auth ? ['--auth', auth] : [])
     ], { cwd: ws, env: { ...env, MODEL: model }, stdio: ['ignore', 'ignore', 'pipe'] })

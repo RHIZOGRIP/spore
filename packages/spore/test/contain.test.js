@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { closeSync, constants, existsSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -93,6 +93,67 @@ describe(`a command confine contains ${CONTAINED ? '' : '(skipped: this host giv
     const checked = confine(['--contain-check'])
     expect(checked.status).toBe(CONTAINED ? 0 : 1)
     expect(checked.stdout.trim()).toMatch(CONTAINED ? /^contained$/ : /^cannot /)
+  })
+})
+
+describe(`a contained command kept to one directory of another ${CONTAINED ? '' : '(skipped: this host gives no unprivileged user namespaces) '}`, () => {
+  const laidOut = () => {
+    const hide = mkdtempSync(join(tmpdir(), 'spore-hide-'))
+    const keep = join(hide, 'spores', 'mine')
+    mkdirSync(keep, { recursive: true })
+    mkdirSync(join(hide, 'spores', 'theirs'))
+    writeFileSync(join(hide, 'agent.sock'), '')
+    writeFileSync(join(hide, 'spores', 'theirs', 'sluice.sock'), '')
+    return { hide, keep }
+  }
+
+  it.skipIf(!CONTAINED)('sees what is in the one it keeps, as it changes, and nothing else of the one hidden', async () => {
+    const { hide, keep } = laidOut()
+    try {
+      const child = spawn(CONFINE_BIN, ['--contain', '--hide', hide, '--keep', keep, '--no-landlock', '--', 'sh', '-c', `sleep 0.6; find ${hide} | sort`])
+      let out = ''
+      child.stdout.on('data', chunk => { out += chunk })
+      await new Promise(resolve => setTimeout(resolve, 200))
+      writeFileSync(join(keep, 'sluice.sock'), '')
+      const [code] = await once(child, 'exit')
+      expect(code).toBe(0)
+      expect(out.trim().split('\n')).toEqual([hide, join(hide, 'spores'), keep, join(keep, 'sluice.sock')])
+      expect(existsSync(join(hide, 'agent.sock'))).toBe(true)
+    } finally {
+      rmSync(hide, { recursive: true, force: true })
+    }
+  })
+
+  it.skipIf(!CONTAINED)('runs nothing when the directory to keep is not there, and says which', () => {
+    const { hide, keep } = laidOut()
+    try {
+      const ran = confine(['--contain', '--hide', hide, '--keep', join(hide, 'spores', 'gone'), '--no-landlock', '--', 'sh', '-c', 'echo ran'])
+      expect(ran.status).toBe(126)
+      expect(ran.stdout).toBe('')
+      expect(ran.stderr).toMatch(/could not be laid out: cannot open .*spores\/gone: No such file or directory/)
+      expect(existsSync(keep)).toBe(true)
+    } finally {
+      rmSync(hide, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses a directory to keep outside the one hidden, and either without --contain', () => {
+    expect(confine(['--contain', '--hide', '/run/x', '--keep', '/run/y', '--no-landlock', '--', 'true']).stderr).toMatch(/--keep must lie under its --hide/)
+    expect(confine(['--contain', '--hide', '/run/x', '--keep', '/run/x', '--no-landlock', '--', 'true']).stderr).toMatch(/--keep must lie under its --hide/)
+    expect(confine(['--contain', '--hide', '/run/x', '--no-landlock', '--', 'true']).stderr).toMatch(/--hide without its --keep/)
+    expect(confine(['--hide', '/run/x', '--keep', '/run/x/a', '--no-landlock', '--', 'true']).stderr).toMatch(/need --contain/)
+  })
+
+  it('is refused by runShell, which says why, when it would not be contained or the directory is not there', async () => {
+    const { hide } = laidOut()
+    try {
+      const kept = [{ plugin: 'sluice', hide, keep: join(hide, 'spores', 'gone'), missing: 'no rules for this spore' }]
+      const shell = (contain) => runShell({ command: 'echo ran', cwd: hide, outAbs: 1, errAbs: 2, confine: { writeRoot: hide, reads: [], contain, keep: kept }, env: process.env })
+      expect((await shell(false)).spawnError).toMatch(/^plugin sluice shows this spore only its own part of the host .* — spore config set contain on$/)
+      expect((await shell(true)).spawnError).toBe(`plugin sluice needs ${join(hide, 'spores', 'gone')}, which is not there — no rules for this spore`)
+    } finally {
+      rmSync(hide, { recursive: true, force: true })
+    }
   })
 })
 

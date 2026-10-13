@@ -20,7 +20,9 @@ use spore_runner::broker::{self, Served};
 use spore_runner::enzymes::{hash_enzyme, Enzyme, Enzymes};
 use spore_runner::model::{self, Model};
 use spore_runner::plan::{dream_for, plan_spawn, Asked, Plan};
-use spore_runner::supervise::{confined, owner_token, owners_with, supervise, GRACE, OWNERS};
+use spore_runner::supervise::{
+    confined, kept_from, kept_refusal, owner_token, owners_with, supervise, Kept, GRACE, OWNERS,
+};
 use spore_workspace::spend::Limits;
 use spore_workspace::{
     acquire_lock, agent_env, begin_turn, broker_socket_path, end_channel, finalize_turn,
@@ -82,6 +84,7 @@ struct Args {
     chatgpt_helper: Option<String>,
     spend: Limits,
     no_contain: bool,
+    kept: Vec<Kept>,
     gate: Option<PathBuf>,
     auth: Option<String>,
 }
@@ -94,6 +97,7 @@ struct Standalone {
     chatgpt_helper: String,
     spend: Limits,
     contain: bool,
+    kept: Vec<Kept>,
     gate: Option<(PathBuf, String)>,
 }
 
@@ -131,6 +135,12 @@ fn parse_args(given: &[String]) -> Args {
             "--spend-per-day" => args.spend.day = Some(dollars(name, &value())),
             "--spend-per-month" => args.spend.month = Some(dollars(name, &value())),
             "--no-contain" => args.no_contain = true,
+            "--contain-keep" => {
+                args.kept = match kept_from(&value()) {
+                    Ok(kept) => kept,
+                    Err(e) => fail(e),
+                }
+            }
             "--gate" => args.gate = Some(PathBuf::from(value())),
             "--auth" => args.auth = Some(value()),
             "--help" | "-h" => args.help = true,
@@ -297,12 +307,19 @@ async fn main() {
             chatgpt_helper: need(&args.chatgpt_helper, "--chatgpt-helper"),
             spend: args.spend,
             contain: !args.no_contain,
+            kept: args.kept.clone(),
             gate: args
                 .gate
                 .clone()
                 .map(|gate| (gate, args.auth.clone().expect("checked above"))),
         }
     });
+    if let Some(problem) = standalone
+        .as_ref()
+        .and_then(|own| kept_refusal(&own.kept, own.contain))
+    {
+        fail(problem);
+    }
     // A cell reaches a model only through its parent's socket, or — outside any turn — through
     // the one this process serves: one that could call a provider directly could spend without
     // anything counting it.
@@ -525,7 +542,7 @@ async fn main() {
         let serving = serve(&plan.ws, turn_id.clone(), ours);
         let fd = theirs.as_raw_fd();
         let mut command = match &standalone {
-            Some(own) => confined(&root, "node", own.contain),
+            Some(own) => confined(&root, "node", own.contain, &own.kept),
             None => Command::new("node"),
         };
         command

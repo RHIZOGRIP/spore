@@ -13,8 +13,8 @@ import { modelReadiness } from 'mohdel/readiness'
 import { CONFIG_FILE, containing, ENVIRONMENT_FILE, MEMORY_FILE, SOURCES_FILE, readConfig, spendLimits, workspaceFor } from './config.js'
 import { isWorkspace } from './discover.js'
 import { list, show } from './verbs.js'
-import { containCheck } from '../core/command.js'
-import { listPlugins, secretsIn, showPlugin } from '../core/plugins.js'
+import { containCheck, keptRefusal } from '../core/command.js'
+import { containOf, listPlugins, secretsIn, showPlugin } from '../core/plugins.js'
 import { paused, SLOT_DIR, spendStop } from '../core/admission.js'
 import { outbox } from '../core/spore-dir.js'
 import { landlockAbi } from '../isolation/sandbox.js'
@@ -109,6 +109,14 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
     spores.push({ ...shown, name })
     for (const plugin of shown.plugins) {
       if (!config.plugins?.[plugin]) problem('spores', name, `uses plugin ${plugin}, which is not allowed — every turn is refused`, `spore plugin allow ${plugin}, or drop it from plugins: in its spore.cmk`)
+    }
+    if (shown.plugins.every(plugin => config.plugins?.[plugin])) {
+      try {
+        const refused = keptRefusal(containOf(ws, { config }), containing(config) && contain.contained)
+        if (refused) problem('spores', name, `${refused.problem} — every turn, job and router is refused`, refused.fix)
+      } catch (err) {
+        problem('spores', name, err.message, err.detail)
+      }
     }
     if (shown.differs.length) note('spores', name, `${shown.differs.join(', ')} differ from what is installed`, `spore upgrade ${name}`)
     if (shown.state === 'crashed') note('spores', name, `its runner died (pid ${shown.pid}) without recording the turn`, 'the next spore send records it')

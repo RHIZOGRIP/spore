@@ -2771,10 +2771,20 @@ What keeps them apart there:
   `confine` runs nothing as root, so a job, a router or a cell outside any turn is refused too.
   Root of a user namespace — rootless podman's container root — is refused as well, since
   nothing tells it from the host's reliably.
+- **Host sockets a plugin hands out.** A plugin's `contain` (`docs/plugins.md`) names a directory
+  of the host to hide and the one inside it to keep — the sluice plugin's `%t/sluice` and
+  `spores/<spore>/`, one socket per spore — and every contained process of the spore starts with
+  `confine --contain --hide … --keep …`: the first process opens `keep`, lays an empty tmpfs over
+  `hide`, and binds `keep` back, before the seccomp filter refuses `mount`. Landlock does not gate
+  connecting to a socket; the mount namespace is what does. A directory is kept rather than the
+  socket file, because a broker that restarts makes a new socket, which a file bind would miss.
+  A process that would not be contained, or whose `keep` is not there, is refused: the runner
+  records the turn `CONTAIN_FAILED` (`kept_refusal`, `rust/runner/src/supervise.rs`), and
+  `runShell` refuses a job's or a router's command the same way (`keptRefusal`).
 - **Not gated:** a UDP port, or a unix socket a spore makes in its own socket directory, is
   reachable from another spore of the same user; TCP bind is refused to every agent and command.
   An agent can connect to any unix socket its process can see, so every socket in a spore's
-  reach must ask for a secret, as the brokers' do.
+  reach must ask for a secret, as the brokers' do, or be hidden from it by a plugin's `contain`.
 
 ## The supervisor builds, the worker runs
 

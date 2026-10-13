@@ -62,6 +62,7 @@ runs none of the plugin's code.
 | `settings` | `{ "<key>": "port" \| "text" }` | optional | values the operator gives at `allow` |
 | `programs` | `{ "<VARIABLE>": "<program>" }` | optional | `./<path>` in the plugin, or `<package>/<path>` in a dependency |
 | `env` | `{ "<VARIABLE>": "<text>" }` | optional | text with `{placeholders}` |
+| `contain` | `{ "hide", "keep", "missing" }` | optional | text with `{placeholders}`: a directory of the host a contained spore sees only one directory of |
 | `modules` | `["<dependency>", …]` | optional | each in `dependencies`, none provisioned |
 | `sources` | `{ "<source>": { "url": …, … } }` | optional | as `sources.json` describes a source |
 | `reference` | `"<path>"` | optional | one file in the plugin |
@@ -269,6 +270,32 @@ A variable name is a letter or `_`, then letters, digits and `_`. A plugin may n
 
 Each is refused as *sets …, which it may not*. Two plugins one spore uses that set the same
 variable are refused together at `send` (`PLUGIN_CONFLICT`); the spore can use one of them.
+
+## `contain`
+
+What a contained spore is shown of a directory of the host: `hide` laid empty, and `keep`, a
+directory inside it, put back. A plugin that serves every spore of a user from one directory — a
+socket each, say — gives each spore its own part and none of the others':
+
+```json
+"contain": {
+  "hide": "{settings.dir}",
+  "keep": "{settings.dir}/spores/{name}",
+  "missing": "no ~/.config/spore/sluice/{name}.rules says what this spore may run"
+}
+```
+
+The three take the placeholders `env` does. Filled in, `hide` and `keep` are absolute and written
+plainly, and `keep` lies inside `hide`, or the spore is refused (`PLUGIN_CONTAIN_INVALID`). Two
+plugins of one spore that hide the same directory, or one inside the other, are refused
+(`PLUGIN_CONFLICT`).
+
+Every contained process of the spore gets the same view — the agent of a turn, its jobs, its
+routers, a cell started outside any turn — laid out by `confine --contain` in the namespace it
+already makes, so it holds for whatever the process runs. One that is not contained (`contain
+off`, or `--unsafe`) would see all of `hide`, and is refused instead; so is one whose `keep` is not
+there, with `missing` as the fix. Both refusals are `CONTAIN_FAILED` for a turn. `spore doctor`
+reports them for each spore.
 
 ## Sources
 
@@ -488,7 +515,8 @@ The plugins in this repository are the examples:
 |---|---|
 | `plugins/brave` | a program in the plugin, and a source it calls |
 | `plugins/browser` | a program in a dependency, a `port` setting, every placeholder but `{ws}` |
-| `plugins/ssh`, `plugins/sluice` | a `text` setting naming a socket |
+| `plugins/ssh` | a `text` setting naming a socket |
+| `plugins/sluice` | `contain`: each spore shown only its own socket of a directory of them |
 | `plugins/documents`, `plugins/images` | `modules`, with nothing for the agent to run |
 | `plugins/mcp` | a program, with dependencies of its own |
 | `plugins/telegram` | a service with instances, and nothing else |

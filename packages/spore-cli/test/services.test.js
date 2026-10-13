@@ -116,20 +116,22 @@ describe('the ssh-agent service', () => {
 })
 
 describe('the sluice service', () => {
-  const RULES = join(process.env.XDG_CONFIG_HOME, 'sluice', 'spore.rules')
+  const RULES = join(process.env.XDG_CONFIG_HOME, 'spore', 'sluice')
 
-  it('serves the operator\'s spore rules on a socket of their own, the list the agent reads beside it', () => {
+  it('serves each spore its own rules on a socket of its own', () => {
     const unit = renderUnits('sluice', { roots })['spore-sluice.service']
     expect(unit).toContain('X-Spore-Service=sluice')
-    expect(unit).toContain(`ExecStartPre=/bin/cp "${join(process.env.XDG_CONFIG_HOME, 'sluice', 'spore.md')}" %t/sluice/spore.md`)
-    expect(unit).toMatch(new RegExp(`ExecStart="[^"]*sluice" serve --rules "${RULES}" --socket %t/sluice/spore.sock`))
+    expect(unit).toMatch(new RegExp(`ExecStart="[^"]*sluice" serve --rules-dir "${RULES}" --socket-dir %t/sluice/spores`))
+    expect(unit).not.toContain('ExecStartPre')
   })
 
-  it('checks the binary, the rules and the list before writing the unit, and says what to allow next', () => {
-    const fake = standIn({ check: { status: 0, stdout: 'ok: 2 rule(s)', stderr: '' } })
+  it('checks the binary and every spore\'s rules before writing the unit, and says what to allow next', () => {
+    const fake = standIn({ check: { status: 0, stdout: 'main:\nok: 2 rule(s)', stderr: '' } })
     const defined = services(fake, { uid: 1234 }).define('sluice')
-    expect(fake.calls.some(call => call.startsWith('/bin/sh -c') && call.includes(RULES) && call.includes('cargo install sluicify'))).toBe(true)
-    expect(defined.next).toBe('spore plugin allow sluice socket=/run/user/1234/sluice/spore.sock')
+    const check = fake.calls.find(call => call.startsWith('/bin/sh -c'))
+    expect(check).toContain('cargo install sluicify')
+    expect(check).toContain(`check --rules-dir "${RULES}"`)
+    expect(defined.next).toBe('spore plugin allow sluice dir=/run/user/1234/sluice')
   })
 })
 

@@ -14,9 +14,17 @@ service, anything the sandbox will refuse — read what you may ask for. It is o
 exec  command: node "$SPORE_SLUICE" --list
 ```
 
-It prints the commands your operator allows, one per line, each with what it is for. If what the
-task needs is there, run it as listed. If it is not, nothing you can do reaches it: hand it back,
-saying exactly what to run and why, and stop there.
+It prints each command your operator allows, every part you fill in shown as `<name>`, then what
+the command is for and what each part may be:
+
+```
+systemctl --user restart <unit>
+  Restart one of the shop's services.
+  <unit> matches (shop|shop-worker)\.service
+```
+
+If what the task needs is there, run it as listed. If it is not, nothing you can do reaches it:
+hand it back, saying exactly what to run and why, and stop there.
 
 ## Running one
 
@@ -33,7 +41,7 @@ exactly as `--list` shows it:
 
 - the same words in the same order, nothing added — no extra option, no `2>&1` or `;` inside it;
 - a part shown as `<name>` is yours to fill with one word, within what the list says it may be;
-- a value starting with `-` is refused there unless the list says otherwise.
+- a value starting with `-` is refused there unless the list says it `may start with -`.
 
 ## When it says no
 

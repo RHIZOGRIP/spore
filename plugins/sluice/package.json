@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-sluice",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Host commands for spores, as a sluice broker's rules allow them",
   "author": {
     "name": "Christophe Le Bars",
@@ -24,18 +24,23 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "sluicify-native": "0.3.1"
+    "sluicify-native": "0.4.0"
   },
   "spore": {
     "works": "^1",
     "settings": {
-      "socket": "text"
+      "dir": "text"
     },
     "programs": {
       "SPORE_SLUICE": "./bin/sluice.js"
     },
     "env": {
-      "SPORE_SLUICE_SOCKET": "{settings.socket}"
+      "SPORE_SLUICE_SOCKET": "{settings.dir}/spores/{name}/sluice.sock"
+    },
+    "contain": {
+      "hide": "{settings.dir}",
+      "keep": "{settings.dir}/spores/{name}",
+      "missing": "nothing in ~/.config/spore/sluice/{name}.rules says what this spore may run, or the broker is not running — spore service status sluice"
     },
     "reference": "reference.md"
   },

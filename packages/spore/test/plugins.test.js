@@ -3,7 +3,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSy
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { allowPlugin, checkPlugin, differingDocs, disallowPlugin, installedPlugins, listPlugins, pluginRoots, pluginServices, preparePlugins, showPlugin, upgradeDocs, PLUGIN_READS } from '../src/core/plugins.js'
+import { allowPlugin, checkPlugin, containOf, differingDocs, disallowPlugin, installedPlugins, listPlugins, pluginRoots, pluginServices, preparePlugins, showPlugin, upgradeDocs, PLUGIN_READS } from '../src/core/plugins.js'
 import { readConfig } from '../src/library/config.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
 import { openWorkspace } from '../src/core/workspace.js'
@@ -432,10 +432,36 @@ describe('a turn of a spore that uses plugins', () => {
     expect(refusal(() => preparePlugins(WS, { config: config({ browser: allowed('browser', { cdp: 9222 }), shots: allowed('shots') }), roots })).type).toBe('PLUGIN_CONFLICT')
   })
 
+  it('fills what a plugin keeps in view of a contained spore, and refuses two that hide the same place', () => {
+    const KEEPING = { settings: { dir: 'text' }, contain: { hide: '{settings.dir}', keep: '{settings.dir}/spores/{name}', missing: 'no rules for {name}' } }
+    plugin('spore-plugin-gate', KEEPING)
+    plugin('spore-plugin-other', KEEPING)
+    const dir = '/run/user/1000/sluice'
+    const settings = { config: config({ gate: allowed('gate', { dir }) }), roots }
+    const expected = [{ plugin: 'gate', hide: dir, keep: `${dir}/spores/ws`, missing: 'no rules for ws' }]
+    useIn(WS, ['gate'])
+    expect(preparePlugins(WS, settings).contain).toEqual(expected)
+    expect(containOf(WS, settings)).toEqual(expected)
+
+    useIn(WS, ['gate', 'other'])
+    const both = config({ gate: allowed('gate', { dir }), other: allowed('other', { dir: `${dir}/inner` }) })
+    expect(refusal(() => preparePlugins(WS, { config: both, roots })).type).toBe('PLUGIN_CONFLICT')
+
+    useIn(WS, ['gate'])
+    expect(refusal(() => containOf(WS, { config: config({ gate: allowed('gate', { dir: 'relative' }) }), roots })).type).toBe('PLUGIN_CONTAIN_INVALID')
+  })
+
+  it('refuses a contain it cannot read', () => {
+    const partial = plugin('spore-plugin-partial', { contain: { hide: '/x' } })
+    expect(refusal(() => checkPlugin(partial)).message).toMatch(/has a contain spore cannot read/)
+    const unfilled = plugin('spore-plugin-unfilled', { contain: { hide: '{nope}', keep: '{nope}/a', missing: 'x' } })
+    expect(refusal(() => checkPlugin(unfilled)).message).toMatch(/sets contain\.hide with \{nope\}/)
+  })
+
   it('gives nothing to one whose definition does not parse, which the agent refuses', () => {
     mkdirSync(WS)
     writeFileSync(join(WS, 'spore.cmk'), 'no frontmatter')
-    expect(preparePlugins(WS, { config: config({}), roots })).toEqual({ env: {}, plugins: [], sources: {} })
+    expect(preparePlugins(WS, { config: config({}), roots })).toEqual({ env: {}, plugins: [], sources: {}, contain: [] })
   })
 })
 

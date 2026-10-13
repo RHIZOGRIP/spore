@@ -6,13 +6,18 @@
  * on inherited descriptors, which Landlock does not gate: it checks path
  * resolution, so a child with no writable path still writes stdout.
  *
- *   confine [--contain] [--scope-signals] --write-root DIR [--read PATH]... [--write PATH]... -- CMD [ARG]...
- *   confine [--contain] --no-landlock -- CMD [ARG]...     the command applies its own Landlock
+ *   confine [--contain [--hide DIR --keep DIR]...] [--scope-signals] --write-root DIR [--read PATH]... [--write PATH]... -- CMD [ARG]...
+ *   confine [--contain [--hide DIR --keep DIR]...] --no-landlock -- CMD [ARG]...     the command applies its own Landlock
  *   confine --contain-check                               exit 0 when this host can contain
  *
  * --contain runs the command in a user, PID and mount namespace of its own, with a /proc of
  * that namespace, so it sees only the processes it started; on a host that cannot make them it
  * runs nothing. Contract: ARCHITECTURE.md, "Spores of different people on one account".
+ *
+ * --hide DIR --keep DIR, in that namespace, lays an empty directory over DIR and puts back the one
+ * directory KEEP below it: the command sees KEEP and nothing else of DIR — one socket of a
+ * directory of them, say. KEEP must exist; Landlock does not gate connecting to a socket, and the
+ * mount namespace is what does.
  *
  * It runs nothing as root. Exit codes: 126 confinement failed, 127 exec failed; otherwise the
  * command's own.
@@ -37,8 +42,10 @@
 #include <linux/audit.h>
 #include <linux/filter.h>
 #include <linux/seccomp.h>
+#include <limits.h>
 #include <sys/mount.h>
 #include <sys/prctl.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
 
@@ -315,6 +322,65 @@ static void end_as (int status) {
   exit(128 + sig);
 }
 
+#define MAX_KEPT 8
+
+static const char *hide_paths[MAX_KEPT];
+static const char *keep_paths[MAX_KEPT];
+static int n_hide = 0, n_keep = 0;
+static char hid_step[PATH_MAX + 64];
+
+/* Makes each directory of `path` past its first `from` bytes, as mkdir -p would. */
+static int make_below (const char *path, size_t from) {
+  char at[PATH_MAX];
+  size_t n = strlen(path);
+  if (n >= sizeof(at)) return -ENAMETOOLONG;
+  memcpy(at, path, n + 1);
+  for (size_t k = from + 1; k <= n; k++) {
+    if (at[k] != '/' && at[k] != '\0') continue;
+    char was = at[k];
+    at[k] = '\0';
+    if (mkdir(at, 0700) < 0 && errno != EEXIST) return -errno;
+    at[k] = was;
+  }
+  return 0;
+}
+
+/*
+ * Each DIR hidden under an empty tmpfs, then each KEEP put back in it from a descriptor opened
+ * before anything was hidden. NULL when done; otherwise the step that failed, `*err` its errno.
+ */
+static const char *hide_and_keep (int *err) {
+  int kept[MAX_KEPT];
+  for (int k = 0; k < n_keep; k++) {
+    kept[k] = open(keep_paths[k], O_PATH | O_DIRECTORY | O_CLOEXEC);
+    if (kept[k] < 0) {
+      *err = -errno;
+      for (int j = 0; j < k; j++) close(kept[j]);
+      snprintf(hid_step, sizeof(hid_step), "cannot open %s", keep_paths[k]);
+      return hid_step;
+    }
+  }
+  const char *step = NULL;
+  for (int k = 0; !step && k < n_hide; k++) {
+    if (mount("tmpfs", hide_paths[k], "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC, "mode=0700") < 0) {
+      *err = -errno;
+      snprintf(hid_step, sizeof(hid_step), "cannot hide %s", hide_paths[k]);
+      step = hid_step;
+    }
+  }
+  for (int k = 0; !step && k < n_keep; k++) {
+    char from[64];
+    snprintf(from, sizeof(from), "/proc/self/fd/%d", kept[k]);
+    if ((*err = make_below(keep_paths[k], strlen(hide_paths[k]))) < 0 || mount(from, keep_paths[k], NULL, MS_BIND, NULL) < 0) {
+      if (*err == 0) *err = -errno;
+      snprintf(hid_step, sizeof(hid_step), "cannot keep %s", keep_paths[k]);
+      step = hid_step;
+    }
+  }
+  for (int k = 0; k < n_keep; k++) close(kept[k]);
+  return step;
+}
+
 /*
  * The namespaces' first process: it maps the user to itself, mounts a /proc of its own, says
  * whether it could, then starts the command, passes it the signals it is sent, reaps whatever is
@@ -334,6 +400,10 @@ static void first_process (int report, uid_t uid, gid_t gid, int check, char **c
   else if (mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL) < 0) { err = -errno; step = "cannot mount a /proc of its own"; }
   if (step) {
     dprintf(report, "F%s: %s", step, strerror(-err));
+    _exit(0);
+  }
+  if (n_hide && (step = hide_and_keep(&err))) {
+    dprintf(report, "H%s: %s", step, strerror(-err));
     _exit(0);
   }
   if (write(report, "K", 1) != 1 || check) _exit(0);
@@ -363,7 +433,8 @@ static void first_process (int report, uid_t uid, gid_t gid, int check, char **c
 
 /*
  * 1 when the command ran contained and ended with *status; 0 when this host could not contain it
- * and nothing ran, the step it refused in `why`.
+ * and nothing ran, the step it refused in `why`; -1 when it could, but a --hide or --keep failed
+ * and nothing ran, why in `why`.
  */
 static int contained (char **command, int check, void (*confine_command)(void), int *status, char *why, size_t why_size) {
   int report[2];
@@ -389,14 +460,14 @@ static int contained (char **command, int check, void (*confine_command)(void), 
   char said[256] = { 0 };
   ssize_t n;
   while ((n = read(report[0], said, 1)) < 0 && errno == EINTR) {}
-  if (n == 1 && said[0] == 'F') {
+  if (n == 1 && (said[0] == 'F' || said[0] == 'H')) {
     ssize_t more;
     while ((more = read(report[0], said + 1, sizeof(said) - 2)) < 0 && errno == EINTR) {}
     snprintf(why, why_size, "%s", said + 1);
     close(report[0]);
     waitpid(first, NULL, 0);
     forward_to = 0;
-    return 0;
+    return said[0] == 'H' ? -1 : 0;
   }
   if (n != 1 || said[0] != 'K') fail("the namespaces' first process ended before saying anything", NULL);
   close_from(3, report[0]);
@@ -433,7 +504,17 @@ int main (int argc, char **argv) {
     if (strcmp(argv[i], "--contain-check") == 0) { check = 1; continue; }
     if (strcmp(argv[i], "--no-landlock") == 0) { no_landlock = 1; continue; }
     if (i + 1 >= argc) fail("missing value for", argv[i]);
-    if (strcmp(argv[i], "--write-root") == 0) write_root = argv[++i];
+    if (strcmp(argv[i], "--hide") == 0) {
+      if (n_hide >= MAX_KEPT) fail("too many directories to hide", NULL);
+      if (n_keep != n_hide) fail("--hide again before its --keep", NULL);
+      hide_paths[n_hide++] = argv[++i];
+    } else if (strcmp(argv[i], "--keep") == 0) {
+      if (n_keep + 1 != n_hide) fail("--keep without the --hide it lies under", NULL);
+      const char *hide = hide_paths[n_keep], *keep = argv[++i];
+      size_t len = strlen(hide);
+      if (hide[0] != '/' || strncmp(keep, hide, len) != 0 || keep[len] != '/' || keep[len + 1] == '\0') fail("--keep must lie under its --hide, both absolute", keep);
+      keep_paths[n_keep++] = keep;
+    } else if (strcmp(argv[i], "--write-root") == 0) write_root = argv[++i];
     else if (strcmp(argv[i], "--read") == 0) {
       if (n_read >= MAX_PATHS) fail("too many read paths", NULL);
       read_paths[n_read++] = argv[++i];
@@ -444,12 +525,14 @@ int main (int argc, char **argv) {
   }
 
   if (getuid() == 0 || geteuid() == 0) fail("refuses to run anything as root", "run spore as an ordinary user (in a container, USER or --user)");
+  if (n_keep != n_hide) fail("--hide without its --keep", hide_paths[n_hide - 1]);
+  if (n_hide && !contain) fail("--hide and --keep need --contain", "they lay mounts in the command's own namespace");
 
   char why[256] = { 0 };
   if (check) {
     int status;
     char *nothing[] = { NULL };
-    if (contained(nothing, 1, confine_command, &status, why, sizeof(why))) {
+    if (contained(nothing, 1, confine_command, &status, why, sizeof(why)) == 1) {
       puts("contained");
       return 0;
     }
@@ -469,7 +552,9 @@ int main (int argc, char **argv) {
 
   if (contain) {
     int status;
-    if (contained(&argv[i], 0, confine_command, &status, why, sizeof(why))) end_as(status);
+    int how = contained(&argv[i], 0, confine_command, &status, why, sizeof(why));
+    if (how == 1) end_as(status);
+    if (how < 0) fail("the command was not run: what it is shown of the host could not be laid out", why);
     fail("this host cannot contain the command, so it was not run", why);
   }
 

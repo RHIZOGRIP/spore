@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFile, spawn } from 'node:child_process'
 import { closeSync, existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { promisify } from 'node:util'
-import { dirname, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createModelServer } from './fixtures/model-server.js'
@@ -19,6 +19,7 @@ import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { outcome } from '../src/library/watch.js'
 import { takeSlot } from '../src/core/admission.js'
 import { containCheck } from '../src/core/command.js'
+import { allowPlugin } from '../src/core/plugins.js'
 import { appendInbox, readEvents, readLock, readTranscript, readTranscriptEntries, readTurns } from '../src/core/spore-dir.js'
 import { callRuns, readCalls } from '../src/core/call-record.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
@@ -357,6 +358,39 @@ describe('a confined turn', () => {
       expect(readTurns(ws)[0].stopReason).toBe('answer')
       expect(readFileSync(resolve(ws, 'data/u.err'), 'utf8')).toMatch(/Operation not permitted/)
     } finally {
+      rmSync(config, { force: true })
+    }
+  })
+
+  it.skipIf(!CONTAINED)('sees only the directory its plugin keeps of the one it hides, and is refused until it is there', async () => {
+    const hide = outsideRoot('spore-cli-hide')
+    const config = resolve(process.env.XDG_CONFIG_HOME, 'spore', 'config.json')
+    const name = basename(ws)
+    const keep = resolve(hide, 'spores', name)
+    try {
+      mkdirSync(resolve(hide, 'spores', 'theirs'), { recursive: true })
+      writeFileSync(resolve(hide, 'agent.sock'), '')
+      writeFileSync(resolve(hide, 'spores', 'theirs', 'sluice.sock'), '')
+      mkdirSync(dirname(config), { recursive: true })
+      allowPlugin('sluice', [`dir=${hide}`], { configFile: config })
+      writeFileSync(resolve(ws, 'spore.cmk'), readFileSync(resolve(ws, 'spore.cmk'), 'utf8').replace(/^---\n/, '---\nplugins: [sluice]\n'))
+      const probe = ['agent.sock', 'spores/theirs/sluice.sock', `spores/${name}/sluice.sock`].map(path => `test -e ${resolve(hide, path)} && echo ${path}`).join('; ')
+      await start(async (input, round) => round === 0 ? calls('wsexec', { command: `${probe}; true`, out: 'data/seen.txt' }) : answers('looked'))
+
+      const refused = await spore('look')
+      expect(refused.code).not.toBe(0)
+      expect(mo.seen).toHaveLength(0)
+      const [turn] = readTurns(ws)
+      expect(turn).toMatchObject({ stopReason: 'error', error: 'CONTAIN_FAILED' })
+      expect(turn.detail).toMatch(new RegExp(`plugin sluice needs ${keep}, which is not there — nothing in ~/.config/spore/sluice/${name}.rules`))
+
+      mkdirSync(keep)
+      writeFileSync(resolve(keep, 'sluice.sock'), '')
+      const looked = await spore('look again')
+      expect(looked.code, looked.stderr).toBe(0)
+      expect(readFileSync(resolve(ws, 'data/seen.txt'), 'utf8')).toBe(`spores/${name}/sluice.sock\n`)
+    } finally {
+      rmSync(hide, { recursive: true, force: true })
       rmSync(config, { force: true })
     }
   })

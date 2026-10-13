@@ -1,6 +1,7 @@
 /**
  * One host command through a sluice broker, exiting as sluice's own client does: the command's
  * code, 124 past its timeout, 128 + the broker's error otherwise, 2 when no broker answered.
+ * `--list` asks the broker what its rules allow.
  */
 
 const REFUSED = new Map([
@@ -13,16 +14,14 @@ const REFUSED = new Map([
   [-8, 'the broker could not tell who was calling, so it did not run it']
 ])
 
-export const listPath = (socket) => `${socket.replace(/\.sock$/, '')}.md`
-
 export function exitOf (status) {
   if (status >= 0) return { code: status, said: null }
   return { code: status === -7 ? 124 : 128 - status, said: REFUSED.get(status) ?? `the broker refused the call (${status})` }
 }
 
-export function run (argv, { socket, call, read, print, say }) {
+export function run (argv, { socket, call, list, print, say }) {
   if (!socket) {
-    say('no broker is named — the operator allows this plugin with: spore plugin allow sluice socket=<path>')
+    say('no broker is named — the operator allows this plugin with: spore plugin allow sluice dir=<path>')
     return 2
   }
   const [command, ...args] = argv
@@ -31,12 +30,12 @@ export function run (argv, { socket, call, read, print, say }) {
     return 2
   }
   if (command === '--list') {
-    const listed = read(listPath(socket))
-    if (listed === null) {
-      say(`${listPath(socket)} is not there — nothing says what you may run, so ask rather than try`)
+    try {
+      print(list(socket))
+    } catch (err) {
+      say(`the broker at ${socket} cannot say what you may run — ${err.message}; ask rather than try`)
       return 2
     }
-    print(listed)
     return 0
   }
   let status

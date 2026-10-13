@@ -16,6 +16,7 @@ import { containing, readConfig } from '../library/config.js'
 import { native } from '../native.js'
 import { SporeError } from '../observability/errors.js'
 import { runShell } from './command.js'
+import { containOf } from './plugins.js'
 import { deliver } from './route.js'
 import { TRIAGE_PER_DAY } from './triage.js'
 import { release } from './send.js'
@@ -197,6 +198,7 @@ export async function superviseJob ({ ws, name, count, wallMs, command, answer, 
 
   try {
     const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+    const keep = containOf(ws)
     const token = randomBytes(16).toString('hex')
     const judging = new Set()
     let said = 0
@@ -225,7 +227,7 @@ export async function superviseJob ({ ws, name, count, wallMs, command, answer, 
         cwd: ws,
         outAbs: files.out,
         errAbs: files.err,
-        confine: { writeRoot: writable, writes: jobWrites(definition), reads: [...definition.reads, ...definition.writes].map(grant => grant.path).concat(ws), scopeSignals: true, contain },
+        confine: { writeRoot: writable, writes: jobWrites(definition), reads: [...definition.reads, ...definition.writes].map(grant => grant.path).concat(ws), scopeSignals: true, contain, keep },
         env: {
           PATH: env.PATH,
           HOME: resolve(ws, 'home'),

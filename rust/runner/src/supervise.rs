@@ -27,13 +27,80 @@ fn confine(root: &Path) -> PathBuf {
     root.join("build").join("Release").join("confine")
 }
 
+/// A directory a plugin keeps in view of a contained process, inside another it hides from it,
+/// as `confine --hide --keep` lays them out. `missing` says what an absent `keep` means.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Kept {
+    pub plugin: String,
+    pub hide: PathBuf,
+    pub keep: PathBuf,
+    pub missing: String,
+}
+
+/// `--contain-keep`, the spore's plugins' `contain` as `preparePlugins` fills them in.
+pub fn kept_from(given: &str) -> Result<Vec<Kept>, String> {
+    let shape = || {
+        format!("--contain-keep is a JSON array of {{plugin, hide, keep, missing}} — got {given}")
+    };
+    let entries: Vec<serde_json::Value> = serde_json::from_str(given).map_err(|_| shape())?;
+    entries
+        .iter()
+        .map(|entry| {
+            let field = |name: &str| {
+                entry
+                    .get(name)
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .ok_or_else(shape)
+            };
+            Ok(Kept {
+                plugin: field("plugin")?,
+                hide: PathBuf::from(field("hide")?),
+                keep: PathBuf::from(field("keep")?),
+                missing: field("missing")?,
+            })
+        })
+        .collect()
+}
+
+/// Why a process of a spore that keeps `kept` cannot start: it would not be contained, so it
+/// would see everything the plugins hide, or a directory to keep is not there.
+pub fn kept_refusal(kept: &[Kept], contained: bool) -> Option<String> {
+    if kept.is_empty() {
+        return None;
+    }
+    if !contained {
+        let plugins: Vec<&str> = kept.iter().map(|k| k.plugin.as_str()).collect();
+        return Some(format!(
+            "plugin {} shows this spore only its own part of the host by containing it, and this one would not be contained — spore config set contain on",
+            plugins.join(", ")
+        ));
+    }
+    kept.iter().find(|k| !k.keep.is_dir()).map(|k| {
+        format!(
+            "plugin {} needs {}, which is not there — {}",
+            k.plugin,
+            k.keep.display(),
+            k.missing
+        )
+    })
+}
+
 /// `program` started through spore's `confine`, under the syscall filter every confined process
-/// gets, and with `contain` in namespaces of its own, seeing only the processes it starts; it
-/// applies its own Landlock. `root` is the spore package.
-pub fn confined(root: &Path, program: impl AsRef<OsStr>, contain: bool) -> Command {
+/// gets, and with `contain` in namespaces of its own, seeing only the processes it starts and
+/// only the `kept` directory of each it hides; it applies its own Landlock. `root` is the spore
+/// package.
+pub fn confined(root: &Path, program: impl AsRef<OsStr>, contain: bool, kept: &[Kept]) -> Command {
     let mut command = Command::new(confine(root));
     if contain {
         command.arg("--contain");
+        for k in kept {
+            command
+                .arg("--hide")
+                .arg(&k.hide)
+                .arg("--keep")
+                .arg(&k.keep);
+        }
     }
     command.arg("--no-landlock").arg("--").arg(program);
     command
@@ -262,6 +329,35 @@ mod tests {
     use super::*;
     use tokio::process::Command;
     use tokio::signal::unix::{signal, SignalKind};
+
+    #[test]
+    fn reads_what_a_plugin_keeps_and_refuses_what_it_cannot_lay_out() {
+        let dir = std::env::temp_dir().join(format!("spore-kept-{}", std::process::id()));
+        let keep = dir.join("spores").join("main");
+        std::fs::create_dir_all(&keep).unwrap();
+        let given = serde_json::json!([{
+            "plugin": "sluice",
+            "hide": dir,
+            "keep": keep,
+            "missing": "no rules for main"
+        }])
+        .to_string();
+        let kept = kept_from(&given).unwrap();
+        assert_eq!(kept[0].keep, keep);
+        assert_eq!(kept_refusal(&kept, true), None);
+        assert!(kept_refusal(&kept, false)
+            .unwrap()
+            .contains("plugin sluice"));
+        assert_eq!(kept_refusal(&[], false), None);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+        let absent = kept_refusal(&kept, true).unwrap();
+        assert!(
+            absent.ends_with("which is not there — no rules for main"),
+            "{absent}"
+        );
+        assert!(kept_from(r#"[{"plugin": "sluice"}]"#).is_err());
+    }
 
     fn stubborn() -> Child {
         Command::new("sh")

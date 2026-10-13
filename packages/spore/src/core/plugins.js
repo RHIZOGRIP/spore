@@ -9,7 +9,7 @@
  */
 
 import { accessSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync } from 'node:fs'
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import semver from 'semver'
@@ -30,7 +30,8 @@ const SPORE_PACKAGE = JSON.parse(readFileSync(join(SPORE_ROOT, 'package.json'), 
 
 const PREFIX = 'spore-plugin-'
 export const PLUGIN_READS = 'SPORE_PLUGIN_READS'
-const MANIFEST_FIELDS = ['works', 'settings', 'programs', 'env', 'modules', 'sources', 'reference', 'precursors', 'services']
+const MANIFEST_FIELDS = ['works', 'settings', 'programs', 'env', 'contain', 'modules', 'sources', 'reference', 'precursors', 'services']
+const CONTAIN_FIELDS = ['hide', 'keep', 'missing']
 const SERVICE_FIELDS = ['what', 'program', 'instances', 'check']
 const SERVICE_NAME = /^[a-z][a-z0-9-]*$/
 const FILE_NAME = /^[a-z0-9][a-z0-9._-]*$/i
@@ -244,12 +245,11 @@ export function checkPlugin (found, settings = null) {
     checkEnvName(found, name, refuse)
     if (name in programs) throw refuse(`sets ${name} as a program and in env`, 'one or the other')
     if (typeof template !== 'string') throw refuse(`sets ${name} to something other than text`, 'env values are strings, with {placeholders}')
-    for (const [, key] of template.matchAll(PLACEHOLDER)) {
-      const known = PLACEHOLDERS.includes(key) || (key.startsWith('settings.') && key.slice('settings.'.length) in kinds)
-      if (!known) throw refuse(`sets ${name} with {${key}}, which spore does not fill`, `placeholders are ${PLACEHOLDERS.map(p => `{${p}}`).join(', ')} and {settings.<key>} for a declared setting`)
-    }
+    checkPlaceholders(`sets ${name}`, template, kinds, refuse)
     env[name] = template
   }
+
+  const contain = checkContain(manifest.contain, kinds, refuse)
 
   const modules = checkModules(pkg, manifest.modules ?? [], found, refuse)
   const sources = checkSources(manifest.sources ?? {}, refuse)
@@ -270,7 +270,30 @@ export function checkPlugin (found, settings = null) {
 
   const services = checkServices(found, manifest.services ?? {}, refuse)
 
-  return { name: found.name, package: found.package, version: pkg.version, dir: found.dir, range, kinds, settings, programs, env, modules, sources, reference, precursors, reads, services }
+  return { name: found.name, package: found.package, version: pkg.version, dir: found.dir, range, kinds, settings, programs, env, contain, modules, sources, reference, precursors, reads, services }
+}
+
+function checkPlaceholders (what, template, kinds, refuse) {
+  for (const [, key] of template.matchAll(PLACEHOLDER)) {
+    const known = PLACEHOLDERS.includes(key) || (key.startsWith('settings.') && key.slice('settings.'.length) in kinds)
+    if (!known) throw refuse(`${what} with {${key}}, which spore does not fill`, `placeholders are ${PLACEHOLDERS.map(p => `{${p}}`).join(', ')} and {settings.<key>} for a declared setting`)
+  }
+}
+
+/**
+ * A directory of the host a contained spore keeps in view, inside another the plugin hides from
+ * it — its own socket among the sockets of every spore, say — and what it means when that
+ * directory is not there. `confine --contain` lays it out; a spore not contained is refused.
+ */
+function checkContain (declared, kinds, refuse) {
+  if (declared === undefined) return null
+  const shape = 'contain is { "hide": "<a directory>", "keep": "<a directory inside it>", "missing": "<what it means when keep is not there>" }'
+  if (!isRecord(declared) || Object.keys(declared).sort().join() !== CONTAIN_FIELDS.join()) throw refuse('has a contain spore cannot read', shape)
+  for (const field of CONTAIN_FIELDS) {
+    if (typeof declared[field] !== 'string' || !declared[field]) throw refuse(`has a contain whose ${field} is not text`, shape)
+    checkPlaceholders(`sets contain.${field}`, declared[field], kinds, refuse)
+  }
+  return declared
 }
 
 /**
@@ -331,7 +354,7 @@ function checkServices (found, declared, refuse) {
   return services
 }
 
-function fill (plugin, ws) {
+function filled (plugin, ws) {
   const values = {
     name: basename(ws),
     ws,
@@ -339,10 +362,57 @@ function fill (plugin, ws) {
     sockets: native.sporeSocketDir(ws),
     ...Object.fromEntries(Object.entries(plugin.settings).map(([key, value]) => [`settings.${key}`, String(value)]))
   }
+  return (template) => template.replace(PLACEHOLDER, (_, key) => values[key])
+}
+
+function fill (plugin, ws) {
+  const value = filled(plugin, ws)
   return {
     ...plugin.programs,
-    ...Object.fromEntries(Object.entries(plugin.env).map(([name, template]) => [name, template.replace(PLACEHOLDER, (_, key) => values[key])]))
+    ...Object.fromEntries(Object.entries(plugin.env).map(([name, template]) => [name, value(template)]))
   }
+}
+
+/** The plugin's `contain` for this spore, `{ plugin, hide, keep, missing }`, or null. */
+function keptOf (plugin, ws) {
+  if (!plugin.contain) return null
+  const value = filled(plugin, ws)
+  const [hide, keep, missing] = CONTAIN_FIELDS.map(field => value(plugin.contain[field]))
+  const plain = (path) => isAbsolute(path) && normalize(path) === path && !path.endsWith(sep)
+  if (!plain(hide) || !plain(keep) || !keep.startsWith(`${hide}${sep}`)) {
+    throw new SporeError(`plugin ${plugin.name} keeps ${keep}, which is not a directory inside the ${hide} it hides`, {
+      type: 'PLUGIN_CONTAIN_INVALID',
+      detail: `both are absolute paths, written plainly, and one lies inside the other — check spore plugin show ${plugin.name}`
+    })
+  }
+  return { plugin: plugin.name, hide, keep, missing }
+}
+
+const overlapping = (a, b) => a === b || a.startsWith(`${b}${sep}`) || b.startsWith(`${a}${sep}`)
+
+/**
+ * What a contained process of this spore keeps in view of what its plugins hide — the agent's,
+ * a job's, a router's, a cell's outside any turn — with nothing copied or linked.
+ */
+export function containOf (ws, { config = readConfig(), roots = pluginRoots() } = {}) {
+  return (usedPlugins(ws, config, roots) ?? []).map(plugin => keptOf(plugin, ws)).filter(Boolean)
+}
+
+/** The plugins the spore's definition names, each allowed and checked; null with no readable definition. */
+function usedPlugins (ws, config, roots) {
+  if (!existsSync(definitionPath(ws))) return null
+  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+  if (definition.error) return null
+  return definition.plugins.map(name => {
+    const allowed = config.plugins?.[name]
+    if (!allowed) {
+      throw new SporeError(`${ws} uses plugin "${name}", which is not allowed`, {
+        type: 'PLUGIN_NOT_ALLOWED',
+        detail: `spore plugin allow ${name}, or drop it from plugins: in its spore.cmk`
+      })
+    }
+    return allowedPlugin(name, allowed, roots)
+  })
 }
 
 /** What `allow` records of a plugin: the settings it was given, and which installed copy it was. */
@@ -380,25 +450,23 @@ function readsOf (plugins) {
  * the plugins, when there are any. `sources` are the plugins' endpoints, for the runner alone
  */
 export function preparePlugins (ws, { config = readConfig(), roots = pluginRoots() } = {}) {
-  if (!existsSync(definitionPath(ws))) return { env: {}, plugins: [], sources: {} }
-  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
-  if (definition.error) return { env: {}, plugins: [], sources: {} }
-
+  const used = usedPlugins(ws, config, roots)
+  if (!used) return { env: {}, plugins: [], sources: {}, contain: [] }
   const env = {}
   const from = {}
   const modules = {}
   const sources = {}
   const describedBy = {}
+  const contain = []
   const plugins = []
-  for (const name of definition.plugins) {
-    const allowed = config.plugins?.[name]
-    if (!allowed) {
-      throw new SporeError(`${ws} uses plugin "${name}", which is not allowed`, {
-        type: 'PLUGIN_NOT_ALLOWED',
-        detail: `spore plugin allow ${name}, or drop it from plugins: in its spore.cmk`
-      })
+  for (const plugin of used) {
+    const { name } = plugin
+    const kept = keptOf(plugin, ws)
+    if (kept) {
+      const other = contain.find(k => overlapping(k.hide, kept.hide))
+      if (other) throw new SporeError(`plugins ${other.plugin} and ${name} both hide ${kept.hide}`, { type: 'PLUGIN_CONFLICT', detail: 'a spore can use one of them, not both' })
+      contain.push(kept)
     }
-    const plugin = allowedPlugin(name, allowed, roots)
     for (const [key, value] of Object.entries(fill(plugin, ws))) {
       if (from[key]) {
         throw new SporeError(`plugins ${from[key]} and ${name} both set ${key}`, { type: 'PLUGIN_CONFLICT', detail: 'a spore can use one of them, not both' })
@@ -425,7 +493,7 @@ export function preparePlugins (ws, { config = readConfig(), roots = pluginRoots
   }
   linkModules(ws, Object.fromEntries(Object.entries(modules).map(([module, { dir }]) => [module, dir])))
   if (plugins.length) env[PLUGIN_READS] = JSON.stringify(readsOf(plugins))
-  return { env, plugins, sources }
+  return { env, plugins, sources, contain }
 }
 
 /**
@@ -509,6 +577,7 @@ const describe = (plugin) => ({
   settings: plugin.kinds,
   programs: plugin.programs,
   env: plugin.env,
+  contain: plugin.contain,
   reference: plugin.reference,
   modules: Object.keys(plugin.modules),
   sources: Object.keys(plugin.sources),

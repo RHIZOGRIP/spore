@@ -383,17 +383,20 @@ The routes, the token a request carries, the errors and `traceparent` are in
 | `webhook` | `spore-webhook.service` | `bin/spore-webhook.js`: each hook in `hooks.json` a message to its spore |
 | `api` | `spore-api.service` | `bin/spore-api.js`: the verbs over HTTP, as `api.json` says |
 | `ssh-agent` | `spore-ssh-agent.service` | an `ssh-agent` on `$XDG_RUNTIME_DIR/spore-ssh-agent.socket`, loaded with every private key in `~/.config/spore/ssh/` |
-| `sluice` | `spore-sluice.service` | a sluice broker serving `~/.config/sluice/spore.rules` on `$XDG_RUNTIME_DIR/sluice/spore.sock` |
+| `sluice` | `spore-sluice.service` | a sluice broker serving each `~/.config/spore/sluice/<spore>.rules` on `$XDG_RUNTIME_DIR/sluice/spores/<spore>/sluice.sock` |
 
 Adding or retiring an SSH key is putting it in `ssh/` or taking it out, then restarting
 `ssh-agent`. Its socket is handed to a spore by the ssh plugin: `spore plugin allow ssh
 socket=/run/user/<uid>/spore-ssh-agent.socket`.
 
-`sluice` needs the `sluice` binary on `PATH` (or in `~/.cargo/bin`), the rules file, and
-`~/.config/sluice/spore.md`, the list its agents read with `--list`. The unit copies that list
-beside the socket. Its socket is handed to a spore by the sluice plugin:
-`spore plugin allow sluice socket=/run/user/<uid>/sluice/spore.sock`. Every unix socket of the user
-is in a spore's reach, so a broker spores must not use runs as another user.
+`sluice` needs `sluice` 0.4 or later on `PATH` (or in `~/.cargo/bin`) and the folder
+`~/.config/spore/sluice/`, one `<spore>.rules` per spore that may run host commands: what the
+broker runs for that spore, on that spore's own socket. The comment lines above a rule are what its
+agent reads the rule is for, with `--list`. A file added, changed or removed takes effect within a
+second. The sluice plugin hands each spore its socket: `spore plugin allow sluice
+dir=/run/user/<uid>/sluice`. A spore using it runs contained with the rest of that directory
+hidden, so it reaches its own socket and none of its user's other sluice brokers; a spore that is
+not contained is refused. `spore doctor` names a spore whose socket is not there.
 
 ## Plugin services
 

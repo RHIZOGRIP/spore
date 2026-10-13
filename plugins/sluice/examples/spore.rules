@@ -1,5 +1,6 @@
-; What spores may ask the host to run. sluice serve reads this through spore-sluice.service;
-; sluice check spore.rules before you start it, and sluice match spore.rules <argv…> to try one.
+; What one spore may ask the host to run, as ~/.config/spore/sluice/<spore>.rules. The comment
+; lines directly above a rule are what its agent reads it is for, with node "$SPORE_SLUICE" --list.
+; sluice check <spore>.rules before you add it, and sluice match <spore>.rules <argv…> to try one.
 
 defaults:
   timeout = 30s

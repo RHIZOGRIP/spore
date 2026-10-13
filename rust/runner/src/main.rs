@@ -20,7 +20,8 @@ use serde_json::json;
 use spore_definition::{parse_definition, Definition, Options, TOOL_NAMES};
 use spore_runner::broker::Served;
 use spore_runner::supervise::{
-    confined, contain_refused, owner_token, owners_with, supervise, uncontained, GRACE, OWNERS,
+    confined, contain_refused, kept_from, kept_refusal, owner_token, owners_with, supervise,
+    uncontained, Kept, GRACE, OWNERS,
 };
 use spore_runner::{broker, job, model, source, store, trace, vectors};
 use spore_workspace::spend::{spend_refusal, Limits};
@@ -45,6 +46,7 @@ struct Args {
     chatgpt_helper: Option<String>,
     sources: Option<PathBuf>,
     plugin_sources: serde_json::Map<String, serde_json::Value>,
+    kept: Vec<Kept>,
     memory: Option<PathBuf>,
     env: Vec<(String, String)>,
     largest_file: u64,
@@ -74,6 +76,7 @@ fn parse_args() -> Args {
         chatgpt_helper: None,
         sources: None,
         plugin_sources: serde_json::Map::new(),
+        kept: Vec::new(),
         memory: None,
         env: Vec::new(),
         largest_file: DEFAULT_LARGEST_FILE,
@@ -109,6 +112,12 @@ fn parse_args() -> Args {
                     _ => fail(format!(
                         "--plugin-sources is a JSON object of named sources — got {given}"
                     )),
+                }
+            }
+            "--contain-keep" => {
+                args.kept = match kept_from(&value("--contain-keep")) {
+                    Ok(kept) => kept,
+                    Err(e) => fail(e),
                 }
             }
             "--memory" => args.memory = Some(PathBuf::from(value("--memory"))),
@@ -691,7 +700,7 @@ async fn main() {
         let mut command = if args.unsafe_ {
             Command::new(&node)
         } else {
-            confined(&root(), &node, !args.no_contain)
+            confined(&root(), &node, !args.no_contain, &args.kept)
         };
         command
             .arg(root().join("bin").join("spore-agent.js"))
@@ -781,6 +790,11 @@ async fn main() {
                 record(&ws, &iso_now(), "error", "CONTAIN_FAILED", &problem, 0.0);
                 break 2;
             }
+        }
+        if let Some(problem) = kept_refusal(&args.kept, !args.unsafe_ && !args.no_contain) {
+            eprintln!("spore: {problem}");
+            record(&ws, &iso_now(), "error", "CONTAIN_FAILED", &problem, 0.0);
+            break 2;
         }
         match spend_refusal(&slots, &args.spend) {
             Ok(None) => {}

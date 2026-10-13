@@ -14,6 +14,7 @@ import { join } from 'node:path'
 
 import { runShell } from './command.js'
 import { slugOf } from './cell.js'
+import { containOf } from './plugins.js'
 import { durationMs } from '../delegation/definition.js'
 import { containing, readConfig } from '../library/config.js'
 
@@ -54,6 +55,12 @@ export function answerOf (printed) {
  * it could not start, ran past `timeoutMs`, exited non-zero, or printed something else.
  */
 export async function runRouter ({ router, ws, payload, headers, origin, event, ref, timeoutMs = ROUTE_TIMEOUT_MS, contain = containing(readConfig()) }) {
+  let keep
+  try {
+    keep = containOf(ws)
+  } catch (err) {
+    return { failed: `could not start — ${err.message}` }
+  }
   const scratch = mkdtempSync(join(tmpdir(), 'spore-route-'))
   try {
     const program = router.endsWith('.js') ? `${quote(process.execPath)} ${quote(router)}` : quote(router)
@@ -65,7 +72,7 @@ export async function runRouter ({ router, ws, payload, headers, origin, event, 
       inAbs: payload,
       outAbs,
       errAbs,
-      confine: { writeRoot: scratch, reads: [ws], scopeSignals: true, contain },
+      confine: { writeRoot: scratch, reads: [ws], scopeSignals: true, contain, keep },
       env: { PATH: process.env.PATH, HOME: scratch, TMPDIR: scratch },
       timeoutMs,
       idleMs: timeoutMs
