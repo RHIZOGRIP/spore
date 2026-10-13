@@ -71,7 +71,15 @@ export function applyEvent (live, event) {
     case 'tool_end': {
       const tool = live.tools.find(t => t.callId === event.callId)
       if (!tool) return false
-      Object.assign(tool, { done: true, durationMs: event.durationMs, error: Boolean(event.error) })
+      Object.assign(tool, {
+        done: true,
+        durationMs: event.durationMs,
+        error: Boolean(event.error),
+        outcome: event.outcome,
+        exit: event.exit,
+        killed: event.killed,
+        signal: event.signal
+      })
       return true
     }
     case 'usage':
@@ -101,4 +109,16 @@ export function applyEvent (live, event) {
     default:
       return false
   }
+}
+
+/**
+ * What a call's line starts with: whether it worked, the exit code of a command that ran to its
+ * end and said no, or how it failed. A tool_end a runtime before outcomes recorded has only `error`.
+ */
+export function markOf (tool) {
+  if (!tool.done) return { text: '…', tone: 'running' }
+  if (tool.outcome === undefined) return tool.error ? { text: '✗', tone: 'failed' } : { text: '✓', tone: 'ok' }
+  if (tool.outcome === 'ok') return { text: '✓', tone: 'ok' }
+  if (tool.outcome === 'exit') return { text: String(tool.exit), tone: 'exit' }
+  return { text: `✗ ${tool.killed ?? tool.signal ?? tool.outcome}`, tone: 'failed' }
 }

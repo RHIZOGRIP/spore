@@ -494,7 +494,7 @@ All but `turn_end` are written by the agent's loop. `turn_end` is written by the
 | `round` | `index` |
 | `stream` | `kind`, `delta`. `kind` is the model library's delta type: `message` is the answer's text; other kinds carry other streamed parts. Lines are batched (up to 100 ms or 4096 characters per line), and their size is not a contract |
 | `tool_start` | `name`, `args`, `callId` |
-| `tool_end` | `name`, `callId`, `durationMs`, `error`, `result` (its first 200 characters) |
+| `tool_end` | `name`, `callId`, `durationMs`, `error`, `outcome`, `result` (its first 200 characters) — `outcome` is `ok`; `exit` with `exit`, a command that ran to its end and exited non-zero; `killed` with `killed` (`deadline` or `idle`); `signal` with `signal`; `spawn`; or `refused` |
 | `tool_block` | `name`, `reason` |
 | `heartbeat` | `phase` (`answer` or `tool`), `elapsedMs`, `tool` |
 | `usage` | one model call of the loop's own: `model`, `input`, `output`, `thinking`, `cacheWrite`, `cacheRead`, `cost` (as the provider priced it, unsettled), `elapsedMs` |

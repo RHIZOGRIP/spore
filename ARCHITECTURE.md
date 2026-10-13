@@ -1169,7 +1169,11 @@ resolves a bare import by walking up from the importing file, and an agent's pro
 
 **`readOutcome()` (`src/core/call-record.js`) is the single reading of a tool result**, used by
 the loop guard, the `tool_end` event and session memory, so none of them can disagree about
-whether a call worked. It reads marks, never text.
+whether a call worked. It reads marks, never text. `tool_end` also carries how a call that did
+not work ended — `exit`, a command that ran to its end and exited non-zero, which may be its "no"
+(`grep` finding nothing), apart from `killed`, `signal`, `spawn` and `refused`, calls that did not
+finish or never ran — so a console marks the first with its exit code and only the others as
+failures.
 
 **A refusal is a value** (`src/core/refusal.js`). A tool that will not run returns
 `refuse(reason)`; the kernel shows the model `error: <reason>` and marks the tool message

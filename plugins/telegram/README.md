@@ -93,7 +93,7 @@ a chat is added, moved or removed by editing a line. It lives beside `config.jso
 
 While a turn works, its chat is shown what kind of call ran — `reading a file`, `running a
 command`, `asking forgejo` by the source's name, a run of the same one counted, a slow one
-timed, a failed one marked — and never what it was given: a Telegram message leaves the
+timed, a command that exited non-zero given its exit code, a call that failed marked — and never what it was given: a Telegram message leaves the
 machine, and a command line or a path is yours. A chat can ask for the calls themselves:
 
 ```json

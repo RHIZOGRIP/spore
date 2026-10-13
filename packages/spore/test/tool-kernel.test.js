@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { executeTools } from '../src/core/tool-kernel.js'
 import { createEmitter } from '../src/observability/emitter.js'
 import { REFUSED, marked } from '../src/core/marks.js'
+import { recorded } from '../src/core/call-record.js'
+import { refuse } from '../src/core/refusal.js'
 
 /* ── Helpers ────────────────────────────────────────────────────── */
 
@@ -233,6 +235,36 @@ describe('tool-kernel events', () => {
     expect(results[0].content).toBe('error: boom')
   })
 
+  it('tells a command that ran and exited non-zero apart from a call that did not finish', async () => {
+    const ended = {}
+    const toolFns = {
+      ok: async () => recorded({ tool: 'exec', exit: 0 }),
+      no: async () => recorded({ tool: 'exec', exit: 1 }),
+      idle: async () => recorded({ tool: 'exec', signal: 'SIGTERM', killed: 'idle' }),
+      crashed: async () => recorded({ tool: 'exec', signal: 'SIGSEGV' }),
+      unspawned: async () => recorded({ tool: 'exec', spawnError: 'spawn sh ENOENT' }),
+      refused: async () => refuse('not here'),
+      text: async () => 'hi'
+    }
+    await executeTools({
+      toolCalls: Object.keys(toolFns).map(name => tc(name, name)),
+      toolFns,
+      emitter: { emit: (type, e) => { if (type === 'tool_end') ended[e.name] = e }, on () {} },
+      logger: silent
+    })
+    const outcomes = Object.fromEntries(Object.entries(ended).map(([name, { error, outcome, exit, killed, signal }]) =>
+      [name, { error, outcome, ...(exit !== undefined ? { exit } : {}), ...(killed ? { killed } : {}), ...(signal ? { signal } : {}) }]))
+    expect(outcomes).toEqual({
+      ok: { error: false, outcome: 'ok' },
+      no: { error: true, outcome: 'exit', exit: 1 },
+      idle: { error: true, outcome: 'killed', killed: 'idle' },
+      crashed: { error: true, outcome: 'signal', signal: 'SIGSEGV' },
+      unspawned: { error: true, outcome: 'spawn' },
+      refused: { error: true, outcome: 'refused' },
+      text: { error: false, outcome: 'ok' }
+    })
+  })
+
   it('result objects have correct shape', async () => {
     const toolFns = { echo: async ({ text }) => text }
     const results = await executeTools({
@@ -272,7 +304,7 @@ describe('a tool that is not there', () => {
       emitter: { emit: (name, event) => name === 'tool_end' && ended.push(event), on () {} }
     })
     expect(ended).toHaveLength(1)
-    expect(ended[0].error).toBe(true)
+    expect(ended[0]).toMatchObject({ error: true, outcome: 'refused' })
   })
 
   it('does not stop the calls beside it', async () => {

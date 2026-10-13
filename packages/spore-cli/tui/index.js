@@ -9,7 +9,7 @@ import chalk from 'chalk'
 
 import { runningJob, scheduleLine } from '../src/dispatch.js'
 import { COMMANDS, parseCommand } from './commands.js'
-import { applyEvent, createLive, history, liveOf } from './conversation.js'
+import { applyEvent, createLive, history, liveOf, markOf } from './conversation.js'
 import { changeOf, counts, hunks } from './diff.js'
 import { printable } from './printable.js'
 import { PromptEditor } from './prompt.js'
@@ -17,6 +17,7 @@ import { Answer } from './answer.js'
 import { matching, priceText, sporeLabel, statusParts } from './status.js'
 
 const REFRESH_MS = 1000
+const MARK_TONE = { running: chalk.yellow, ok: chalk.green, exit: chalk.yellow, failed: chalk.red }
 const TWICE_MS = 1500
 const NOTICE_MS = 4000
 const LONG_TURN_MS = 60_000
@@ -80,7 +81,8 @@ function changeLines (tool, change, { expanded, width, mark, time }) {
 }
 
 function toolLine (tool, { expanded, width }) {
-  const mark = !tool.done ? chalk.yellow('…') : tool.error ? chalk.red('✗') : chalk.green('✓')
+  const { text, tone } = markOf(tool)
+  const mark = MARK_TONE[tone](text)
   const time = tool.done ? dim(` ${durationText(tool.durationMs)}`) : ''
   const change = changeOf(tool)
   if (change) return changeLines(tool, change, { expanded, width, mark, time })

@@ -171,6 +171,18 @@ describe('what of a turn reaches a chat', () => {
     expect(shown(events)).toEqual(['· reading a file ×3', '· running a command — 14 s', '· running a command — failed'])
   })
 
+  it('tells a command that said no apart from a call that failed', () => {
+    const events = [
+      start('exec', { command: 'grep -q x a' }, 'a'),
+      { event: 'tool_end', name: 'exec', callId: 'a', durationMs: 10, error: true, outcome: 'exit', exit: 1 },
+      start('exec', { command: 'sleep 999' }, 'b'),
+      { event: 'tool_end', name: 'exec', callId: 'b', durationMs: 10, error: true, outcome: 'killed', killed: 'idle' },
+      start('read', { path: 'a' }, 'c'),
+      { event: 'tool_end', name: 'read', callId: 'c', durationMs: 10, error: false, outcome: 'ok' }
+    ]
+    expect(shown(events)).toEqual(['· running a command — exit 1', '· running a command — failed', '· reading a file'])
+  })
+
   it('shows nothing of an event a chat has no use for', () => {
     expect(shown([{ event: 'round', index: 3 }, { event: 'complete', output: 'the answer' }, start('quiet', { because: 'x' })])).toEqual([])
     expect(describeCall({ name: 'ask', args: { question: 'which?' } })).toBe(null)

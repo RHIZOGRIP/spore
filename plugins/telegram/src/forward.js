@@ -71,8 +71,9 @@ export function track (items, event) {
     const item = items.find(i => i.callId === event.callId)
     if (!item) return false
     item.durationMs = event.durationMs
-    item.failed = Boolean(event.error)
-    return item.failed || item.durationMs >= SLOW_MS
+    item.exit = event.outcome === 'exit' ? event.exit : null
+    item.failed = event.outcome === undefined ? Boolean(event.error) : !['ok', 'exit'].includes(event.outcome)
+    return item.failed || item.exit !== null || item.durationMs >= SLOW_MS
   }
   const note = (text) => {
     items.push({ plain: text, detailed: text })
@@ -89,6 +90,7 @@ export function render (items, { detailed = false, last = 6 } = {}) {
   for (const item of items) {
     const text = (detailed ? item.detailed : item.plain) +
       (item.failed ? ' — failed' : '') +
+      (item.exit != null ? ` — exit ${item.exit}` : '') +
       (item.durationMs >= SLOW_MS ? ` — ${Math.round(item.durationMs / 1000)} s` : '')
     const previous = lines.at(-1)
     if (previous?.text === text) previous.count++

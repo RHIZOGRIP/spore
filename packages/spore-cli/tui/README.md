@@ -22,6 +22,10 @@ ctrl+d         leave, on an empty line
 //text         a message that starts with /
 ```
 
+A tool call's line starts with `✓` when it worked, with the exit code (`1`) when a command ran
+to its end and exited non-zero — which may be its answer, `grep` finding nothing — and with `✗`
+and how when the call failed: `✗ idle`, `✗ deadline`, `✗ SIGKILL`, `✗ refused`.
+
 The line you type on names the spore and its state at its right. The status line under it gives
 the running turn's limits, the spend and the model. When another spore answers or asks, the
 status line says so and the terminal gets a notification

@@ -4,7 +4,8 @@
  * Core emits:
  *   round             { index }
  *   tool_start        { name, args, callId }
- *   tool_end          { name, callId, durationMs, error, result }
+ *   tool_end          { name, callId, durationMs, error, outcome, result } — outcome: ok, exit (+ exit),
+ *                     refused, killed (+ killed: deadline|idle), signal (+ signal) or spawn
  *   tool_block        { name, reason }        — a call not run: the turn ended, or was stopped
  *   stream            { kind, delta }
  *   heartbeat         { phase, elapsedMs }

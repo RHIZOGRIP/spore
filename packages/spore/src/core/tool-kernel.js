@@ -39,6 +39,16 @@ const toolMessage = (tc, { text, images, refused, record }) => {
   return message
 }
 
+// A non-zero exit is the command's own verdict and may be a "no", unlike a call that did not finish.
+const outcomeOf = ({ ok, refused, record }) => {
+  if (refused) return { outcome: 'refused' }
+  if (ok) return { outcome: 'ok' }
+  if (record.spawnError) return { outcome: 'spawn' }
+  if (record.killed) return { outcome: 'killed', killed: record.killed }
+  if (record.signal) return { outcome: 'signal', signal: record.signal }
+  return { outcome: 'exit', exit: record.exit }
+}
+
 // Heartbeat interval while a tool is executing — mirrors loop.js's
 // model-answer heartbeat, so a caller watching for a stalled turn sees a
 // frame every 10s whichever phase the turn is in.
@@ -69,7 +79,7 @@ async function executeSingle (tc, { toolFns, emitter, signal, logger }) {
   // on a message that never said the tool did not exist.
   if (typeof fn !== 'function') {
     const available = Object.keys(toolFns).sort()
-    emitter.emit('tool_end', { name: tc.name, callId: tc.id, durationMs: 0, error: true, result: 'no such tool' })
+    emitter.emit('tool_end', { name: tc.name, callId: tc.id, durationMs: 0, error: true, outcome: 'refused', result: 'no such tool' })
     return refusedResult(tc.id, tc.name, `there is no tool called "${tc.name}" here — you have ${available.join(', ') || 'none'}`)
   }
 
@@ -103,12 +113,13 @@ async function executeSingle (tc, { toolFns, emitter, signal, logger }) {
   const durationMs = Date.now() - start
   // What the call contract says happened, not whether the function threw. A command
   // that exited 7 failed, and a console rendering a success marker for it is lying.
-  const { ok } = readOutcome(message)
+  const outcome = readOutcome(message)
   emitter.emit('tool_end', {
     name: tc.name,
     callId: tc.id,
     durationMs,
-    error: !ok,
+    error: !outcome.ok,
+    ...outcomeOf(outcome),
     result: result.text.slice(0, 200),
     ...(result.images.length ? { images: result.images.length } : {})
   })
