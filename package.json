@@ -42,6 +42,11 @@
   "lint-staged": {
     "*.{js,cjs}": "standard"
   },
+  "standard": {
+    "ignore": [
+      "packages/spore/probes/read-shape/corpus/"
+    ]
+  },
   "devDependencies": {
     "chalk": "^6.0.1",
     "lint-staged": "^17.6.0",

@@ -56,7 +56,7 @@ export const CASES = [
   {
     id: 'read',
     tier: 'core',
-    feature: 'read returns the content',
+    feature: 'read carries the content',
     grants: ['read'],
     files: { 'data/facts.txt': 'capital=Lisbon\nport=8080\n' },
     prompt: 'data/facts.txt has key=value lines. Reply with the value of port and nothing else.',

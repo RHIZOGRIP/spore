@@ -51,7 +51,7 @@ function summarize (name, args, result) {
 
   const record = outcome.record
   if (!outcome.ok && record) return `${head} — ${record.killed ? `killed: ${record.killed}` : record.signal ? `ended by ${record.signal}` : `did not start: ${truncate(record.spawnError, 60)}`}`
-  // `read` is the call contract's exception: its result is the content, and what is
+  // `read` is the call contract's exception: its record carries the content, and what is
   // worth remembering is how much of the file was seen, not the file.
   if (record?.lines !== undefined) return `${head} — ${record.lines} lines${record.eof === false ? ', more follows' : ''}`
   if (record?.bytesRead !== undefined) return `${head} — ${record.bytesRead} bytes`

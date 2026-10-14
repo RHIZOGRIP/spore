@@ -50,7 +50,7 @@ runs, not an enzyme; it becomes one only when a precursor grants it to a cell (�
 
 | tool | class | notes |
 |---|---|---|
-| `read` | reader | the one exception — returns content, not a file |
+| `read` | reader | the one exception — its record carries the file's text, not a file |
 | `write` | producer | content in, file at `path` |
 | `edit` | producer | unique-string replace; refuses when absent or repeated |
 | `exec` | workspace reader | **cannot write the workspace** but the turn's `tmp/`, runs under `confine`, parallel, outbound network |
@@ -118,12 +118,19 @@ bytes did, and for a write those are the same file described from two directions
 ### `read` is the one exception
 
 ```
-read(path, offset?, length?, encoding?, unit?) -> decoded text in the result
+read(path, offset?, length?, encoding?, unit?, numbered?) -> call record, the decoded text in content
 ```
 
-No `out`: it is the only tool whose product is *context* rather than an effect.
+No `out`: it is the only tool whose product is *context* rather than an effect. Its result is a
+call record like every other tool's, and the slice of the file is its `content`, with `lines`
+and `eof` saying how much of the file that was. As JSON the text is escaped, which is also what
+keeps a `\r` or a trailing space visible to a model copying a line into an `edit`.
 
-It still writes a call record.
+`numbered: true` starts each line of `content` with its number and `→` (`17→`), counted from
+`offset`, and the record says `numbered: true`. A model counting lines in unnumbered text gets
+them wrong, often by one, so the numbers are there for pointing at, citing or counting lines;
+they are not part of the file, and `edit` matches the file. Off by default: an edit needs no
+numbers, and every read would pay for them.
 
 ### Looking at a picture is a read
 

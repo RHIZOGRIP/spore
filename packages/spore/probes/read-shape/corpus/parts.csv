@@ -1,0 +1,91 @@
+sku,name,material,size_mm,qty,unit_price,note
+A-100,"Wing nut, M8",aluminium,4,296,11.50,
+A-101,"Hex bolt, M10",brass,4,352,6.08,
+A-102,"Clamp, M8",steel,30,507,13.27,
+A-103,Rivet,steel,8,190,7.80,"fits ""standard"" rail"
+A-104,"Wing nut, M10",steel,30,1263,7.85,"fits ""standard"" rail"
+A-105,"Shim, M12",brass,12,399,7.68,
+A-106,Shim,brass,20,2177,6.00,"""heavy duty"", outdoor"
+A-107,"Hook, M8",zinc-plated steel,10,1017,11.13,"see drawing, rev. B"
+A-108,"Bracket, M10",nylon,12,1838,4.05,
+A-109,"Rivet, M5",zinc-plated steel,6,2002,5.92,
+A-110,Shim,zinc-plated steel,12,1434,8.33,"metric, M4"
+A-111,Bracket,nylon,40,266,0.87,back-ordered
+A-112,Gasket,nylon,10,1580,12.42,"""heavy duty"", outdoor"
+A-113,"Anchor, M6",brass,30,479,6.92,"see drawing, rev. B"
+A-114,Wing nut,aluminium,8,1629,5.49,"metric, M4"
+A-115,"Rivet, M10",zinc-plated steel,6,1763,12.10,back-ordered
+A-116,Spring,aluminium,16,945,2.13,"fits ""standard"" rail"
+A-117,"Gasket, M5",steel,20,746,3.69,
+A-118,"Clamp, M6",stainless,30,1305,13.34,
+A-119,"Latch, M12",stainless,16,1630,5.60,
+A-120,"Rivet, M4",brass,5,855,6.18,
+A-121,"Hex bolt, M4",steel,30,619,7.52,"""heavy duty"", outdoor"
+A-122,Washer,brass,30,1541,2.10,back-ordered
+A-123,Shim,zinc-plated steel,20,503,1.63,"metric, M6"
+A-124,"Bracket, M4",brass,5,1403,10.37,"metric, M8"
+A-125,"Hex bolt, M5",stainless,12,600,9.67,
+A-126,Bracket,aluminium,5,1069,7.27,"fits ""standard"" rail"
+A-127,"Hinge, M10",stainless,25,1350,8.92,"see drawing, rev. B"
+A-128,Latch,nylon,8,818,7.26,"""heavy duty"", outdoor"
+A-129,Hex bolt,zinc-plated steel,20,1061,2.73,"""heavy duty"", outdoor"
+A-130,"Hook, M12",zinc-plated steel,12,329,3.10,"see drawing, rev. B"
+A-131,"Spring, M5",nylon,30,7,6.72,"""heavy duty"", outdoor"
+A-132,Washer,aluminium,5,1591,10.96,"see drawing, rev. B"
+A-133,"Wing nut, M8",aluminium,12,355,11.22,replaces A-1059
+A-134,"Washer, M12",brass,6,520,0.41,"metric, M8"
+A-135,"Latch, M10",nylon,40,1435,2.20,"fits ""standard"" rail"
+A-136,"Caster, M12",aluminium,5,2156,10.50,"fits ""standard"" rail"
+A-137,"Latch, M5",brass,4,1031,2.99,"see drawing, rev. B"
+A-138,Spring,zinc-plated steel,25,1716,11.68,
+A-139,Spring,nylon,40,2389,11.41,replaces A-1064
+A-140,"Wing nut, M10",stainless,4,1802,10.88,
+A-141,Wing nut,brass,6,1939,8.68,
+A-142,Spring,aluminium,25,2173,7.79,
+A-143,Hex bolt,brass,8,1134,0.61,
+A-144,Clamp,steel,5,1815,4.57,"see drawing, rev. B"
+A-145,Anchor,stainless,25,1958,7.12,"see drawing, rev. B"
+A-146,Hook,zinc-plated steel,25,829,11.76,"fits ""standard"" rail"
+A-147,"Rivet, M8",zinc-plated steel,5,985,6.01,"see drawing, rev. B"
+A-148,Caster,steel,6,1499,2.02,"fits ""standard"" rail"
+A-149,Hinge,aluminium,5,1631,12.39,"fits ""standard"" rail"
+A-150,Latch,brass,6,1767,13.92,replaces A-1043
+A-151,"Spring, M6",steel,12,79,4.74,"metric, M6"
+A-152,Rivet,zinc-plated steel,25,1210,7.18,
+A-153,"Hook, M5",steel,5,1087,3.82,"fits ""standard"" rail"
+A-154,"Wing nut, M8",aluminium,10,1662,2.11,"metric, M8"
+A-155,"Bracket, M4",aluminium,6,1742,12.54,back-ordered
+A-156,Gasket,steel,10,343,8.52,"see drawing, rev. B"
+A-157,"Latch, M4",nylon,4,1389,13.92,replaces A-1034
+A-158,Hex bolt,stainless,8,448,13.57,back-ordered
+A-159,"Hinge, M6",aluminium,10,2175,10.64,back-ordered
+A-160,"Gasket, M5",zinc-plated steel,12,74,13.92,
+A-161,"Pulley, M10",stainless,8,2106,6.66,"metric, M4"
+A-162,Gasket,nylon,40,2027,7.65,replaces A-1064
+A-163,"Hinge, M5",zinc-plated steel,8,572,5.68,"""heavy duty"", outdoor"
+A-164,Latch,brass,4,289,8.76,back-ordered
+A-165,"Hex bolt, M4",aluminium,16,2072,9.39,back-ordered
+A-166,Pulley,zinc-plated steel,4,1881,2.61,back-ordered
+A-167,"Bracket, M6",zinc-plated steel,25,1325,3.44,back-ordered
+A-168,"Wing nut, M4",zinc-plated steel,16,343,6.66,"see drawing, rev. B"
+A-169,"Caster, M4",steel,10,367,2.03,
+A-170,"Bracket, M6",aluminium,8,346,8.21,"fits ""standard"" rail"
+A-171,Pulley,stainless,16,1335,10.10,"metric, M4"
+A-172,"Shim, M12",brass,4,2101,8.79,"fits ""standard"" rail"
+A-173,Caster,stainless,30,65,11.57,"see drawing, rev. B"
+A-174,"Hex bolt, M5",aluminium,12,429,5.29,"metric, M8"
+A-175,"Hex bolt, M12",stainless,40,1001,6.86,
+A-176,"Washer, M12",stainless,25,376,9.24,
+A-177,Anchor,zinc-plated steel,5,1087,3.30,"see drawing, rev. B"
+A-178,"Gasket, M8",nylon,16,314,6.72,back-ordered
+A-179,Shim,aluminium,40,812,1.10,"fits ""standard"" rail"
+A-180,"Gasket, M12",aluminium,10,2325,1.89,"metric, M4"
+A-181,"Gasket, M4",aluminium,8,2005,4.09,back-ordered
+A-182,"Anchor, M4",stainless,8,1276,13.69,"metric, M4"
+A-183,"Washer, M10",nylon,10,1584,2.95,"see drawing, rev. B"
+A-184,"Washer, M5",aluminium,25,1072,13.34,"fits ""standard"" rail"
+A-185,Gasket,stainless,10,461,9.85,"see drawing, rev. B"
+A-186,"Hook, M8",nylon,4,651,0.07,"metric, M8"
+A-187,"Bracket, M12",brass,16,1408,5.28,
+A-188,Hex bolt,zinc-plated steel,12,1631,1.70,"see drawing, rev. B"
+A-189,Hook,aluminium,10,1037,5.22,replaces A-1049

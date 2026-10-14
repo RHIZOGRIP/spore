@@ -27,7 +27,9 @@ async function readBytes (absPath, { offset, length, encoding, size }) {
   }
 }
 
-async function readLines (absPath, { offset, length, encoding, budget }) {
+const numberLines = (text, first) => (text === '' ? '' : text.split(/(?<=\n)/).map((line, i) => `${first + i}→${line}`).join(''))
+
+async function readLines (absPath, { offset, length, encoding, budget, size }) {
   const decoder = new TextDecoder(encoding, { fatal: true })
   const stream = createReadStream(absPath)
   const lines = []
@@ -36,8 +38,10 @@ async function readLines (absPath, { offset, length, encoding, budget }) {
   let chars = 0
   let over = false
   let eof = true
+  let bytes = 0
 
   for await (const chunk of stream) {
+    bytes += chunk.length
     pending += decoder.decode(chunk, { stream: true })
     let cut = pending.indexOf('\n')
     while (cut !== -1) {
@@ -66,6 +70,8 @@ async function readLines (absPath, { offset, length, encoding, budget }) {
       }
     }
   }
+
+  if (!eof) eof = !pending.length && bytes >= size && !decoder.decode().length
 
   return { text: lines.join(''), returned: lines.length, lastLine: seen, over, eof }
 }
@@ -271,12 +277,14 @@ export function makeTools (WS, maxOutput, trail, {
   }
 
   const fns = {
-    read: async ({ path, offset, length, encoding, unit }) => {
+    read: async ({ path, offset, length, encoding, unit, numbered }) => {
       if (hasDotSegment(path, WS)) return refuse('cannot read dotfiles or dotdirs')
       // A model that fills every field sends "" for the ones it does not mean to use.
-      const given = Object.entries({ offset, length, encoding, unit }).filter(([, value]) => value !== undefined && value !== '').map(([name]) => name)
+      const given = Object.entries({ offset, length, encoding, unit, numbered }).filter(([, value]) => value !== undefined && value !== '').map(([name]) => name)
       encoding = encoding || 'utf-8'
       unit = unit || 'lines'
+      numbered = numbered || false
+      if (typeof numbered !== 'boolean') return refuse(`numbered is true or false — got ${JSON.stringify(numbered)}`)
       const abs = safe(path)
       if (!existsSync(abs)) return refuse(`not found — ${path}`)
       const st = statSync(abs)
@@ -307,6 +315,7 @@ export function makeTools (WS, maxOutput, trail, {
         return recorded(contextView(trail.finish(call, observed)), [{ fileUri: pathToFileURL(abs).href, mimeType: mime }])
       }
       if (unit !== 'lines' && unit !== 'bytes') return refuse(`unit must be lines or bytes — got ${unit}`)
+      if (numbered && unit === 'bytes') return refuse('numbered counts lines — it does not apply to a read by bytes')
       // What the model receives is the whole record, not the slice of file inside it.
       // Budgeting only the content let a read that just fit come back as a record over
       // budget, which the transcript sanitiser then cut mid-JSON. Measured here, before
@@ -354,7 +363,7 @@ export function makeTools (WS, maxOutput, trail, {
       const call = trail.begin('read')
       let slice
       try {
-        slice = await readLines(abs, { offset: start, length, encoding, budget: maxOutput })
+        slice = await readLines(abs, { offset: start, length, encoding, budget: maxOutput, size: st.size })
       } catch (e) {
         trail.abandon(call)
         return refuse(`${path} does not decode as ${encoding} — ${e.message}`)
@@ -364,7 +373,7 @@ export function makeTools (WS, maxOutput, trail, {
         return refuse(`lines ${start}..${start + slice.returned} of ${path} exceed the ${maxOutput} byte read budget — ask for fewer lines`)
       }
 
-      return await common(call, { offset: start, lines: slice.returned, eof: slice.eof, content: slice.text })
+      return await common(call, { offset: start, lines: slice.returned, eof: slice.eof, ...(numbered ? { numbered, content: numberLines(slice.text, start) } : { content: slice.text }) })
     },
     write: async ({ content, path, err, ...rest }) => {
       if (typeof content !== 'string') return refuse('content is required and must be a string')
@@ -505,7 +514,7 @@ export function makeTools (WS, maxOutput, trail, {
   const defs = [
     {
       name: 'read',
-      description: 'Read a file from the workspace. Returns its content directly — this is the one tool whose result is the content rather than a file. For a file too large to return whole, slice it with offset and length: by line (offset is 1-based, the default) or by byte (offset is 0-based, unit: bytes). Use encoding for a file that is not UTF-8. A PNG, JPEG, WebP or GIF comes back as the picture itself, whole, so you can look at anything you download, are sent, or make.',
+      description: 'Read a file from the workspace. The file\'s text comes back in this conversation, as the content of the call record — the one tool whose result carries a file\'s text rather than leaving it in a file. For a file too large to return whole, slice it with offset and length: by line (offset is 1-based, the default) or by byte (offset is 0-based, unit: bytes). Use encoding for a file that is not UTF-8. A PNG, JPEG, WebP or GIF comes back as the picture itself, whole, so you can look at anything you download, are sent, or make.',
       parameters: {
         type: 'object',
         properties: {
@@ -513,7 +522,8 @@ export function makeTools (WS, maxOutput, trail, {
           offset: { type: 'number', description: 'Where to start: line number, 1-based (default 1); or byte offset, 0-based, when unit is bytes' },
           length: { type: 'number', description: 'How many lines or bytes to return (default: to end of file)' },
           encoding: { type: 'string', description: 'Source encoding, e.g. latin1 or utf-16le (default utf-8)' },
-          unit: { type: 'string', description: 'lines (default) or bytes — what offset and length count in' }
+          unit: { type: 'string', description: 'lines (default) or bytes — what offset and length count in' },
+          numbered: { type: 'boolean', description: 'Start each line of content with its line number and →, counted from offset. For when you will point at, cite or count lines; the numbers are not part of the file.' }
         },
         required: ['path']
       }

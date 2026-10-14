@@ -25,7 +25,7 @@ afterEach(() => {
 })
 
 describe('read as the contract exception', () => {
-  it('returns content directly, with the facts around it', async () => {
+  it('carries the content in its record, with the facts around it', async () => {
     writeFileSync(resolve(WS, 'a.txt'), 'one\ntwo\nthree\n')
     const meta = JSON.parse(await read({ path: 'a.txt' }))
     expect(meta.content).toBe('one\ntwo\nthree\n')
@@ -43,6 +43,29 @@ describe('read as the contract exception', () => {
     expect(meta.content).toBe('l2\nl3\n')
     expect(meta.lines).toBe(2)
     expect(meta.eof).toBe(false)
+  })
+
+  it('says it reached the end when the slice ends on the last line', async () => {
+    writeFileSync(resolve(WS, 'a.txt'), 'l1\nl2\nl3\n')
+    const meta = JSON.parse(await read({ path: 'a.txt', offset: 2, length: 2 }))
+    expect(meta.content).toBe('l2\nl3\n')
+    expect(meta.eof).toBe(true)
+    writeFileSync(resolve(WS, 'b.txt'), 'l1\nl2\nl3')
+    expect(JSON.parse(await read({ path: 'b.txt', offset: 2, length: 2 })).eof).toBe(true)
+    expect(JSON.parse(await read({ path: 'b.txt', offset: 1, length: 2 })).eof).toBe(false)
+    writeFileSync(resolve(WS, 'c.txt'), 'l1\nl2\nl3\n\n')
+    expect(JSON.parse(await read({ path: 'c.txt', offset: 2, length: 2 })).eof).toBe(false)
+  })
+
+  it('numbers each line from the offset when asked, and says so', async () => {
+    writeFileSync(resolve(WS, 'a.txt'), 'l1\nl2\r\nl3')
+    const meta = JSON.parse(await read({ path: 'a.txt', offset: 2, numbered: true }))
+    expect(meta.content).toBe('2→l2\r\n3→l3')
+    expect(meta.numbered).toBe(true)
+    expect(meta.lines).toBe(2)
+    expect(JSON.parse(await read({ path: 'a.txt', numbered: false })).numbered).toBeUndefined()
+    expect(await read({ path: 'a.txt', numbered: 'yes' })).toMatch(/numbered is true or false/)
+    expect(await read({ path: 'a.txt', unit: 'bytes', numbered: true })).toMatch(/does not apply to a read by bytes/)
   })
 
   it('reads a final line with no trailing newline', async () => {

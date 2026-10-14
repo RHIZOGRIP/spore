@@ -179,13 +179,13 @@ Landlock is.
 - Every call leaves a record under `calls/`. What the caller sees is a view of it;
   hashes, mtimes and timings stay on disk.
 
-`read` is the exception: it returns the file's content into the conversation.
+`read` is the exception: its record carries the file's text into the conversation, in `content`.
 
 ## Tools
 
 | tool | what it is |
 |---|---|
-| `read` | returns file content — line or byte ranges, any encoding |
+| `read` | the file's text, in its record — line or byte ranges, any encoding, lines numbered on request |
 | `write` | content in, file at `path` |
 | `edit` | unique-string replace; refuses when absent or repeated |
 | `exec` | shell, **read-only**, several run at once |

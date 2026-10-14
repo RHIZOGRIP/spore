@@ -113,8 +113,9 @@ Every tool call names the file it is about.
 - No stream enters this conversation. A short file comes back inline in the record; a
   long one stays on disk for the next program to read.
 
-`read` is the exception: its result *is* the content, because context is what you asked
-for.
+`read` is the exception: its record carries the file's text, in `content`, because context is
+what you asked for. Set `numbered` when you will point at, cite or count lines: each line then
+starts with its number and `→`, which is not part of the file — leave it out of an `edit`.
 
 **That is also how you look at a picture.** Read a PNG, JPEG, WebP or GIF and it comes back
 as the image itself, not as a description of one — so a file you downloaded, were sent, or
@@ -135,7 +136,7 @@ large read, and prefer one page you chose over four you might need.
 
 | tool | what to remember |
 |---|---|
-| `read` | returns content. `offset`/`length` slice by line, or by byte with `unit: bytes`. `encoding` reads text that is not UTF-8 (`latin1`, `utf-16le`, …); a file that does not decode is refused. An image comes back as the picture |
+| `read` | the file's text in its record's `content`. `offset`/`length` slice by line, or by byte with `unit: bytes`. `encoding` reads text that is not UTF-8 (`latin1`, `utf-16le`, …); a file that does not decode is refused. `numbered` puts `17→` before each line. An image comes back as the picture |
 | `write` | `content` in, file at `path`. It does not read the content back to you — you wrote it |
 | `edit` | replaces one exact string at `path`, which must appear exactly once. `$&` is literal |
 | `exec` | cannot write the workspace but `tmp/`. Reaches the network. Several run at once |
