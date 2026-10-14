@@ -8,6 +8,7 @@ import { announce, header, isWorkingPost, pieces, plain, reply, waiting, working
 import { loadState, saveState } from './state.js'
 
 const MAX_FILE = 20 * 1024 * 1024
+const leftOut = (more) => `and ${more} more file${more === 1 ? '' : 's'} in data/out/, in the spore's workspace`
 const HOOK_NAME = 'spore'
 const NOBODY = { parse: [] }
 
@@ -241,7 +242,7 @@ export function createService ({ discord, me, botFile, statePath, env, log, conf
     save()
   }
 
-  const hand = async (attempt, hook, name, ws, files) => {
+  const hand = async (attempt, hook, name, ws, { files, more }) => {
     for (const file of files) {
       const path = resolve(ws, file.path)
       if (!existsSync(path)) {
@@ -255,6 +256,7 @@ export function createService ({ discord, me, botFile, statePath, env, log, conf
       }
       await attempt(() => discord.upload(hook, { ...as(name), content: file.path, allowed_mentions: NOBODY }, [{ path, mime: file.mime }]))
     }
+    if (more) await attempt(() => discord.post(hook, { ...as(name), content: leftOut(more), allowed_mentions: NOBODY }))
   }
 
   /**
@@ -280,14 +282,14 @@ export function createService ({ discord, me, botFile, statePath, env, log, conf
     const text = asked.some(message => message.replyTo) ? reply(turn) : announce({ record: turn.record, asked })
     const opening = mine.map(note => header(note.asker, note.said)).join('\n')
     const askers = [...new Set(mine.map(note => note.asker))]
-    const files = (turn.record.produced ?? []).filter(file => file.delivered)
+    const handed = { files: turn.record.deliverables ?? [], more: turn.record.deliverablesMore ?? 0 }
     try {
       const hook = await hookOf(channel)
       await delivery.to(channel, async (attempt) => {
         for (const part of pieces(opening ? `${opening}\n${text}` : text)) {
           await attempt(() => discord.post(hook, { ...as(spore.name), content: part, allowed_mentions: { parse: [], users: askers } }))
         }
-        await hand(attempt, hook, spore.name, ws, files)
+        await hand(attempt, hook, spore.name, ws, handed)
         for (const note of mine) {
           const message = await noteOf(note)
           if (message === null) continue

@@ -48,8 +48,8 @@ Write to the bot and the message goes to the spore the chat is mapped to. The bo
 `working…`, shows which tools run as they run, and edits the answer into that message when
 the turn ends. How the turn ended is added only when it makes the answer partial — a wrap
 or a stop. A longer answer than Telegram's 4096 continues in further messages. What the
-turn left in `data/out/` follows as documents; a file over Telegram's 50 MB is named
-instead.
+turn left in `data/out/` follows as documents, up to the 50 a turn hands back, then a line
+counting the rest; a file over Telegram's 50 MB is named instead.
 
 A message sent while a turn runs lands between its rounds, and its `working…` message says it
 was heard. A turn ending in a question posts the

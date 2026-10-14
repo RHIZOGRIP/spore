@@ -23,7 +23,7 @@ import { makeTools, recordRefusals } from '../tools/make-tools.js'
 import { loop } from './loop.js'
 import { COMPACTED, marked } from './marks.js'
 import { DATA_DIR, appendCompaction, linkTurnTmp, appendTranscript, fromPerson, inboxConsumed, readInbox, readInboxFrom, readModelKey, readSaidSoFar, runningLimits, writableDirs, writeOutcome } from './spore-dir.js'
-import { producedIn } from './produced.js'
+import { deliverablesIn } from './deliverables.js'
 import { scheduleDir } from './schedule.js'
 import { composeSystem } from './system-prompt.js'
 import { callsIn, createCallTrail } from './call-record.js'
@@ -449,12 +449,12 @@ export async function runSpore ({
     if (mo.spend) await mo.spend().catch(() => {})
     if (result.stopReason === 'cancelled' && wallHit) result.stopReason = 'hard:wall'
 
-    // What the turn left behind, read from the islands rather than from the trail: a call
+    // What the turn hands back, read from `data/out/` rather than from the trail: a call
     // records the streams it redirected, never what a program wrote while it ran, and a
     // rendered report is exactly that case.
     if (historyOver(historySent, carried)) logger.warn({ sent: historySent, bound: carried }, '[spore] this turn carried more history than its bound')
-    const { produced, more: producedMore, dataBytes } = producedIn(WS, turnStartedAt)
-    events.emit('produced', { files: produced, more: producedMore })
+    const { deliverables, more: deliverablesMore, dataBytes } = deliverablesIn(WS, turnStartedAt)
+    events.emit('deliverables', { files: deliverables, more: deliverablesMore })
 
     writeOutcome(state, {
       runId: trailRunId,
@@ -487,10 +487,10 @@ export async function runSpore ({
       // How far the inbox has been read. The next turn starts here, so a crash replays
       // nothing that was answered and loses nothing that was not.
       inboxTo: inboxAt,
-      // Beside the answer rather than inside it: a consumer reads `{ output, produced }`
+      // Beside the answer rather than inside it: a consumer reads `{ output, deliverables }`
       // and never parses prose to find the file the turn made.
-      produced,
-      ...(producedMore ? { producedMore } : {}),
+      deliverables,
+      ...(deliverablesMore ? { deliverablesMore } : {}),
       dataBytes,
       historySent,
       historyBound: carried,
@@ -534,7 +534,7 @@ export async function runSpore ({
     // member as idle, which is indistinguishable from never having been launched.
     // Found by a conformance run against a provider that was refusing: fourteen spores
     // died and left no trace of why, or that they had.
-    const left = producedIn(WS, turnStartedAt)
+    const left = deliverablesIn(WS, turnStartedAt)
     writeOutcome(state, {
       runId: trailRunId,
       startedAt: turnStartedAt,
@@ -554,9 +554,9 @@ export async function runSpore ({
       rounds: null,
       ownMicros: micros(totalSpend(ledger) - (ledger.children || 0) + setupCost),
       treeMicros: micros(totalSpend(ledger) + setupCost),
-      // A turn that died still made whatever it made, and that is most of what the next
-      // one has to work from.
-      produced: left.produced,
+      // A turn that died can still have written what it meant to hand back.
+      deliverables: left.deliverables,
+      ...(left.more ? { deliverablesMore: left.more } : {}),
       dataBytes: left.dataBytes,
       historySent,
       historyBound: carried

@@ -175,10 +175,10 @@ function renderShow (result) {
   if (result.history) line('history', historyLine(result.history))
   line('spend', unmetered(result.billing) ? `not metered · ${result.billing.label}` : `$${result.treeUsd.toFixed(6)}`)
   line('work', `${result.workUnits} units  (${result.workUnitsOwn} own rounds, ${result.workUnitsChildren} in cells)`)
-  if (result.produced.length) {
-    const shown = result.produced.slice(0, 5).map(f => `${f.path} (${f.mime}, ${f.bytes}b)`)
-    const rest = result.produced.length - shown.length + result.producedMore
-    line('produced', shown.join('\n' + ' '.repeat(13)) + (rest ? `\n${' '.repeat(13)}…and ${rest} more` : ''))
+  if (result.deliverables.length) {
+    const shown = result.deliverables.slice(0, 5).map(f => `${f.path} (${f.mime}, ${f.bytes}b)`)
+    const rest = result.deliverables.length - shown.length + result.deliverablesMore
+    line('delivered', shown.join('\n' + ' '.repeat(13)) + (rest ? `\n${' '.repeat(13)}…and ${rest} more` : ''))
   }
   if (result.precursors.length) line('precursors', result.precursors.join(', '))
   if (result.plugins.length) line('plugins', result.plugins.join(', '))

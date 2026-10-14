@@ -77,7 +77,7 @@ console.log(`${'definition'.padEnd(20)} ${'runs'.padStart(4)}  ${'delivered'.pad
 for (const arm of arms) {
   const turns = runs.filter(run => run.arm === arm).map(run => readTurns(run.into).at(-1)).filter(Boolean)
   const hit = runs.filter(run => run.arm === arm && refused(run)).length
-  const delivered = turns.filter(turn => turn.produced?.some(file => file.path.startsWith('data/out/'))).length
+  const delivered = turns.filter(turn => turn.deliverables?.length).length
   const reasons = {}
   for (const turn of turns) reasons[turn.stopReason ?? 'none'] = (reasons[turn.stopReason ?? 'none'] ?? 0) + 1
   const mean = (key) => turns.length ? turns.reduce((sum, turn) => sum + turn[key], 0) / turns.length : 0

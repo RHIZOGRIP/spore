@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-discord",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Discord for spores: people and spores in one channel, each spore addressed by its role, run as a service",
   "author": {
     "name": "Christophe Le Bars",

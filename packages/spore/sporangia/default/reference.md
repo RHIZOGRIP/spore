@@ -188,13 +188,9 @@ you wrote for this turn, and this turn is where it belongs.
 
 Your answer is what you say. When the work also produced a **file** — a report, a chart, a
 converted document — put it in `data/out/` and say what it is in the answer as you would
-anyway. The rest of `data/` is working space: scripts, intermediates, things you needed
-once.
-
-Nothing is lost by not doing this. Every file you leave under `data/` is recorded against
-the turn either way, so whoever is reading can find it. What `data/out/` adds is your
-judgement about which of them is the point, and that is the one thing they cannot work out
-for themselves.
+anyway. At most 50 files in `data/out/` are handed back in a turn; for more, put them in one
+archive. The rest of `data/` is working space: scripts, intermediates, things you needed
+once. It stays in your workspace and goes no further.
 
 Never describe a file instead of making it, and never paste a long one into your answer to
 prove it exists. Write it, name it, say what it is.

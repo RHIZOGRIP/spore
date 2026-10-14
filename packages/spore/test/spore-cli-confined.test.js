@@ -424,7 +424,7 @@ describe('a confined turn', () => {
     expect(result.code, result.stderr).toBe(0)
     expect(readFileSync(resolve(ws, 'data/home.txt'), 'utf8')).toBe(resolve(ws, 'home'))
     expect(readFileSync(resolve(ws, 'home/.gitconfig'), 'utf8')).toContain('spore@example.invalid')
-    expect(readTurns(ws)[0].produced.map(file => file.path)).not.toContain('home/.gitconfig')
+    expect(readTurns(ws)[0].deliverables.map(file => file.path)).not.toContain('home/.gitconfig')
   })
 
   it('gives its commands what the runner is told to add to their environment', async () => {
@@ -451,7 +451,7 @@ describe('a confined turn', () => {
   })
 
   // Beside the prose, never inside it: the consumer reads a field, not a sentence.
-  it('records what the turn left behind, including what no call record names', async () => {
+  it('records what the turn hands back, including what no call record names', async () => {
     await start(async (input, round) => round === 0
       ? calls('wsexec', { command: 'mkdir -p data/out && echo report > data/out/report.md && echo scratch > data/notes.txt && echo done', out: 'data/log.txt' })
       : answers('wrote the report'))
@@ -460,16 +460,13 @@ describe('a confined turn', () => {
     expect(result.code, result.stderr).toBe(0)
 
     const [turn] = readTurns(ws)
-    const paths = turn.produced.map(f => f.path)
+    const paths = turn.deliverables.map(f => f.path)
     // `data/out/report.md` was written by the command, not by a tool, so nothing in the
     // trail mentions it — and it still has to come back.
-    expect(paths).toContain('data/out/report.md')
-    expect(paths).toContain('data/notes.txt')
-    expect(turn.produced[0].path).toBe('data/out/report.md')
-    expect(turn.produced[0].delivered).toBe(true)
-    expect(turn.produced[0].mime).toBe('text/markdown')
+    expect(paths).toEqual(['data/out/report.md'])
+    expect(turn.deliverables[0].mime).toBe('text/markdown')
 
-    expect(outcome(ws).produced.map(f => f.path)).toEqual(paths)
+    expect(outcome(ws).deliverables.map(f => f.path)).toEqual(paths)
   })
 
   it('refuses to look when the definition grants no images', async () => {

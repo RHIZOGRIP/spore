@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createCallTrail } from '../src/core/call-record.js'
-import { producedIn } from '../src/core/produced.js'
+import { deliverablesIn } from '../src/core/deliverables.js'
 import { hostState, linkTurnTmp } from '../src/core/spore-dir.js'
 import { makeTools } from '../src/tools/make-tools.js'
 import { shownToModel } from './fixtures/as-shown.js'
@@ -40,13 +40,13 @@ describe("a turn's tmp/", () => {
     expect(() => linkTurnTmp(WS, trail.root)).toThrow(expect.objectContaining({ type: 'WORKSPACE_TMP_TAKEN' }))
   })
 
-  it('takes a program written, edited and run within the turn, and none of it is produced', async () => {
+  it('takes a program written, edited and run within the turn, and none of it is handed back', async () => {
     const since = new Date(Date.now() - 1000).toISOString()
     expect(JSON.parse(await tools.write({ path: 'tmp/fix.sh', content: 'echo first\n' })).exit).toBe(0)
     expect(JSON.parse(await tools.edit({ path: 'tmp/fix.sh', old: 'first', new: 'second' })).exit).toBe(0)
     expect(JSON.parse(await tools.wsexec({ command: 'sh tmp/fix.sh' })).files.out.content).toBe('second\n')
     expect(readFileSync(resolve(WS, 'calls/first/tmp/fix.sh'), 'utf8')).toBe('echo second\n')
-    expect(producedIn(WS, since).produced.map(file => file.path)).toEqual([])
+    expect(deliverablesIn(WS, since).deliverables.map(file => file.path)).toEqual([])
   })
 
   it('is the TMPDIR of every command, and the one place exec writes', async () => {

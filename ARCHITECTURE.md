@@ -197,8 +197,8 @@ The record carries only what the runtime observed (`src/core/call-record.js`):
 - for a command: exit code, signal, and whether it was killed at its deadline or as idle
 - for each file a call redirected, wrote or read: path, size, mime, mtime, hash
 
-What a program wrote without naming it is not in the call's record; the turn's `produced` lists it
-(§What a run produced).
+What a program wrote without naming it is not in the call's record; when it is in `data/out/`, the
+turn's `deliverables` lists it (§What a turn hands back).
 
 Under synchronous execution the runtime records each
 file the moment the tool exits, with no agent turn in between.
@@ -217,29 +217,29 @@ without control characters beyond tab, line feed and carriage return.
   return it. `edit` is not the same case, because what the file became is not what the caller
   passed.
 
-### What a run produced
+### What a turn hands back
 
 An answer is prose, and bulk output never reaches it. Every turn record carries
-`produced: [{path, bytes, mtime, mime, delivered}]`, the event log has it as a `produced`
-event of its own after `complete`, and a consumer reads `{ output, produced }` instead of
+`deliverables: [{path, bytes, mtime, mime}]`, the event log has it as a `deliverables`
+event of its own after `complete`, and a consumer reads `{ output, deliverables }` instead of
 parsing the answer for file names.
 
-**Observed by walking the tree, not reported by the agent**. `producedIn()` (`src/core/produced.js`)
-takes every file under `data/` and `precursors/` whose mtime is at or after the turn's start and
-which is still there at the end: a scratch file written and deleted was working, not produced.
-Neither `calls/` nor `home/` is walked.
-
 **What the agent *means* to hand back is `data/out/`**, on the same terms `data/memory/`
-holds its notes: a conventional directory it writes and the runtime reads, with the rest of
-`data/` working space. Deliverables sort first, so when `PRODUCED_CAP` (50) bites — a fan-out
-writes one directory per part — the list keeps the answer and drops the scratch, with
-`producedMore` carrying the count that did not fit. Files outside `data/out/` are listed all the
-same. The same walk adds up everything under `data/`, `dataBytes` on the turn record: how much
-the spore keeps, read later without walking it again.
+holds its notes: a conventional directory it writes and the runtime reads. The rest of `data/`
+is working space and is not listed; it stays in the workspace for whoever looks.
+
+**Observed by walking `data/out/`, not reported by the agent**. `deliverablesIn()`
+(`src/core/deliverables.js`) takes every file there whose mtime is at or after the turn's start
+and which is still there at the end: a draft written and deleted was working, not a deliverable.
+A program writes a report without any call naming it, so the trail cannot say what was handed
+back. `DELIVERABLES_CAP` (50) bounds a turn's list, since each file is something a person
+receives: past it the agent bundles them, and `deliverablesMore` counts the ones left out. The
+same walk adds up everything under `data/`, `dataBytes` on the turn record: how much the spore
+keeps, read later without walking it again.
 
 Delivering those files is the **invoker's** problem. The workspace is the delivery
-surface and already holds everything; a terminal lists what changed, a bot attaches it, a
-relay serves it. `produced` carries paths and types, **never bytes**
+surface and already holds everything; a terminal lists it, a bot attaches it, a
+relay serves it. `deliverables` carries paths and types, **never bytes**
 ([principle 5](PRINCIPLES.md#5-big-results-stay-in-files)).
 
 `mimeOf()` is the one naming of what a file is: the extension for the formats a workspace
@@ -352,8 +352,7 @@ command already has (`git -C`, `make -C`, `tar -C`)
 edited and run there, `exec`'s `--write-root` is that directory, and both `exec` and `wsexec`
 have it as `TMPDIR`, so a program that spills (`sort` on a large input) works without touching
 `data/`. It lives with the turn's calls and goes when `retain` drops the run, as an unnamed stream
-does; `produced` does not walk it, and no grant may be named `tmp`. What is meant to last is
-written under `data/`.
+does, and no grant may be named `tmp`. What is meant to last is written under `data/`.
 
 Exit codes are `126` for a confinement failure and `127` for a failed exec; otherwise the
 command's own.
@@ -704,9 +703,9 @@ The workspace is flat and undotted:
 `spore-spawn` set `HOME` to the workspace's own `home/`, a write island like `data/`: a program
 that keeps its settings in `$HOME` — git's identity, npm's cache, pip's — has a place for them,
 and the host's `HOME` never reaches an agent. It persists between turns, since a spore that
-commits needs its identity next time too. It is not something a turn made, so `produced` skips
-it, a fan-out retry does not carry it, and a clone does not inherit it; a fork restores it as it
-stood at the cut, like every island.
+commits needs its identity next time too. It is not something a turn made, so a fan-out retry
+does not carry it and a clone does not inherit it; a fork restores it as it stood at the cut,
+like every island.
 
 ### Where workspaces live
 
@@ -1045,7 +1044,7 @@ node's directory, each `reads` and `writes` path, the plugins' reads and the wor
 runner counts them when a turn starts and refuses one past the limit with the count and what made
 it (`read_paths_refusal`), and `spore-spawn` refuses a precursor the same way — once, rather than
 every command failing with exit 126.
-What changed in the directory is not part of `produced` — git, not a walk, says what a turn did
+What changed in the directory is not part of `deliverables` — git, not a walk, says what a turn did
 there.
 
 **`sources: [pubmed]`** is an endpoint. The network is already open to the agent, so a source
@@ -2657,8 +2656,8 @@ rather than a field in a definition. Two callers together are bounded by the use
 (§Turns of one user): a start refused is tried again on the next poll, and reported as `full`.
 
 **Output of a turn is found, not returned.** A batch starts detached turns and waits on their
-records; the answer is the workspace's transcript and whatever its turn `produced`. `runSpore`,
-the synchronous confined half, is not exported.
+records; the answer is the workspace's transcript and whatever its turn's `deliverables` hold.
+`runSpore`, the synchronous confined half, is not exported.
 
 ### What a turn costs
 
@@ -2706,7 +2705,7 @@ refuse, so all of these happen where the record can be written, and losing the l
 exits quietly, since the winner reads the message. A runner's record is the failure subset of
 the shape — `startedAt`, `endedAt`, `stopReason`, `error`, `detail`, `concluded: false`,
 `rounds: null`, `treeMicros` from its ledger, and no `inboxTo`, since the turn read nothing it
-answered. No `runId`, which is the agent's, and no `produced`, which only the agent walks.
+answered. No `runId`, which is the agent's, and no `deliverables`, which only the agent walks.
 `stateOf` reads it as `failed`, `cancelled` or `halted`, and `runBatch`, which finds each
 message's turn among the records, sees it end instead of waiting on it.
 

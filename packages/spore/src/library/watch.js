@@ -235,8 +235,8 @@ export function outcome (ws) {
     rounds: last.rounds ?? 0,
     treeUsd: last.treeUsd,
     workUnits: last.workUnits ?? 0,
-    produced: last.produced ?? [],
-    producedMore: last.producedMore ?? 0,
+    deliverables: last.deliverables ?? [],
+    deliverablesMore: last.deliverablesMore ?? 0,
     endedAt: last.endedAt
   }
 }

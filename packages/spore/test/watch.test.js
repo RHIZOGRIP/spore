@@ -56,7 +56,7 @@ describe('watching a spore as data', () => {
     appendTurn(WS, {
       startedAt: 'S', stopReason: 'soft:cost', concluded: true, rounds: 9, treeMicros: 400_000, workUnits: 20, endedAt: 'T'
     })
-    expect(outcome(WS)).toEqual({ stopReason: 'soft:cost', concluded: true, rounds: 9, treeUsd: 0.4, workUnits: 20, endedAt: 'T', produced: [], producedMore: 0 })
+    expect(outcome(WS)).toEqual({ stopReason: 'soft:cost', concluded: true, rounds: 9, treeUsd: 0.4, workUnits: 20, endedAt: 'T', deliverables: [], deliverablesMore: 0 })
   })
 })
 

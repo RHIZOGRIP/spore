@@ -95,7 +95,7 @@ how you reach inside a docx or xlsx by hand.
 a tar archive to parse, which is not worth doing:
 
 ```
-wsexec: tar -xzf data/bundle.tgz -C data/out     # also -j, -J, --zstd
+wsexec: tar -xzf data/bundle.tgz -C data/src     # also -j, -J, --zstd
 wsexec: tar -czf data/out.tgz -C data/src .
 exec:   tar -tzf data/bundle.tgz                 # list
 exec:   tar -xzOf data/bundle.tgz ./one.csv      # one member to stdout

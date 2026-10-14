@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -102,8 +102,8 @@ CREATE TABLE t_turns (
   inboxTo            INTEGER,
   cut                INTEGER,
   settled            INTEGER,
-  produced           TEXT,
-  producedMore       INTEGER,
+  deliverables       TEXT,
+  deliverablesMore   INTEGER,
   recall             TEXT,
   traceparent        TEXT,
   model              TEXT,
@@ -174,7 +174,7 @@ CREATE VIEW turns AS
          ownMicros, ownMicros / 1e6 AS ownUsd, treeMicros, treeMicros / 1e6 AS treeUsd,
          workUnits, workUnitsOwn, workUnitsChildren,
          inputTokens, outputTokens, thinkingTokens, cacheWriteTokens, cacheReadTokens,
-         inboxFrom, inboxTo, cut, settled, produced, producedMore, recall, traceparent, model,
+         inboxFrom, inboxTo, cut, settled, deliverables, deliverablesMore, recall, traceparent, model,
          byPrecursor, dataBytes, historySent, historyBound
     FROM t_turns
    WHERE state = 'final';
@@ -277,7 +277,7 @@ CREATE VIEW outbox AS
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 3] = [
+const MIGRATIONS: [(i64, &str); 4] = [
     (
         1,
         r#"
@@ -351,6 +351,31 @@ CREATE VIEW turns AS
          workUnits, workUnitsOwn, workUnitsChildren,
          inputTokens, outputTokens, thinkingTokens, cacheWriteTokens, cacheReadTokens,
          inboxFrom, inboxTo, cut, settled, produced, producedMore, recall, traceparent, model,
+         byPrecursor, dataBytes, historySent, historyBound
+    FROM t_turns
+   WHERE state = 'final';
+"#,
+    ),
+    (
+        4,
+        r#"
+DROP VIEW turns;
+ALTER TABLE t_turns RENAME COLUMN produced TO deliverables;
+ALTER TABLE t_turns RENAME COLUMN producedMore TO deliverablesMore;
+UPDATE t_turns
+   SET deliverables = (SELECT json_group_array(json(json_remove(value, '$.delivered')))
+                         FROM json_each(t_turns.deliverables)
+                        WHERE json_extract(value, '$.delivered')),
+       deliverablesMore = NULL
+ WHERE deliverables IS NOT NULL;
+
+CREATE VIEW turns AS
+  SELECT turnNo, turnId, runId, startedAt, endedAt, stopReason, concluded, because, output,
+         error, detail, rounds,
+         ownMicros, ownMicros / 1e6 AS ownUsd, treeMicros, treeMicros / 1e6 AS treeUsd,
+         workUnits, workUnitsOwn, workUnitsChildren,
+         inputTokens, outputTokens, thinkingTokens, cacheWriteTokens, cacheReadTokens,
+         inboxFrom, inboxTo, cut, settled, deliverables, deliverablesMore, recall, traceparent, model,
          byPrecursor, dataBytes, historySent, historyBound
     FROM t_turns
    WHERE state = 'final';
@@ -613,8 +638,8 @@ const TURN_COLUMNS: [(&str, Kind); 32] = [
     ("cacheReadTokens", Kind::Integer),
     ("inboxTo", Kind::Integer),
     ("cut", Kind::Integer),
-    ("produced", Kind::Json),
-    ("producedMore", Kind::Integer),
+    ("deliverables", Kind::Json),
+    ("deliverablesMore", Kind::Integer),
     ("recall", Kind::Json),
     ("traceparent", Kind::Text),
     ("model", Kind::Text),
@@ -3247,9 +3272,10 @@ mod tests {
         conn.execute_batch(include_str!("../tests/fixtures/schema-1.sql"))
             .unwrap();
         conn.execute_batch(
-            "INSERT INTO t_workspace (id, schemaVersion, createdAt, inboxConsumed, lastTurnNo) VALUES (1, 1, 'a', 1, 1);
+            r#"INSERT INTO t_workspace (id, schemaVersion, createdAt, inboxConsumed, lastTurnNo) VALUES (1, 1, 'a', 1, 1);
              INSERT INTO t_inbox (at, text) VALUES ('a', 'said before');
-             INSERT INTO t_turns (turnId, turnNo, state, startedAt, inboxFrom, inboxTo) VALUES ('t1', 1, 'final', 'a', 0, 1);",
+             INSERT INTO t_turns (turnId, turnNo, state, startedAt, inboxFrom, inboxTo, produced, producedMore) VALUES ('t1', 1, 'final', 'a', 0, 1,
+               '[{"path":"data/out/r.md","bytes":1,"mtime":"a","mime":"text/markdown","delivered":true},{"path":"data/x.json","bytes":2,"mtime":"a","mime":"application/json","delivered":false}]', 3);"#,
         )
         .unwrap();
         conn.close().unwrap();
@@ -3262,6 +3288,20 @@ mod tests {
             })
             .unwrap();
         assert_eq!(kept, ("said before".into(), None, 1));
+        let handed: (String, Option<i64>) = migrated
+            .query_row(
+                "SELECT deliverables, deliverablesMore FROM turns",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            handed,
+            (
+                r#"[{"path":"data/out/r.md","bytes":1,"mtime":"a","mime":"text/markdown"}]"#.into(),
+                None
+            )
+        );
         let version: i64 = migrated
             .query_row("SELECT schemaVersion FROM t_workspace", [], |row| {
                 row.get(0)

@@ -155,7 +155,7 @@ its record.
 | `watch(ws, { after, signal, grace, tick })` | an async iterator over the event log after `after`, ending when the turn ends. If no turn is seen running within `grace` (5000 ms), it ends with what was there |
 | `readInbox(ws, { after, upto })` | the inbox entries with `inboxNo` in `(after, upto]` |
 | `turnOfMessage(ws, entry)` | the finished turn that ended a message, `{ turn, read }`, or `null` while none has. `read: false` means a turn started after the message failed before reading anything |
-| `outcome(ws)` | how the spore's last turn ended: `{ stopReason, concluded, rounds, treeUsd, workUnits, produced, producedMore, endedAt }`, or `null` |
+| `outcome(ws)` | how the spore's last turn ended: `{ stopReason, concluded, rounds, treeUsd, workUnits, deliverables, deliverablesMore, endedAt }`, or `null` |
 | `follow(ws, { lines, out, err })` | writes the running turn's text output to two streams, as `spore send` does in a terminal. Returns `'ended'` or `'detached'` (on SIGINT) |
 
 `send` options: `requestId` (taken once, see [Rules](#rules-an-integrator-keeps)); `attach`, a
@@ -268,7 +268,7 @@ signature of each, and every error it throws, is in [docs/library.md](docs/libra
 | export | returns |
 |---|---|
 | `list({ where, disk })` | `{ home, paused, spend, workspaces: [{ ws, state, lastTurnNo, last, … }], missing }` — what `spore ls` prints |
-| `show({ ws })` | one spore in detail: its state, definition, limits, how many messages are waiting, schedules, running jobs, last `produced` |
+| `show({ ws })` | one spore in detail: its state, definition, limits, how many messages are waiting, schedules, running jobs, last `deliverables` |
 | `log({ ws })` | one entry per turn (`endedAt`, `stopReason`, `concluded`, `treeUsd`, `asked`), what is `waiting`, schedules `held` |
 | `usage({ ws, days, since, until, tz })` | spend per local day and by origin, model, outcome and precursor. Without `ws`, every spore |
 | `precursors({ ws })`, `schedules({ ws })`, `jobs({ ws })` | what it can delegate to, its schedules and where each stands, its jobs |
@@ -501,7 +501,7 @@ All but `turn_end` are written by the agent's loop. `turn_end` is written by the
 | `wrap` | `dimension`, the spend at that point, and for a stall `tool` and `because` |
 | `interject` | `round`: a message reached the running turn |
 | `complete` | `output`, `usage`, `rounds`, `stopReason`, `cancelled`, `terminal`, and `because` for a `quiet` turn |
-| `produced` | `files`, each `{ path, bytes, mtime, mime, delivered }`, and `more` |
+| `deliverables` | `files`, each `{ path, bytes, mtime, mime }`, and `more` |
 | `recall` | `hits`, `scores`, or `failed` |
 | `compaction_started` | `messages` to summarize, `kept` word for word, `estimated`, `sent`, `budget`: the summary is asked for, before the turn's first round |
 | `compaction` | `summaryChars`, `firstKeptIndex` |
@@ -528,13 +528,13 @@ sender's message, or close the turn.
 | after a crash | can be in the log for a turn that is not final until the next runner starts | absent until the turn is final, on recovery if need be, with `settled` false |
 | a turn that never started its agent | absent | present, with `error` (`START_FAILED`, `KILLED`, …) |
 
-### `produced`
+### `deliverables`
 
-Written once per turn, before the turn is made final: the files this turn wrote under the
-workspace's `data/` and `precursors/` that are still there, newest first, with those under
-`data/out/` first and marked `delivered: true`. Files written in `home/`, `calls/`, `schedules/`
-or a `writes` directory are not listed. At most 50 are listed; `more` counts the rest. `path` is relative to the workspace. The same list is on the
-turn record as `produced` and `producedMore`.
+Written once per turn, before the turn is made final: what the turn hands back, the files it
+wrote under the workspace's `data/out/` that are still there, newest first, each
+`{path, bytes, mtime, mime}`. Nothing else the turn wrote is listed. At most 50 are listed;
+`more` counts the rest. `path` is relative to the workspace. The same list is on the turn
+record as `deliverables` and `deliverablesMore`.
 
 ### The turn record
 
@@ -543,7 +543,7 @@ turn's facts are read from its **record**: `readTurns(ws)`, `turnOfMessage`, `wa
 `turn.record`, the `result` line of `spore send --json`. Its fields include `turnNo`, `turnId`,
 `runId`, `startedAt`, `endedAt`, `stopReason`, `concluded`, `because`, `output` (the answer),
 `error`, `detail`, `rounds`, `ownUsd`, `treeUsd`, `workUnits`, token counts, `inboxFrom`,
-`inboxTo`, `settled`, `produced`, `producedMore`, `model` and `traceparent`.
+`inboxTo`, `settled`, `deliverables`, `deliverablesMore`, `model` and `traceparent`.
 
 `stopReason` is `answer`, `question` (the agent called `ask`; `output` is the question), `quiet`
 (nothing to say; `output` is null, `because` says why), `soft:<dimension>` (answered at a soft

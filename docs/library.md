@@ -126,8 +126,8 @@ reading). `null` while neither has happened. `turn` is a turn record
 ### `outcome`
 
 ```
-outcome(ws) → { stopReason, concluded, rounds, treeUsd, workUnits, produced, producedMore,
-                endedAt } | null
+outcome(ws) → { stopReason, concluded, rounds, treeUsd, workUnits, deliverables,
+                deliverablesMore, endedAt } | null
 ```
 
 How the spore's last finished turn ended, or `null` before any.
@@ -226,9 +226,9 @@ One spore in detail, read from its files: `ws`, the `stateOf` fields, `name`, `d
 `sporangium`, `model`, `models`, `cellModels`, `billing`, `sources`, `scopes`, `tools`, `limits`,
 `extend`, `turnLimits` (the running turn's limits, as `{ startedAt, limits }`), `memory`, `reads`,
 `writes`, `messages` (transcript length), `waiting` (unread messages, a count), `paused`, `held`,
-`cells` (of the last 24 hours), `jobs` (`{ grant, running }`), `endedAt`, `produced`,
-`producedMore`, `history`, `workUnits`, `workUnitsOwn`, `workUnitsChildren`, `precursors`, `plugins`,
-`differs` (root documents that differ from the installed ones), `disk`, `schedules` and
+`cells` (of the last 24 hours), `jobs` (`{ grant, running }`), `endedAt`, `deliverables`,
+`deliverablesMore`, `history`, `workUnits`, `workUnitsOwn`, `workUnitsChildren`, `precursors`,
+`plugins`, `differs` (root documents that differ from the installed ones), `disk`, `schedules` and
 `scheduleBound` (the turns and nominal cost the schedule grant allows per day). `history` is the
 last turn that measured one, `{ turnNo, sent, bound, over, rounds, cacheShare }`: the history its
 first call sent as the provider counted it, the bound it was held to, whether it went over it by
@@ -1279,8 +1279,9 @@ The event schema version every event carries as `v`: `1`
 ### `EVENTS`
 
 Every event name the log holds: `round`, `tool_start`, `tool_end`, `tool_block`, `wrap`,
-`interject`, `heartbeat`, `stream`, `usage`, `complete`, `produced`, `recall`, `compaction_started`,
-`compaction`, `compaction_failed`, `estimate_drift`, `empty_completion`, `recovery` and `turn_end`.
+`interject`, `heartbeat`, `stream`, `usage`, `complete`, `deliverables`, `recall`,
+`compaction_started`, `compaction`, `compaction_failed`, `estimate_drift`, `empty_completion`,
+`recovery` and `turn_end`.
 
 ### `PROMISED`
 

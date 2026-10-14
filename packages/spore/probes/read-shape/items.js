@@ -24,7 +24,7 @@ export const ARMS = ['record', 'plain', 'numbered', 'numbered-record', 'choose']
 export const SHAPED = ARMS.filter(arm => arm !== 'choose')
 
 const SYSTEM = 'You work in a workspace through tools. Base every answer on what the tools returned.'
-const ADDED = { 'config.js': '// reviewed', Makefile: '# reviewed', 'inbox.md': 'Reviewed.', 'parts.csv': 'A-999,Reviewed,steel,0,0,0.00,', 'settings.ini': '; reviewed', 'carnet.txt': 'Relu.' }
+const ADDED = { 'config.js': '// reviewed', 'rules.mk': '# reviewed', 'inbox.md': 'Reviewed.', 'parts.csv': 'A-999,Reviewed,steel,0,0,0.00,', 'settings.ini': '; reviewed', 'carnet.txt': 'Relu.' }
 
 const mulberry32 = (seed) => () => {
   seed |= 0

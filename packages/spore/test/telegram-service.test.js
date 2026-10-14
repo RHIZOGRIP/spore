@@ -287,6 +287,18 @@ describe('a message from a chat', () => {
     expect(lastText(1, note)).toBe('wrote it')
     expect(said(1).at(-1)).toMatchObject({ op: 'document', path: join(ws, 'data/out/report.md'), caption: 'data/out/report.md' })
   })
+
+  it('says how many files it did not hand back, past the cap', async () => {
+    reply = async (input, round) => round === 0
+      ? calls('wsexec', { command: 'mkdir -p data/out && for i in $(seq 52); do echo $i > data/out/f$i.txt; done', out: 'data/log.txt' })
+      : answers('wrote them')
+    start()
+    tg.push(message(1, 1, 'write them all'))
+    await until(() => said(1).some(s => s.text?.startsWith('and 2 more')))
+
+    expect(said(1).filter(s => s.op === 'document')).toHaveLength(50)
+    expect(said(1).at(-1).text).toBe("and 2 more files in data/out/, in the spore's workspace")
+  })
 })
 
 describe('delivering to Telegram', () => {

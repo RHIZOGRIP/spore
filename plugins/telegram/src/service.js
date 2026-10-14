@@ -8,6 +8,7 @@ import { announce, pieces, render, reply, track, waiting } from './forward.js'
 import { loadState, saveState } from './state.js'
 
 const MAX_DOCUMENT = 50 * 1024 * 1024
+const leftOut = (more) => `and ${more} more file${more === 1 ? '' : 's'} in data/out/, in the spore's workspace`
 const COMMAND = /^\/([a-z]+)(@\w+)?(?:\s+(.+))?$/is
 const NOT_MODIFIED = /message is not modified/
 const TAKES_ARGUMENTS = new Set(['extend', 'wrap'])
@@ -77,7 +78,7 @@ export function createService ({ telegram, botFile, statePath, env, log, configF
     for (const part of rest) await attempt(() => telegram.say(chat, part))
   }
 
-  const hand = async (attempt, chat, ws, files) => {
+  const hand = async (attempt, chat, ws, { files, more }) => {
     for (const file of files) {
       const path = resolve(ws, file.path)
       if (!existsSync(path)) {
@@ -91,6 +92,7 @@ export function createService ({ telegram, botFile, statePath, env, log, configF
       }
       await attempt(() => telegram.document(chat, { path, mime: file.mime }, file.path))
     }
+    if (more) await attempt(() => telegram.say(chat, leftOut(more)))
   }
 
   const status = (ws) => {
@@ -316,7 +318,7 @@ export function createService ({ telegram, botFile, statePath, env, log, configF
     const turn = turnsSince(ws, entry.turnNo - 1).ended[0]
     const heard = turn.asked.filter(message => entry.answers.includes(message.inboxNo))
     const text = heard.some(message => message.replyTo) ? reply(turn) : announce({ record: turn.record, asked: heard })
-    const files = (turn.record.produced ?? []).filter(file => file.delivered)
+    const handed = { files: turn.record.deliverables ?? [], more: turn.record.deliverablesMore ?? 0 }
     try {
       await delivery.to(chat, async (attempt) => {
         if (notes.length) {
@@ -324,7 +326,7 @@ export function createService ({ telegram, botFile, statePath, env, log, configF
         } else {
           for (const part of pieces(text)) await attempt(() => telegram.say(chat, part))
         }
-        await hand(attempt, chat, ws, files)
+        await hand(attempt, chat, ws, handed)
       })
     } catch (err) {
       if (err.retryable || stopping.signal.aborted) {

@@ -1272,8 +1272,8 @@ pub struct Unanswered<'a> {
 /// A turn the agent did not record — it never started, or was killed, or died first —
 /// finalized by the supervisor so that every turn a `send` started ends in the workspace's
 /// turns. It answered nothing, so it read nothing: no `inboxTo`, and what it was sent stays
-/// for the next turn. No `runId`, which is the agent's, and no `produced`, which only the agent
-/// walks.
+/// for the next turn. No `runId`, which is the agent's, and no `deliverables`, which only the
+/// agent walks.
 pub fn record_unanswered(ws: &Path, turn: &Unanswered) -> io::Result<()> {
     let mut record = unanswered(turn);
     record.set(TURN_ID, json!(new_turn_id()?));
