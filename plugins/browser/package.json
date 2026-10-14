@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-browser",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A browser for spores: the agents' own Chrome, reached over CDP and driven by agent-browser",
   "author": {
     "name": "Christophe Le Bars",

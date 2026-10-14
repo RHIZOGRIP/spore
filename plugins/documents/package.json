@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-documents",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Documents for spores: read xlsx, docx, pptx, odt and PDF, write xlsx and pptx, from the programs an agent writes",
   "author": {
     "name": "Christophe Le Bars",
