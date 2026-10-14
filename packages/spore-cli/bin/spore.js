@@ -14,7 +14,7 @@ import { basename, resolve } from 'node:path'
 
 import minimist from 'minimist'
 
-import { differingDocs, fork, follow, grantOf, isWorkspace, lastEventSeq, loadEnvironment, mimeOf, readInbox, RUNNING, send, stateOf, stop, turnOfMessage, turnSummary, watch, workspaceFor } from '@rhizogrip/spore'
+import { differingDocs, fork, follow, followingDocs, grantOf, isWorkspace, lastEventSeq, loadEnvironment, mimeOf, readConfig, readInbox, RUNNING, send, stateOf, stop, turnOfMessage, turnSummary, watch, workspaceFor } from '@rhizogrip/spore'
 import { renderHeader } from '../src/dispatch.js'
 
 // Detaching is neither success nor failure: the turn is still going, and 0 would claim it
@@ -412,12 +412,14 @@ const message = (rest.join(' ') || await readStdin()).trim()
 if (!message && !attach.length) fail('no message — pass one as an argument or on stdin, or a file with --attach')
 
 let differs
+let followed
 try {
   differs = differingDocs(ws)
+  followed = followingDocs(readConfig())
 } catch (err) {
   fail(err.detail ? `${err.message} — ${err.detail}` : err.message)
 }
-if (differs.length) console.error(`spore: ${differs.map(d => d.file).join(', ')} differ from what is installed — spore upgrade ${asked}`)
+if (differs.length && !followed) console.error(`spore: ${differs.map(d => d.file).join(', ')} differ from what is installed — spore upgrade ${asked}`)
 
 const requestId = argv['request-id'] || undefined
 const after = lastEventSeq(ws)

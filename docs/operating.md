@@ -55,6 +55,7 @@ The file is written whole and renamed into place.
 | `freeFloor` | free disk below which a turn is refused | 2 GB |
 | `spendPerDay`, `spendPerMonth` | dollars all your spores may spend per local day or month | no limit |
 | `contain` | `on` or `off`: whether every turn, job and router runs in namespaces of its own | on |
+| `docs` | `follow` or `kept`: whether a runner's start replaces the root documents that differ from what is installed | kept |
 | `hereSnapshots` | how many `spore here` session snapshots are kept per spore | 20 |
 | `plugins` | the plugins allowed on this machine; written by `spore plugin allow`, not by `config set` | none |
 | `replyTo` | per spore, where answers go when what a turn read asked from nowhere, as `{ "triage": "discord:ops/1234" }` | none |
@@ -565,3 +566,12 @@ is never touched by an upgrade.
 A root document missing when a turn starts is laid again from what is installed. A program that
 manages workspaces without the command can upgrade one by deleting those files while it holds the
 workspace lock; the next turn writes the installed copies.
+
+With `docs` set to `follow`, a runner's start does what `spore upgrade` does for that one spore,
+before its agent starts, and `spore send` no longer names the documents that differ: a host whose spores nobody edits by hand keeps every spore that runs on
+the installed documents, and leaves the ones that never run untouched.
+
+```bash
+spore config set docs follow
+spore config set docs kept       # the default: only spore upgrade replaces them
+```

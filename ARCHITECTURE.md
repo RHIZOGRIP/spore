@@ -542,6 +542,13 @@ and `libraries.md` from the package's own sporangium tree, and each used plugin'
 program that manages workspaces without `spore upgrade` upgrades one by deleting those files
 while it holds the workspace lock, and the next turn lays the installed copies.
 
+**A host may let them follow the package.** The host setting `docs: follow` makes a runner's start
+(`startRunner`, whatever started it) upgrade that spore before the runner does anything:
+for a host whose root documents nobody edits — a service holding a spore per conversation — every
+spore that runs reads the installed documents, and the cost falls only on spores that run. A
+runner that carries on to another turn does not upgrade again. Each
+file is replaced by a rename, so a reader sees the old copy or the new one.
+
 ## The spore command
 
 `spawn` is internal — the agent's own programs call it to start a cell. The user's entry is

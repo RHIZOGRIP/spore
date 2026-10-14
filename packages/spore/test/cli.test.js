@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, spendLimits, workspaceFor, containing, hereSnapshots } from '../src/library/config.js'
+import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, spendLimits, workspaceFor, containing, followingDocs, hereSnapshots } from '../src/library/config.js'
 import { workspacesIn, isWorkspace } from '../src/library/discover.js'
 import { define, defaultModel, defaultSporangiumPath, switchModel, edit, grantOf, list, log, pause, show, precursors, schedules, setDefaultModel, setSchedule, removeSchedule, sql, unpause, usage } from '../src/library/verbs.js'
 import { billingOf } from 'mohdel/providers'
@@ -177,6 +177,16 @@ describe('editing where to look', () => {
     expect(() => setKey('contain', 'no', CONFIG)).toThrow(/on or off/)
     setKey('contain', 'on', CONFIG)
     expect(containing(readConfig(CONFIG))).toBe(true)
+  })
+
+  it('leaves root documents to spore upgrade unless docs is set to follow', () => {
+    expect(followingDocs(readConfig(CONFIG))).toBe(false)
+    setKey('docs', 'follow', CONFIG)
+    expect(readConfig(CONFIG).docs).toBe('follow')
+    expect(followingDocs(readConfig(CONFIG))).toBe(true)
+    expect(() => setKey('docs', 'on', CONFIG)).toThrow(/follow or kept/)
+    setKey('docs', 'kept', CONFIG)
+    expect(followingDocs(readConfig(CONFIG))).toBe(false)
   })
 
   it('holds the spend limits as dollars, no limit when unset', () => {

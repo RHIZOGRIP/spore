@@ -8,7 +8,7 @@
  * one thing run on the host, by systemd, once the operator defines one with `spore service`.
  */
 
-import { accessSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync } from 'node:fs'
+import { accessSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, statSync, symlinkSync, unlinkSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -558,8 +558,9 @@ export function upgradeDocs (ws, options = {}) {
   const replaced = differingDocs(ws, options)
   for (const { file, installed } of replaced) {
     const at = join(ws, file)
-    rmSync(at)
-    copyFileSync(installed, at, constants.COPYFILE_EXCL)
+    const staged = join(dirname(at), `.${basename(at)}.${process.pid}`)
+    copyFileSync(installed, staged)
+    renameSync(staged, at)
   }
   return { ws, replaced: replaced.map(d => d.file) }
 }

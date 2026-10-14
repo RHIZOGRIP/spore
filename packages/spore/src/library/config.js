@@ -183,6 +183,12 @@ function validate (raw, file) {
       detail: 'contain says whether every turn, job and router runs in namespaces of its own, seeing only its own processes — spore config set contain on|off'
     })
   }
+  if (raw.docs !== undefined && !DOCS.includes(raw.docs)) {
+    throw new SporeError(`${file} has a docs that is not follow or kept`, {
+      type: 'CONFIG_INVALID',
+      detail: DOCS_DETAIL
+    })
+  }
   for (const key of DOLLARS) {
     if (raw[key] !== undefined && !(typeof raw[key] === 'number' && Number.isFinite(raw[key]) && raw[key] > 0)) {
       throw new SporeError(`${file} has a ${key} that is not an amount`, {
@@ -211,6 +217,14 @@ const switchOf = (value) => {
 /** Whether turns, jobs and routers must run contained: on unless the operator turned it off. */
 export const containing = (config) => config.contain ?? DEFAULTS.contain
 
+const docsOf = (value) => {
+  if (DOCS.includes(value)) return value
+  throw new SporeError(`docs is follow or kept, not "${value}"`, { type: 'CONFIG_INVALID', detail: DOCS_DETAIL })
+}
+
+/** Whether a runner's start replaces the root documents that differ from what is installed. */
+export const followingDocs = (config) => (config.docs ?? DEFAULTS.docs) === 'follow'
+
 /** How many sessions `spore here` keeps a snapshot of, per spore, the newest kept. */
 export const hereSnapshots = (config) => config.hereSnapshots ?? DEFAULTS.hereSnapshots
 
@@ -232,7 +246,9 @@ export function existing (paths) {
   return { live, missing }
 }
 
-const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'largestFile', 'freeFloor', 'spendPerDay', 'spendPerMonth', 'contain', 'hereSnapshots'])
+const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'largestFile', 'freeFloor', 'spendPerDay', 'spendPerMonth', 'contain', 'docs', 'hereSnapshots'])
+const DOCS = ['follow', 'kept']
+const DOCS_DETAIL = 'docs says whether a runner starts by replacing the root documents that differ from what is installed (follow) or leaves them to spore upgrade (kept) — spore config set docs follow|kept'
 const SWITCHES = { on: true, off: false }
 const COUNTS = new Set(['turns', 'modelSessions', 'hereSnapshots', 'homeSplit'])
 const DOLLARS = new Set(['spendPerDay', 'spendPerMonth'])
@@ -392,6 +408,7 @@ export const DEFAULTS = Object.freeze({
   largestFile: native.defaultLargestFile(),
   freeFloor: native.defaultFreeFloor(),
   contain: true,
+  docs: 'kept',
   hereSnapshots: 20
 })
 
@@ -427,7 +444,7 @@ export function setKey (key, value, file = CONFIG_FILE) {
   if (key === 'homeSplit' && Number(value) !== (current.homeSplit ?? null)) refuseRelayout(current, Number(value))
   const next = LISTS.has(key)
     ? value.split(',').map(v => store(v.trim())).filter(Boolean)
-    : COUNTS.has(key) || DOLLARS.has(key) ? Number(value) : SIZES.has(key) ? value : key === 'contain' ? switchOf(value) : store(value)
+    : COUNTS.has(key) || DOLLARS.has(key) ? Number(value) : SIZES.has(key) ? value : key === 'contain' ? switchOf(value) : key === 'docs' ? docsOf(value) : store(value)
   const written = { ...current, [key]: next }
   validate(written, file)
   if (key === 'home') checkLayout(expand(next), written.homeSplit ?? null, file)

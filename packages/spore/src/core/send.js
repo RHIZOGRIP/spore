@@ -14,10 +14,10 @@ import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { takeSlot } from './admission.js'
-import { preparePlugins } from './plugins.js'
+import { preparePlugins, upgradeDocs } from './plugins.js'
 import { enqueue, ERR_FILE, heldIn, inboxRequest, OUT_FILE, PLUGIN_ENV, releaseHeld } from './spore-dir.js'
 import { RUNNING, stateOf } from './state.js'
-import { bytesOf, containing, MEMORY_FILE, readConfig, SOURCES_FILE, spendLimits } from '../library/config.js'
+import { bytesOf, containing, followingDocs, MEMORY_FILE, readConfig, SOURCES_FILE, spendLimits } from '../library/config.js'
 
 const RUNNER = resolve(dirname(fileURLToPath(import.meta.url)), '../../native/spore-runner')
 // mohdel's session program, resolved the way Node resolves the package this runs with.
@@ -73,7 +73,14 @@ export function send (ws, message, { attach = [], schedule, hook, traceparent, r
       closeSync(slot.fd)
     }
   }
-  const start = (slot, plugins, { inbox, repeated }) => ({ ws: workspace, started: true, pid: startRunner(workspace, { slot, plugins, unsafe, debug, env }), inbox, repeated })
+  const start = (slot, plugins, { inbox, repeated }) => {
+    try {
+      return { ws: workspace, started: true, pid: startRunner(workspace, { slot, plugins, unsafe, debug, env }), inbox, repeated }
+    } catch (err) {
+      err.detail = `${err.detail ?? err.message} — the message is in the inbox, and the next turn reads it`
+      throw err
+    }
+  }
 
   if (stateOf(workspace).state !== RUNNING) {
     const plugins = preparePlugins(workspace)
@@ -143,6 +150,7 @@ export function release (ws, { now = Date.now(), env = process.env } = {}) {
  */
 export function startRunner (workspace, { slot, plugins, unsafe = false, debug = false, continuing = false, dream = false, env = process.env }) {
   const config = readConfig()
+  if (followingDocs(config)) upgradeDocs(workspace, { config })
   const largestFile = bytesOf(config, 'largestFile')
   const freeFloor = bytesOf(config, 'freeFloor')
   const spend = spendLimits(config)

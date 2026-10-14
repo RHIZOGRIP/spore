@@ -482,6 +482,8 @@ describe('documentation that differs from what is installed', () => {
     expect(upgradeDocs(WS, settings).replaced).toEqual(['reference.md', 'plugins/browser.md'])
     expect(readFileSync(join(WS, 'plugins/browser.md'), 'utf8')).toBe('# The browser, newer\n')
     expect(readFileSync(join(WS, 'libraries.md')).equals(libraries)).toBe(true)
+    expect(readdirSync(WS).filter(f => f.startsWith('.reference.md.'))).toEqual([])
+    expect(readdirSync(join(WS, 'plugins'))).toEqual(['browser.md'])
     expect(differingDocs(WS, settings)).toEqual([])
   })
 

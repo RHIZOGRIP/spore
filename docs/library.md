@@ -915,6 +915,15 @@ hereSnapshots(config) → number
 How many sessions `spore here` keeps a snapshot of per spore: the `hereSnapshots` setting of a
 `readConfig` result, else 20.
 
+### `followingDocs`
+
+```
+followingDocs(config) → boolean
+```
+
+Whether a runner's start replaces the root documents that differ from what is installed: the `docs`
+setting of a `readConfig` result is `follow`. Unset is `kept`, which leaves them to `spore upgrade`.
+
 ### `CONFIG_DIR`
 
 The directory of spore's host configuration: `$XDG_CONFIG_HOME/spore`, else `~/.config/spore`.

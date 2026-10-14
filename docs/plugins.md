@@ -358,8 +358,8 @@ Two plugins one spore uses that offer one module are refused together (`PLUGIN_C
 One file in the plugin, written for the agent: what each program does, how to run it, what its
 exit codes mean. It is copied to `plugins/<name>.md` in the workspace when `spore define` makes a
 spore using the plugin and at every turn start, whenever that file is absent. A file already there
-is replaced only by `spore upgrade`; `spore send` and `spore show` name it when it differs from the
-installed one ([operating.md §Root documents](operating.md#root-documents-and-spore-upgrade)).
+is replaced only by `spore upgrade`, or when a runner starts on a host that sets `docs` to `follow`;
+`spore send` and `spore show` name it when it differs from the installed one ([operating.md §Root documents](operating.md#root-documents-and-spore-upgrade)).
 
 The agent's system prompt lists the reference of each plugin its `spore.cmk` names, with the file's
 first non-blank line, its leading `#`s removed. That line is what the agent knows of the plugin
