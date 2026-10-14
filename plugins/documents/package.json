@@ -1,7 +1,7 @@
 {
   "name": "@rhizogrip/spore-plugin-documents",
   "version": "0.1.0",
-  "description": "Documents for spores: xlsx, docx, pptx, odt and PDF, importable by the programs an agent writes",
+  "description": "Documents for spores: read xlsx, docx, pptx, odt and PDF, write xlsx and pptx, from the programs an agent writes",
   "author": {
     "name": "Christophe Le Bars",
     "email": "clb@toort.net"
@@ -21,7 +21,8 @@
     "exceljs": "^4.4.0",
     "mammoth": "^1.13.0",
     "officeparser": "^8.1.0",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^2.4.5",
+    "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
     "fflate": "^0.8.3"
@@ -35,7 +36,8 @@
       "exceljs",
       "mammoth",
       "officeparser",
-      "pdf-parse"
+      "pdf-parse",
+      "pptxgenjs"
     ],
     "reference": "reference.md"
   },

@@ -1,7 +1,7 @@
-# documents — `exceljs`, `mammoth`, `officeparser`, `pdf-parse`
+# documents — `exceljs`, `mammoth`, `officeparser`, `pdf-parse`, `pptxgenjs`
 
-Your programs can import these by name, no path, to read the documents work arrives in: xlsx,
-docx, pptx, odt and PDF. Run the program with `exec` or `wsexec` like any other. Each example
+Your programs can import these by name, no path, to read the documents work arrives in — xlsx,
+docx, pptx, odt and PDF — and to write a spreadsheet or a slide deck. Run the program with `exec` or `wsexec` like any other. Each example
 below is run by the plugin's own tests, against these versions, and the output shown is the
 output you get.
 
@@ -68,3 +68,24 @@ await parser.destroy()
 
 A class, not a function. The text carries a `-- n of m --` marker between pages; strip it
 if you are matching against the content.
+
+### `pptxgenjs` — write a slide deck
+
+```js
+import { statSync } from 'node:fs'
+import PptxGenJS from 'pptxgenjs'
+const pres = new PptxGenJS()
+pres.layout = 'LAYOUT_WIDE'
+pres.addSlide().addText('Quarterly review', { x: 0.5, y: 2.5, w: 12.3, h: 1.5, fontSize: 40, bold: true, align: 'center' })
+const stock = pres.addSlide()
+stock.addText('Stock', { x: 0.5, y: 0.3, w: 12.3, h: 0.8, fontSize: 28 })
+stock.addTable([[{ text: 'name', options: { bold: true } }, { text: 'qty', options: { bold: true } }], ['bolt', '12']], { x: 0.5, y: 1.3, w: 6 })
+const file = await pres.writeFile({ fileName: 'data/deck.pptx' })
+console.log(JSON.stringify({ file, written: statSync(file).size > 0 }))
+```
+```
+{"file":"data/deck.pptx","written":true}
+```
+
+Positions and sizes are inches; `LAYOUT_WIDE` is 13.33 × 7.5. `writeFile` resolves to the path
+it wrote. A slide also takes `addImage({ path, x, y, w, h })` and `addShape`.

@@ -55,7 +55,7 @@
     "minimist": "^1.2.8"
   },
   "optionalDependencies": {
-    "@earendil-works/pi-tui": "1.0.4"
+    "@earendil-works/pi-tui": "1.2.0"
   },
   "license": "Apache-2.0"
 }

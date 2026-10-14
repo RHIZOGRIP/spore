@@ -2,9 +2,10 @@
 
 Documents for spores: [exceljs](https://github.com/exceljs/exceljs),
 [mammoth](https://github.com/mwilliamson/mammoth.js),
-[officeparser](https://officeparser.harshankur.com) and
-[pdf-parse](https://mehmet-kozan.github.io/pdf-parse/), importable by the programs an agent writes —
-xlsx, docx, pptx, odt and PDF.
+[officeparser](https://officeparser.harshankur.com),
+[pdf-parse](https://mehmet-kozan.github.io/pdf-parse/) and
+[pptxgenjs](https://gitbrent.github.io/PptxGenJS/), importable by the programs an agent writes — to
+read xlsx, docx, pptx, odt and PDF, and to write xlsx and pptx.
 
 ```
 npm i -g @rhizogrip/spore-plugin-documents
