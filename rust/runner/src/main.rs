@@ -35,7 +35,7 @@ use spore_workspace::{
     DEFINITION_FILE, HOME_DIR, MODEL_KEY_FILE, PLUGIN_ENV, PLUGIN_READS, STATE_FD,
 };
 use tokio::process::Command;
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{signal, Signal, SignalKind};
 use tokio::sync::watch;
 
 struct Args {
@@ -377,6 +377,10 @@ async fn main() {
         Ok(Acquired::Taken(_)) => std::process::exit(0),
         Err(e) => fail(format!("cannot take {}'s lock — {e}", ws.display())),
     };
+    // Hooked as soon as the lock is held: before the agent exists a signal releases the lock
+    // rather than leaving it naming a dead pid, which reads as a crash.
+    let mut sigterm = signal(SignalKind::terminate()).unwrap_or_else(|e| fail(e));
+    let mut sigint = signal(SignalKind::interrupt()).unwrap_or_else(|e| fail(e));
     let started_at = iso_now();
     // Left by a runner that died before letting go: each turn it had begun is written down,
     // as its agent left it or as one that ended in error, and never twice.
@@ -389,7 +393,7 @@ async fn main() {
     // ends, anything said is read by a turn under the same lock, as after a turn.
     let mut lock = lock;
     let started_at = if args.dream {
-        let (code, stopped) = dream(&ws, &node, &lock).await;
+        let (code, stopped) = dream(&ws, &node, &lock, &mut sigterm, &mut sigint).await;
         match unread(&ws) {
             Ok(true) if !stopped => {}
             _ => {
@@ -523,11 +527,6 @@ async fn main() {
             Err(problem) => refuse(&ws, lock, &started_at, &problem),
         }
     };
-
-    // Hooked as soon as the lock is held: before the agent exists a signal releases the lock
-    // rather than leaving it naming a dead pid, which reads as a crash.
-    let mut sigterm = signal(SignalKind::terminate()).unwrap_or_else(|e| fail(e));
-    let mut sigint = signal(SignalKind::interrupt()).unwrap_or_else(|e| fail(e));
 
     trace::init();
 
@@ -1028,7 +1027,13 @@ fn leave(ws: &Path, lock: std::fs::File, started_at: &str) -> ! {
 /// The spore's dream, under the lock this runner holds — which says so while it lasts:
 /// `bin/spore-dream.js` runs it as a super cell, and a stop reaches it as it reaches a turn's
 /// agent. Its exit code, and whether it was stopped.
-async fn dream(ws: &Path, node: &str, lock: &std::fs::File) -> (i32, bool) {
+async fn dream(
+    ws: &Path,
+    node: &str,
+    lock: &std::fs::File,
+    sigterm: &mut Signal,
+    sigint: &mut Signal,
+) -> (i32, bool) {
     let held = |dreaming: bool| {
         let mut held = json!({ "pid": std::process::id(), "startedAt": iso_now() });
         if dreaming {
@@ -1040,8 +1045,6 @@ async fn dream(ws: &Path, node: &str, lock: &std::fs::File) -> (i32, bool) {
         eprintln!("spore: cannot say the spore is dreaming — {e}");
         return (1, false);
     }
-    let mut sigterm = signal(SignalKind::terminate()).unwrap_or_else(|e| fail(e));
-    let mut sigint = signal(SignalKind::interrupt()).unwrap_or_else(|e| fail(e));
     let started = Command::new(node)
         .arg(root().join("bin").join("spore-dream.js"))
         .arg("--ws")

@@ -556,6 +556,37 @@ export function conformance (harness, platformTests = () => {}) {
         expect(asked()).toBe(1)
       })
 
+      it('sets aside what waited when the turn is stopped during its model call', async () => {
+        const gate = new Promise(resolve => { release = resolve })
+        let asked = 0
+        reply = async () => { asked += 1; await gate; return answers('late') }
+        start()
+        say({ conversation: '1', text: 'first' })
+        await until(() => asked === 1 && notes('1').length === 1)
+        say({ conversation: '1', text: 'second' })
+        await until(() => notes('1').length === 2)
+        say({ conversation: '1', text: harness.command('stop') })
+        await until(() => posted('1', 'stopping it'), 15000, where)
+        release()
+        await until(() => posted('1', 'set aside 1 message you sent that no turn had read'), 15000, where)
+        await until(() => posts('1').some(one => /^no answer · cancelled/.test(one.text)), 15000, where)
+      })
+
+      it('is written down when stopped from elsewhere as its model call ends', async () => {
+        const gate = new Promise(resolve => { release = resolve })
+        let asked = 0
+        reply = async () => { asked += 1; await gate; return answers('late') }
+        start()
+        say({ conversation: '1', text: 'first' })
+        await until(() => asked === 1 && notes('1').length === 1)
+        say({ conversation: '1', text: 'second' })
+        await until(() => notes('1').length === 2)
+        stop(ws)
+        release()
+        await idle(1, where)
+        expect(readTurns(ws).map(turn => [turn.stopReason, turn.inboxTo])).toEqual([['cancelled', 1]])
+      })
+
       it('with nothing running, sets aside what waited for the next turn', async () => {
         const asked = working()
         start()
