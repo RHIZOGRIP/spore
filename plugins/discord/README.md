@@ -14,7 +14,7 @@ cat > ~/.config/spore/discord/ops.json <<'JSON'
 {
   "token": "${DISCORD_BOT_TOKEN}",
   "channels": {
-    "1234567890": { "spores": ["triage", "ledger"], "humans": ["111111111111", "role:222222222222"] }
+    "1234567890": { "spores": ["triage", "ledger"], "people": ["111111111111", "role:222222222222"] }
   }
 }
 JSON
@@ -48,14 +48,20 @@ One bot per user: the source a spore reads history through takes `DISCORD_BOT_TO
 
 - `spores` — who answers there. For each, the bot finds or makes a mentionable role of that name,
   below its own highest role.
-- `humans` — who may address them: user ids, and `role:<id>` for everyone holding a role. Someone
-  else addressing a spore gets silence, and the log gets the line to add.
+- `people` — who may address them: user ids, `role:<id>` for everyone holding a role, and `"*"`
+  for anyone in the channel. Someone else addressing a spore gets silence, and the log gets the
+  line to add.
 - `sporesTalk` — `true` lets a spore's post that mentions another spore's role reach it. False
   when left out: two spores that keep answering each other run until their limits stop them.
+- `show` — how a turn shows itself there: `working` (the `working…` post, edited with the kind of
+  each call as it runs; the default), `react` (the bot's reaction on your message, and Discord's
+  typing), or `both`.
+- `details` — `true` shows the calls themselves in the `working…` post rather than their kinds.
 
 Beside `channels`, `avatars` gives a spore a face: `"avatars": { "triage": "https://…/triage.png" }`.
 Discord fetches the image from that address for every post, so it has to be public and https; a
-spore without one shows Discord's default.
+spore without one shows Discord's default. `react` names the bot's reactions for `show: react`,
+`{ "taken": "👨‍💻", "failed": "💔" }` when left out; any emoji Discord has, custom ones too.
 
 The file is read on every message, so a channel, a spore or a person is added by editing a line.
 
@@ -68,6 +74,10 @@ opened with whom it answers — which pings them — and removes the `working…
 left in `data/out/` follow as attachments, up to the 50 a turn hands back, then a line counting
 the rest; one over 20 MB is named instead. Only a message's text reaches a spore for now: files
 attached to it do not, and whoever sent them is told.
+
+`@triage status` says what it is doing; `@triage stop` ends the turn it is running and sets aside
+what you sent that it had not read; `@triage wrap 10m` asks it to wrap up; `@triage extend wall
+30m` gives it more, as far as its `spore.cmk` allows.
 
 A spore is told who spoke and where, never the rest of the channel; it reads what came before
 with `$SPORE_DISCORD` when the message points at it, as its `reference.md` teaches. What it reads
@@ -85,8 +95,11 @@ default naming a channel this bot's file does not give the spore is refused, and
 - **A message reaches each spore it addresses once,** under `discord:<message>:<spore>` as its
   `requestId`, so a message Discord hands over again is not said twice.
 - **A finished turn reaches its channel at least once.** What it owes a channel is an entry in
-  the spore's outbox, settled only after Discord took it; a crash between the two repeats a post
-  rather than losing one. One Discord will not take is settled refused, with Discord's reason.
+  the spore's outbox, settled only after Discord took it; a post the service was making when it
+  stopped is posted again, opening with `(this may repeat an earlier message)`. One Discord will
+  not take is settled refused, with Discord's reason.
+- **An answer never waits behind progress.** Under a rate limit the `working…` edits and typing
+  are dropped, never queued ahead of it.
 - **Nothing a spore writes pings anyone but whom it answers.** Every post the service makes
   allows no mentions but those.
 

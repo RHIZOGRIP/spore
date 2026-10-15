@@ -96,6 +96,8 @@ const said = (one) => {
 
 const harness = {
   spec: TELEGRAM,
+  words: (text) => text,
+  formats: true,
   credentials: { TRIAGE_BOT_TOKEN: 'the-bot-token', OTHER_BOT_TOKEN: 'another-bot-token' },
   botFile: (bot, table, fields = {}) => ({
     token: `\${${bot.toUpperCase()}_BOT_TOKEN}`,

@@ -53,7 +53,7 @@ function routes (raw, path) {
     if (typeof spore !== 'string' || !spore || (typeof entry === 'object' && entry.details !== undefined && typeof entry.details !== 'boolean')) {
       throw invalid(path, `maps ${chat} to something that is not a spore`, 'each chat is a chat id against the name of a spore it may reach, or { "spore": "<name>", "details": true, "show": "react" }')
     }
-    table.set(chat, { spores: [spore], details: typeof entry === 'object' && entry.details === true, show: typeof entry === 'object' ? entry.show ?? null : null })
+    table.set(chat, { spores: [spore], details: typeof entry === 'object' && entry.details === true, show: typeof entry === 'object' ? entry.show ?? null : null, people: null })
   }
   return table
 }
@@ -73,7 +73,8 @@ export const TELEGRAM = {
   routes,
   usage: { help: HELP, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 4096, file: 50 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 4000 },
-  can: { upload: true, remove: true, react: true, typing: true },
+  can: { upload: true, remove: true, react: true, typing: true, reply: true },
+  showShared: 'react',
   reactions: REACTIONS,
   hint (err, { file, bot }) {
     if (err.type === 'TELEGRAM_NO_BOT') {
@@ -100,7 +101,8 @@ export function normalize (update, bot) {
     id: `${bot}:${update.update_id}`,
     conversation: String(message.chat.id),
     message: message.message_id,
-    person: { id: String(message.from.id), name: `${[first, last].filter(Boolean).join(' ')}${username ? ` (@${username})` : ''}`, username },
+    person: { id: String(message.from.id), name: `${[first, last].filter(Boolean).join(' ')}${username ? ` (@${username})` : ''}`, username, groups: [] },
+    spore: null,
     where: message.chat.type === 'private' ? 'a private chat on Telegram' : `the Telegram group "${message.chat.title}"`,
     shared: message.chat.type !== 'private',
     text,

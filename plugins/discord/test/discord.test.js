@@ -9,10 +9,11 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 import { showPlugin } from '@rhizogrip/spore'
+import { credentialOf, readBot, routesOf } from '@rhizogrip/spore/relay'
 
+import { DISCORD } from '../src/adapter.js'
 import { createDiscord, INTENTS, USER_AGENT } from '../src/api.js'
-import { avatarsOf, botToken, channelsOf } from '../src/bots.js'
-import { announce, header, historyLines, isWorkingPost, pieces, plain, workingPost } from '../src/forward.js'
+import { header, historyLines, isWorkingPost, plain } from '../src/forward.js'
 
 const run = promisify(execFile)
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -80,33 +81,33 @@ const bot = (content) => {
 }
 
 describe('a bot file', () => {
-  it('reads each channel, its spores, who may address them and whether spores talk', () => {
-    const path = bot({ token: '${DISCORD_BOT_TOKEN}', channels: { 100: { spores: ['triage'], humans: ['1', 'role:2'], sporesTalk: true }, 200: { spores: ['ledger'], humans: [] } } }) // eslint-disable-line no-template-curly-in-string
-    expect([...channelsOf(path)]).toEqual([
-      ['100', { spores: ['triage'], humans: ['1', 'role:2'], sporesTalk: true }],
-      ['200', { spores: ['ledger'], humans: [], sporesTalk: false }]
+  it('reads each channel, its spores, who may address them, whether spores talk, and how a turn shows there', () => {
+    const path = bot({ token: '${DISCORD_BOT_TOKEN}', channels: { 100: { spores: ['triage'], people: ['1', 'role:2'], sporesTalk: true }, 200: { spores: ['ledger'], people: ['*'], show: 'react', details: true } } }) // eslint-disable-line no-template-curly-in-string
+    expect([...routesOf(DISCORD, path)]).toEqual([
+      ['100', { spores: ['triage'], details: false, show: null, people: ['1', 'role:2'], sporesTalk: true }],
+      ['200', { spores: ['ledger'], details: true, show: 'react', people: ['*'], sporesTalk: false }]
     ])
-    expect(botToken(path, { DISCORD_BOT_TOKEN: 'tok' })).toBe('tok')
-    expect(() => botToken(path, {})).toThrow(expect.objectContaining({ type: 'DISCORD_NO_TOKEN' }))
+    expect(credentialOf(DISCORD, path, 'token', { DISCORD_BOT_TOKEN: 'tok' })).toBe('tok')
+    expect(() => credentialOf(DISCORD, path, 'token', {})).toThrow(expect.objectContaining({ type: 'DISCORD_NO_TOKEN' }))
   })
 
   it('gives a spore the avatar it names, and refuses one Discord could not fetch', () => {
-    const channels = { 100: { spores: ['triage'], humans: [] } }
-    expect(avatarsOf(bot({ token: '${T}', channels, avatars: { triage: 'https://forge.example/triage.png' } }))).toEqual({ triage: 'https://forge.example/triage.png' }) // eslint-disable-line no-template-curly-in-string
-    expect(avatarsOf(bot({ token: '${T}', channels }))).toEqual({}) // eslint-disable-line no-template-curly-in-string
+    const channels = { 100: { spores: ['triage'], people: [] } }
+    expect(readBot(DISCORD, bot({ token: '${T}', channels, avatars: { triage: 'https://forge.example/triage.png' } })).avatars).toEqual({ triage: 'https://forge.example/triage.png' }) // eslint-disable-line no-template-curly-in-string
     for (const avatars of [{ triage: 'http://forge.example/triage.png' }, { triage: '/home/me/triage.png' }, ['https://x/y.png']]) {
-      expect(() => avatarsOf(bot({ token: '${T}', channels, avatars }))).toThrow(/avatars that are not/) // eslint-disable-line no-template-curly-in-string
+      expect(() => routesOf(DISCORD, bot({ token: '${T}', channels, avatars }))).toThrow(/avatars that are not/) // eslint-disable-line no-template-curly-in-string
     }
   })
 
-  it('refuses what it cannot route, saying which channel', () => {
-    const refused = (channels) => expect(() => channelsOf(bot({ token: '${T}', channels }))).toThrow(expect.objectContaining({ type: 'DISCORD_BOT_INVALID' })) // eslint-disable-line no-template-curly-in-string
-    refused({ general: { spores: ['triage'], humans: [] } })
-    refused({ 100: { spores: [], humans: [] } })
-    refused({ 100: { spores: ['triage'], humans: ['alice'] } })
-    refused({ 100: { spores: ['triage'], humans: [], talk: true } })
-    expect(() => channelsOf(bot({ token: 'plain-token', channels: {} }))).toThrow(/no token spore can read/)
-    expect(() => channelsOf(join(dir, 'none.json'))).toThrow(expect.objectContaining({ type: 'DISCORD_NO_BOT' }))
+  it('refuses what it cannot route, saying which channel, and where a field of the bot\'s goes', () => {
+    const refused = (channels) => expect(() => routesOf(DISCORD, bot({ token: '${T}', channels }))).toThrow(expect.objectContaining({ type: 'DISCORD_BOT_INVALID' })) // eslint-disable-line no-template-curly-in-string
+    refused({ general: { spores: ['triage'], people: [] } })
+    refused({ 100: { spores: [], people: [] } })
+    refused({ 100: { spores: ['triage'], people: ['alice'] } })
+    refused({ 100: { spores: ['triage'], humans: ['1'] } })
+    expect(() => routesOf(DISCORD, bot({ token: '${T}', channels: { 100: { spores: ['triage'], people: [], avatars: {} } } }))).toThrow(expect.objectContaining({ detail: 'a channel takes spores, people, sporesTalk, details, show; avatars is the bot\'s, beside channels' })) // eslint-disable-line no-template-curly-in-string
+    expect(() => routesOf(DISCORD, bot({ token: 'plain-token', channels: {} }))).toThrow(/no token spore can read/)
+    expect(() => routesOf(DISCORD, join(dir, 'none.json'))).toThrow(expect.objectContaining({ type: 'DISCORD_NO_BOT' }))
   })
 })
 
@@ -114,17 +115,6 @@ describe('what a channel is told', () => {
   it('opens an answer with whom it answers and the start of what they said', () => {
     expect(header('1', 'can you check\nthe payouts')).toBe('<@1> ↪ "can you check"')
     expect(header('1', 'x'.repeat(80))).toBe(`<@1> ↪ "${'x'.repeat(59)}…"`)
-  })
-
-  it('says where a turn nobody in the channel asked for came from', () => {
-    expect(announce({ record: { stopReason: 'answer', output: 'two new papers' }, asked: [{ schedule: 'digest' }] })).toBe('schedule "digest"\n\ntwo new papers')
-    expect(announce({ record: { stopReason: 'answer', output: 'scanned' }, asked: [{ job: 'scan' }] })).toBe('job "scan"\n\nscanned')
-  })
-
-  it('breaks an answer at Discord\'s 2000 characters', () => {
-    const parts = pieces(`${'a'.repeat(1500)}\n${'b'.repeat(1500)}`)
-    expect(parts.map(part => part.length)).toEqual([1500, 1500])
-    expect(pieces('c'.repeat(4500)).map(part => part.length)).toEqual([2000, 2000, 500])
   })
 
   it('names a spore a message mentions by its role, and leaves other roles as they are', () => {
@@ -140,8 +130,9 @@ describe('what a channel is told', () => {
   })
 
   it('knows its own working posts, which are not part of the conversation', () => {
-    expect(isWorkingPost(workingPost(header('1', 'payouts?'), true))).toBe(true)
-    expect(isWorkingPost(workingPost(header('1', 'payouts?'), false))).toBe(true)
+    expect(isWorkingPost(`${header('1', 'payouts?')}\nworking…`)).toBe(true)
+    expect(isWorkingPost(`${header('1', 'payouts?')}\nheard you — still working…`)).toBe(true)
+    expect(isWorkingPost('working…')).toBe(true)
     expect(isWorkingPost(`${header('1', 'payouts?')}\nall fine, nothing is working…ish`)).toBe(false)
   })
 })
@@ -174,6 +165,24 @@ describe('the REST API', () => {
     expect(asked[0].url).toBe('https://discord.com/api/v10/webhooks/h/secret?wait=true')
     expect(asked[0].init.headers).toMatchObject({ authorization: 'Bot tok', 'user-agent': USER_AGENT })
     expect(JSON.parse(asked[0].init.body)).toEqual({ username: 'triage', content: 'hi' })
+  })
+
+  it('says it is typing, and puts and takes off its own reaction', async () => {
+    const asked = []
+    const discord = createDiscord('tok', {
+      fetchImpl: async (url, init) => {
+        asked.push([init.method, url.replace('https://discord.com/api/v10', '')])
+        return { ok: true, status: 204, json: async () => null }
+      }
+    })
+    await discord.typing('100')
+    await discord.react('100', '7', '👨‍💻')
+    await discord.unreact('100', '7', 'custom:123')
+    expect(asked).toEqual([
+      ['POST', '/channels/100/typing'],
+      ['PUT', `/channels/100/messages/7/reactions/${encodeURIComponent('👨‍💻')}/@me`],
+      ['DELETE', '/channels/100/messages/7/reactions/custom%3A123/@me']
+    ])
   })
 })
 

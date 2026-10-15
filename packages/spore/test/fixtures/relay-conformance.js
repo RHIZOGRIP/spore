@@ -5,11 +5,14 @@
  *
  * harness:
  *   spec                                   the adapter's description
- *   credentials                            { <variable>: <value> } its bot files name, the first bot's first
+ *   credentials                            { <variable>: <value> } its bot files name, the first bot's first;
+ *                                          none reaches a turn but those the spec's sourceVariables keep
  *   botFile(bot, table, fields)            a bot file for { <conversation>: { spore, details, show } },
  *                                          with the bot's other `fields` (`react`)
  *   platform()                             a fresh fake platform
- *   adapter(platform, bot)                 the live adapter over it
+ *   adapter(platform, bot, botFile)        the live adapter over it
+ *   words(text)                            the person's words in what the spore was given for them
+ *   formats                                whether the platform has a formatted mode beside a plain one
  *   say(platform, { conversation, text, files, id, shared })
  *                                          a person writes there, `id` repeating an earlier delivery,
  *                                          `shared` in a conversation many people share; answers
@@ -46,6 +49,7 @@ const WORKING = /^(working…|heard you — still working…)/
 
 export function conformance (harness, platformTests = () => {}) {
   const { spec } = harness
+  const namesStrangers = spec.refusal({ conversation: '99', person: { id: '99', name: 'U99', username: 'u99', groups: [] } }, 'bot.json') !== null
   const otherVariable = Object.keys(harness.credentials)[1]
   let root
   let ws
@@ -72,7 +76,7 @@ export function conformance (harness, platformTests = () => {}) {
   const start = (opts = {}) => {
     const controller = new AbortController()
     const relay = createRelay({
-      adapter: harness.adapter(platform, 'triage'),
+      adapter: harness.adapter(platform, 'triage', join(root, spec.kind, 'triage.json')),
       botFile: join(root, spec.kind, 'triage.json'),
       statePath: saved,
       env,
@@ -116,6 +120,7 @@ export function conformance (harness, platformTests = () => {}) {
     replying: (fn) => { reply = fn },
     start,
     routes,
+    defaultReplyTo,
     until,
     idle,
     say,
@@ -179,10 +184,10 @@ export function conformance (harness, platformTests = () => {}) {
         expect(posts('1').find(one => one.text === 'hello back').answering).toBe(asked.message)
         await until(() => seen('1').some(one => one.op === 'remove' && one.note === note.note))
         expect(environ).toContain('SPORE_MODEL_SOCKET=')
-        for (const variable of Object.keys(harness.credentials)) expect(environ).not.toContain(variable)
+        for (const variable of Object.keys(harness.credentials).filter(name => !spec.sourceVariables.includes(name))) expect(environ).not.toContain(variable)
       })
 
-      it('is answered in the platform\'s formatting, while what the relay says itself stays plain', async () => {
+      it.runIf(harness.formats)('is answered in the platform\'s formatting, while what the relay says itself stays plain', async () => {
         reply = async () => answers('**done**, see `report.md`')
         start()
         say({ conversation: '1', text: 'hello' })
@@ -195,7 +200,8 @@ export function conformance (harness, platformTests = () => {}) {
         start()
         const asked = say({ conversation: '1', text: 'hello' })
         await until(() => posted('1', 'hello back'))
-        expect(readInbox(ws)[0]).toMatchObject({ text: 'hello', fromName: asked.from.name, fromId: asked.from.id, fromWhere: asked.from.where })
+        expect(readInbox(ws)[0]).toMatchObject({ fromName: asked.from.name, fromId: asked.from.id, fromWhere: asked.from.where })
+        expect(harness.words(readInbox(ws)[0].text)).toBe('hello')
       })
 
       it('reaches its turn with a key added to the environment file after the service started, and never a credential', async () => {
@@ -250,7 +256,7 @@ export function conformance (harness, platformTests = () => {}) {
         }
       })
 
-      it('from a conversation nobody allowed gets silence, and the log says how to allow it', async () => {
+      it.runIf(namesStrangers)('from a conversation nobody allowed gets silence, and the log says how to allow it', async () => {
         start()
         say({ conversation: '99', text: 'hello' })
         await until(() => logs.some(line => line.startsWith('refused') && line.includes('99')))
@@ -258,7 +264,7 @@ export function conformance (harness, platformTests = () => {}) {
         expect(readInbox(ws)).toEqual([])
       })
 
-      it('from a conversation nobody allowed is told to the owner once, where answers nobody asked for go', async () => {
+      it.runIf(namesStrangers)('from a conversation nobody allowed is told to the owner once, where answers nobody asked for go', async () => {
         writeFileSync(configFile, JSON.stringify({ ...JSON.parse(readFileSync(configFile, 'utf8')), replyTo: { triage: `${spec.kind}:triage/1` } }))
         start()
         say({ conversation: '99', text: 'hello' })
@@ -270,7 +276,7 @@ export function conformance (harness, platformTests = () => {}) {
         expect(hints).toHaveLength(1)
         expect(hints[0].text).toMatch(/^U99 .* wrote from .*, which .*triage\.json does not name\.\nrefused .*99/)
         expect(seen('99')).toEqual([])
-        expect(readInbox(ws).map(entry => entry.text)).toEqual(['hello'])
+        expect(readInbox(ws).map(entry => harness.words(entry.text))).toEqual(['hello'])
       })
 
       it('with no text is told that only text reaches a spore, and one with files that they did not go', async () => {
@@ -282,7 +288,7 @@ export function conformance (harness, platformTests = () => {}) {
         say({ conversation: '1', text: 'what is in this', files: 1 })
         await until(() => posted('1', 'only text reaches a spore for now: your file did not reach triage'))
         await until(() => posted('1', 'hello back'))
-        expect(readInbox(ws).map(entry => entry.text)).toEqual(['what is in this'])
+        expect(readInbox(ws).map(entry => harness.words(entry.text))).toEqual(['what is in this'])
       })
 
       it('shows a conversation that asked for details the command itself, and no other', async () => {
@@ -350,17 +356,24 @@ export function conformance (harness, platformTests = () => {}) {
         expect(notes('1')).toHaveLength(1)
       })
 
-      it('is how a conversation many people share is shown a turn, unless it asks for the working message', async () => {
-        routes({ 7: { spore: 'triage' }, 8: { spore: 'triage', show: 'working' } })
+      it('is how a conversation many people share shows a turn by default, or as its entry says', async () => {
+        const other = spec.showShared === 'react' ? 'working' : 'react'
+        routes({ 7: { spore: 'triage' }, 8: { spore: 'triage', show: other } })
         start()
-        say({ conversation: '7', text: 'hello', shared: true })
-        await until(() => reactions('7').length === 2)
-        expect(notes('7')).toEqual([])
+        const shows = async (conversation, show) => {
+          say({ conversation, text: 'hello', shared: true })
+          await until(() => posted(conversation, 'hello back'))
+          if (show === 'react') {
+            await until(() => reactions(conversation).length === 2)
+            expect(notes(conversation)).toEqual([])
+          } else {
+            expect(notes(conversation)).toHaveLength(1)
+            expect(reactions(conversation)).toEqual([])
+          }
+        }
+        await shows('7', spec.showShared)
         await idle(1)
-        say({ conversation: '8', text: 'hello', shared: true })
-        await until(() => posted('8', 'hello back'))
-        expect(notes('8')).toHaveLength(1)
-        expect(reactions('8')).toEqual([])
+        await shows('8', other)
       })
 
       it('marks a message the spore refuses as failed', async () => {
@@ -547,7 +560,7 @@ export function conformance (harness, platformTests = () => {}) {
         await until(() => notes('1').length === 2)
         say({ conversation: '1', text: harness.command('stop') })
         await until(() => posted('1', 'set aside 1 message you sent that no turn had read'), 15000, where)
-        expect(readInbox(ws).map(entry => [entry.text, entry.setAside])).toEqual([['first', false], ['second', true]])
+        expect(readInbox(ws).map(entry => [harness.words(entry.text), entry.setAside])).toEqual([['first', false], ['second', true]])
         await until(() => posts('1').some(one => /^no answer · cancelled/.test(one.text)), 15000, where)
         const [, waited] = notes('1')
         await until(() => seen('1').some(one => one.op === 'remove' && one.note === waited.note), 15000, where)

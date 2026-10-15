@@ -17,7 +17,7 @@ const SPEC = {
   can: { react: true },
   reactions: ['👨‍💻', '💔', '👀'],
   example: '{ "token": "${CHAT_TOKEN}", "rooms": {} }', // eslint-disable-line no-template-curly-in-string
-  routes: (raw) => new Map(Object.entries(raw.rooms).map(([room, entry]) => [room, { spores: [entry.spore ?? entry], details: false, show: entry.show ?? null }]))
+  routes: (raw) => new Map(Object.entries(raw.rooms).map(([room, entry]) => [room, { spores: [entry.spore ?? entry], details: false, show: entry.show ?? null, people: null }]))
 }
 
 let DIR
@@ -40,7 +40,7 @@ describe('a bot file', () => {
     write('ops', { token: '${OPS_TOKEN}', rooms: {}, extra: 1 }) // eslint-disable-line no-template-curly-in-string
     expect(() => routesOf(SPEC, path)).toThrow(/a field spore does not know — extra/)
     write('ops', { token: '${OPS_TOKEN}', rooms: { r1: 'triage' } }) // eslint-disable-line no-template-curly-in-string
-    expect(routesOf(SPEC, path)).toEqual(new Map([['r1', { spores: ['triage'], details: false, show: null }]]))
+    expect(routesOf(SPEC, path)).toEqual(new Map([['r1', { spores: ['triage'], details: false, show: null, people: null }]]))
   })
 
   it('takes how a conversation is shown a turn, and refuses a way it does not know or a reaction the platform cannot make', () => {

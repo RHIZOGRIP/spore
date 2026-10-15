@@ -5,7 +5,7 @@ reaches a spore, and the answers come back where they were asked. `@rhizogrip/sp
 half every connector shares, so what a connector promises is kept once. A connector is a plugin
 with a service ([plugins.md §Services](plugins.md#services)) whose program hands the relay an
 **adapter**: the platform's transport, its API, and what it calls a conversation and a person.
-`plugins/telegram/` is one, in about 200 lines.
+`plugins/telegram/` and `plugins/discord/` are two.
 
 ```js
 import { runService } from '@rhizogrip/spore/relay'
@@ -27,12 +27,16 @@ import { runService } from '@rhizogrip/spore/relay'
   platform is logged with its conversation and turn, and what cannot reach a spore — a file, a
   message with no text — is said.
 - **The spore is told who wrote and where** (`send`'s `from`), never as words in the text.
+- **Only whom the routing lets in reaches a spore.** Where a conversation lists its `people` — ids,
+  `role:<id>`, `"*"` — anyone else is refused, and the log says the line to add; a spore's own post
+  (`spore`) is never refused.
 - **The conversation is told what the turn does,** as its routing's `show` says. `working`: a
   `working…` message, then the kind of each call as it runs — `reading a file`, `running a command`,
   `asking <source>` — and the call itself only where the routing says `details`. `react`: the bot's
   `taken` reaction on the person's message, and the platform's typing while the turn runs. `both`.
-  Where the routing names none, `react` in a conversation many people share and `working` in one
-  with a single person. Under a rate limit, progress and typing are dropped, never queued ahead of
+  Where the routing names none, the platform's own for a conversation many people share
+  (`showShared`: Telegram's groups react, Discord's channels show `working…` under the spore's name)
+  and `working` in one with a single person. Under a rate limit, progress and typing are dropped, never queued ahead of
   an answer.
 - **The answer is a new message replying to the question,** so it notifies however long the turn
   ran; `working…` is then removed, or marked `answered below` where the platform will not remove it,
@@ -67,27 +71,31 @@ The static part, which the relay reads before the service starts:
 | `kind` | the place prefix (`<kind>:<bot>/<conversation>`), the outbox kind, the state directory, the bot files' folder, the prefix of error types (`CHAT_NO_BOT`) |
 | `label`, `noun` | the platform's name and what it calls a conversation (`chat`, `channel`), for what people and the log are told |
 | `fields`, `credentials`, `example` | the bot file's fields, those holding a `${VAR}`, and a first file to show |
-| `routes(raw, path)` | the routing read into a `Map` of conversation → `{ spores: [name], details, show }`, `show` null where the file names none, refusing what it cannot read |
-| `stateFields` | the adapter's own fields in the state file |
+| `routes(raw, path)` | the routing read into a `Map` of conversation → `{ spores: [name], details, show, people }`, `show` null where the file names none and `people` null where it names no one, refusing what it cannot read |
+| `stateFields` | the adapter's own fields in the state file, handed to its `restore` |
 | `sourceVariables` | credential variables a source of the plugin needs in a turn's environment |
 | `usage` | `{ help, extend }`: the commands as this platform types them |
 | `limits` | `{ message, file, editEveryMs, typingEveryMs }`: the longest message, the largest upload, how often `working…` is edited, how often typing is renewed |
-| `can` | `{ upload, remove, react, typing }` |
+| `can` | `{ upload, remove, react, typing, reply }`: `reply` false where a post cannot reply to a message, and opens with whom it answers instead |
+| `showShared` | how a turn shows itself in a conversation many people share when the routing says nothing: `react` or `working` |
 | `reactions` | the emoji the platform lets a bot react with, or null for any |
 | `refusals` | error types that mean the platform will not have this bot at all: the service exits 2 and is not restarted |
 | `hint(err, { file, bot })` | the line to fix an error, or null |
-| `refusal(message, botFile)` | the log line for a message from a conversation the routing does not name |
+| `refusal(message, botFile)` | the log line for a message from a conversation the routing does not name — or null where the platform shows the bot conversations that are none of its business: then nothing is logged, and the owner is not told |
 
 The live part, made once the credentials are proved:
 
 | member | does |
 |---|---|
+| `restore(state, save)` | where `stateFields` names any: the state holding them, and how to write it |
+| `prepare(table, log)` | optional: what the platform readies before anyone writes, for every conversation the routing names |
 | `listen({ onMessage, signal, log, sleep })` | the transport, until `signal` aborts; awaits `onMessage` before confirming a message to the platform; throws an error the platform gave for good |
-| `post(conversation, text, { answering, markdown })` | posts, as a reply to the platform's message `answering` when it is not null, and with `markdown` rendered in the platform's own formatting; answers the new message's id |
-| `edit(conversation, note, text)` | edits a message the bot posted; an edit that changes nothing is not a failure |
+| `aside(message, spore)` | optional: a line the spore is given after the text — Discord's pointer to the history it has not heard |
+| `post(conversation, text, { answering, for, markdown, as })` | posts, as a reply to the platform's message `answering` when it is not null, and with `markdown` rendered in the platform's own formatting; answers the new message's id. `as` is the spore speaking, or null for the bot itself; `for` is `[{ person, said }]`, whom the post is about, which a platform that cannot reply shows instead — and pings when it is the answer |
+| `edit(conversation, note, text, { for })` | edits a message the bot posted; an edit that changes nothing is not a failure |
 | `remove(conversation, note)` | where `can.remove` |
-| `upload(conversation, { path, mime }, caption)` | where `can.upload` |
-| `react(conversation, message, emoji)` | where `can.react`: the bot's one reaction on a person's message, none when `emoji` is null |
+| `upload(conversation, { path, mime }, caption, { as })` | where `can.upload` |
+| `react(conversation, message, emoji, was)` | where `can.react`: the bot's reaction on a person's message moved from `was` to `emoji`, either of them null for none |
 | `typing(conversation)` | where `can.typing`: the platform's typing indicator, which lasts a few seconds |
 
 Every failure is a `SporeError` with `retryable` (a refusal is not) and `context.retryAfter` in
@@ -100,7 +108,8 @@ What `onMessage` gets, the platform normalised:
 |---|---|
 | `id` | the message's identity, unique across every bot that can reach the spore: with the bot's name where the platform's id is per bot |
 | `conversation`, `message` | where it was said, and the platform's id for it (what the answer replies to) |
-| `person` | `{ id, name }`: the platform's id and how the person shows |
+| `person` | `{ id, name, groups }`: the platform's id, how the person shows, and the ids of the groups (Discord roles) a `role:<id>` in `people` matches |
+| `spore` | the spore that wrote it, where the platform lets spores' posts reach each other; null for a person |
 | `where` | the conversation as a person would name it (`a private chat on Telegram`) |
 | `shared` | whether many people share the conversation |
 | `text` | what was written, the platform's markup made plain; null when nothing was |

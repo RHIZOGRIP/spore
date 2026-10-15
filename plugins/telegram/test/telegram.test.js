@@ -23,9 +23,9 @@ describe('a bot\'s chats', () => {
   it('read each chat id against the spore it reaches, two chats on one spore among them', () => {
     chats({ 148392011: 'triage', '-1001234567': 'standup', 2: 'triage' })
     expect(routesOf(TELEGRAM, path)).toEqual(new Map([
-      ['2', { spores: ['triage'], details: false, show: null }],
-      ['148392011', { spores: ['triage'], details: false, show: null }],
-      ['-1001234567', { spores: ['standup'], details: false, show: null }]
+      ['2', { spores: ['triage'], details: false, show: null, people: null }],
+      ['148392011', { spores: ['triage'], details: false, show: null, people: null }],
+      ['-1001234567', { spores: ['standup'], details: false, show: null, people: null }]
     ]))
   })
 
@@ -61,7 +61,8 @@ describe('an update', () => {
       id: 'triage:7',
       conversation: '148392011',
       message: 40,
-      person: { id: '148392011', name: 'Alice Martin (@alice)', username: 'alice' },
+      person: { id: '148392011', name: 'Alice Martin (@alice)', username: 'alice', groups: [] },
+      spore: null,
       where: 'a private chat on Telegram',
       shared: false,
       text: 'hello',

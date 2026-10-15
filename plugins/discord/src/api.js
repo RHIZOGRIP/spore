@@ -161,6 +161,9 @@ export function createDiscord (token, { fetchImpl = fetch, base = BASE, WebSocke
     revise: (hook, message, payload) => call('PATCH', hookPath(hook, `/messages/${message}`), { body: payload }),
     remove: (hook, message) => call('DELETE', hookPath(hook, `/messages/${message}`)),
     upload: (hook, payload, files) => call('POST', hookPath(hook, '?wait=true'), { form: withFiles(payload, files), timeoutMs: 300_000 }),
+    typing: (channel) => call('POST', `/channels/${channel}/typing`),
+    react: (channel, message, emoji) => call('PUT', `/channels/${channel}/messages/${message}/reactions/${encodeURIComponent(emoji)}/@me`),
+    unreact: (channel, message, emoji) => call('DELETE', `/channels/${channel}/messages/${message}/reactions/${encodeURIComponent(emoji)}/@me`),
     connect
   }
 }

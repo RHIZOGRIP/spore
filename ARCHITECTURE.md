@@ -1803,7 +1803,10 @@ message replying to the question; commands;
 the outbox drained and settled; a restart from saved cursors. A connector is its adapter — the
 transport, the platform's API, what it calls a conversation and a person — and passes the
 conformance suite (`test/fixtures/relay-conformance.js`) against its fake platform
-(`docs/relay.md`). Telegram's is `plugins/telegram/src/adapter.js`.
+(`docs/relay.md`). Telegram's is `plugins/telegram/src/adapter.js`, Discord's
+`plugins/discord/src/adapter.js`: several spores to a channel, each reached when addressed and
+speaking under its own name through the channel's webhook, which cannot reply — so an answer
+opens with whom it answers.
 
 **Journal mode.** A file is in WAL mode while a writer holds it and in rollback mode when none
 does, with `synchronous=FULL`, foreign keys on every connection, and a 5 s busy timeout on
