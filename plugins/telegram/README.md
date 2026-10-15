@@ -104,7 +104,7 @@ timed, a command that exited non-zero given its exit code, a call that failed ma
 machine, and a command line or a path is yours. A chat can ask for the calls themselves:
 
 ```json
-{ "token": "${MAIN_BOT_TOKEN}", "chats": { "51168024": { "spore": "main", "details": true } } }
+{ "token": "${TRIAGE_BOT_TOKEN}", "chats": { "148392011": { "spore": "triage", "details": true } } }
 ```
 
 It is then shown `reading data/report.md`, `running git log --oneline -5`,
@@ -133,7 +133,9 @@ refused chat 148392011 (@alice) — to allow it, add "148392011": "<a spore>" to
 ```
 
 which is also how you learn your own chat id: start with `"chats": {}` and message the bot. A
-group's id is negative, and it is the group you add rather than the people in it.
+group's id is negative, and it is the group you add rather than the people in it. Where a spore's
+`replyTo` default is one of this bot's chats, that chat is told the same line, once per chat the
+file does not name, so you hear of someone trying the bot without reading its log.
 
 ## What it keeps
 

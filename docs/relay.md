@@ -52,7 +52,8 @@ import { runService } from '@rhizogrip/spore/relay'
 One file per bot, `~/.config/spore/<kind>/<bot>.json`, read on every message: credentials as
 `${VAR}`, held in `~/.config/spore/environment`, and the routing — which conversation reaches which
 spore, and how each is shown a turn (`show`: `working`, `react` or `both`). Anything not named there
-gets nothing, and the log says the line to add. A bot on a platform that reacts takes
+gets nothing, and the log says the line to add; so is the bot's owner, once per conversation while
+the service runs, in each of this bot's conversations a spore's `replyTo` default names. A bot on a platform that reacts takes
 `"react": { "taken": "🫡", "failed": "💔" }`, those two when it is left out; an emoji the platform
 does not take is refused with the list it does (`reactionsOf`).
 

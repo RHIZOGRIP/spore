@@ -48,6 +48,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   const notes = new WeakMap()
   const shown = new Map()
   const limitedUntil = new Map()
+  const hinted = new Set()
   let followed = new Map()
   let detailed = new Set()
   let routeFailure = null
@@ -155,6 +156,21 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       }))
   }
 
+  /**
+   * Someone in a conversation the bot file does not name is told nothing; the bot's owner is told,
+   * once per conversation while the service runs, in each conversation of this bot that a spore's
+   * `replyTo` default names, with the line that would let them in.
+   */
+  const hint = (message, { config, table }) => {
+    if (hinted.has(message.conversation)) return
+    hinted.add(message.conversation)
+    const places = new Set(Object.values(config.replyTo ?? {})
+      .filter(place => place.startsWith(prefix))
+      .map(place => place.slice(prefix.length))
+      .filter(conversation => table.has(conversation)))
+    for (const place of places) tell(place, `${message.person.name} wrote from ${message.where}, which ${botFile} does not name.\n${adapter.refusal(message, botFile)}`)
+  }
+
   const handle = async (message) => {
     const { conversation } = message
     let read
@@ -164,7 +180,10 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       return log(`refused ${where(conversation)}: the bot file is unreadable — ${said(err)}`)
     }
     const routed = read.table.get(conversation)
-    if (!routed) return log(adapter.refusal(message, botFile))
+    if (!routed) {
+      log(adapter.refusal(message, botFile))
+      return hint(message, read)
+    }
 
     const reached = []
     for (const name of message.addresses ?? routed.spores) {

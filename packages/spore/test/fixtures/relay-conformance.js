@@ -258,6 +258,21 @@ export function conformance (harness, platformTests = () => {}) {
         expect(readInbox(ws)).toEqual([])
       })
 
+      it('from a conversation nobody allowed is told to the owner once, where answers nobody asked for go', async () => {
+        writeFileSync(configFile, JSON.stringify({ ...JSON.parse(readFileSync(configFile, 'utf8')), replyTo: { triage: `${spec.kind}:triage/1` } }))
+        start()
+        say({ conversation: '99', text: 'hello' })
+        say({ conversation: '99', text: 'hello again' })
+        await until(() => logs.filter(line => line.startsWith('refused') && line.includes('99')).length === 2)
+        say({ conversation: '1', text: 'hello' })
+        await until(() => posted('1', 'hello back'))
+        const hints = posts('1').filter(one => one.text.includes('99'))
+        expect(hints).toHaveLength(1)
+        expect(hints[0].text).toMatch(/^U99 .* wrote from .*, which .*triage\.json does not name\.\nrefused .*99/)
+        expect(seen('99')).toEqual([])
+        expect(readInbox(ws).map(entry => entry.text)).toEqual(['hello'])
+      })
+
       it('with no text is told that only text reaches a spore, and one with files that they did not go', async () => {
         start()
         say({ conversation: '1', text: null, files: 1 })
