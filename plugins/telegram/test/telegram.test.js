@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
-import { botPath, routesOf } from '@rhizogrip/spore/relay'
+import { botPath, reactionsOf, routesOf } from '@rhizogrip/spore/relay'
 
 import { createTelegram } from '../src/api.js'
 import { TELEGRAM, normalize } from '../src/adapter.js'
@@ -23,15 +23,22 @@ describe('a bot\'s chats', () => {
   it('read each chat id against the spore it reaches, two chats on one spore among them', () => {
     chats({ 148392011: 'triage', '-1001234567': 'standup', 2: 'triage' })
     expect(routesOf(TELEGRAM, path)).toEqual(new Map([
-      ['2', { spores: ['triage'], details: false }],
-      ['148392011', { spores: ['triage'], details: false }],
-      ['-1001234567', { spores: ['standup'], details: false }]
+      ['2', { spores: ['triage'], details: false, show: null }],
+      ['148392011', { spores: ['triage'], details: false, show: null }],
+      ['-1001234567', { spores: ['standup'], details: false, show: null }]
     ]))
   })
 
-  it('take a chat that asks for details', () => {
-    chats({ 1: { spore: 'triage', details: true }, 2: { spore: 'triage' } })
-    expect([...routesOf(TELEGRAM, path)].map(([chat, routed]) => [chat, routed.details])).toEqual([['1', true], ['2', false]])
+  it('take a chat that asks for details, or for how a turn shows itself', () => {
+    chats({ 1: { spore: 'triage', details: true }, 2: { spore: 'triage', show: 'both' } })
+    expect([...routesOf(TELEGRAM, path)].map(([chat, routed]) => [chat, routed.details, routed.show])).toEqual([['1', true, null], ['2', false, 'both']])
+  })
+
+  it('react only with what Telegram lets a bot react with', () => {
+    writeFileSync(path, JSON.stringify({ token: '${TRIAGE_BOT_TOKEN}', chats: {}, react: { taken: '👀' } })) // eslint-disable-line no-template-curly-in-string
+    expect(reactionsOf(TELEGRAM, path)).toEqual({ taken: '👀', failed: '💔' })
+    writeFileSync(path, JSON.stringify({ token: '${TRIAGE_BOT_TOKEN}', chats: {}, react: { failed: '❌' } })) // eslint-disable-line no-template-curly-in-string
+    expect(() => reactionsOf(TELEGRAM, path)).toThrow(/reacts with ❌, which Telegram does not take/)
   })
 
   it('refuse an entry that does not name a spore, or names a field it does not know', () => {
@@ -54,6 +61,7 @@ describe('an update', () => {
       message: 40,
       person: { id: '148392011', name: 'Alice Martin (@alice)', username: 'alice' },
       where: 'a private chat on Telegram',
+      shared: false,
       text: 'hello',
       command: null,
       addresses: null,
@@ -61,8 +69,8 @@ describe('an update', () => {
     })
   })
 
-  it('says which group it came from', () => {
-    expect(normalize(update({ text: 'hi', chat: { id: -100, type: 'supergroup', title: 'Payouts' } }), 'triage').where).toBe('the Telegram group "Payouts"')
+  it('says which group it came from, a conversation many people share', () => {
+    expect(normalize(update({ text: 'hi', chat: { id: -100, type: 'supergroup', title: 'Payouts' } }), 'triage')).toMatchObject({ where: 'the Telegram group "Payouts"', shared: true })
   })
 
   it('reads a command, the bot\'s name after it or not', () => {
@@ -129,6 +137,19 @@ describe('the bot API', () => {
     expect(asked[1].body).not.toHaveProperty('reply_parameters')
     expect(asked[1].body).not.toHaveProperty('parse_mode')
     expect(asked[2]).toMatchObject({ url: expect.stringMatching(/deleteMessage$/), body: { chat_id: 5, message_id: 41 } })
+  })
+
+  it('reacts to a message with one emoji, takes it off with none, and says it is typing', async () => {
+    const asked = []
+    const tg = createTelegram('t', { fetchImpl: sending(asked) })
+    await tg.react(5, 40, '🫡')
+    await tg.react(5, 40, null)
+    await tg.typing(5)
+    expect(asked.map(({ url, body }) => [url.split('/').at(-1), body])).toEqual([
+      ['setMessageReaction', { chat_id: 5, message_id: 40, reaction: [{ type: 'emoji', emoji: '🫡' }] }],
+      ['setMessageReaction', { chat_id: 5, message_id: 40, reaction: [] }],
+      ['sendChatAction', { chat_id: 5, action: 'typing' }]
+    ])
   })
 
   it('uploads a document under its own name', async () => {

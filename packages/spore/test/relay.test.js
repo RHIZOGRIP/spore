@@ -5,16 +5,19 @@ import { resolve } from 'node:path'
 
 import {
   announce, botNames, botPath, createDelivery, credentialOf, credentialVariables, describe as describeCall,
-  loadState, pieces, render, reply, routesOf, saveState, statePath, track, waiting
+  loadState, pieces, reactionsOf, render, reply, routesOf, saveState, statePath, track, waiting
 } from '../src/relay/index.js'
 
 const SPEC = {
   kind: 'chat',
-  fields: ['token', 'rooms'],
+  label: 'Chat',
+  fields: ['token', 'rooms', 'react'],
   credentials: ['token'],
   stateFields: [],
+  can: { react: true },
+  reactions: ['🫡', '💔', '👀'],
   example: '{ "token": "${CHAT_TOKEN}", "rooms": {} }', // eslint-disable-line no-template-curly-in-string
-  routes: (raw) => new Map(Object.entries(raw.rooms).map(([room, spore]) => [room, { spores: [spore], details: false }]))
+  routes: (raw) => new Map(Object.entries(raw.rooms).map(([room, entry]) => [room, { spores: [entry.spore ?? entry], details: false, show: entry.show ?? null }]))
 }
 
 let DIR
@@ -37,7 +40,31 @@ describe('a bot file', () => {
     write('ops', { token: '${OPS_TOKEN}', rooms: {}, extra: 1 }) // eslint-disable-line no-template-curly-in-string
     expect(() => routesOf(SPEC, path)).toThrow(/a field spore does not know — extra/)
     write('ops', { token: '${OPS_TOKEN}', rooms: { r1: 'triage' } }) // eslint-disable-line no-template-curly-in-string
-    expect(routesOf(SPEC, path)).toEqual(new Map([['r1', { spores: ['triage'], details: false }]]))
+    expect(routesOf(SPEC, path)).toEqual(new Map([['r1', { spores: ['triage'], details: false, show: null }]]))
+  })
+
+  it('takes how a conversation is shown a turn, and refuses a way it does not know or a reaction the platform cannot make', () => {
+    const path = botPath(SPEC, 'ops', CONFIG)
+    write('ops', { token: '${OPS_TOKEN}', rooms: { r1: { spore: 'triage', show: 'react' }, r2: 'triage' } }) // eslint-disable-line no-template-curly-in-string
+    expect([...routesOf(SPEC, path)].map(([room, { show }]) => [room, show])).toEqual([['r1', 'react'], ['r2', null]])
+    write('ops', { token: '${OPS_TOKEN}', rooms: { r1: { spore: 'triage', show: 'emoji' } } }) // eslint-disable-line no-template-curly-in-string
+    expect(() => routesOf(SPEC, path)).toThrow(/shows r1 as "emoji"/)
+    write('ops', { token: '${OPS_TOKEN}', rooms: { r1: { spore: 'triage', show: 'both' } } }) // eslint-disable-line no-template-curly-in-string
+    expect(() => routesOf({ ...SPEC, can: { react: false } }, path)).toThrow(/a Chat bot cannot react/)
+  })
+
+  it('reacts with the emoji it names, the others as they come, and refuses one the platform does not take', () => {
+    const path = botPath(SPEC, 'ops', CONFIG)
+    write('ops', { token: '${OPS_TOKEN}', rooms: {} }) // eslint-disable-line no-template-curly-in-string
+    expect(reactionsOf(SPEC, path)).toEqual({ taken: '🫡', failed: '💔' })
+    write('ops', { token: '${OPS_TOKEN}', rooms: {}, react: { taken: '👀' } }) // eslint-disable-line no-template-curly-in-string
+    expect(reactionsOf(SPEC, path)).toEqual({ taken: '👀', failed: '💔' })
+    write('ops', { token: '${OPS_TOKEN}', rooms: {}, react: { failed: '✅' } }) // eslint-disable-line no-template-curly-in-string
+    expect(() => reactionsOf(SPEC, path)).toThrow(expect.objectContaining({ type: 'CHAT_BOT_INVALID', message: expect.stringMatching(/reacts with ✅, which Chat does not take/), detail: 'Chat reacts only with 🫡 💔 👀' }))
+    write('ops', { token: '${OPS_TOKEN}', rooms: {}, react: { done: '👀' } }) // eslint-disable-line no-template-curly-in-string
+    expect(() => reactionsOf(SPEC, path)).toThrow(/has a react spore cannot read/)
+    write('ops', { token: '${OPS_TOKEN}', rooms: {}, react: { taken: ':eyes-custom:' } }) // eslint-disable-line no-template-curly-in-string
+    expect(reactionsOf({ ...SPEC, reactions: null }, path)).toEqual({ taken: ':eyes-custom:', failed: '💔' })
   })
 
   it('takes a credential only as the variable holding it, and says which one is not set', () => {

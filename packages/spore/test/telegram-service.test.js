@@ -13,7 +13,7 @@ import { readInbox } from '../src/core/spore-dir.js'
 import { SporeError } from '../src/index.js'
 import { TELEGRAM, createAdapter } from '@rhizogrip/spore-plugin-telegram/src/adapter.js'
 
-const OPS = { post: 'say', edit: 'revise', remove: 'remove', upload: 'document', updates: 'updates' }
+const OPS = { post: 'say', edit: 'revise', remove: 'remove', upload: 'document', react: 'react', typing: 'typing', updates: 'updates' }
 
 const standIn = () => {
   const waiting = []
@@ -71,6 +71,16 @@ const standIn = () => {
       sent.push({ op: 'document', chat, path: file.path, caption })
       return {}
     },
+    react: async (chat, message, emoji) => {
+      fault('react')
+      sent.push({ op: 'react', chat, message, emoji })
+      return true
+    },
+    typing: async (chat) => {
+      fault('typing')
+      sent.push({ op: 'typing', chat })
+      return true
+    },
     me: async () => ({ username: 'sporebot' })
   }
 }
@@ -79,25 +89,29 @@ const said = (one) => {
   if (one.op === 'say') return { op: 'post', note: one.message, text: one.text, answering: one.answering, formatted: one.html }
   if (one.op === 'revise') return { op: 'edit', note: one.message, text: one.text }
   if (one.op === 'remove') return { op: 'remove', note: one.message }
+  if (one.op === 'react') return { op: 'react', message: one.message, emoji: one.emoji }
+  if (one.op === 'typing') return { op: 'typing' }
   return { op: 'upload', path: one.path, caption: one.caption }
 }
 
 const harness = {
   spec: TELEGRAM,
   credentials: { TRIAGE_BOT_TOKEN: 'the-bot-token', OTHER_BOT_TOKEN: 'another-bot-token' },
-  botFile: (bot, table) => ({
+  botFile: (bot, table, fields = {}) => ({
     token: `\${${bot.toUpperCase()}_BOT_TOKEN}`,
-    chats: Object.fromEntries(Object.entries(table).map(([chat, { spore, details }]) => [chat, details ? { spore, details } : spore]))
+    chats: Object.fromEntries(Object.entries(table).map(([chat, { spore, details, show }]) =>
+      [chat, details || show ? { spore, ...(details ? { details } : {}), ...(show ? { show } : {}) } : spore])),
+    ...fields
   }),
   platform: standIn,
   adapter: (telegram, bot) => createAdapter({ telegram, bot }),
-  say (telegram, { conversation, text, files = 0, id }) {
+  say (telegram, { conversation, text, files = 0, id, shared = false }) {
     const update = id === undefined
       ? {
           update_id: ++telegram.lastUpdate,
           message: {
             message_id: ++telegram.lastMessage,
-            chat: { id: Number(conversation), type: 'private' },
+            chat: shared ? { id: Number(conversation), type: 'group', title: `group ${conversation}` } : { id: Number(conversation), type: 'private' },
             from: { id: Number(conversation), first_name: `U${conversation}`, username: `u${conversation}` },
             ...(text === null ? {} : files ? { caption: text } : { text }),
             ...(files ? { photo: [{ file_id: 'p' }] } : {})
@@ -109,7 +123,7 @@ const harness = {
     return {
       id: update.update_id,
       message: update.message.message_id,
-      from: { name: `U${conversation} (@u${conversation})`, id: `telegram:${conversation}`, where: 'a private chat on Telegram' }
+      from: { name: `U${conversation} (@u${conversation})`, id: `telegram:${conversation}`, where: shared ? `the Telegram group "group ${conversation}"` : 'a private chat on Telegram' }
     }
   },
   seen: (telegram, conversation) => telegram.sent.filter(one => String(one.chat) === conversation).map(said),

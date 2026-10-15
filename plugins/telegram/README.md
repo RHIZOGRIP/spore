@@ -111,6 +111,18 @@ It is then shown `reading data/report.md`, `running git log --oneline -5`,
 `source forgejo --path …` — the first line, cut short. Choose it for a chat you would let
 read the commands; the others keep the kinds.
 
+A chat can be shown a turn more quietly, which is what a group gets unless its entry says
+otherwise: `"show": "react"` puts a 🫡 on your message when the spore takes it and shows Telegram's
+`typing…` while the turn runs, then takes the 🫡 off when the answer arrives — or puts a 💔 there
+when the turn ended without one. `"show": "working"` is the `working…` message, what a private
+chat gets; `"show": "both"` is both. The bot's two emoji are its own to choose, from the ones
+Telegram lets a bot react with (✅ and ❌ are not among them; the log lists them when one is refused):
+
+```json
+{ "token": "${OPS_BOT_TOKEN}", "react": { "taken": "👀", "failed": "🤷" },
+  "chats": { "-1001234567": { "spore": "triage", "show": "react" } } }
+```
+
 Two chats may point at one spore and then share its conversation. A reply goes to the
 chat that asked; a turn nobody in a chat started goes to the spore's default.
 

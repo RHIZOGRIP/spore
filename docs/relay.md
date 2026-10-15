@@ -27,13 +27,18 @@ import { runService } from '@rhizogrip/spore/relay'
   platform is logged with its conversation and turn, and what cannot reach a spore — a file, a
   message with no text — is said.
 - **The spore is told who wrote and where** (`send`'s `from`), never as words in the text.
-- **The conversation is told what the turn does.** `working…`, then the kind of each call as it
-  runs — `reading a file`, `running a command`, `asking <source>` — and the call itself only where
-  the routing says `details`; under a rate limit that progress is dropped, never queued ahead of
-  an answer. The answer is a new message replying to the question, so it notifies
-  however long the turn ran; `working…` is then removed, or marked `answered below` where the
-  platform will not remove it. A turn nobody in the conversation started goes to the spore's
-  `replyTo` default, labelled with where it came from; a `quiet` turn tells no one.
+- **The conversation is told what the turn does,** as its routing's `show` says. `working`: a
+  `working…` message, then the kind of each call as it runs — `reading a file`, `running a command`,
+  `asking <source>` — and the call itself only where the routing says `details`. `react`: the bot's
+  `taken` reaction on the person's message, and the platform's typing while the turn runs. `both`.
+  Where the routing names none, `react` in a conversation many people share and `working` in one
+  with a single person. Under a rate limit, progress and typing are dropped, never queued ahead of
+  an answer.
+- **The answer is a new message replying to the question,** so it notifies however long the turn
+  ran; `working…` is then removed, or marked `answered below` where the platform will not remove it,
+  and `taken` comes off — replaced by the bot's `failed` reaction when the turn ended without an
+  answer, as it is on a message the spore refused. A turn nobody in the conversation started goes to
+  the spore's `replyTo` default, labelled with where it came from; a `quiet` turn tells no one.
 - **The answer is formatted.** It goes to the adapter as Markdown, cut at a line under the platform's
   limit, a code block a piece ends inside closed and opened again in the next; what the relay says
   itself — status, notices — is plain.
@@ -46,7 +51,10 @@ import { runService } from '@rhizogrip/spore/relay'
 
 One file per bot, `~/.config/spore/<kind>/<bot>.json`, read on every message: credentials as
 `${VAR}`, held in `~/.config/spore/environment`, and the routing — which conversation reaches which
-spore. Anything not named there gets nothing, and the log says the line to add.
+spore, and how each is shown a turn (`show`: `working`, `react` or `both`). Anything not named there
+gets nothing, and the log says the line to add. A bot on a platform that reacts takes
+`"react": { "taken": "🫡", "failed": "💔" }`, those two when it is left out; an emoji the platform
+does not take is refused with the list it does (`reactionsOf`).
 
 ## The adapter
 
@@ -57,12 +65,13 @@ The static part, which the relay reads before the service starts:
 | `kind` | the place prefix (`<kind>:<bot>/<conversation>`), the outbox kind, the state directory, the bot files' folder, the prefix of error types (`CHAT_NO_BOT`) |
 | `label`, `noun` | the platform's name and what it calls a conversation (`chat`, `channel`), for what people and the log are told |
 | `fields`, `credentials`, `example` | the bot file's fields, those holding a `${VAR}`, and a first file to show |
-| `routes(raw, path)` | the routing read into a `Map` of conversation → `{ spores: [name], details }`, refusing what it cannot read |
+| `routes(raw, path)` | the routing read into a `Map` of conversation → `{ spores: [name], details, show }`, `show` null where the file names none, refusing what it cannot read |
 | `stateFields` | the adapter's own fields in the state file |
 | `sourceVariables` | credential variables a source of the plugin needs in a turn's environment |
 | `usage` | `{ help, extend }`: the commands as this platform types them |
-| `limits` | `{ message, file, editEveryMs }`: the longest message, the largest upload, how often `working…` is edited |
-| `can` | `{ upload, remove }` |
+| `limits` | `{ message, file, editEveryMs, typingEveryMs }`: the longest message, the largest upload, how often `working…` is edited, how often typing is renewed |
+| `can` | `{ upload, remove, react, typing }` |
+| `reactions` | the emoji the platform lets a bot react with, or null for any |
 | `refusals` | error types that mean the platform will not have this bot at all: the service exits 2 and is not restarted |
 | `hint(err, { file, bot })` | the line to fix an error, or null |
 | `refusal(message, botFile)` | the log line for a message from a conversation the routing does not name |
@@ -76,6 +85,8 @@ The live part, made once the credentials are proved:
 | `edit(conversation, note, text)` | edits a message the bot posted; an edit that changes nothing is not a failure |
 | `remove(conversation, note)` | where `can.remove` |
 | `upload(conversation, { path, mime }, caption)` | where `can.upload` |
+| `react(conversation, message, emoji)` | where `can.react`: the bot's one reaction on a person's message, none when `emoji` is null |
+| `typing(conversation)` | where `can.typing`: the platform's typing indicator, which lasts a few seconds |
 
 Every failure is a `SporeError` with `retryable` (a refusal is not) and `context.retryAfter` in
 seconds when the platform said how long to wait. A platform that refuses the formatting of a
@@ -89,6 +100,7 @@ What `onMessage` gets, the platform normalised:
 | `conversation`, `message` | where it was said, and the platform's id for it (what the answer replies to) |
 | `person` | `{ id, name }`: the platform's id and how the person shows |
 | `where` | the conversation as a person would name it (`a private chat on Telegram`) |
+| `shared` | whether many people share the conversation |
 | `text` | what was written, the platform's markup made plain; null when nothing was |
 | `command` | `{ verb, args }` when the text is a command, else null |
 | `addresses` | the spores the message names, or null where the conversation reaches its spores without naming them |

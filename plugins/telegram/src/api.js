@@ -64,6 +64,12 @@ export function createTelegram (token, { fetchImpl = fetch, base = BASE } = {}) 
 
     remove: (chat, message) => call('deleteMessage', { chat_id: chat, message_id: message }),
 
+    /** `emoji` on the message as the bot's one reaction, or none when it is null. */
+    react: (chat, message, emoji) =>
+      call('setMessageReaction', { chat_id: chat, message_id: message, reaction: emoji === null ? [] : [{ type: 'emoji', emoji }] }),
+
+    typing: (chat) => call('sendChatAction', { chat_id: chat, action: 'typing' }),
+
     document: (chat, { path, mime }, caption) => {
       const form = new FormData()
       form.append('chat_id', String(chat))

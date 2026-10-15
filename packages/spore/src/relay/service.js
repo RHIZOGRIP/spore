@@ -1,5 +1,5 @@
 import { loadEnvironment, recordStarted } from '../index.js'
-import { botNames, botPath, botsDir, credentialOf, routesOf } from './bot-file.js'
+import { botNames, botPath, botsDir, credentialOf, reactionsOf, routesOf } from './bot-file.js'
 import { createRelay } from './relay.js'
 import { statePath } from './state.js'
 
@@ -41,6 +41,7 @@ export async function runService ({ spec, program, root, open }) {
   try {
     file = botPath(spec, bot)
     routesOf(spec, file)
+    if (spec.can.react) reactionsOf(spec, file)
     const credentials = Object.fromEntries(spec.credentials.map(field => [field, credentialOf(spec, file, field, process.env)]))
     opened = await open({ bot, file, credentials })
   } catch (err) {

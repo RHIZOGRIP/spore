@@ -6,17 +6,19 @@
  * harness:
  *   spec                                   the adapter's description
  *   credentials                            { <variable>: <value> } its bot files name, the first bot's first
- *   botFile(bot, table)                    a bot file for { <conversation>: { spore, details } }
+ *   botFile(bot, table, fields)            a bot file for { <conversation>: { spore, details, show } },
+ *                                          with the bot's other `fields` (`react`)
  *   platform()                             a fresh fake platform
  *   adapter(platform, bot)                 the live adapter over it
- *   say(platform, { conversation, text, files, id })
- *                                          a person writes there, `id` repeating an earlier delivery;
- *                                          answers { id, message, from }: the delivery's id, the
- *                                          platform's id for what was said, and the `from` the spore
- *                                          should be told
+ *   say(platform, { conversation, text, files, id, shared })
+ *                                          a person writes there, `id` repeating an earlier delivery,
+ *                                          `shared` in a conversation many people share; answers
+ *                                          { id, message, from }: the delivery's id, the platform's id
+ *                                          for what was said, and the `from` the spore should be told
  *   seen(platform, conversation)           what was done there, in order: { op: 'post', note, text,
  *                                          answering, formatted }, { op: 'edit', note, text },
- *                                          { op: 'remove', note }, { op: 'upload', path, caption };
+ *                                          { op: 'remove', note }, { op: 'upload', path, caption },
+ *                                          { op: 'react', message, emoji }, { op: 'typing' };
  *                                          `formatted` says the platform was asked to render Markdown
  *   fail(platform, op, error, times)       make `post`, `edit`, `remove` or `upload` fail
  *   retryable(retryAfter), refused(detail) the platform's errors
@@ -78,6 +80,7 @@ export function conformance (harness, platformTests = () => {}) {
       configFile,
       sleep: () => new Promise(resolve => setTimeout(resolve, 5)),
       editEveryMs: 50,
+      typingEveryMs: 50,
       followEveryMs: 100,
       ...opts
     })
@@ -87,9 +90,9 @@ export function conformance (harness, platformTests = () => {}) {
     return handle
   }
 
-  const routes = (table, other = {}) => {
+  const routes = (table, other = {}, fields = {}) => {
     mkdirSync(join(root, spec.kind), { recursive: true })
-    writeFileSync(join(root, spec.kind, 'triage.json'), JSON.stringify(harness.botFile('triage', table)))
+    writeFileSync(join(root, spec.kind, 'triage.json'), JSON.stringify(harness.botFile('triage', table, fields)))
     writeFileSync(join(root, spec.kind, 'other.json'), JSON.stringify(harness.botFile('other', other)))
   }
   const defaultReplyTo = (conversation) => {
@@ -301,6 +304,63 @@ export function conformance (harness, platformTests = () => {}) {
         say({ conversation: '1', text: 'write them all' })
         await until(() => posted('1', "and 2 more files in data/out/, in the spore's workspace"))
         expect(seen('1').filter(one => one.op === 'upload')).toHaveLength(50)
+      })
+    })
+
+    describe('a turn shown with a reaction', () => {
+      const reactions = (conversation) => seen(conversation).filter(one => one.op === 'react')
+
+      it('is marked taken and typed while it runs, and the mark comes off with the answer', async () => {
+        routes({ 1: { spore: 'triage', show: 'react' } })
+        const gate = new Promise(resolve => { release = resolve })
+        reply = async () => { await gate; return answers('hello back') }
+        start()
+        const asked = say({ conversation: '1', text: 'hello' })
+        await until(() => seen('1').some(one => one.op === 'typing'))
+        release()
+        await until(() => reactions('1').length === 2)
+        expect(reactions('1')).toEqual([{ op: 'react', message: asked.message, emoji: '🫡' }, { op: 'react', message: asked.message, emoji: null }])
+        expect(posts('1').find(one => one.text === 'hello back').answering).toBe(asked.message)
+        expect(notes('1')).toEqual([])
+      })
+
+      it('is marked with the reaction the bot names when the turn ends without an answer, its working message beside it with both', async () => {
+        routes({ 1: { spore: 'triage', show: 'both' } }, {}, { react: { failed: '🤷' } })
+        reply = async () => calls('quiet', { because: 'nothing new' })
+        start()
+        say({ conversation: '1', text: 'hello' })
+        await until(() => reactions('1').length === 2)
+        expect(reactions('1').map(one => one.emoji)).toEqual(['🫡', '🤷'])
+        expect(posts('1').some(one => /^no answer · /.test(one.text))).toBe(true)
+        expect(notes('1')).toHaveLength(1)
+      })
+
+      it('is how a conversation many people share is shown a turn, unless it asks for the working message', async () => {
+        routes({ 7: { spore: 'triage' }, 8: { spore: 'triage', show: 'working' } })
+        start()
+        say({ conversation: '7', text: 'hello', shared: true })
+        await until(() => reactions('7').length === 2)
+        expect(notes('7')).toEqual([])
+        await idle(1)
+        say({ conversation: '8', text: 'hello', shared: true })
+        await until(() => posted('8', 'hello back'))
+        expect(notes('8')).toHaveLength(1)
+        expect(reactions('8')).toEqual([])
+      })
+
+      it('marks a message the spore refuses as failed', async () => {
+        routes({ 1: { spore: 'triage', show: 'react' } })
+        start()
+        say({ conversation: '1', text: 'hello' })
+        await idle(1)
+        chmodSync(databaseOf(ws), 0o444)
+        try {
+          const refused = say({ conversation: '1', text: 'again' })
+          await until(() => reactions('1').some(one => one.message === refused.message))
+          expect(reactions('1').filter(one => one.message === refused.message).map(one => one.emoji)).toEqual(['💔'])
+        } finally {
+          chmodSync(databaseOf(ws), 0o644)
+        }
       })
     })
 

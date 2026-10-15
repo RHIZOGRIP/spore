@@ -13,14 +13,27 @@ const NOT_MODIFIED = /message is not modified/
 const CANNOT_PARSE = /can't parse entities/i
 const SHAPE = '{ "token": "${TRIAGE_BOT_TOKEN}", "chats": { "<chat id>": "<spore>" } }' // eslint-disable-line no-template-curly-in-string
 
+/** What a bot may react with: `ReactionTypeEmoji` in the Bot API. */
+const REACTIONS = [
+  '❤', '👍', '👎', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱',
+  '🤬', '😢', '🎉', '🤩', '🤮', '💩', '🙏', '👌', '🕊', '🤡',
+  '🥱', '🥴', '😍', '🐳', '❤‍🔥', '🌚', '🌭', '💯', '🤣', '⚡',
+  '🍌', '🏆', '💔', '🤨', '😐', '🍓', '🍾', '💋', '🖕', '😈',
+  '😴', '😭', '🤓', '👻', '👨‍💻', '👀', '🎃', '🙈', '😇', '😨',
+  '🤝', '✍', '🤗', '🫡', '🎅', '🎄', '☃', '💅', '🤪', '🗿',
+  '🆒', '💘', '🙉', '🦄', '😘', '💊', '🙊', '😎', '👾', '🤷‍♂',
+  '🤷', '🤷‍♀', '😡'
+]
+
 const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
 const invalid = (path, problem, detail) => new SporeError(`${path} ${problem}`, { type: 'TELEGRAM_BOT_INVALID', detail })
 
 /**
- * `{ "<chat id>": "<spore>" }`, or `{ "<chat id>": { "spore": "<spore>", "details": true } }` for a
- * chat shown what each call does — its command or path — rather than only what kind of call it
- * is: a Telegram message leaves the machine, so that is a choice made per chat.
+ * `{ "<chat id>": "<spore>" }`, or `{ "<chat id>": { "spore": "<spore>", "details": true, "show":
+ * "react" } }`: `details` for a chat shown what each call does — its command or path — rather than
+ * only what kind of call it is, since a Telegram message leaves the machine; `show` for how a turn
+ * shows itself there.
  */
 function routes (raw, path) {
   if (typeof raw.chats !== 'object' || raw.chats === null || Array.isArray(raw.chats)) {
@@ -29,11 +42,11 @@ function routes (raw, path) {
   const table = new Map()
   for (const [chat, entry] of Object.entries(raw.chats)) {
     const spore = typeof entry === 'string' ? entry : entry?.spore
-    const extra = typeof entry === 'object' && entry !== null ? Object.keys(entry).filter(key => !['spore', 'details'].includes(key)) : []
+    const extra = typeof entry === 'object' && entry !== null ? Object.keys(entry).filter(key => !['spore', 'details', 'show'].includes(key)) : []
     if (typeof spore !== 'string' || !spore || extra.length || (typeof entry === 'object' && entry.details !== undefined && typeof entry.details !== 'boolean')) {
-      throw invalid(path, `maps ${chat} to something that is not a spore`, 'each chat is a chat id against the name of a spore it may reach, or { "spore": "<name>", "details": true }')
+      throw invalid(path, `maps ${chat} to something that is not a spore`, 'each chat is a chat id against the name of a spore it may reach, or { "spore": "<name>", "details": true, "show": "react" }')
     }
-    table.set(chat, { spores: [spore], details: typeof entry === 'object' && entry.details === true })
+    table.set(chat, { spores: [spore], details: typeof entry === 'object' && entry.details === true, show: typeof entry === 'object' ? entry.show ?? null : null })
   }
   return table
 }
@@ -44,7 +57,7 @@ export const TELEGRAM = {
   kind: 'telegram',
   label: 'Telegram',
   noun: 'chat',
-  fields: ['token', 'chats'],
+  fields: ['token', 'chats', 'react'],
   credentials: ['token'],
   stateFields: [],
   sourceVariables: [],
@@ -52,8 +65,9 @@ export const TELEGRAM = {
   example: SHAPE,
   routes,
   usage: { help: HELP, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
-  limits: { message: 4096, file: 50 * 1024 * 1024, editEveryMs: 2500 },
-  can: { upload: true, remove: true },
+  limits: { message: 4096, file: 50 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 4000 },
+  can: { upload: true, remove: true, react: true, typing: true },
+  reactions: REACTIONS,
   hint (err, { file, bot }) {
     if (err.type === 'TELEGRAM_NO_BOT') {
       const variable = `${bot.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_BOT_TOKEN`
@@ -81,6 +95,7 @@ export function normalize (update, bot) {
     message: message.message_id,
     person: { id: String(message.from.id), name: `${[first, last].filter(Boolean).join(' ')}${username ? ` (@${username})` : ''}`, username },
     where: message.chat.type === 'private' ? 'a private chat on Telegram' : `the Telegram group "${message.chat.title}"`,
+    shared: message.chat.type !== 'private',
     text,
     command: command ? { verb: command[1].toLowerCase(), args: command[3] ?? '' } : null,
     addresses: null,
@@ -146,6 +161,10 @@ export function createAdapter ({ telegram, bot }) {
 
     remove: (conversation, note) => telegram.remove(Number(conversation), note),
 
-    upload: (conversation, file, caption) => telegram.document(Number(conversation), file, caption)
+    upload: (conversation, file, caption) => telegram.document(Number(conversation), file, caption),
+
+    react: (conversation, message, emoji) => telegram.react(Number(conversation), message, emoji),
+
+    typing: (conversation) => telegram.typing(Number(conversation))
   }
 }

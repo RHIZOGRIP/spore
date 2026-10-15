@@ -1791,7 +1791,8 @@ did not arrive. A held delivery carries no reply-to: nobody typed it.
 **What serves a chat's answers is a connector on the relay.** `@rhizogrip/spore/relay`
 (`src/relay/`) is the half every chat connector shares, so its promises are kept once: a bot file
 per bot, read on every message; the path from a message to `send` with its `from`; the `working…`
-message and the calls at work; the answer as a new message replying to the question; commands;
+message and the calls at work, or a reaction and the platform's typing; the answer as a new
+message replying to the question; commands;
 the outbox drained and settled; a restart from saved cursors. A connector is its adapter — the
 transport, the platform's API, what it calls a conversation and a person — and passes the
 conformance suite (`test/fixtures/relay-conformance.js`) against its fake platform

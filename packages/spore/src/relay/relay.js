@@ -14,7 +14,7 @@ import { existsSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
 import { attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf } from '../index.js'
-import { credentialVariables, routesOf } from './bot-file.js'
+import { credentialVariables, reactionsOf, routesOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
 import { announce, leftOut, pieces, render, reply, statusText, track, unpassed, waiting } from './render.js'
 import { loadState, saveState } from './state.js'
@@ -32,7 +32,7 @@ const pause = (ms, signal) => new Promise(resolve => {
 
 const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
-export function createRelay ({ adapter, botFile, statePath, env, log, configFile = CONFIG_FILE, sleep = pause, editEveryMs = adapter.limits.editEveryMs, followEveryMs = 1000 }) {
+export function createRelay ({ adapter, botFile, statePath, env, log, configFile = CONFIG_FILE, sleep = pause, editEveryMs = adapter.limits.editEveryMs, typingEveryMs = adapter.limits.typingEveryMs, followEveryMs = 1000 }) {
   const { kind, noun } = adapter
   const prefix = `${kind}:${basename(botFile, '.json')}/`
   const kept = new Set(adapter.sourceVariables)
@@ -56,7 +56,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   const noteOf = (entry) => notes.get(entry) ?? Promise.resolve(entry.note)
   const where = (conversation) => `${noun} ${conversation}`
 
-  const route = () => ({ config: readConfig(configFile), table: routesOf(adapter, botFile) })
+  const route = () => ({ config: readConfig(configFile), table: routesOf(adapter, botFile), react: adapter.can.react ? reactionsOf(adapter, botFile) : null })
   const sporeOf = (name, config) => {
     const ws = workspaceFor(name, { config }).path
     return isWorkspace(ws) ? ws : null
@@ -88,14 +88,40 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     return tell(conversation, adapter.usage.help)
   }
 
+  /**
+   * What only shows a turn at work — progress, typing — is the one thing the relay drops: a call
+   * the platform turns away for now is not tried again, and none is tried in that conversation
+   * until the wait it named has passed, so an answer never queues behind one.
+   */
+  const droppable = (conversation, what, act) => delivery.to(conversation, async () => {
+    if (Date.now() < (limitedUntil.get(conversation) ?? 0)) return
+    try {
+      await act()
+    } catch (err) {
+      if (!err.retryable) throw err
+      if (err.context?.retryAfter) limitedUntil.set(conversation, Date.now() + err.context.retryAfter * 1000)
+      log(`${where(conversation)}: ${what} dropped — ${said(err)}`)
+    }
+  }).catch(err => log(`${where(conversation)}: ${what} not shown — ${said(err)}`))
+
+  /** The reaction on a person's message changed — `emojiOf()` the one to put, or null for none — or logged when it cannot be. */
+  const mark = (attempt, conversation, message, emojiOf) => attempt(() => adapter.react(conversation, message, emojiOf()))
+    .catch(err => log(`${where(conversation)}: the reaction on message ${message} not changed — ${said(err)}`))
+
   const follows = (ws) => {
     if (state.cursors[ws]) return false
     state.cursors[ws] = { seq: lastEventSeq(ws), turn: stateOf(ws).lastTurnNo, database: databaseOf(ws) }
     return true
   }
 
-  const pass = (message, name, ws) => {
+  /**
+   * `show` is the conversation's, or, where the bot file leaves it, `react` in a conversation many
+   * people share and `working` in one with a single person, who is shown what the turn does.
+   */
+  const pass = (message, name, ws, { table, react }) => {
     const { conversation } = message
+    const show = table.get(conversation).show ?? (message.shared && adapter.can.react ? 'react' : 'working')
+    const reacts = show !== 'working'
     if (follows(ws)) save()
     let sent
     try {
@@ -107,13 +133,16 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       })
     } catch (err) {
       log(`${where(conversation)}: send to ${name} refused — ${err.type} ${said(err)}`)
+      if (reacts) delivery.to(conversation, attempt => mark(attempt, conversation, message.message, () => react.failed))
       return tell(conversation, err.type === 'ADMISSION_FULL' ? `busy — ${said(err)}` : `not delivered — ${said(err)}`)
     }
     if (sent.repeated) return log(`${where(conversation)}: message ${message.id} was already said to ${name}, as inbox ${sent.inbox}`)
 
-    const entry = { inbox: sent.inbox, conversation, asked: message.message, note: null }
+    const entry = { inbox: sent.inbox, conversation, asked: message.message, note: null, reacts }
     ;(state.pending[ws] ??= []).push(entry)
     save()
+    if (reacts) delivery.to(conversation, attempt => mark(attempt, conversation, message.message, () => react.taken))
+    if (show === 'react') return
     notes.set(entry, delivery.to(conversation, attempt => attempt(() => adapter.post(conversation, sent.started ? WORKING : STILL_WORKING)))
       .then(note => note, err => {
         log(`${where(conversation)}: no working message — ${said(err)}`)
@@ -160,7 +189,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     if (message.command && reached.length === 1 && (!message.command.args || TAKES_ARGUMENTS.has(message.command.verb))) {
       return obey(conversation, reached[0].ws, message.command.verb, message.command.args)
     }
-    for (const { name, ws } of reached) pass(message, name, ws)
+    for (const { name, ws } of reached) pass(message, name, ws, read)
     if (message.files) tell(conversation, unpassed(message.files, reached.map(one => one.name)))
   }
 
@@ -218,11 +247,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     return [...next.keys()]
   }
 
-  /**
-   * The calls at work, edited into each `working…` message. Progress is the one thing the relay
-   * drops: an edit the platform turns away for now is not tried again, and none is tried in that
-   * conversation until the wait it named has passed, so an answer never queues behind one.
-   */
+  /** The calls at work, edited into each `working…` message. */
   const repaint = (ws) => {
     const lines = shown.get(ws)
     lines.timer = null
@@ -230,17 +255,33 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     for (const entry of state.pending[ws] ?? []) {
       const { conversation } = entry
       const text = [WORKING, ...render(lines.items, { detailed: detailed.has(conversation) })].join('\n')
-      delivery.to(conversation, async () => {
+      droppable(conversation, 'progress', async () => {
         const note = await noteOf(entry)
-        if (note === null || !state.pending[ws]?.includes(entry) || Date.now() < (limitedUntil.get(conversation) ?? 0)) return
-        try {
-          await adapter.edit(conversation, note, text)
-        } catch (err) {
-          if (!err.retryable) throw err
-          if (err.context?.retryAfter) limitedUntil.set(conversation, Date.now() + err.context.retryAfter * 1000)
-          log(`${where(conversation)}: progress dropped — ${said(err)}`)
-        }
-      }).catch(err => log(`${where(conversation)}: progress not shown — ${said(err)}`))
+        if (note !== null && state.pending[ws]?.includes(entry)) await adapter.edit(conversation, note, text)
+      })
+    }
+  }
+
+  /**
+   * The platform's typing, renewed in each conversation that shows its turns with a reaction while
+   * a spore is running a turn one of its messages waits on. A message from the bot clears it, so it
+   * is never renewed past the answer.
+   */
+  const type = () => {
+    for (const [ws, entries] of Object.entries(state.pending)) {
+      const reacting = new Set(entries.filter(entry => entry.reacts).map(entry => entry.conversation))
+      if (!reacting.size) continue
+      try {
+        if (stateOf(ws).state !== RUNNING) continue
+      } catch (err) {
+        log(`${ws}: not known to be running — ${said(err)}`)
+        continue
+      }
+      for (const conversation of reacting) {
+        droppable(conversation, 'typing', async () => {
+          if (state.pending[ws]?.some(entry => entry.reacts && entry.conversation === conversation)) await adapter.typing(conversation)
+        })
+      }
     }
   }
 
@@ -319,6 +360,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     const turn = turnsSince(ws, entry.turnNo - 1).ended[0]
     const heard = turn.asked.filter(message => entry.answers.includes(message.inboxNo))
     const answer = heard.some(message => message.replyTo) ? reply(turn) : announce({ record: turn.record, asked: heard })
+    const answered = Boolean(turn.record.output) || turn.record.stopReason === 'quiet'
     const text = entry.attemptedAt === null ? answer : `${MAY_REPEAT}\n\n${answer}`
     const handed = { files: turn.record.deliverables ?? [], more: turn.record.deliverablesMore ?? 0 }
     const answering = mine.at(-1)?.asked ?? null
@@ -338,7 +380,10 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         await attempt(() => formatted(first, { answering }))
         for (const part of rest) await attempt(() => formatted(part, {}))
         await hand(attempt, conversation, ws, handed)
-        for (const note of mine) await retire(attempt, conversation, await noteOf(note))
+        for (const note of mine) {
+          await retire(attempt, conversation, await noteOf(note))
+          if (note.reacts) await mark(attempt, conversation, note.asked, () => answered ? null : reactionsOf(adapter, botFile).failed)
+        }
       })
     } catch (err) {
       if (err.retryable || stopping.signal.aborted) {
@@ -426,7 +471,9 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       failed.push(err)
       stopping.abort()
     }
+    const typing = adapter.can.typing ? setInterval(type, typingEveryMs) : null
     await Promise.all([listen().catch(halt), follow().catch(halt)])
+    clearInterval(typing)
     for (const lines of shown.values()) clearTimeout(lines.timer)
     save()
     if (failed.length) throw failed[0]

@@ -6,7 +6,7 @@
  *
  * `spec` is the adapter's description of its file: `kind`, the `fields` it takes, which of them
  * are `credentials`, an `example` of a first file, and `routes(raw, path)`, which reads the routing
- * into conversation → `{ spores, details }` and refuses what it cannot read.
+ * into conversation → `{ spores, details, show }` and refuses what it cannot read.
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
@@ -17,6 +17,8 @@ import { SporeError } from '../observability/errors.js'
 
 const NAME = /^[a-z0-9][a-z0-9._-]*$/i
 const VARIABLE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/
+const SHOWS = ['working', 'react', 'both']
+const REACTIONS = { taken: '🫡', failed: '💔' }
 
 const typeOf = (spec, what) => `${spec.kind.toUpperCase()}_${what}`
 
@@ -66,7 +68,43 @@ export function readBot (spec, path) {
   return raw
 }
 
-export const routesOf = (spec, path) => spec.routes(readBot(spec, path), path)
+/**
+ * The routing, each conversation's `show` checked: how a turn shows itself there — `working`, the
+ * `working…` message edited as it goes; `react`, a reaction on the message and the platform's
+ * typing; `both` — or null where the bot file leaves it to the kind of conversation.
+ */
+export function routesOf (spec, path) {
+  const table = spec.routes(readBot(spec, path), path)
+  for (const [conversation, { show }] of table) {
+    if (show !== null && !SHOWS.includes(show)) {
+      throw new SporeError(`${path} shows ${conversation} as "${show}"`, { type: typeOf(spec, 'BOT_INVALID'), detail: 'show is working (the working… message, edited as the turn goes), react (a reaction on the message, and typing) or both' })
+    }
+    if (show !== null && show !== 'working' && !spec.can.react) {
+      throw new SporeError(`${path} shows ${conversation} with a reaction, and a ${spec.label} bot cannot react`, { type: typeOf(spec, 'BOT_INVALID'), detail: 'show is working there' })
+    }
+  }
+  return table
+}
+
+/**
+ * The bot's `react`: what is put on a message while its turn runs (`taken`, 🫡 when left out) and
+ * on one whose turn ended without an answer (`failed`, 💔), each an emoji the platform takes.
+ */
+export function reactionsOf (spec, path) {
+  const { react } = readBot(spec, path)
+  if (react !== undefined && (typeof react !== 'object' || react === null || Array.isArray(react) || Object.keys(react).some(key => !(key in REACTIONS)))) {
+    throw new SporeError(`${path} has a react spore cannot read`, { type: typeOf(spec, 'BOT_INVALID'), detail: `react is { "taken": "<emoji>", "failed": "<emoji>" }, either left out for ${REACTIONS.taken} and ${REACTIONS.failed}` })
+  }
+  const chosen = { ...REACTIONS, ...react }
+  const refused = Object.values(chosen).filter(emoji => typeof emoji !== 'string' || !emoji || (spec.reactions !== null && !spec.reactions.includes(emoji)))
+  if (refused.length) {
+    throw new SporeError(`${path} reacts with ${refused.map(String).join(' ')}, which ${spec.label} does not take`, {
+      type: typeOf(spec, 'BOT_INVALID'),
+      detail: spec.reactions === null ? 'a reaction is an emoji' : `${spec.label} reacts only with ${spec.reactions.join(' ')}`
+    })
+  }
+  return chosen
+}
 
 export const credentialVariable = (spec, path, field) => VARIABLE.exec(readBot(spec, path)[field])[1]
 
