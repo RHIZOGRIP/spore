@@ -5,7 +5,7 @@ reaches a spore, and the answers come back where they were asked. `@rhizogrip/sp
 half every connector shares, so what a connector promises is kept once. A connector is a plugin
 with a service ([plugins.md §Services](plugins.md#services)) whose program hands the relay an
 **adapter**: the platform's transport, its API, and what it calls a conversation and a person.
-`plugins/telegram/` and `plugins/discord/` are two.
+`plugins/telegram/`, `plugins/discord/` and `plugins/teams/` are three.
 
 ```js
 import { runService } from '@rhizogrip/spore/relay'
@@ -95,6 +95,7 @@ The live part, made once the credentials are proved:
 | member | does |
 |---|---|
 | `restore(state, save)` | where `stateFields` names any: the state holding them, and how to write it |
+| `routeOf(conversation)` | optional: the routing key a conversation answers under, where they differ — a Teams channel thread routes by its channel; the conversation itself when it is left out |
 | `prepare(table, log)` | optional: what the platform readies, or checks, before anyone writes, for every conversation the routing names — Discord's roles and webhooks, Telegram's word that a group overhears while the bot hears only what is said to it |
 | `listen({ onMessage, signal, log, sleep })` | the transport, until `signal` aborts; awaits `onMessage` before confirming a message to the platform; throws an error the platform gave for good |
 | `aside(message, spore)` | optional: a line the spore is given after the text — Discord's pointer to the history it has not heard |

@@ -1,0 +1,69 @@
+{
+  "name": "@rhizogrip/spore-plugin-teams",
+  "version": "0.1.0",
+  "description": "Microsoft Teams for spores: a bot of yours in personal chats and channels, each reaching its spore, run as a service",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/teams"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "NOTICE"
+  ],
+  "peerDependencies": {
+    "@rhizogrip/spore": "^1.22.0"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "spore": {
+    "works": "^1.22.0",
+    "services": {
+      "teams": {
+        "what": "a bot of yours in Microsoft Teams, each personal chat and channel reaching its spore",
+        "program": "./bin/spore-teams.js",
+        "instances": {
+          "dir": "teams",
+          "ext": ".json",
+          "called": "bot"
+        },
+        "check": [
+          "--check"
+        ]
+      }
+    }
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-teams v${version}",
+      "tagName": "plugin-teams-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}

@@ -157,6 +157,7 @@ The details are in [SECURITY.md](SECURITY.md).
 | [`@rhizogrip/spore-plugin-mcp`](plugins/mcp) | MCP servers' tools, as a program the agent runs | [README](plugins/mcp/README.md) |
 | [`@rhizogrip/spore-plugin-sluice`](plugins/sluice) | host commands for spores, as a sluice broker's rules allow them | [README](plugins/sluice/README.md) |
 | [`@rhizogrip/spore-plugin-ssh`](plugins/ssh) | SSH keys spores can use and never read | [README](plugins/ssh/README.md) |
+| [`@rhizogrip/spore-plugin-teams`](plugins/teams) | your spores in Microsoft Teams personal chats and channels, as a service | [README](plugins/teams/README.md) |
 | [`@rhizogrip/spore-plugin-telegram`](plugins/telegram) | your spores in Telegram chats, as a service | [README](plugins/telegram/README.md) |
 
 ## Working in this repository

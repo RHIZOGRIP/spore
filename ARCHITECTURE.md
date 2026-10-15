@@ -1820,11 +1820,16 @@ the transport, the platform's API, what it calls a conversation and a person, an
 message addresses a spore — and passes the conformance suite (`test/fixtures/relay-conformance.js`)
 against its fake platform (`docs/relay.md`). Telegram's is `plugins/telegram/src/adapter.js`:
 private chats under `people`, groups under `groups` with one spore each, since a bot speaks in a
-group as itself, reached by a mention of the bot, a reply to it or a command, and overhearing the
+group as itself, reached by a reply to it, a command, or a mention of the bot (which Telegram
+hands over only with the bot's privacy mode off, or to an admin), and overhearing the
 rest where the group says so. Discord's is `plugins/discord/src/adapter.js`: several spores to a
 channel, each reached when addressed and speaking under its own name through the channel's
 webhook, which cannot reply — so an answer opens with whom it answers; it overhears nothing, since
-its spores read a channel's history themselves.
+its spores read a channel's history themselves. Teams' is `plugins/teams/src/adapter.js`: a
+listener on loopback behind the operator's proxy, each activity's Microsoft-signed token checked
+before it is read; a person's personal chat keyed by their Entra object id, a channel message's
+conversation its thread, which routes by its channel (`routeOf`), so an answer goes back into the
+thread while the routing names channels.
 
 **Journal mode.** A file is in WAL mode while a writer holds it and in rollback mode when none
 does, with `synchronous=FULL`, foreign keys on every connection, and a 5 s busy timeout on

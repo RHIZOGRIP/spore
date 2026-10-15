@@ -1,0 +1,65 @@
+/**
+ * Where the Bot Connector delivers: `POST /api/messages` on a loopback address, which the
+ * operator's proxy makes the bot's public HTTPS endpoint. An activity is checked before it is
+ * read, and answered 200 only once `onActivity` has it, so one the service could not take is
+ * delivered again.
+ */
+
+import { createServer } from 'node:http'
+
+import { SporeError } from '@rhizogrip/spore'
+
+const PATH = '/api/messages'
+const MOST_BYTES = 1024 * 1024
+
+const bodyOf = (request) => new Promise((resolve, reject) => {
+  const chunks = []
+  let bytes = 0
+  request.on('data', (chunk) => {
+    bytes += chunk.length
+    if (bytes <= MOST_BYTES) chunks.push(chunk)
+  })
+  request.on('end', () => bytes > MOST_BYTES ? reject(Object.assign(new Error('too large'), { status: 413 })) : resolve(Buffer.concat(chunks).toString('utf8')))
+  request.on('error', reject)
+})
+
+/** Serves until `signal` aborts, telling `listening` the port once it listens. */
+export function serve ({ host, port, verify, onActivity, signal, log, listening = () => {} }) {
+  const server = createServer(async (request, response) => {
+    const answer = (status) => response.writeHead(status).end()
+    if (request.method !== 'POST' || request.url !== PATH) return answer(404)
+    let activity
+    try {
+      activity = JSON.parse(await bodyOf(request))
+    } catch (err) {
+      return answer(err.status ?? 400)
+    }
+    let refused
+    try {
+      refused = await verify(request.headers.authorization, activity)
+    } catch (err) {
+      log(`could not check an activity — ${err.message}${err.detail ? ` — ${err.detail}` : ''}`)
+      return answer(503)
+    }
+    if (refused) {
+      log(`refused an activity: ${refused}`)
+      return answer(401)
+    }
+    try {
+      await onActivity(activity)
+    } catch (err) {
+      log(`activity ${activity.id} not taken — ${err.message}${err.detail ? ` — ${err.detail}` : ''}`)
+      return answer(500)
+    }
+    answer(200)
+  })
+
+  return new Promise((resolve, reject) => {
+    server.once('error', (err) => reject(new SporeError(`cannot listen on ${host}:${port}`, { type: 'TEAMS_LISTEN_REFUSED', detail: err.message })))
+    server.listen(port, host, () => {
+      listening(server.address().port)
+      signal.addEventListener('abort', () => server.close(() => resolve()), { once: true })
+      if (signal.aborted) server.close(() => resolve())
+    })
+  })
+}

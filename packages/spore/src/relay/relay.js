@@ -86,6 +86,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   if (adapter.stateFields.length) adapter.restore(state, save)
   const noteOf = (entry) => notes.get(entry) ?? Promise.resolve(entry.note)
   const where = (conversation) => `${noun} ${conversation}`
+  const keyOf = (conversation) => adapter.routeOf ? adapter.routeOf(conversation) : conversation
 
   const route = () => ({ config: readConfig(configFile), table: routesOf(adapter, botFile), react: adapter.can.react ? reactionsOf(adapter, botFile) : null })
   const sporeOf = (name, config) => {
@@ -205,7 +206,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
    */
   const pass = (message, name, ws, { table, react }) => {
     const { conversation } = message
-    const show = table.get(conversation).show ?? (message.shared ? adapter.showShared : 'working')
+    const show = table.get(keyOf(conversation)).show ?? (message.shared ? adapter.showShared : 'working')
     const taken = show === 'working' ? null : react.taken
     const aside = adapter.aside ? adapter.aside(message, name) : null
     if (follows(ws)) save()
@@ -262,7 +263,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     const places = new Set(Object.values(config.replyTo ?? {})
       .filter(place => place.startsWith(prefix))
       .map(place => place.slice(prefix.length))
-      .filter(conversation => table.has(conversation)))
+      .filter(conversation => table.has(keyOf(conversation))))
     for (const place of places) tell(place, `${message.person.name} wrote from ${message.where}, which ${botFile} does not name.\n${adapter.refusal(message, botFile)}`)
   }
 
@@ -287,7 +288,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     } catch (err) {
       return log(`refused ${where(conversation)}: the bot file is unreadable — ${said(err)}`)
     }
-    const routed = read.table.get(conversation)
+    const routed = read.table.get(keyOf(conversation))
     if (!routed) return unnamed(message, read)
     const gate = admission(message, routed)
     if (gate === 'unaddressed') return
@@ -389,7 +390,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     lines.at = Date.now()
     for (const entry of state.pending[ws] ?? []) {
       const { conversation } = entry
-      const text = [WORKING, ...render(lines.items, { detailed: detailed.has(conversation) })].join('\n')
+      const text = [WORKING, ...render(lines.items, { detailed: detailed.has(keyOf(conversation)) })].join('\n')
       droppable(conversation, 'progress', async () => {
         const note = await noteOf(entry)
         if (note !== null && state.pending[ws]?.includes(entry)) await adapter.edit(conversation, note, text, { for: forOf([entry]) })
@@ -486,7 +487,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   const deliver = async (ws, entry) => {
     const conversation = entry.recipient.slice(prefix.length)
     const mine = (state.pending[ws] ?? []).filter(note => note.conversation === conversation && entry.answers.includes(note.inbox))
-    if (!followed.get(ws)?.conversations.has(conversation)) {
+    if (!followed.get(ws)?.conversations.has(keyOf(conversation))) {
       const reason = `${where(conversation)} does not reach this spore through ${botFile}`
       settleOutbox(ws, entry.outboxNo, { refused: reason })
       log(`turn ${entry.turnNo} of ${ws}: refused — ${reason}`)

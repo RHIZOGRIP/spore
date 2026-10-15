@@ -313,13 +313,14 @@ export function conformance (harness, platformTests = () => {}) {
           : answers('wrote it')
         start()
         say({ conversation: '1', text: 'write me a report' })
-        await until(() => seen('1').some(one => one.op === 'upload'))
+        const handed = spec.can.upload ? (one) => one.op === 'upload' : (one) => one.op === 'post' && one.text === 'data/out/report.md is in the spore\'s workspace'
+        await until(() => seen('1').some(handed))
 
         const [note] = notes('1')
         expect(seen('1').some(one => one.op === 'edit' && one.note === note.note && one.text.includes('· running a command'))).toBe(true)
         expect(seen('1').some(one => one.text?.includes('mkdir'))).toBe(false)
         expect(posted('1', 'wrote it')).toBe(true)
-        expect(seen('1').find(one => one.op === 'upload')).toMatchObject({ path: join(ws, 'data/out/report.md'), caption: 'data/out/report.md' })
+        if (spec.can.upload) expect(seen('1').find(one => one.op === 'upload')).toMatchObject({ path: join(ws, 'data/out/report.md'), caption: 'data/out/report.md' })
       })
 
       it('says how many files it did not hand back, past the cap', async () => {
@@ -329,11 +330,11 @@ export function conformance (harness, platformTests = () => {}) {
         start()
         say({ conversation: '1', text: 'write them all' })
         await until(() => posted('1', "and 2 more files in data/out/, in the spore's workspace"))
-        expect(seen('1').filter(one => one.op === 'upload')).toHaveLength(50)
+        expect(seen('1').filter(one => spec.can.upload ? one.op === 'upload' : / is in the spore's workspace$/.test(one.text ?? ''))).toHaveLength(50)
       })
     })
 
-    describe('a turn shown with a reaction', () => {
+    describe.runIf(spec.can.react)('a turn shown with a reaction', () => {
       const reactions = (conversation) => seen(conversation).filter(one => one.op === 'react')
 
       it('is marked taken and typed while it runs, and the mark comes off with the answer', async () => {
