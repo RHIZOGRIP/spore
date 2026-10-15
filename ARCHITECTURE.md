@@ -613,6 +613,13 @@ An entry is never rewritten. How far a turn read is written into its turn record
 which the next turn starts from, and finalizing the turn moves `inboxConsumed` there. A crash
 leaves `inboxConsumed` at the last finalized turn.
 
+**What one place said can be set aside** (`setAside`, `t_set_aside`): marked beside the inbox, not
+on it, so no turn reads it, starts for it or answers it — `readInboxFrom`, `unread` and `address`
+all skip it, and a turn's `(inboxFrom, inboxTo]` means what it read less what was set aside. The
+mark is made only while no runner holds the workspace, inside the write that checks it: what a
+running turn has read is known when it ends, and a message it read is answered, never set aside. A
+relay's `stop` is what sets aside, up to the last message of that conversation it passed.
+
 **Who said a message is data on its entry, never words in its text.** A relay that hears a
 person passes `send`'s `from`, `{ name, id, where }`, and the entry keeps it as `fromName`,
 `fromId` and `fromWhere`: all three or none, and never beside a `schedule`, `hook` or `job`, which

@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 8;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -183,12 +183,18 @@ CREATE VIEW turns AS
     FROM t_turns
    WHERE state = 'final';
 
+CREATE TABLE t_set_aside (
+  inboxNo  INTEGER PRIMARY KEY REFERENCES t_inbox (inboxNo),
+  at       TEXT    NOT NULL
+);
+
 CREATE VIEW inbox AS
   SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
          i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
          i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
          i.fromName, i.fromId, i.fromWhere,
-         i.inboxNo <= w.inboxConsumed AS consumed
+         i.inboxNo <= w.inboxConsumed AS consumed,
+         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
     FROM t_inbox i, t_workspace w;
 
 CREATE VIEW transcript AS
@@ -283,7 +289,7 @@ CREATE VIEW outbox AS
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 6] = [
+const MIGRATIONS: [(i64, &str); 7] = [
     (
         1,
         r#"
@@ -413,6 +419,25 @@ ALTER TABLE t_outbox ADD COLUMN attemptedAt TEXT;
 DROP VIEW outbox;
 CREATE VIEW outbox AS
   SELECT outboxNo, at, turnId, recipient, answers, state, settledAt, reason, attemptedAt FROM t_outbox;
+"#,
+    ),
+    (
+        7,
+        r#"
+CREATE TABLE t_set_aside (
+  inboxNo  INTEGER PRIMARY KEY REFERENCES t_inbox (inboxNo),
+  at       TEXT    NOT NULL
+);
+
+DROP VIEW inbox;
+CREATE VIEW inbox AS
+  SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
+         i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
+         i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
+         i.fromName, i.fromId, i.fromWhere,
+         i.inboxNo <= w.inboxConsumed AS consumed,
+         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
+    FROM t_inbox i, t_workspace w;
 "#,
     ),
 ];
@@ -1098,8 +1123,8 @@ pub fn copy_inbox(from: &Path, to: &Path, upto: i64) -> Result<(), String> {
     let names: Vec<&str> = std::iter::once("inboxNo")
         .chain(INBOX_COLUMNS.iter().map(|(name, _)| *name))
         .collect();
-    let rows: Vec<Vec<SqlValue>> = writing(from, |conn| {
-        let read = || -> rusqlite::Result<Vec<Vec<SqlValue>>> {
+    let (rows, set_aside): (Vec<Vec<SqlValue>>, Vec<(i64, String)>) = writing(from, |conn| {
+        let read = || -> rusqlite::Result<(Vec<Vec<SqlValue>>, Vec<(i64, String)>)> {
             let mut statement = conn.prepare(&format!(
                 "SELECT {} FROM t_inbox WHERE inboxNo <= ?1 ORDER BY inboxNo",
                 names.join(", ")
@@ -1109,7 +1134,14 @@ pub fn copy_inbox(from: &Path, to: &Path, upto: i64) -> Result<(), String> {
                     .map(|i| row.get::<_, SqlValue>(i))
                     .collect::<rusqlite::Result<Vec<SqlValue>>>()
             })?;
-            rows.collect()
+            let rows = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+            let mut marks = conn.prepare(
+                "SELECT inboxNo, at FROM t_set_aside WHERE inboxNo <= ?1 ORDER BY inboxNo",
+            )?;
+            let set_aside = marks
+                .query_map([upto], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok((rows, set_aside))
         };
         read().map_err(|e| format!("cannot read the inbox of {} — {e}", from.display()))
     })?;
@@ -1121,6 +1153,13 @@ pub fn copy_inbox(from: &Path, to: &Path, upto: i64) -> Result<(), String> {
             let named: Vec<(&str, SqlValue)> =
                 names.iter().copied().zip(row.iter().cloned()).collect();
             insert(&tx, "t_inbox", &named).map_err(|e| format!("cannot copy the inbox — {e}"))?;
+        }
+        for (inbox_no, at) in &set_aside {
+            tx.execute(
+                "INSERT INTO t_set_aside (inboxNo, at) VALUES (?1, ?2)",
+                (inbox_no, at),
+            )
+            .map_err(|e| format!("cannot copy the inbox — {e}"))?;
         }
         tx.commit()
             .map_err(|e| format!("cannot copy the inbox — {e}"))
@@ -1140,7 +1179,7 @@ pub fn inbox_consumed(ws: &Path) -> Result<i64, String> {
 pub fn unread(ws: &Path) -> Result<bool, String> {
     reading(ws, false, |conn| {
         conn.query_row(
-            "SELECT EXISTS (SELECT 1 FROM inbox WHERE NOT consumed)",
+            "SELECT EXISTS (SELECT 1 FROM inbox WHERE NOT consumed AND NOT setAside)",
             [],
             |row| row.get(0),
         )
@@ -1152,7 +1191,7 @@ pub fn unread(ws: &Path) -> Result<bool, String> {
 pub fn unanswered_traceparents(ws: &Path) -> Result<Vec<String>, String> {
     reading(ws, Vec::new(), |conn| {
         let mut statement = conn.prepare(
-            "SELECT traceparent FROM inbox WHERE NOT consumed AND traceparent IS NOT NULL ORDER BY inboxNo",
+            "SELECT traceparent FROM inbox WHERE NOT consumed AND NOT setAside AND traceparent IS NOT NULL ORDER BY inboxNo",
         )?;
         let rows = statement.query_map([], |row| row.get(0))?;
         rows.collect()
@@ -1796,7 +1835,11 @@ fn address(tx: &Connection, turn: &str, from: i64, to: i64) -> Result<(), String
         .map_err(&failed)?;
     let read: Vec<(i64, Option<String>)> = {
         let mut statement = tx
-            .prepare("SELECT inboxNo, replyTo FROM t_inbox WHERE inboxNo > ?1 AND inboxNo <= ?2 ORDER BY inboxNo")
+            .prepare(
+                "SELECT inboxNo, replyTo FROM t_inbox
+                  WHERE inboxNo > ?1 AND inboxNo <= ?2 AND inboxNo NOT IN (SELECT inboxNo FROM t_set_aside)
+                  ORDER BY inboxNo",
+            )
             .map_err(&failed)?;
         let rows = statement
             .query_map([from, to], |row| Ok((row.get(0)?, row.get(1)?)))
@@ -1895,6 +1938,49 @@ pub fn attempt_outbox(ws: &Path, outbox_no: i64) -> Result<bool, String> {
             )
             .map_err(failed_to("mark the outbox entry attempted"))?;
         Ok(changed == 1)
+    })
+}
+
+/// What `reply_to` said up to `upto` and no turn has read, set aside: no turn reads it,
+/// starts for it or answers it. None while a runner holds the workspace — what its turn has read is
+/// known only once it ends — and the check is made inside the write, so a runner that takes the
+/// lock meanwhile begins its turn after the mark and skips what it marks.
+pub fn set_aside(ws: &Path, reply_to: &str, upto: i64) -> Result<Option<Vec<i64>>, String> {
+    writing(ws, |conn| {
+        let failed = failed_to("set aside the inbox entries");
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(&failed)?;
+        if crate::lock_holder(ws)
+            .map_err(|e| format!("cannot tell whether a turn is running — {e}"))?
+            .is_some()
+        {
+            return Ok(None);
+        }
+        let marked: Vec<i64> = {
+            let mut statement = tx
+                .prepare(
+                    "SELECT i.inboxNo FROM t_inbox i, t_workspace w
+                      WHERE i.replyTo = ?1 AND i.inboxNo <= ?2 AND i.inboxNo > w.inboxConsumed
+                        AND i.inboxNo NOT IN (SELECT inboxNo FROM t_set_aside)
+                      ORDER BY i.inboxNo",
+                )
+                .map_err(&failed)?;
+            let rows = statement
+                .query_map((reply_to, upto), |row| row.get(0))
+                .map_err(&failed)?;
+            rows.collect::<rusqlite::Result<_>>().map_err(&failed)?
+        };
+        let at = crate::iso_now();
+        for inbox_no in &marked {
+            tx.execute(
+                "INSERT INTO t_set_aside (inboxNo, at) VALUES (?1, ?2)",
+                (inbox_no, &at),
+            )
+            .map_err(&failed)?;
+        }
+        tx.commit().map_err(&failed)?;
+        Ok(Some(marked))
     })
 }
 
@@ -2303,6 +2389,7 @@ mod tests {
                 "t_jobs",
                 "t_limits",
                 "t_outbox",
+                "t_set_aside",
                 "t_transcript",
                 "t_turns",
                 "t_workspace"
@@ -3627,6 +3714,95 @@ mod tests {
             (json!("refused"), json!("chat 42 blocked the bot"))
         );
         assert!(!settle_outbox(&ws, 99, None).unwrap());
+    }
+
+    #[test]
+    fn sets_aside_what_a_conversation_said_and_no_turn_read_so_no_turn_starts_for_reads_or_answers_it(
+    ) {
+        let ws = scratch("set-aside");
+        answered(&ws, None, &[Some("telegram:main/42")], "answer");
+        for (at, reply_to) in [
+            ("b", "telegram:main/42"),
+            ("c", "telegram:main/7"),
+            ("d", "telegram:main/42"),
+            ("f", "telegram:main/42"),
+        ] {
+            append_inbox(
+                &ws,
+                &json!({ "at": at, "text": "x", "replyTo": reply_to }).to_string(),
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            set_aside(&ws, "telegram:main/42", 4).unwrap(),
+            Some(vec![2, 4])
+        );
+        assert_eq!(set_aside(&ws, "telegram:main/42", 4).unwrap(), Some(vec![]));
+        let flags: Vec<i64> = (1..=5)
+            .map(|n| {
+                row(
+                    &ws,
+                    &format!("SELECT setAside FROM inbox WHERE inboxNo = {n}"),
+                )["setAside"]
+                    .as_i64()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(flags, [0, 1, 0, 1, 0]);
+        assert!(unread(&ws).unwrap());
+
+        answered(&ws, None, &[], "answer");
+        assert_eq!(
+            entries(&ws)
+                .into_iter()
+                .map(|(recipient, answers, _)| (recipient, answers))
+                .collect::<Vec<_>>(),
+            [
+                ("telegram:main/42".to_string(), json!([1])),
+                ("telegram:main/42".to_string(), json!([5])),
+                ("telegram:main/7".to_string(), json!([3]))
+            ]
+        );
+        assert!(!unread(&ws).unwrap());
+
+        append_inbox(
+            &ws,
+            &json!({ "at": "g", "text": "x", "replyTo": "telegram:main/42" }).to_string(),
+        )
+        .unwrap();
+        assert!(unread(&ws).unwrap());
+        set_aside(&ws, "telegram:main/42", 6).unwrap();
+        assert!(!unread(&ws).unwrap());
+
+        let copy = scratch("set-aside-copy");
+        copy_inbox(&ws, &copy, 6).unwrap();
+        assert_eq!(
+            row(
+                &copy,
+                "SELECT group_concat(inboxNo) AS marked FROM inbox WHERE setAside"
+            )["marked"],
+            json!("2,4,6")
+        );
+    }
+
+    #[test]
+    fn sets_aside_nothing_while_a_runner_holds_the_workspace() {
+        let ws = scratch("set-aside-held");
+        append_inbox(
+            &ws,
+            &json!({ "at": "a", "text": "x", "replyTo": "telegram:main/42" }).to_string(),
+        )
+        .unwrap();
+        let held = match crate::acquire_lock(&ws).unwrap() {
+            crate::Acquired::Held(file, _) => file,
+            crate::Acquired::Taken(by) => panic!("the lock was taken by {by}"),
+        };
+        assert_eq!(set_aside(&ws, "telegram:main/42", 1).unwrap(), None);
+        drop(held);
+        assert_eq!(
+            set_aside(&ws, "telegram:main/42", 1).unwrap(),
+            Some(vec![1])
+        );
     }
 
     #[test]

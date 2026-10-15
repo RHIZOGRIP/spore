@@ -13,7 +13,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
-import { attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf } from '../index.js'
+import { attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf } from '../index.js'
 import { credentialVariables, reactionsOf, routesOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
 import { announce, leftOut, pieces, render, reply, statusText, track, unpassed, waiting } from './render.js'
@@ -23,6 +23,8 @@ const TAKES_ARGUMENTS = new Set(['extend', 'wrap'])
 const WORKING = 'working…'
 const STILL_WORKING = 'heard you — still working…'
 const ANSWERED = 'answered below'
+const SET_ASIDE = 'set aside'
+const SETTLE_EVERY_MS = 1000
 const MAY_REPEAT = '(this may repeat an earlier message)'
 
 const pause = (ms, signal) => new Promise(resolve => {
@@ -77,8 +79,51 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     return tell(conversation, changeText(answer))
   }
 
+  const messages = (n) => `${n} message${n === 1 ? '' : 's'}`
+
+  /**
+   * `stop`: the running turn signalled, and what this conversation said before it and no turn has
+   * read — up to the last of its messages this relay passed — set aside once nothing holds the
+   * spore, so no turn reads it later, and its `working…` message and reaction go. Followed in the
+   * background: a turn may wait on its model calls.
+   */
+  const stopTurn = async (conversation, ws) => {
+    const upto = Math.max(0, ...(state.pending[ws] ?? []).filter(entry => entry.conversation === conversation).map(entry => entry.inbox))
+    try {
+      const { stopped } = stop(ws)
+      if (stopped) tell(conversation, 'stopping it')
+      if (upto === 0) {
+        if (!stopped) tell(conversation, 'nothing is running')
+        return
+      }
+      let marked = null
+      while (!stopping.signal.aborted) {
+        if (stateOf(ws).state !== RUNNING) marked = setAside(ws, { replyTo: `${prefix}${conversation}`, upto })
+        if (marked !== null) break
+        await sleep(SETTLE_EVERY_MS, stopping.signal)
+      }
+      if (marked === null) return
+      const gone = (state.pending[ws] ?? []).filter(entry => marked.includes(entry.inbox))
+      for (const entry of gone) {
+        delivery.to(conversation, async (attempt) => {
+          await retire(attempt, conversation, await noteOf(entry), SET_ASIDE)
+          if (entry.reacts) await mark(attempt, conversation, entry.asked, () => null)
+        })
+      }
+      forget(ws, gone)
+      if (!stopped) return tell(conversation, marked.length ? `nothing is running — set aside ${messages(marked.length)} that waited` : 'nothing is running')
+      if (marked.length) tell(conversation, `set aside ${messages(marked.length)} you sent that no turn had read`)
+    } catch (err) {
+      log(`${where(conversation)}: nothing set aside — ${said(err)}`)
+      tell(conversation, `nothing set aside — ${said(err)}`)
+    }
+  }
+
   const obey = (conversation, ws, verb, args = '') => {
-    if (verb === 'stop') return tell(conversation, stop(ws).stopped ? 'stopping it' : 'nothing is running')
+    if (verb === 'stop') {
+      stopTurn(conversation, ws)
+      return
+    }
     if (verb === 'status') return tell(conversation, statusText(ws, configFile))
     if (verb === 'wrap') return change(conversation, () => wrapTurn(ws, args.trim() || undefined))
     if (verb === 'extend') {
@@ -341,10 +386,11 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   }
 
   /**
-   * A `working…` message whose answer is posted below it: removed, or, where the platform will not
-   * remove it, marked answered. The answer is already there, so nothing here can fail the delivery.
+   * A `working…` message whose answer is posted below it, or whose message was set aside: removed,
+   * or, where the platform will not remove it, edited to say so. The answer is already there, so
+   * nothing here can fail the delivery.
    */
-  const retire = async (attempt, conversation, note) => {
+  const retire = async (attempt, conversation, note, text = ANSWERED) => {
     if (note === null) return
     if (adapter.can.remove) {
       try {
@@ -353,8 +399,8 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         log(`${where(conversation)}: working message ${note} not removed — ${said(err)}`)
       }
     }
-    await attempt(() => adapter.edit(conversation, note, ANSWERED))
-      .catch(err => log(`${where(conversation)}: working message ${note} not marked answered — ${said(err)}`))
+    await attempt(() => adapter.edit(conversation, note, text))
+      .catch(err => log(`${where(conversation)}: working message ${note} not marked ${text} — ${said(err)}`))
   }
 
   /**

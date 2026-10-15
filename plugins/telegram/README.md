@@ -67,7 +67,7 @@ says so in your `working…` message, and the next turn answers it.
 
 ```
 /status    what the spore is doing, its turns and what they cost, and the running turn's limits
-/stop      end the turn it is running
+/stop      end the turn it is running, and set aside what you sent that it had not read
 /wrap [10m]        ask the running turn to wrap up, now or in a while
 /extend wall 30m   give it more — wall, cost or rounds — up to the extend.<limit> its spore.cmk grants
 ```
@@ -112,8 +112,8 @@ It is then shown `reading data/report.md`, `running git log --oneline -5`,
 read the commands; the others keep the kinds.
 
 A chat can be shown a turn more quietly, which is what a group gets unless its entry says
-otherwise: `"show": "react"` puts a 🫡 on your message when the spore takes it and shows Telegram's
-`typing…` while the turn runs, then takes the 🫡 off when the answer arrives — or puts a 💔 there
+otherwise: `"show": "react"` puts a 👨‍💻 on your message when the spore takes it and shows Telegram's
+`typing…` while the turn runs, then takes the 👨‍💻 off when the answer arrives — or puts a 💔 there
 when the turn ended without one. `"show": "working"` is the `working…` message, what a private
 chat gets; `"show": "both"` is both. The bot's two emoji are its own to choose, from the ones
 Telegram lets a bot react with (✅ and ❌ are not among them; the log lists them when one is refused):

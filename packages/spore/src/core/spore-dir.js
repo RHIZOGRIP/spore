@@ -161,7 +161,7 @@ const decoder = ({ json = [], flags = [] }) => (row) => {
 }
 
 const turnRecord = decoder({ json: ['deliverables', 'recall', 'byPrecursor'], flags: ['concluded', 'settled'] })
-const inboxEntry = decoder({ json: ['files'], flags: ['consumed'] })
+const inboxEntry = decoder({ json: ['files'], flags: ['consumed', 'setAside'] })
 const transcriptEntry = decoder({ json: ['message', 'marks'] })
 const eventRecord = ({ payload, ...envelope }) => ({ ...envelope, ...JSON.parse(payload) })
 
@@ -678,16 +678,26 @@ export const originOfOptions = ({ schedule, hook, job }) => originOf({ schedule:
 export const fromPerson = (entry) => originOf(entry) === null
 
 /**
- * What has been said past `from`, where reading stopped, and the first of it a person wrote —
- * a turn holding one owes that person an answer.
+ * What has been said past `from` and not set aside, where reading stopped, and the first of it a
+ * person wrote — a turn holding one owes that person an answer.
  */
 export function readInboxFrom (ws, from = 0) {
   const fresh = readInbox(ws, { after: from })
+  const said = fresh.filter(entry => !entry.setAside)
   return {
-    messages: fresh.map(saidOf).filter(Boolean),
+    messages: said.map(saidOf).filter(Boolean),
     at: fresh.at(-1)?.inboxNo ?? from,
-    person: fresh.find(fromPerson) ?? null
+    person: said.find(fromPerson) ?? null
   }
+}
+
+/**
+ * What `replyTo` said up to `inboxNo` `upto` and no turn has read, set aside: no turn reads it,
+ * starts for it or answers it, and it stays in the inbox, marked. Answers the `inboxNo`s set
+ * aside, or null while a runner holds the workspace — what its turn read is known once it ends.
+ */
+export function setAside (ws, { replyTo, upto }) {
+  return native.setAside(ws, replyTo, upto)
 }
 
 /** How far the last finished turn read the inbox: where the next one starts. */

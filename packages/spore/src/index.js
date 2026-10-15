@@ -65,7 +65,7 @@ export { grantedPathContaining } from './isolation/sandbox.js'
 // what remains of one that was stopped.
 export { openWorkspace } from './core/workspace.js'
 export { textOf } from './core/message.js'
-export { readTranscript, readTurns, readEvents, readInbox, saidOf, lastEventSeq, databaseOf, definitionPath, heldIn, turnOfMessage, turnSummary, outbox, attemptOutbox, settleOutbox } from './core/spore-dir.js'
+export { readTranscript, readTurns, readEvents, readInbox, saidOf, lastEventSeq, databaseOf, definitionPath, heldIn, turnOfMessage, turnSummary, outbox, attemptOutbox, settleOutbox, setAside } from './core/spore-dir.js'
 export { mimeOf } from './core/call-record.js'
 export { SCHEMA as EVENT_SCHEMA, EVENTS, PROMISED } from './observability/event-log.js'
 

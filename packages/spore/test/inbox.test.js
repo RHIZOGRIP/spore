@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
-import { appendInbox, appendTurn, outbox, readInbox, readInboxFrom, settleOutbox } from '../src/core/spore-dir.js'
+import { appendInbox, appendTurn, outbox, readInbox, readInboxFrom, setAside, settleOutbox } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 
 const WS = resolve(tmpdir(), 'spore-inbox-test')
@@ -89,6 +89,20 @@ describe('where an entry lands', () => {
     const second = appendInbox(WS, 'second')
     expect([first, second]).toEqual([1, 2])
     expect(readInbox(WS).map(entry => entry.inboxNo)).toEqual([first, second])
+  })
+
+  it('sets aside what one place said up to a message, which no turn then reads', () => {
+    send(WS, 'first', { start: false, replyTo: 'telegram:main/42' })
+    send(WS, 'from elsewhere', { start: false, replyTo: 'telegram:main/7' })
+    send(WS, 'second', { start: false, replyTo: 'telegram:main/42' })
+    send(WS, 'after the stop', { start: false, replyTo: 'telegram:main/42' })
+    expect(setAside(WS, { replyTo: 'telegram:main/42', upto: 3 })).toEqual([1, 3])
+    expect(readInbox(WS).map(entry => [entry.text, entry.setAside])).toEqual([
+      ['first', true], ['from elsewhere', false], ['second', true], ['after the stop', false]
+    ])
+    const read = readInboxFrom(WS)
+    expect(read.messages.map(message => message.split('\n').at(-1))).toEqual(['from elsewhere', 'after the stop'])
+    expect(read.at).toBe(4)
   })
 
   it('reads a range of them, after one and up to another', () => {

@@ -41,11 +41,13 @@ describe('a bot\'s chats', () => {
     expect(() => reactionsOf(TELEGRAM, path)).toThrow(/reacts with ❌, which Telegram does not take/)
   })
 
-  it('refuse an entry that does not name a spore, or names a field it does not know', () => {
+  it('refuse an entry that does not name a spore, or names a field it does not know, saying where one of the bot\'s goes', () => {
     chats({ 1: 42 })
     expect(() => routesOf(TELEGRAM, path)).toThrow(/not a spore/)
     chats({ 1: { spore: 'triage', detail: true } })
-    expect(() => routesOf(TELEGRAM, path)).toThrow(/not a spore/)
+    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ message: expect.stringMatching(/gives chat 1 detail, which a chat does not take/), detail: 'a chat takes spore, details, show' }))
+    chats({ 1: { spore: 'triage', show: 'react', react: { taken: '👀' } } })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ detail: 'a chat takes spore, details, show; react is the bot\'s, beside chats' }))
     writeFileSync(path, JSON.stringify({ token: '${TRIAGE_BOT_TOKEN}' })) // eslint-disable-line no-template-curly-in-string
     expect(() => routesOf(TELEGRAM, path)).toThrow(/has no chats/)
   })

@@ -113,7 +113,19 @@ The inbox entries with `inboxNo` in `(after, upto]`, every one past `after` when
 in order. An entry carries `inboxNo`, `at`, `text` or a `bodyPath` with `bodyBytes`, `bodyHead`
 and `bodyTail`, `files`, `schedule`, `due`, `hook`, `hookEvent`, `hookDelivery`, `job`,
 `jobEvent`, `jobRun`, `traceparent`, `requestId`, `replyTo`, `fromName`, `fromId`, `fromWhere`,
-and `consumed` (a finished turn has read it).
+`consumed` (a finished turn has read it) and `setAside` (no turn will).
+
+### `setAside`
+
+```
+setAside(ws, { replyTo, upto }) → inboxNo[] | null
+```
+
+Sets aside what `replyTo` said, up to `inboxNo` `upto`, that no turn has read: no turn reads it,
+starts for it or answers it, and it stays in the inbox with `setAside`. Returns the `inboxNo`s set
+aside, or `null` while a runner holds the workspace, since what its turn read is known only once it
+ends — call it again then. A relay's `stop` is the use: what the person sent before stopping is not
+taken up by the next turn.
 
 ### `turnOfMessage`
 

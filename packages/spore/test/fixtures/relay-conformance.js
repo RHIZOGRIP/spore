@@ -60,14 +60,14 @@ export function conformance (harness, platformTests = () => {}) {
   let tests = 0
   const running = []
 
-  const until = async (done, limitMs = 15000) => {
+  const until = async (done, limitMs = 15000, state = () => '') => {
     const deadline = Date.now() + limitMs
     while (!done()) {
-      if (Date.now() > deadline) throw new Error('waited too long')
+      if (Date.now() > deadline) throw new Error(`waited too long${state() && ` — ${state()}`}`)
       await new Promise(resolve => setTimeout(resolve, 20))
     }
   }
-  const idle = (turns) => until(() => readTurns(ws).length === turns && stateOf(ws).state !== RUNNING)
+  const idle = (turns, state) => until(() => readTurns(ws).length === turns && stateOf(ws).state !== RUNNING, 15000, state)
 
   const start = (opts = {}) => {
     const controller = new AbortController()
@@ -334,7 +334,7 @@ export function conformance (harness, platformTests = () => {}) {
         await until(() => seen('1').some(one => one.op === 'typing'))
         release()
         await until(() => reactions('1').length === 2)
-        expect(reactions('1')).toEqual([{ op: 'react', message: asked.message, emoji: '🫡' }, { op: 'react', message: asked.message, emoji: null }])
+        expect(reactions('1')).toEqual([{ op: 'react', message: asked.message, emoji: '👨‍💻' }, { op: 'react', message: asked.message, emoji: null }])
         expect(posts('1').find(one => one.text === 'hello back').answering).toBe(asked.message)
         expect(notes('1')).toEqual([])
       })
@@ -345,7 +345,7 @@ export function conformance (harness, platformTests = () => {}) {
         start()
         say({ conversation: '1', text: 'hello' })
         await until(() => reactions('1').length === 2)
-        expect(reactions('1').map(one => one.emoji)).toEqual(['🫡', '🤷'])
+        expect(reactions('1').map(one => one.emoji)).toEqual(['👨‍💻', '🤷'])
         expect(posts('1').some(one => /^no answer · /.test(one.text))).toBe(true)
         expect(notes('1')).toHaveLength(1)
       })
@@ -516,6 +516,59 @@ export function conformance (harness, platformTests = () => {}) {
         start()
         await until(() => posted('1', '(this may repeat an earlier message)\n\nsent from elsewhere\n\ndone while you were away'))
         await until(() => outbox(ws)[0].state === 'delivered')
+      })
+    })
+
+    describe('stop', () => {
+      const where = () => JSON.stringify({
+        posts: posts('1').map(one => one.text),
+        inbox: readInbox(ws).map(entry => [entry.inboxNo, entry.text, entry.consumed, entry.setAside]),
+        turns: readTurns(ws).map(turn => [turn.stopReason, turn.inboxTo]),
+        state: stateOf(ws).state,
+        err: existsSync(join(ws, 'spore.err')) ? readFileSync(join(ws, 'spore.err'), 'utf8').slice(-1500) : null,
+        logs
+      })
+
+      const working = () => {
+        let asked = 0
+        reply = async (input, round) => {
+          asked += 1
+          return round === 0 ? calls('wsexec', { command: 'sleep 30', out: 'data/sleep.txt' }) : answers('late')
+        }
+        return () => asked
+      }
+
+      it('sets aside what the conversation said that the stopped turn had not read, which no turn then reads or answers', async () => {
+        const asked = working()
+        start()
+        say({ conversation: '1', text: 'first' })
+        await until(() => asked() === 1 && notes('1').length === 1)
+        say({ conversation: '1', text: 'second' })
+        await until(() => notes('1').length === 2)
+        say({ conversation: '1', text: harness.command('stop') })
+        await until(() => posted('1', 'set aside 1 message you sent that no turn had read'), 15000, where)
+        expect(readInbox(ws).map(entry => [entry.text, entry.setAside])).toEqual([['first', false], ['second', true]])
+        await until(() => posts('1').some(one => /^no answer · cancelled/.test(one.text)), 15000, where)
+        const [, waited] = notes('1')
+        await until(() => seen('1').some(one => one.op === 'remove' && one.note === waited.note), 15000, where)
+        expect(posted('1', 'stopping it')).toBe(true)
+        expect(posted('1', 'late')).toBe(false)
+        expect(asked()).toBe(1)
+      })
+
+      it('with nothing running, sets aside what waited for the next turn', async () => {
+        const asked = working()
+        start()
+        say({ conversation: '1', text: 'first' })
+        await until(() => asked() === 1 && notes('1').length === 1)
+        say({ conversation: '1', text: 'second' })
+        await until(() => notes('1').length === 2)
+        stop(ws)
+        await idle(1, where)
+        say({ conversation: '1', text: harness.command('stop') })
+        await until(() => posted('1', 'nothing is running — set aside 1 message that waited'), 15000, where)
+        expect(readInbox(ws).map(entry => entry.setAside)).toEqual([false, true])
+        expect(asked()).toBe(1)
       })
     })
 

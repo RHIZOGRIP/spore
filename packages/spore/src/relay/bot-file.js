@@ -18,7 +18,7 @@ import { SporeError } from '../observability/errors.js'
 const NAME = /^[a-z0-9][a-z0-9._-]*$/i
 const VARIABLE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/
 const SHOWS = ['working', 'react', 'both']
-const REACTIONS = { taken: '🫡', failed: '💔' }
+const REACTIONS = { taken: '👨‍💻', failed: '💔' }
 
 const typeOf = (spec, what) => `${spec.kind.toUpperCase()}_${what}`
 
@@ -87,7 +87,7 @@ export function routesOf (spec, path) {
 }
 
 /**
- * The bot's `react`: what is put on a message while its turn runs (`taken`, 🫡 when left out) and
+ * The bot's `react`: what is put on a message while its turn runs (`taken`, 👨‍💻 when left out) and
  * on one whose turn ended without an answer (`failed`, 💔), each an emoji the platform takes.
  */
 export function reactionsOf (spec, path) {

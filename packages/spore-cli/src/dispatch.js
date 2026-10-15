@@ -303,7 +303,7 @@ const cut = (text) => (text.length > 60 ? text.slice(0, 57) + '…' : text)
 const quoted = (entries) => entries.map(entry => `${saidBy(entry) ? `${saidBy(entry)}: ` : ''}${JSON.stringify(cut(saidText(entry)))}`).join(' ')
 
 function renderLog (result) {
-  if (!result.turns.length && !result.waiting.length && !result.held.length) {
+  if (!result.turns.length && !result.waiting.length && !result.setAside.length && !result.held.length) {
     console.log('nothing has been said here yet')
     return
   }
@@ -319,6 +319,9 @@ function renderLog (result) {
   }
   // The time column is when a turn ended, and a waiting message has not been answered by
   // one. Blank says that; when it was said is in the record for anyone who needs it.
+  for (const entry of result.setAside) {
+    console.log(`  ${' '.repeat(19)}  ${'set aside'.padEnd(12)} ${' '.repeat(19)}  ${quoted([entry])}`)
+  }
   for (const entry of result.waiting) {
     console.log(`  ${' '.repeat(19)}  ${'waiting'.padEnd(12)} ${' '.repeat(19)}  ${quoted([entry])}`)
   }

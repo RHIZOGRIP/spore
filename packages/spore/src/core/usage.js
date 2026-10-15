@@ -34,7 +34,7 @@ const daysOf = (since, until) => {
  * answered no entry.
  */
 const originOfTurn = (turn, entries) => {
-  const first = entries.find(entry => entry.inboxNo > turn.inboxFrom && entry.inboxNo <= turn.inboxTo)
+  const first = entries.find(entry => entry.inboxNo > turn.inboxFrom && entry.inboxNo <= turn.inboxTo && !entry.setAside)
   if (!first) return 'continued'
   const named = originOf(first)
   if (named !== null) return named

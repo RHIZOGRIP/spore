@@ -43,7 +43,8 @@ import { runService } from '@rhizogrip/spore/relay'
   limit, a code block a piece ends inside closed and opened again in the next; what the relay says
   itself — status, notices — is plain.
 - **Commands**: `status`, `stop`, `wrap [10m]`, `extend <dimension> <amount>`, and a help line for
-  anything else.
+  anything else. `stop` also sets aside what that conversation sent and no turn had read, once the
+  stopped turn has ended, and says how many — with nothing running, what waited.
 - **Credentials stay with the service.** Every bot's credential variables are removed from the
   environment a turn's runner starts with, except one a source of the plugin's own needs.
 
@@ -54,7 +55,7 @@ One file per bot, `~/.config/spore/<kind>/<bot>.json`, read on every message: cr
 spore, and how each is shown a turn (`show`: `working`, `react` or `both`). Anything not named there
 gets nothing, and the log says the line to add; so is the bot's owner, once per conversation while
 the service runs, in each of this bot's conversations a spore's `replyTo` default names. A bot on a platform that reacts takes
-`"react": { "taken": "🫡", "failed": "💔" }`, those two when it is left out; an emoji the platform
+`"react": { "taken": "👨‍💻", "failed": "💔" }`, those two when it is left out; an emoji the platform
 does not take is refused with the list it does (`reactionsOf`).
 
 ## The adapter

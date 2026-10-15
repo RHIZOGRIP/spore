@@ -479,6 +479,12 @@ pub fn attempt_outbox(ws: String, outbox_no: i64) -> napi::Result<bool> {
     workspace::attempt_outbox(Path::new(&ws), outbox_no).map_err(failed)
 }
 
+/// The inbox numbers set aside, or null while a runner holds the workspace.
+#[napi]
+pub fn set_aside(ws: String, reply_to: String, upto: i64) -> napi::Result<Option<Vec<i64>>> {
+    workspace::set_aside(Path::new(&ws), &reply_to, upto).map_err(failed)
+}
+
 #[napi]
 pub fn settle_outbox(ws: String, outbox_no: i64, refused: Option<String>) -> napi::Result<bool> {
     workspace::settle_outbox(Path::new(&ws), outbox_no, refused.as_deref()).map_err(failed)

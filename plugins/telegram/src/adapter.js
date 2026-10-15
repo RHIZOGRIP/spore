@@ -25,6 +25,9 @@ const REACTIONS = [
   '🤷', '🤷‍♀', '😡'
 ]
 
+const FIELDS = ['token', 'chats', 'react']
+const CHAT_FIELDS = ['spore', 'details', 'show']
+
 const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
 const invalid = (path, problem, detail) => new SporeError(`${path} ${problem}`, { type: 'TELEGRAM_BOT_INVALID', detail })
@@ -42,8 +45,12 @@ function routes (raw, path) {
   const table = new Map()
   for (const [chat, entry] of Object.entries(raw.chats)) {
     const spore = typeof entry === 'string' ? entry : entry?.spore
-    const extra = typeof entry === 'object' && entry !== null ? Object.keys(entry).filter(key => !['spore', 'details', 'show'].includes(key)) : []
-    if (typeof spore !== 'string' || !spore || extra.length || (typeof entry === 'object' && entry.details !== undefined && typeof entry.details !== 'boolean')) {
+    const extra = typeof entry === 'object' && entry !== null ? Object.keys(entry).filter(key => !CHAT_FIELDS.includes(key)) : []
+    if (extra.length) {
+      const bots = extra.filter(key => FIELDS.includes(key))
+      throw invalid(path, `gives chat ${chat} ${extra.join(', ')}, which a chat does not take`, `a chat takes ${CHAT_FIELDS.join(', ')}${bots.length ? `; ${bots.join(', ')} is the bot's, beside chats` : ''}`)
+    }
+    if (typeof spore !== 'string' || !spore || (typeof entry === 'object' && entry.details !== undefined && typeof entry.details !== 'boolean')) {
       throw invalid(path, `maps ${chat} to something that is not a spore`, 'each chat is a chat id against the name of a spore it may reach, or { "spore": "<name>", "details": true, "show": "react" }')
     }
     table.set(chat, { spores: [spore], details: typeof entry === 'object' && entry.details === true, show: typeof entry === 'object' ? entry.show ?? null : null })
@@ -51,13 +58,13 @@ function routes (raw, path) {
   return table
 }
 
-const HELP = 'Anything you write here goes to the spore. /status says what it is doing; /stop ends the turn it is running; /wrap [10m] asks it to wrap up; /extend wall 30m gives it more, as far as its spore.cmk allows.'
+const HELP = 'Anything you write here goes to the spore. /status says what it is doing; /stop ends the turn it is running and sets aside what you sent that it had not read; /wrap [10m] asks it to wrap up; /extend wall 30m gives it more, as far as its spore.cmk allows.'
 
 export const TELEGRAM = {
   kind: 'telegram',
   label: 'Telegram',
   noun: 'chat',
-  fields: ['token', 'chats', 'react'],
+  fields: FIELDS,
   credentials: ['token'],
   stateFields: [],
   sourceVariables: [],

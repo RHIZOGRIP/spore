@@ -154,6 +154,7 @@ its record.
 | `lastEventSeq(ws)` | the `seq` of the last event in the log. Read it **before** `send` to follow only what comes after |
 | `watch(ws, { after, signal, grace, tick })` | an async iterator over the event log after `after`, ending when the turn ends. If no turn is seen running within `grace` (5000 ms), it ends with what was there |
 | `readInbox(ws, { after, upto })` | the inbox entries with `inboxNo` in `(after, upto]` |
+| `setAside(ws, { replyTo, upto })` | sets aside what `replyTo` said up to `upto` that no turn has read, so none will; `null` while a runner holds the workspace |
 | `turnOfMessage(ws, entry)` | the finished turn that ended a message, `{ turn, read }`, or `null` while none has. `read: false` means a turn started after the message failed before reading anything |
 | `outcome(ws)` | how the spore's last turn ended: `{ stopReason, concluded, rounds, treeUsd, workUnits, deliverables, deliverablesMore, endedAt }`, or `null` |
 | `follow(ws, { lines, out, err })` | writes the running turn's text output to two streams, as `spore send` does in a terminal. Returns `'ended'` or `'detached'` (on SIGINT) |
