@@ -130,16 +130,56 @@ export const leftOut = (more) => `and ${more} more file${more === 1 ? '' : 's'} 
 
 export const unpassed = (count, spores) => `only text reaches a spore for now: your ${count === 1 ? 'file' : `${count} files`} did not reach ${spores.join(' or ')}`
 
+const FENCE = /^ {0,3}(`{3,}|~{3,})/
+
+const closes = (fence, line) => {
+  const marker = line.trim()
+  return marker.length >= fence.close.length && marker === fence.close[0].repeat(marker.length)
+}
+
+/**
+ * `text` in pieces of at most `limit`, cut at a line. A piece that ends inside a code block closes
+ * it, and the next opens it again with its language, so each piece renders on its own; a line
+ * longer than a piece is cut where it must be.
+ */
 export function pieces (text, limit) {
+  if (!String(text)) return []
   const out = []
-  let rest = String(text)
-  while (rest.length > limit) {
-    const cut = rest.lastIndexOf('\n', limit)
-    const at = cut > limit / 2 ? cut : limit
-    out.push(rest.slice(0, at))
-    rest = rest.slice(at).replace(/^\n/, '')
+  let piece = null
+  let fence = null
+  const flush = () => {
+    if (fence) {
+      out.push(`${piece}\n${fence.close}`)
+      piece = fence.open
+    } else {
+      out.push(piece)
+      piece = null
+    }
   }
-  if (rest) out.push(rest)
+  for (const line of String(text).split('\n')) {
+    const marker = FENCE.exec(line)
+    const after = fence ? (closes(fence, line) ? null : fence) : marker ? { open: line, close: marker[1] } : null
+    const room = limit - (after ? after.close.length + 1 : 0)
+    let rest = line
+    for (;;) {
+      const joined = piece === null ? rest : `${piece}\n${rest}`
+      if (joined.length <= room) {
+        piece = joined
+        break
+      }
+      if (piece !== null && piece !== fence?.open) {
+        flush()
+        continue
+      }
+      const head = piece === null ? '' : `${piece}\n`
+      const take = Math.max(1, room - head.length)
+      piece = head + rest.slice(0, take)
+      rest = rest.slice(take)
+      flush()
+    }
+    fence = after
+  }
+  if (piece !== null) out.push(piece)
   return out
 }
 

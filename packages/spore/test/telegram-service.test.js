@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest'
 import { join } from 'node:path'
 
 import { conformance } from './fixtures/relay-conformance.js'
+import { answers } from './fixtures/scripted-model.js'
 import { readInbox } from '../src/core/spore-dir.js'
 import { SporeError } from '../src/index.js'
 import { TELEGRAM, createAdapter } from '@rhizogrip/spore-plugin-telegram/src/adapter.js'
@@ -49,10 +50,10 @@ const standIn = () => {
       }
       return [...waiting]
     },
-    say: async (chat, text, { answering = null } = {}) => {
+    say: async (chat, text, { answering = null, html = false } = {}) => {
       fault('say')
       id += 1
-      sent.push({ op: 'say', chat, text, message: id, answering })
+      sent.push({ op: 'say', chat, text, message: id, answering, html })
       return { message_id: id }
     },
     revise: async (chat, message, text) => {
@@ -75,7 +76,7 @@ const standIn = () => {
 }
 
 const said = (one) => {
-  if (one.op === 'say') return { op: 'post', note: one.message, text: one.text, answering: one.answering }
+  if (one.op === 'say') return { op: 'post', note: one.message, text: one.text, answering: one.answering, formatted: one.html }
   if (one.op === 'revise') return { op: 'edit', note: one.message, text: one.text }
   if (one.op === 'remove') return { op: 'remove', note: one.message }
   return { op: 'upload', path: one.path, caption: one.caption }
@@ -142,6 +143,20 @@ conformance(harness, (ctx) => {
         ['from the first bot', 'telegram:triage:1'],
         ['from the second bot', 'telegram:other:1']
       ])
+    })
+
+    it('sends an answer in Telegram\'s HTML, and as plain text when Telegram refuses the formatting', async () => {
+      let release
+      const gate = new Promise(resolve => { release = resolve })
+      ctx.replying(async () => { await gate; return answers('**first**') })
+      ctx.start()
+      ctx.say({ conversation: '1', text: 'hello' })
+      await ctx.until(() => ctx.posts('1').length === 1)
+      ctx.platform.fail('say', Object.assign(harness.refused('Bad Request: can\'t parse entities: unsupported start tag'), { context: { status: 400, retryAfter: null } }))
+      release()
+      await ctx.until(() => ctx.posted('1', '**first**'))
+      expect(ctx.logs.some(line => /refused the formatting/.test(line))).toBe(true)
+      expect(ctx.posts('1').find(one => one.text === '**first**').formatted).toBe(false)
     })
 
     it('refuses to share a bot with another process', async () => {

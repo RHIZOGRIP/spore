@@ -305,11 +305,20 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     const text = heard.some(message => message.replyTo) ? reply(turn) : announce({ record: turn.record, asked: heard })
     const handed = { files: turn.record.deliverables ?? [], more: turn.record.deliverablesMore ?? 0 }
     const answering = mine.at(-1)?.asked ?? null
+    const formatted = async (part, options) => {
+      try {
+        return await adapter.post(conversation, part, { ...options, markdown: true })
+      } catch (err) {
+        if (!err.context?.formatRefused) throw err
+        log(`${where(conversation)}: ${adapter.label} refused the formatting (${said(err)}), sent as plain text`)
+        return adapter.post(conversation, part, options)
+      }
+    }
     try {
       await delivery.to(conversation, async (attempt) => {
         const [first, ...rest] = pieces(text, adapter.limits.message)
-        await attempt(() => adapter.post(conversation, first, { answering }))
-        for (const part of rest) await attempt(() => adapter.post(conversation, part))
+        await attempt(() => formatted(first, { answering }))
+        for (const part of rest) await attempt(() => formatted(part, {}))
         await hand(attempt, conversation, ws, handed)
         for (const note of mine) await retire(attempt, conversation, await noteOf(note))
       })

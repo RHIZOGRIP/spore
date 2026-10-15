@@ -49,7 +49,9 @@ Write to the bot and the message goes to the spore the chat is mapped to, which 
 wrote it and where — your name and username, the private chat or the group. The bot posts
 `working…` and shows which tools run as they run. When the turn ends, the answer arrives as a new
 message replying to yours, so it notifies you however long the turn took, and `working…` is
-removed; one Telegram will no longer let the bot remove, past 48 hours, says `answered below`. How
+removed; one Telegram will no longer let the bot remove, past 48 hours, says `answered below`. The
+answer's Markdown is shown as Telegram formats it — bold, italic, code, code blocks, links, quotes;
+a heading as a bold line, a table in a monospace block — and as plain text if Telegram refuses it. How
 the turn ended is added only when it makes the answer partial — a wrap or a stop. A longer answer
 than Telegram's 4096 continues in further messages. What the turn left in `data/out/` follows as
 documents, up to the 50 a turn hands back, then a line counting the rest; a file over Telegram's

@@ -31,6 +31,9 @@ import { runService } from '@rhizogrip/spore/relay'
   however long the turn ran; `working…` is then removed, or marked `answered below` where the
   platform will not remove it. A turn nobody in the conversation started goes to the spore's
   `replyTo` default, labelled with where it came from; a `quiet` turn tells no one.
+- **The answer is formatted.** It goes to the adapter as Markdown, cut at a line under the platform's
+  limit, a code block a piece ends inside closed and opened again in the next; what the relay says
+  itself — status, notices — is plain.
 - **Commands**: `status`, `stop`, `wrap [10m]`, `extend <dimension> <amount>`, and a help line for
   anything else.
 - **Credentials stay with the service.** Every bot's credential variables are removed from the
@@ -66,13 +69,14 @@ The live part, made once the credentials are proved:
 | member | does |
 |---|---|
 | `listen({ onMessage, signal, log, sleep })` | the transport, until `signal` aborts; awaits `onMessage` before confirming a message to the platform; throws an error the platform gave for good |
-| `post(conversation, text, { answering })` | posts, as a reply to the platform's message `answering` when it is not null; answers the new message's id |
+| `post(conversation, text, { answering, markdown })` | posts, as a reply to the platform's message `answering` when it is not null, and with `markdown` rendered in the platform's own formatting; answers the new message's id |
 | `edit(conversation, note, text)` | edits a message the bot posted; an edit that changes nothing is not a failure |
 | `remove(conversation, note)` | where `can.remove` |
 | `upload(conversation, { path, mime }, caption)` | where `can.upload` |
 
 Every failure is a `SporeError` with `retryable` (a refusal is not) and `context.retryAfter` in
-seconds when the platform said how long to wait.
+seconds when the platform said how long to wait. A platform that refuses the formatting of a
+`markdown` post says so with `context.formatRefused`: the relay logs it and posts the same text plain.
 
 What `onMessage` gets, the platform normalised:
 

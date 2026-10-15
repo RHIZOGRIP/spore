@@ -6,8 +6,11 @@
 
 import { SporeError } from '@rhizogrip/spore'
 
+import { toHtml } from './format.js'
+
 const COMMAND = /^\/([a-z]+)(@\w+)?(?:\s+(.+))?$/is
 const NOT_MODIFIED = /message is not modified/
+const CANNOT_PARSE = /can't parse entities/i
 const SHAPE = '{ "token": "${TRIAGE_BOT_TOKEN}", "chats": { "<chat id>": "<spore>" } }' // eslint-disable-line no-template-curly-in-string
 
 const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
@@ -124,7 +127,14 @@ export function createAdapter ({ telegram, bot }) {
       }
     },
 
-    post: async (conversation, text, { answering = null } = {}) => (await telegram.say(Number(conversation), text, { answering })).message_id,
+    post: async (conversation, text, { answering = null, markdown = false } = {}) => {
+      try {
+        return (await telegram.say(Number(conversation), markdown ? toHtml(text) : text, { answering, html: markdown })).message_id
+      } catch (err) {
+        if (!markdown || !CANNOT_PARSE.test(err.detail ?? '')) throw err
+        throw new SporeError('Telegram refused the formatting', { type: 'TELEGRAM_FORMAT_REFUSED', detail: err.detail, context: { formatRefused: true } })
+      }
+    },
 
     edit: async (conversation, note, text) => {
       try {

@@ -150,6 +150,16 @@ describe('what of a turn reaches a conversation', () => {
     expect(pieces('x'.repeat(4106), 4096).map(piece => piece.length)).toEqual([4096, 10])
     expect(pieces('hello', 4096)).toEqual(['hello'])
   })
+
+  it('closes a code block a piece ends inside, and opens it again with its language in the next', () => {
+    const code = 'intro\n```js\n' + Array.from({ length: 6 }, (_, i) => `line ${i}`).join('\n') + '\n```\nafter'
+    expect(pieces(code, 30)).toEqual([
+      'intro\n```js\nline 0\nline 1\n```',
+      '```js\nline 2\nline 3\nline 4\n```',
+      '```js\nline 5\n```\nafter'
+    ])
+    expect(pieces('~~~\n' + 'x\n'.repeat(20) + '~~~', 20).every(piece => piece.length <= 20 && piece.startsWith('~~~') && /~~~$/.test(piece))).toBe(true)
+  })
 })
 
 describe('delivery', () => {

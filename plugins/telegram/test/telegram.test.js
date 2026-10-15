@@ -122,11 +122,12 @@ describe('the bot API', () => {
   it('answers a message as a reply to it, still sent when that message is gone, and removes one of its own', async () => {
     const asked = []
     const tg = createTelegram('t', { fetchImpl: sending(asked) })
-    await tg.say(5, 'the answer', { answering: 40 })
+    await tg.say(5, '<b>the answer</b>', { answering: 40, html: true })
     await tg.say(5, 'unprompted')
     await tg.remove(5, 41)
-    expect(asked[0].body).toMatchObject({ chat_id: 5, text: 'the answer', reply_parameters: { message_id: 40, allow_sending_without_reply: true } })
+    expect(asked[0].body).toMatchObject({ chat_id: 5, text: '<b>the answer</b>', parse_mode: 'HTML', reply_parameters: { message_id: 40, allow_sending_without_reply: true } })
     expect(asked[1].body).not.toHaveProperty('reply_parameters')
+    expect(asked[1].body).not.toHaveProperty('parse_mode')
     expect(asked[2]).toMatchObject({ url: expect.stringMatching(/deleteMessage$/), body: { chat_id: 5, message_id: 41 } })
   })
 

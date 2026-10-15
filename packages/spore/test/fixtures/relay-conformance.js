@@ -15,8 +15,9 @@
  *                                          platform's id for what was said, and the `from` the spore
  *                                          should be told
  *   seen(platform, conversation)           what was done there, in order: { op: 'post', note, text,
- *                                          answering }, { op: 'edit', note, text }, { op: 'remove',
- *                                          note }, { op: 'upload', path, caption }
+ *                                          answering, formatted }, { op: 'edit', note, text },
+ *                                          { op: 'remove', note }, { op: 'upload', path, caption };
+ *                                          `formatted` says the platform was asked to render Markdown
  *   fail(platform, op, error, times)       make `post`, `edit`, `remove` or `upload` fail
  *   retryable(retryAfter), refused(detail) the platform's errors
  *   command(verb, args)                    what a person types for a command
@@ -176,6 +177,15 @@ export function conformance (harness, platformTests = () => {}) {
         await until(() => seen('1').some(one => one.op === 'remove' && one.note === note.note))
         expect(environ).toContain('SPORE_MODEL_SOCKET=')
         for (const variable of Object.keys(harness.credentials)) expect(environ).not.toContain(variable)
+      })
+
+      it('is answered in the platform\'s formatting, while what the relay says itself stays plain', async () => {
+        reply = async () => answers('**done**, see `report.md`')
+        start()
+        say({ conversation: '1', text: 'hello' })
+        await until(() => posts('1').some(one => one.answering !== null && !WORKING.test(one.text)))
+        expect(posts('1').find(one => one.answering !== null && !WORKING.test(one.text)).formatted).toBe(true)
+        expect(notes('1')[0].formatted).toBe(false)
       })
 
       it('reaches the spore with who wrote it and where', async () => {

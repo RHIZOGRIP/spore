@@ -51,10 +51,11 @@ export function createTelegram (token, { fetchImpl = fetch, base = BASE } = {}) 
     updates: (offset, { seconds = 30, signal } = {}) =>
       call('getUpdates', { offset, timeout: seconds, allowed_updates: ['message'] }, { timeoutMs: (seconds + 15) * 1000, signal }),
 
-    say: (chat, text, { answering = null } = {}) => call('sendMessage', {
+    say: (chat, text, { answering = null, html = false } = {}) => call('sendMessage', {
       chat_id: chat,
       text,
       link_preview_options: { is_disabled: true },
+      ...(html ? { parse_mode: 'HTML' } : {}),
       ...(answering === null ? {} : { reply_parameters: { message_id: answering, allow_sending_without_reply: true } })
     }),
 
