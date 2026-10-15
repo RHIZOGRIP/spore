@@ -237,10 +237,14 @@ conformance(harness, (ctx) => {
         expect(ctx.posts(GROUP).map(one => one.text)).toEqual(['noted'])
       })
 
-      it('says when it starts that a group overhears and the bot gets only what is said to it', async () => {
-        ctx.routes({ [GROUP]: { spore: 'triage', shared: true, overhear: true } })
+      it('says when it starts, for each group, that the bot\'s privacy mode keeps mentions and what it would overhear from it', async () => {
+        ctx.routes({ [GROUP]: { spore: 'triage', shared: true, overhear: true }, '-6': { spore: 'triage', shared: true }, 1: { spore: 'triage' } })
         ctx.start({ adapter: createAdapter({ telegram: ctx.platform, bot: 'triage', me: { ...ME, can_read_all_group_messages: false } }) })
-        await ctx.until(() => ctx.logs.some(line => /^group -5 overhears, and @sporebot gets only what is said to it there: turn its privacy mode off/.test(line)))
+        await ctx.until(() => ctx.logs.filter(line => / turn its privacy mode off /.test(line)).length === 2)
+        expect(ctx.logs.filter(line => /privacy mode/.test(line)).map(line => line.split(' — ')[0])).toEqual([
+          'group -5: @sporebot gets only commands for it and replies to its messages there, no mention and nothing to overhear',
+          'group -6: @sporebot gets only commands for it and replies to its messages there, no mention'
+        ])
       })
     })
 

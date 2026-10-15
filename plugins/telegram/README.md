@@ -143,8 +143,8 @@ refused chat 148392011 (@alice) — to allow it, add "148392011": "<a spore>" to
 ```
 
 which is also how you learn your own user id: start with `"people": {}` and message the bot. A
-group the file does not name is told nothing either, when someone there mentions the bot; the log
-says the `groups` entry to add, its id negative. Where a spore's `replyTo` default is one of this
+group the file does not name is told nothing either, when someone there writes `/status@<the bot>`;
+the log says the `groups` entry to add, its id negative. Where a spore's `replyTo` default is one of this
 bot's chats, that chat is told the same line, once per chat the file does not name, so you hear of
 someone trying the bot without reading its log.
 
@@ -152,11 +152,14 @@ someone trying the bot without reading its log.
 
 A group has one spore — in a group the bot speaks as itself, so a second spore there is a second
 bot — and `people`, who may address it: user ids, or `"*"` for everyone in the group, written out.
-A message reaches the spore when it mentions the bot (`@triage_bot what failed?`), replies to one of
-its messages, or is a command for it — `/status`, or `/status@triage_bot` where several bots share
-the group; a command naming another bot is not seen. Anything else said there is not for the
-spore, and the bot's mention is not part of what the spore is told. Someone the entry does not list
-who mentions the bot gets silence, and the log gets the line that would let them in.
+A message reaches the spore when it replies to one of the bot's messages, is a command for it —
+`/status`, or `/status@triage_bot` where several bots share the group; a command naming another bot
+is not seen — or mentions the bot (`@triage_bot what failed?`). Telegram hands a bot a mention only
+with its privacy mode off — `/setprivacy` in @BotFather, then the bot added to the group again — or
+as an admin of the group; with neither, the service says so for each of its groups when it starts.
+Anything else said there is not for the spore, and the bot's mention is not part of what the spore
+is told. Someone the entry does not list who addresses the bot gets silence, and the log gets the
+line that would let them in.
 
 `/status` is for anyone listed; `/stop`, `/wrap` and `/extend` are for the people the entry names
 by id — not everyone `"*"` lets talk — and anyone else is told so.
@@ -170,10 +173,8 @@ A group can let its spore hear what is said there that is not to it:
 What the people it lists say in the group then reaches the spore as overheard: no turn starts for
 it and no answer is owed, and the next turn the spore runs reads it as what was said around it, the
 latest 100 messages at a time. It is everything they say there, kept in the spore's records and
-read by its next turn, so choose it for a group whose talk the spore should follow. Telegram gives a
-bot what is not said to it only with its privacy mode off — `/setprivacy` in @BotFather, then the
-bot added to the group again — or as an admin of the group; with neither, the service says so for
-each group that overhears when it starts.
+read by its next turn, so choose it for a group whose talk the spore should follow. It needs the
+bot's privacy mode off, or the bot an admin of the group, as a mention does.
 
 ## What it keeps
 

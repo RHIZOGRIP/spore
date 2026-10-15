@@ -173,11 +173,12 @@ export function createAdapter ({ telegram, bot, me }) {
   return {
     ...TELEGRAM,
 
-    /** Each group that overhears, said when the bot gets only what is addressed to it. */
+    /** Each group, said when the bot's privacy mode keeps mentions — and what it would overhear — from it. */
     prepare: async (table, log) => {
       if (me.can_read_all_group_messages) return
       for (const [group, { overhear }] of table) {
-        if (overhear) log(`group ${group} overhears, and @${me.username} gets only what is said to it there: turn its privacy mode off with /setprivacy in @BotFather and add it to the group again, or make it an admin of the group`)
+        if (Number(group) >= 0) continue
+        log(`group ${group}: @${me.username} gets only commands for it and replies to its messages there, no mention${overhear ? ' and nothing to overhear' : ''} — turn its privacy mode off with /setprivacy in @BotFather and add it to the group again, or make it an admin of the group`)
       }
     },
 
