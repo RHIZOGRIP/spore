@@ -9,10 +9,11 @@ import { join } from 'node:path'
 
 import { conformance } from './fixtures/relay-conformance.js'
 import { answers } from './fixtures/scripted-model.js'
-import { readInbox } from '../src/core/spore-dir.js'
+import { outbox, readInbox, readTurns } from '../src/core/spore-dir.js'
 import { SporeError } from '../src/index.js'
 import { TELEGRAM, createAdapter } from '@rhizogrip/spore-plugin-telegram/src/adapter.js'
 
+const ME = { id: 900, username: 'sporebot', can_read_all_group_messages: true }
 const OPS = { post: 'say', edit: 'revise', remove: 'remove', upload: 'document', react: 'react', typing: 'typing', updates: 'updates' }
 
 const standIn = () => {
@@ -81,7 +82,7 @@ const standIn = () => {
       sent.push({ op: 'typing', chat })
       return true
     },
-    me: async () => ({ username: 'sporebot' })
+    me: async () => ME
   }
 }
 
@@ -99,23 +100,29 @@ const harness = {
   words: (text) => text,
   formats: true,
   credentials: { TRIAGE_BOT_TOKEN: 'the-bot-token', OTHER_BOT_TOKEN: 'another-bot-token' },
-  botFile: (bot, table, fields = {}) => ({
-    token: `\${${bot.toUpperCase()}_BOT_TOKEN}`,
-    chats: Object.fromEntries(Object.entries(table).map(([chat, { spore, details, show }]) =>
-      [chat, details || show ? { spore, ...(details ? { details } : {}), ...(show ? { show } : {}) } : spore])),
-    ...fields
-  }),
+  botFile: (bot, table, fields = {}) => {
+    const entries = Object.entries(table)
+    const people = entries.filter(([, entry]) => !entry.shared).map(([chat, { spore, details, show }]) =>
+      [chat, details || show ? { spore, ...(details ? { details } : {}), ...(show ? { show } : {}) } : spore])
+    const groups = entries.filter(([, entry]) => entry.shared).map(([chat, { spore, details, show, people = [`9${-chat}`, '*'], overhear }]) =>
+      [chat, { spores: [spore], people, ...(details ? { details } : {}), ...(show ? { show } : {}), ...(overhear ? { overhear } : {}) }])
+    return { token: `\${${bot.toUpperCase()}_BOT_TOKEN}`, people: Object.fromEntries(people), groups: Object.fromEntries(groups), ...fields }
+  },
+  shared: (n) => `-${n}`,
   platform: standIn,
-  adapter: (telegram, bot) => createAdapter({ telegram, bot }),
-  say (telegram, { conversation, text, files = 0, id, shared = false }) {
+  adapter: (telegram, bot) => createAdapter({ telegram, bot, me: ME }),
+  say (telegram, { conversation, text, files = 0, id, shared = false, person = shared ? `9${-conversation}` : conversation }) {
+    const mention = shared && text !== null && !text.startsWith('/')
+    const written = mention ? `@${ME.username} ${text}` : text
     const update = id === undefined
       ? {
           update_id: ++telegram.lastUpdate,
           message: {
             message_id: ++telegram.lastMessage,
             chat: shared ? { id: Number(conversation), type: 'group', title: `group ${conversation}` } : { id: Number(conversation), type: 'private' },
-            from: { id: Number(conversation), first_name: `U${conversation}`, username: `u${conversation}` },
-            ...(text === null ? {} : files ? { caption: text } : { text }),
+            from: { id: Number(person), first_name: `U${person}`, username: `u${person}` },
+            ...(text === null ? {} : files ? { caption: written } : { text: written }),
+            ...(mention ? { [files ? 'caption_entities' : 'entities']: [{ type: 'mention', offset: 0, length: ME.username.length + 1 }] } : {}),
             ...(files ? { photo: [{ file_id: 'p' }] } : {})
           }
         }
@@ -125,7 +132,7 @@ const harness = {
     return {
       id: update.update_id,
       message: update.message.message_id,
-      from: { name: `U${conversation} (@u${conversation})`, id: `telegram:${conversation}`, where: shared ? `the Telegram group "group ${conversation}"` : 'a private chat on Telegram' }
+      from: { name: `U${person} (@u${person})`, id: `telegram:${person}`, where: shared ? `the Telegram group "group ${conversation}"` : 'a private chat on Telegram' }
     }
   },
   seen: (telegram, conversation) => telegram.sent.filter(one => String(one.chat) === conversation).map(said),
@@ -173,6 +180,68 @@ conformance(harness, (ctx) => {
       await ctx.until(() => ctx.posted('1', '**first**'))
       expect(ctx.logs.some(line => /refused the formatting/.test(line))).toBe(true)
       expect(ctx.posts('1').find(one => one.text === '**first**').formatted).toBe(false)
+    })
+
+    describe('in a group', () => {
+      const GROUP = '-5'
+      const write = (message, person = '41') => {
+        const update = {
+          update_id: ++ctx.platform.lastUpdate,
+          message: { message_id: ++ctx.platform.lastMessage, chat: { id: Number(GROUP), type: 'group', title: 'ops' }, from: { id: Number(person), first_name: `U${person}` }, ...message }
+        }
+        ctx.platform.push(update)
+        return update.message
+      }
+      const mentioning = (text) => ({ text: `@sporebot ${text}`, entities: [{ type: 'mention', offset: 0, length: 9 }] })
+
+      it('reaches the spore only when said to it — a mention, a reply to the bot, a command — and never as a command naming another bot', async () => {
+        ctx.routes({ [GROUP]: { spore: 'triage', shared: true } })
+        ctx.start()
+        write({ text: 'lunch at noon?' })
+        write({ text: '/status@otherbot' })
+        write(mentioning('what failed?'))
+        await ctx.until(() => ctx.posted(GROUP, 'hello back'))
+        const answer = ctx.posts(GROUP).find(one => one.text === 'hello back')
+        await ctx.idle(1)
+        write({ text: 'and now?', reply_to_message: { message_id: answer.note, from: { id: 900 } } })
+        await ctx.until(() => ctx.posts(GROUP).filter(one => one.text === 'hello back').length === 2)
+        write({ text: '/status@sporebot' })
+        await ctx.until(() => ctx.posts(GROUP).some(one => /^spore · /.test(one.text)))
+        expect(readInbox(ctx.ws).map(entry => [entry.text, entry.overheard])).toEqual([['what failed?', false], ['and now?', false]])
+        expect(ctx.posts(GROUP)).toHaveLength(3)
+      })
+
+      it('gives a spore that overhears what its people say there and not to it, starting no turn and owing no answer', async () => {
+        let input = null
+        ctx.replying(async (given) => { input = JSON.stringify(given); return answers('noted') })
+        ctx.routes({ [GROUP]: { spore: 'triage', shared: true, people: ['41'], overhear: true } })
+        ctx.start()
+        write({ text: 'lunch at noon?' })
+        write({ text: 'count me in' }, '42')
+        write({ text: 'sticker' }, '41')
+        await ctx.until(() => readInbox(ctx.ws).length === 2)
+        await new Promise(resolve => setTimeout(resolve, 300))
+        expect(readTurns(ctx.ws)).toEqual([])
+        write(mentioning('what did we say?'))
+        await ctx.until(() => ctx.posted(GROUP, 'noted'))
+        expect(readInbox(ctx.ws).map(entry => [entry.text, entry.overheard, entry.fromId, entry.replyTo])).toEqual([
+          ['lunch at noon?', true, 'telegram:41', null],
+          ['sticker', true, 'telegram:41', null],
+          ['what did we say?', false, 'telegram:41', `telegram:triage/${GROUP}`]
+        ])
+        expect(input).toContain('Overheard: said in the conversation, not to you')
+        expect(input).toContain('lunch at noon?')
+        expect(input).not.toContain('count me in')
+        await ctx.until(() => outbox(ctx.ws)[0]?.state === 'delivered')
+        expect(outbox(ctx.ws).map(entry => [entry.recipient, entry.answers])).toEqual([[`telegram:triage/${GROUP}`, [3]]])
+        expect(ctx.posts(GROUP).map(one => one.text)).toEqual(['noted'])
+      })
+
+      it('says when it starts that a group overhears and the bot gets only what is said to it', async () => {
+        ctx.routes({ [GROUP]: { spore: 'triage', shared: true, overhear: true } })
+        ctx.start({ adapter: createAdapter({ telegram: ctx.platform, bot: 'triage', me: { ...ME, can_read_all_group_messages: false } }) })
+        await ctx.until(() => ctx.logs.some(line => /^group -5 overhears, and @sporebot gets only what is said to it there: turn its privacy mode off/.test(line)))
+      })
     })
 
     it('refuses to share a bot with another process', async () => {

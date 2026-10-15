@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 8;
+pub const SCHEMA_VERSION: i64 = 9;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -71,6 +71,7 @@ CREATE TABLE t_inbox (
   fromId       TEXT,
   fromWhere    TEXT CHECK ((fromName IS NULL) = (fromId IS NULL) AND (fromName IS NULL) = (fromWhere IS NULL)
                            AND (fromName IS NULL OR (schedule IS NULL AND hook IS NULL AND job IS NULL))),
+  overheard    INTEGER NOT NULL DEFAULT 0 CHECK (overheard IN (0, 1) AND (overheard = 0 OR (fromName IS NOT NULL AND replyTo IS NULL))),
   UNIQUE (schedule, due),
   CHECK ((schedule IS NULL) = (due IS NULL)),
   CHECK ((hook IS NULL) = (hookDelivery IS NULL)),
@@ -192,7 +193,7 @@ CREATE VIEW inbox AS
   SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
          i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
          i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
-         i.fromName, i.fromId, i.fromWhere,
+         i.fromName, i.fromId, i.fromWhere, i.overheard,
          i.inboxNo <= w.inboxConsumed AS consumed,
          EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
     FROM t_inbox i, t_workspace w;
@@ -289,7 +290,7 @@ CREATE VIEW outbox AS
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 7] = [
+const MIGRATIONS: [(i64, &str); 8] = [
     (
         1,
         r#"
@@ -435,6 +436,22 @@ CREATE VIEW inbox AS
          i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
          i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
          i.fromName, i.fromId, i.fromWhere,
+         i.inboxNo <= w.inboxConsumed AS consumed,
+         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
+    FROM t_inbox i, t_workspace w;
+"#,
+    ),
+    (
+        8,
+        r#"
+ALTER TABLE t_inbox ADD COLUMN overheard INTEGER NOT NULL DEFAULT 0 CHECK (overheard IN (0, 1) AND (overheard = 0 OR (fromName IS NOT NULL AND replyTo IS NULL)));
+
+DROP VIEW inbox;
+CREATE VIEW inbox AS
+  SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
+         i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
+         i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
+         i.fromName, i.fromId, i.fromWhere, i.overheard,
          i.inboxNo <= w.inboxConsumed AS consumed,
          EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
     FROM t_inbox i, t_workspace w;
@@ -650,7 +667,7 @@ enum Kind {
 }
 
 /// What an inbox entry may say, by column. `inboxNo` is the database's to give.
-const INBOX_COLUMNS: [(&str, Kind); 21] = [
+const INBOX_COLUMNS: [(&str, Kind); 22] = [
     ("at", Kind::Text),
     ("text", Kind::Text),
     ("bodyPath", Kind::Text),
@@ -672,6 +689,7 @@ const INBOX_COLUMNS: [(&str, Kind); 21] = [
     ("fromName", Kind::Text),
     ("fromId", Kind::Text),
     ("fromWhere", Kind::Text),
+    ("overheard", Kind::Flag),
 ];
 
 /// What a turn record carries into its row. `turnNo` and `inboxFrom` are finalization's to
@@ -780,6 +798,14 @@ pub fn append_inbox(ws: &Path, entry: &str) -> Result<(i64, bool), String> {
     origin_of(&record)?;
     if let Some(reply_to) = record.get::<String>("replyTo") {
         check_reply_to(&reply_to)?;
+    }
+    if record.get::<bool>("overheard") == Some(true)
+        && (!record.has("fromName") || record.has("replyTo"))
+    {
+        return Err(
+            "an overheard entry says who said it and where, and has no reply-to: it asked nothing"
+                .into(),
+        );
     }
     let row = columns(&record, &INBOX_COLUMNS, &[])?;
     let request_id = record.get::<String>("requestId");
@@ -1175,11 +1201,12 @@ pub fn inbox_consumed(ws: &Path) -> Result<i64, String> {
     })
 }
 
-/// Whether anything has been said past where the last turn stopped reading.
+/// Whether anything has been said past where the last turn stopped reading that a turn answers:
+/// what was overheard starts none.
 pub fn unread(ws: &Path) -> Result<bool, String> {
     reading(ws, false, |conn| {
         conn.query_row(
-            "SELECT EXISTS (SELECT 1 FROM inbox WHERE NOT consumed AND NOT setAside)",
+            "SELECT EXISTS (SELECT 1 FROM inbox WHERE NOT consumed AND NOT setAside AND NOT overheard)",
             [],
             |row| row.get(0),
         )
@@ -1191,7 +1218,7 @@ pub fn unread(ws: &Path) -> Result<bool, String> {
 pub fn unanswered_traceparents(ws: &Path) -> Result<Vec<String>, String> {
     reading(ws, Vec::new(), |conn| {
         let mut statement = conn.prepare(
-            "SELECT traceparent FROM inbox WHERE NOT consumed AND NOT setAside AND traceparent IS NOT NULL ORDER BY inboxNo",
+            "SELECT traceparent FROM inbox WHERE NOT consumed AND NOT setAside AND NOT overheard AND traceparent IS NOT NULL ORDER BY inboxNo",
         )?;
         let rows = statement.query_map([], |row| row.get(0))?;
         rows.collect()
@@ -1822,8 +1849,9 @@ fn finalize_row(
 
 /// The turn's answer, addressed: one outbox entry per place the messages it read in
 /// `(from, to]` asked from, and its default for those that asked from none — unless it ended
-/// `quiet`, which chose to say nothing to anyone who did not ask. `terminal` is delivered as it
-/// is written: the terminal that asked follows the turn itself.
+/// `quiet`, which chose to say nothing to anyone who did not ask. What was overheard asked
+/// nothing, and is owed nothing. `terminal` is delivered as it is written: the terminal that
+/// asked follows the turn itself.
 fn address(tx: &Connection, turn: &str, from: i64, to: i64) -> Result<(), String> {
     let failed = failed_to("address the turn's answer");
     let (stop_reason, reply_default): (Option<String>, Option<String>) = tx
@@ -1837,7 +1865,8 @@ fn address(tx: &Connection, turn: &str, from: i64, to: i64) -> Result<(), String
         let mut statement = tx
             .prepare(
                 "SELECT inboxNo, replyTo FROM t_inbox
-                  WHERE inboxNo > ?1 AND inboxNo <= ?2 AND inboxNo NOT IN (SELECT inboxNo FROM t_set_aside)
+                  WHERE inboxNo > ?1 AND inboxNo <= ?2 AND NOT overheard
+                    AND inboxNo NOT IN (SELECT inboxNo FROM t_set_aside)
                   ORDER BY inboxNo",
             )
             .map_err(&failed)?;
@@ -3783,6 +3812,42 @@ mod tests {
             )["marked"],
             json!("2,4,6")
         );
+    }
+
+    #[test]
+    fn takes_what_was_overheard_as_asking_nothing_so_no_turn_starts_for_or_answers_it() {
+        let ws = scratch("overheard");
+        let overheard = |at: &str| {
+            json!({ "at": at, "text": "x", "overheard": true, "fromName": "Bob", "fromId": "telegram:2", "fromWhere": "the Telegram group \"ops\"" })
+                .to_string()
+        };
+        append_inbox(&ws, &overheard("a")).unwrap();
+        assert!(!unread(&ws).unwrap());
+        append_inbox(
+            &ws,
+            &json!({ "at": "b", "text": "x", "replyTo": "telegram:main/-5", "traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01" })
+                .to_string(),
+        )
+        .unwrap();
+        append_inbox(&ws, &overheard("c")).unwrap();
+        assert!(unread(&ws).unwrap());
+        assert_eq!(unanswered_traceparents(&ws).unwrap().len(), 1);
+
+        answered(&ws, Some("discord:ops/1"), &[], "answer");
+        assert_eq!(
+            entries(&ws),
+            [("telegram:main/-5".into(), json!([2]), "pending".into())]
+        );
+        assert!(!unread(&ws).unwrap());
+
+        for refused in [
+            json!({ "at": "d", "text": "x", "overheard": true }),
+            json!({ "at": "d", "text": "x", "overheard": true, "fromName": "Bob", "fromId": "telegram:2", "fromWhere": "a group", "replyTo": "telegram:main/-5" }),
+        ] {
+            assert!(append_inbox(&ws, &refused.to_string())
+                .unwrap_err()
+                .contains("overheard"));
+        }
     }
 
     #[test]

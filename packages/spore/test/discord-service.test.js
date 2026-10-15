@@ -146,21 +146,22 @@ const harness = {
   formats: false,
   botFile: (bot, table, fields = {}) => ({
     token: bot === 'triage' ? '${DISCORD_BOT_TOKEN}' : '${OTHER_BOT_TOKEN}', // eslint-disable-line no-template-curly-in-string
-    channels: Object.fromEntries(Object.entries(table).map(([channel, { spore, details, show }]) =>
-      [channel, { spores: [spore], people: ['*'], ...(details ? { details } : {}), ...(show ? { show } : {}) }])),
+    channels: Object.fromEntries(Object.entries(table).map(([channel, { spore, details, show, people = [`9${channel}`, '*'] }]) =>
+      [channel, { spores: [spore], people, ...(details ? { details } : {}), ...(show ? { show } : {}) }])),
     ...fields
   }),
+  shared: (n) => String(n),
   platform: standIn,
   adapter: (discord, bot, botFile) => createAdapter({ discord, me: { id: '900', username: 'sporebot' }, botFile }),
-  say (discord, { conversation, text, files = 0, id }) {
+  say (discord, { conversation, text, files = 0, id, person = `9${conversation}` }) {
     const d = id === undefined
-      ? said(discord, { channel: conversation, author: `9${conversation}`, content: text === null ? `<@&${ROLES.triage}>` : `<@&${ROLES.triage}> ${text}`, roles: [ROLES.triage], files })
+      ? said(discord, { channel: conversation, author: person, content: text === null ? `<@&${ROLES.triage}>` : `<@&${ROLES.triage}> ${text}`, roles: [ROLES.triage], files })
       : discord.delivered.get(id)
     if (id !== undefined) discord.deliver(d)
     return {
       id: d.id,
       message: d.id,
-      from: { name: `U9${conversation}`, id: `discord:9${conversation}`, where: `the Discord channel "#chan-${conversation}"` }
+      from: { name: `U${person}`, id: `discord:${person}`, where: `the Discord channel "#chan-${conversation}"` }
     }
   },
   seen,

@@ -20,6 +20,7 @@ import { announce, leftOut, pieces, render, reply, statusText, track, unpassed, 
 import { loadState, saveState } from './state.js'
 
 const TAKES_ARGUMENTS = new Set(['extend', 'wrap'])
+const OPERATING = new Set(['stop', 'wrap', 'extend'])
 const WORKING = 'working…'
 const STILL_WORKING = 'heard you — still working…'
 const ANSWERED = 'answered below'
@@ -39,6 +40,26 @@ const firstLine = (text) => text.split('\n')[0].slice(0, 200)
 /** Whether `people` — ids, `role:<id>` and `*` — lets `person` address the spores. */
 const admits = (people, person) =>
   people.includes('*') || people.includes(person.id) || person.groups.some(group => people.includes(`role:${group}`))
+
+/**
+ * What a message is to the spores its conversation reaches, decided in one place: `pass`, said to
+ * them; `overhear`, given to them as said around them, where the routing overhears; or dropped at
+ * the gate named — `unaddressed`, a message naming none of them, and `unlisted`, from someone the
+ * routing's people do not name. Only someone who may address a spore is overheard by it.
+ */
+const admission = (message, routed) => {
+  if (message.spore !== null) return 'pass'
+  const listed = routed.people === null || admits(routed.people, message.person)
+  if (message.addresses?.length === 0) return listed && routed.overhear ? 'overhear' : 'unaddressed'
+  return listed ? 'pass' : 'unlisted'
+}
+
+/**
+ * Whether the person may stop, wrap or extend a turn: anyone in a conversation of their own, and in
+ * one many people share, someone its people name by id or role — not everyone `*` lets talk.
+ */
+const operates = (message, routed) =>
+  !message.shared || routed.people === null || admits(routed.people.filter(who => who !== '*'), message.person)
 
 export function createRelay ({ adapter, botFile, statePath, env, log, configFile = CONFIG_FILE, sleep = pause, editEveryMs = adapter.limits.editEveryMs, typingEveryMs = adapter.limits.typingEveryMs, followEveryMs = 1000 }) {
   const { kind, noun } = adapter
@@ -174,6 +195,9 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     return true
   }
 
+  const requestOf = (message, name) => `${kind}:${message.id}${message.addresses ? `:${name}` : ''}`
+  const fromOf = (message) => ({ name: message.person.name, id: `${kind}:${message.person.id}`, where: message.where })
+
   /**
    * `show` is the conversation's, or, where the bot file leaves it, the platform's own for a
    * conversation many people share (`showShared`), and `working` for one with a single person, who
@@ -188,9 +212,9 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     let sent
     try {
       sent = send(ws, aside ? `${message.text}\n\n${aside}` : message.text, {
-        requestId: `${kind}:${message.id}${message.addresses ? `:${name}` : ''}`,
+        requestId: requestOf(message, name),
         replyTo: `${prefix}${conversation}`,
-        from: { name: message.person.name, id: `${kind}:${message.person.id}`, where: message.where },
+        from: fromOf(message),
         env: sendEnv()
       })
     } catch (err) {
@@ -217,6 +241,16 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       }))
   }
 
+  /** Said around the spore and not to it: in its inbox for the next turn, which starts for it no sooner and owes it nothing. */
+  const overhear = (message, name, ws) => {
+    if (message.text === null) return
+    try {
+      send(ws, message.text, { requestId: requestOf(message, name), from: fromOf(message), overheard: true })
+    } catch (err) {
+      log(`${where(message.conversation)}: what ${message.person.name} said was not given to ${name} — ${err.type} ${said(err)}`)
+    }
+  }
+
   /**
    * Someone in a conversation the bot file does not name is told nothing; the bot's owner is told,
    * once per conversation while the service runs, in each conversation of this bot that a spore's
@@ -234,9 +268,11 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
 
   /**
    * A conversation the bot file does not name: the line that would let it in, logged and told to the
-   * owner — or nothing, where the platform shows the bot conversations that are none of its business.
+   * owner — or nothing, where the platform shows the bot conversations that are none of its business,
+   * and for what was not said to the bot at all.
    */
   const unnamed = (message, read) => {
+    if (message.addresses?.length === 0) return
     const refused = adapter.refusal(message, botFile)
     if (refused === null) return
     log(refused)
@@ -253,33 +289,40 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     }
     const routed = read.table.get(conversation)
     if (!routed) return unnamed(message, read)
+    const gate = admission(message, routed)
+    if (gate === 'unaddressed') return
+    const allow = `add "${message.person.id}" to its people in ${botFile}`
+    if (gate === 'unlisted') return log(`refused ${message.person.name} (${message.person.id}) in ${where(conversation)} — to allow them, ${allow}`)
 
     const reached = []
-    for (const name of message.addresses ?? routed.spores) {
+    for (const name of message.addresses?.length ? message.addresses : routed.spores) {
       let ws
       try {
         ws = sporeOf(name, read.config)
       } catch (err) {
         log(`${where(conversation)}: "${name}" — ${said(err)}`)
-        tell(conversation, `this ${noun} points at "${name}", which is not a spore name — tell whoever runs me`, name)
+        if (gate === 'pass') tell(conversation, `this ${noun} points at "${name}", which is not a spore name — tell whoever runs me`, name)
         continue
       }
       if (!ws) {
         log(`${where(conversation)}: no spore "${name}"`)
-        tell(conversation, `there is no spore called "${name}" — tell whoever runs me`, name)
+        if (gate === 'pass') tell(conversation, `there is no spore called "${name}" — tell whoever runs me`, name)
         continue
       }
       reached.push({ name, ws })
     }
+    if (gate === 'overhear') return reached.forEach(({ name, ws }) => overhear(message, name, ws))
     if (!reached.length) return
-    if (message.spore === null && routed.people !== null && !admits(routed.people, message.person)) {
-      return log(`refused ${message.person.name} (${message.person.id}) in ${where(conversation)} — to allow them, add "${message.person.id}" to its people in ${botFile}`)
-    }
 
     const [first] = reached
     if (message.text === null) return tell(conversation, 'only text reaches a spore for now', first.name)
     if (message.command && reached.length === 1 && (!message.command.args || TAKES_ARGUMENTS.has(message.command.verb))) {
-      return obey(conversation, first.ws, first.name, message.command.verb, message.command.args)
+      const { verb } = message.command
+      if (OPERATING.has(verb) && !operates(message, routed)) {
+        log(`refused ${verb} from ${message.person.name} (${message.person.id}) in ${where(conversation)} — only someone its people name may ${verb} a turn: ${allow}`)
+        return tell(conversation, `only the people this ${noun} lists may ${verb} a turn`, first.name)
+      }
+      return obey(conversation, first.ws, first.name, verb, message.command.args)
     }
     for (const { name, ws } of reached) pass(message, name, ws, read)
     if (message.files) tell(conversation, unpassed(message.files, reached.map(one => one.name)), first.name)

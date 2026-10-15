@@ -52,6 +52,10 @@ export const CHATGPT_HELPER = createRequire(import.meta.url).resolve('mohdel/cha
  * and with none running it waits for the next turn something else starts. The webhook service
  * says a delivery so once a hook has started its hourly share of turns.
  *
+ * `overheard: true` is a message said where the spore is and not to it — in a group, beside its
+ * addressed messages. It starts nothing and is owed no answer, so it needs `from` and takes no
+ * `replyTo`; whatever turn comes next reads it as what was said around it.
+ *
  * `requestId` makes sending again safe for a sender that may lose track — a relay restarting
  * over updates it already passed on: the message is taken once, and `repeated` says this was
  * the second time. One a finished turn has already read starts nothing, since there is nothing
@@ -60,10 +64,11 @@ export const CHATGPT_HELPER = createRequire(import.meta.url).resolve('mohdel/cha
  *
  * @returns {{ ws: string, started: boolean, pid: number|null, inbox: number, repeated: boolean }}
  */
-export function send (ws, message, { attach = [], schedule, hook, from, traceparent, requestId, replyTo, start: starting = true, unsafe = false, debug = false, env = process.env } = {}) {
+export function send (ws, message, { attach = [], schedule, hook, from, traceparent, requestId, replyTo, overheard = false, start: starting = true, unsafe = false, debug = false, env = process.env } = {}) {
   const workspace = resolve(ws)
   const known = requestId === undefined ? null : inboxRequest(workspace, requestId)
   if (known?.consumed) return { ws: workspace, started: false, pid: null, inbox: known.inboxNo, repeated: true }
+  if (overheard) return { ws: workspace, started: false, pid: null, ...enqueue(workspace, message, { attach, from, traceparent, requestId, replyTo, overheard }) }
   if (!starting) return { ws: workspace, started: false, pid: null, ...enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo }) }
   // The slot is released on every path out, a failed append included: a caller that lives
   // on — a TUI, a relay — would otherwise hold it until it exits.

@@ -51,7 +51,7 @@ and [§A service in front of many spores](../INTEGRATION.md#a-service-in-front-o
 
 ```
 send(ws, text, { attach = [], requestId, replyTo, from, traceparent, start = true, env,
-                 schedule, hook, unsafe = false, debug = false })
+                 overheard = false, schedule, hook, unsafe = false, debug = false })
 → { ws, started, pid, inbox, repeated }
 ```
 
@@ -70,6 +70,9 @@ position, `started` says whether this call started a turn, `pid` is the runner's
   line above the text. Not with `schedule` or `hook`, which say what spoke when no person did.
 - `traceparent`: a W3C trace context the turn is traced under.
 - `start: false`: says the message and starts nothing.
+- `overheard: true`: a message said where the spore is and not to it — in a group, around what is
+  addressed to it. It starts nothing, no turn answers it, and the next turn reads it as context,
+  with who said it and where; it takes `from` and no `replyTo`.
 - `env`: the environment the runner starts with.
 - `schedule` (`{ name, due }`) and `hook` (`{ name, delivery, event? }`): record the message as
   said by the clock or by a webhook, as `tick` and the webhook service do.
@@ -113,7 +116,8 @@ The inbox entries with `inboxNo` in `(after, upto]`, every one past `after` when
 in order. An entry carries `inboxNo`, `at`, `text` or a `bodyPath` with `bodyBytes`, `bodyHead`
 and `bodyTail`, `files`, `schedule`, `due`, `hook`, `hookEvent`, `hookDelivery`, `job`,
 `jobEvent`, `jobRun`, `traceparent`, `requestId`, `replyTo`, `fromName`, `fromId`, `fromWhere`,
-`consumed` (a finished turn has read it) and `setAside` (no turn will).
+`overheard` (said around the spore, not to it), `consumed` (a finished turn has read it) and
+`setAside` (no turn will).
 
 ### `setAside`
 

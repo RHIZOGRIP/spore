@@ -6,7 +6,7 @@
  *
  * `spec` is the adapter's description of its file: `kind`, the `fields` it takes, which of them
  * are `credentials`, an `example` of a first file, and `routes(raw, path)`, which reads the routing
- * into conversation → `{ spores, details, show }` and refuses what it cannot read.
+ * into conversation → `{ spores, details, show, people, overhear }` and refuses what it cannot read.
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
@@ -55,7 +55,7 @@ export function readBot (spec, path) {
   }
   const unknown = Object.keys(raw).filter(key => !spec.fields.includes(key))
   if (unknown.length) {
-    throw new SporeError(`${path} has a field spore does not know — ${unknown.join(', ')}`, { type: typeOf(spec, 'BOT_INVALID'), detail: `a bot has ${spec.fields.join(', ')}` })
+    throw new SporeError(`${path} has a field spore does not know — ${unknown.join(', ')}`, { type: typeOf(spec, 'BOT_INVALID'), detail: `a bot has ${spec.fields.join(', ')}, as ${spec.example}` })
   }
   for (const field of spec.credentials) {
     if (typeof raw[field] !== 'string' || !VARIABLE.test(raw[field])) {

@@ -59,8 +59,11 @@ lists what there is to read and `.schema turns` shows one:
 - `inbox` — everything said to you, by `inboxNo`: `text` (or `bodyPath` for a long one),
   `files`, `schedule` and `due` when the clock said it, `hook`, `hookEvent` and `hookDelivery`
   when a webhook did, `replyTo` (where the answer to it goes: `terminal`, or a place such as
-  `telegram:main/42`), `consumed` once a finished turn has read it, and `setAside` for one its
-  sender stopped before any turn read it — no turn reads or answers that one.
+  `telegram:main/42`), `fromName`, `fromId` and `fromWhere` when a person said it, `consumed` once
+  a finished turn has read it, and `setAside` for one its sender stopped before any turn read it —
+  no turn reads or answers that one. `overheard` marks what was said where you are and not to you,
+  in a group: you are handed it as a block headed `[Overheard: …]`, the latest 100 at a time, and
+  owe it no answer; the rest are here.
 - `transcript` — this conversation, every entry by `entryNo`: `at`, `role`, and `message`, the
   message itself as JSON. An entry of `kind` `compaction` is where earlier turns were
   summarized; the entries before it are still there. How much of the past you are shown word

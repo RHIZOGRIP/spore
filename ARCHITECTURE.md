@@ -620,6 +620,17 @@ mark is made only while no runner holds the workspace, inside the write that che
 running turn has read is known when it ends, and a message it read is answered, never set aside. A
 relay's `stop` is what sets aside, up to the last message of that conversation it passed.
 
+**What was overheard asks nothing** (`overheard` on the entry, `send`'s `overheard: true`): a
+message said where the spore is and not to it — in a group, around what is addressed to it. It is
+written with who said it and where and no `replyTo`, the schema refusing either way round, and it
+starts no turn and is owed no answer: `unread`, `address`, `readInboxFrom`'s `person`,
+`turnsSince`'s `asked`, `log` and `show` all pass over it. The next turn that runs reads it as
+context, a run of them one block in the runtime's voice, a line each with the name, the place and
+the text quoted — said in a group by anyone its routing lets in, so nothing in it may pass for the
+runtime or for someone addressing the spore. A read hands on the latest `OVERHEARD_KEPT` (100);
+the rest stay in the inbox, marked, where `$SPORE_SQL` reads them. A flag on the entry, not a mark
+beside it as set-aside is, since it is what the message was when it was said.
+
 **Who said a message is data on its entry, never words in its text.** A relay that hears a
 person passes `send`'s `from`, `{ name, id, where }`, and the entry keeps it as `fromName`,
 `fromId` and `fromWhere`: all three or none, and never beside a `schedule`, `hook` or `job`, which
@@ -1800,13 +1811,20 @@ did not arrive. A held delivery carries no reply-to: nobody typed it.
 per bot, read on every message; the path from a message to `send` with its `from`; the `working…`
 message and the calls at work, or a reaction and the platform's typing; the answer as a new
 message replying to the question; commands;
-the outbox drained and settled; a restart from saved cursors. A connector is its adapter — the
-transport, the platform's API, what it calls a conversation and a person — and passes the
-conformance suite (`test/fixtures/relay-conformance.js`) against its fake platform
-(`docs/relay.md`). Telegram's is `plugins/telegram/src/adapter.js`, Discord's
-`plugins/discord/src/adapter.js`: several spores to a channel, each reached when addressed and
-speaking under its own name through the channel's webhook, which cannot reply — so an answer
-opens with whom it answers.
+the outbox drained and settled; a restart from saved cursors. What a message is to the spores is
+one decision, `admission`: said to them, overheard by them where the routing overhears, or dropped
+at a named gate — not addressed, or from someone the routing's `people` do not name, which is
+logged with the line to add. In a conversation many people share, stopping, wrapping or extending
+a turn is for those its `people` name, not everyone `"*"` lets talk. A connector is its adapter —
+the transport, the platform's API, what it calls a conversation and a person, and whether a
+message addresses a spore — and passes the conformance suite (`test/fixtures/relay-conformance.js`)
+against its fake platform (`docs/relay.md`). Telegram's is `plugins/telegram/src/adapter.js`:
+private chats under `people`, groups under `groups` with one spore each, since a bot speaks in a
+group as itself, reached by a mention of the bot, a reply to it or a command, and overhearing the
+rest where the group says so. Discord's is `plugins/discord/src/adapter.js`: several spores to a
+channel, each reached when addressed and speaking under its own name through the channel's
+webhook, which cannot reply — so an answer opens with whom it answers; it overhears nothing, since
+its spores read a channel's history themselves.
 
 **Journal mode.** A file is in WAL mode while a writer holds it and in rollback mode when none
 does, with `synchronous=FULL`, foreign keys on every connection, and a 5 s busy timeout on

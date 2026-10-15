@@ -14,6 +14,6 @@ await runService({
   open: async ({ bot, credentials }) => {
     const telegram = createTelegram(credentials.token)
     const me = await telegram.me()
-    return { adapter: createAdapter({ telegram, bot }), who: `@${me.username}` }
+    return { adapter: createAdapter({ telegram, bot, me }), who: `@${me.username}` }
   }
 })

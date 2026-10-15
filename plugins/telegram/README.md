@@ -8,7 +8,7 @@ no `spore plugin allow`: `spore service` offers it once it is installed.
 npm i -g @rhizogrip/spore-plugin-telegram
 echo 'TRIAGE_BOT_TOKEN=…' >> ~/.config/spore/environment     # from @BotFather; it never reaches a spore
 mkdir -p ~/.config/spore/telegram
-echo '{"token": "${TRIAGE_BOT_TOKEN}", "chats": {"148392011": "triage"}}' > ~/.config/spore/telegram/triage.json
+echo '{"token": "${TRIAGE_BOT_TOKEN}", "people": {"148392011": "triage"}}' > ~/.config/spore/telegram/triage.json
 spore service define telegram@triage && spore service start telegram@triage
 ```
 
@@ -19,9 +19,9 @@ cannot read, or while another process reads the same bot's updates.
 ## One bot per file
 
 Each bot is a file, `~/.config/spore/telegram/<bot>.json`, and a service instance of its
-own, `telegram@<bot>`: its name, its avatar, its token, its chats and its state. A spore that
-should have a face of its own on Telegram gets its own bot. One bot may still reach several
-spores, and one spore may be reached through several bots. A chat of a bot is
+own, `telegram@<bot>`: its name, its avatar, its token, its people and groups, and its state. A
+spore that should have a face of its own on Telegram gets its own bot. One bot may still reach
+several spores, and one spore may be reached through several bots. A chat of a bot is
 `telegram:<bot>/<chat id>` wherever spore names a place an answer goes. No bot's token is
 passed to a spore's runner.
 
@@ -45,8 +45,9 @@ passed to a spore's runner.
 
 ## A turn in a chat
 
-Write to the bot and the message goes to the spore the chat is mapped to, which is told who
-wrote it and where — your name and username, the private chat or the group. The bot posts
+Write to the bot in private and the message goes to the spore your id is mapped to; in a group,
+mention it or reply to it (below). The spore is told who wrote it and where — your name and
+username, the private chat or the group. The bot posts
 `working…` and shows which tools run as they run. When the turn ends, the answer arrives as a new
 message replying to yours, so it notifies you however long the turn took, and `working…` is
 removed; one Telegram will no longer let the bot remove, past 48 hours, says `answered below`. The
@@ -93,10 +94,19 @@ A turn started with `spore send` is shown only there; no chat is told.
 
 ## The allow-list is the routing
 
-A bot's `chats` say which chats may talk to it and which spore each reaches, as
-`{ "<chat id>": "<spore>" }`. They are read on every message and followed as they change, so
-a chat is added, moved or removed by editing a line. It lives beside `config.json` and
-`sources.json`. Spores cannot read or change it.
+A bot's `people` say who may talk to it in private and which spore each reaches, as
+`{ "<user id>": "<spore>" }` — a private chat's id is its person's. Its `groups` say which groups
+it serves, each with its spore and who there may address it:
+
+```json
+{ "token": "${TRIAGE_BOT_TOKEN}",
+  "people": { "148392011": "triage" },
+  "groups": { "-1001234567": { "spores": ["triage"], "people": ["148392011", "*"] } } }
+```
+
+Both are read on every message and followed as they change, so a person or a group is added,
+moved or removed by editing a line. The file lives beside `config.json` and `sources.json`. Spores
+cannot read or change it.
 
 While a turn works, its chat is shown what kind of call ran — `reading a file`, `running a
 command`, `asking forgejo` by the source's name, a run of the same one counted, a slow one
@@ -104,12 +114,12 @@ timed, a command that exited non-zero given its exit code, a call that failed ma
 machine, and a command line or a path is yours. A chat can ask for the calls themselves:
 
 ```json
-{ "token": "${TRIAGE_BOT_TOKEN}", "chats": { "148392011": { "spore": "triage", "details": true } } }
+{ "token": "${TRIAGE_BOT_TOKEN}", "people": { "148392011": { "spore": "triage", "details": true } } }
 ```
 
 It is then shown `reading data/report.md`, `running git log --oneline -5`,
 `source forgejo --path …` — the first line, cut short. Choose it for a chat you would let
-read the commands; the others keep the kinds.
+read the commands; the others keep the kinds. A group takes `"details": true` the same way.
 
 A chat can be shown a turn more quietly, which is what a group gets unless its entry says
 otherwise: `"show": "react"` puts a 👨‍💻 on your message when the spore takes it and shows Telegram's
@@ -120,7 +130,7 @@ Telegram lets a bot react with (✅ and ❌ are not among them; the log lists th
 
 ```json
 { "token": "${OPS_BOT_TOKEN}", "react": { "taken": "👀", "failed": "🤷" },
-  "chats": { "-1001234567": { "spore": "triage", "show": "react" } } }
+  "people": { "148392011": { "spore": "triage", "show": "react" } } }
 ```
 
 Two chats may point at one spore and then share its conversation. A reply goes to the
@@ -129,13 +139,41 @@ chat that asked; a turn nobody in a chat started goes to the spore's default.
 A chat not in the file gets silence, and the log gets the line to add:
 
 ```
-refused chat 148392011 (@alice) — to allow it, add "148392011": "<a spore>" to the chats of …/telegram/triage.json
+refused chat 148392011 (@alice) — to allow it, add "148392011": "<a spore>" to the people of …/telegram/triage.json
 ```
 
-which is also how you learn your own chat id: start with `"chats": {}` and message the bot. A
-group's id is negative, and it is the group you add rather than the people in it. Where a spore's
-`replyTo` default is one of this bot's chats, that chat is told the same line, once per chat the
-file does not name, so you hear of someone trying the bot without reading its log.
+which is also how you learn your own user id: start with `"people": {}` and message the bot. A
+group the file does not name is told nothing either, when someone there mentions the bot; the log
+says the `groups` entry to add, its id negative. Where a spore's `replyTo` default is one of this
+bot's chats, that chat is told the same line, once per chat the file does not name, so you hear of
+someone trying the bot without reading its log.
+
+## A group
+
+A group has one spore — in a group the bot speaks as itself, so a second spore there is a second
+bot — and `people`, who may address it: user ids, or `"*"` for everyone in the group, written out.
+A message reaches the spore when it mentions the bot (`@triage_bot what failed?`), replies to one of
+its messages, or is a command for it — `/status`, or `/status@triage_bot` where several bots share
+the group; a command naming another bot is not seen. Anything else said there is not for the
+spore, and the bot's mention is not part of what the spore is told. Someone the entry does not list
+who mentions the bot gets silence, and the log gets the line that would let them in.
+
+`/status` is for anyone listed; `/stop`, `/wrap` and `/extend` are for the people the entry names
+by id — not everyone `"*"` lets talk — and anyone else is told so.
+
+A group can let its spore hear what is said there that is not to it:
+
+```json
+"groups": { "-1001234567": { "spores": ["triage"], "people": ["148392011", "209876543"], "overhear": true } }
+```
+
+What the people it lists say in the group then reaches the spore as overheard: no turn starts for
+it and no answer is owed, and the next turn the spore runs reads it as what was said around it, the
+latest 100 messages at a time. It is everything they say there, kept in the spore's records and
+read by its next turn, so choose it for a group whose talk the spore should follow. Telegram gives a
+bot what is not said to it only with its privacy mode off — `/setprivacy` in @BotFather, then the
+bot added to the group again — or as an admin of the group; with neither, the service says so for
+each group that overhears when it starts.
 
 ## What it keeps
 

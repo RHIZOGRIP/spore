@@ -10,7 +10,8 @@ import { TELEGRAM, normalize } from '../src/adapter.js'
 
 let DIR
 let path
-const chats = (table) => writeFileSync(path, JSON.stringify({ token: '${TRIAGE_BOT_TOKEN}', chats: table })) // eslint-disable-line no-template-curly-in-string
+const bot = (fields) => writeFileSync(path, JSON.stringify({ token: '${TRIAGE_BOT_TOKEN}', ...fields })) // eslint-disable-line no-template-curly-in-string
+const ME = { id: 900, username: 'SporeBot' }
 
 beforeEach(() => {
   DIR = mkdtempSync(resolve(tmpdir(), 'spore-telegram-test-'))
@@ -19,45 +20,77 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(DIR, { recursive: true, force: true }))
 
-describe('a bot\'s chats', () => {
-  it('read each chat id against the spore it reaches, two chats on one spore among them', () => {
-    chats({ 148392011: 'triage', '-1001234567': 'standup', 2: 'triage' })
+describe('a bot\'s people and groups', () => {
+  it('read each person\'s private chat against the spore it reaches, and each group with its spore and who may address it', () => {
+    bot({
+      people: { 148392011: 'triage', 2: { spore: 'triage', details: true, show: 'both' } },
+      groups: { '-1001234567': { spores: ['standup'], people: ['148392011', '*'], overhear: true, show: 'working' } }
+    })
     expect(routesOf(TELEGRAM, path)).toEqual(new Map([
-      ['2', { spores: ['triage'], details: false, show: null, people: null }],
-      ['148392011', { spores: ['triage'], details: false, show: null, people: null }],
-      ['-1001234567', { spores: ['standup'], details: false, show: null, people: null }]
+      ['2', { spores: ['triage'], details: true, show: 'both', people: null, overhear: false }],
+      ['148392011', { spores: ['triage'], details: false, show: null, people: null, overhear: false }],
+      ['-1001234567', { spores: ['standup'], details: false, show: 'working', people: ['148392011', '*'], overhear: true }]
     ]))
   })
 
-  it('take a chat that asks for details, or for how a turn shows itself', () => {
-    chats({ 1: { spore: 'triage', details: true }, 2: { spore: 'triage', show: 'both' } })
-    expect([...routesOf(TELEGRAM, path)].map(([chat, routed]) => [chat, routed.details, routed.show])).toEqual([['1', true, null], ['2', false, 'both']])
+  it('take either alone, and people {} while the owner learns their id', () => {
+    bot({ people: {} })
+    expect(routesOf(TELEGRAM, path)).toEqual(new Map())
+    bot({ groups: { '-5': { spores: ['triage'], people: ['*'] } } })
+    expect([...routesOf(TELEGRAM, path).keys()]).toEqual(['-5'])
   })
 
   it('react only with what Telegram lets a bot react with', () => {
-    writeFileSync(path, JSON.stringify({ token: '${TRIAGE_BOT_TOKEN}', chats: {}, react: { taken: '👀' } })) // eslint-disable-line no-template-curly-in-string
+    bot({ people: {}, react: { taken: '👀' } })
     expect(reactionsOf(TELEGRAM, path)).toEqual({ taken: '👀', failed: '💔' })
-    writeFileSync(path, JSON.stringify({ token: '${TRIAGE_BOT_TOKEN}', chats: {}, react: { failed: '❌' } })) // eslint-disable-line no-template-curly-in-string
+    bot({ people: {}, react: { failed: '❌' } })
     expect(() => reactionsOf(TELEGRAM, path)).toThrow(/reacts with ❌, which Telegram does not take/)
   })
 
-  it('refuse an entry that does not name a spore, or names a field it does not know, saying where one of the bot\'s goes', () => {
-    chats({ 1: 42 })
-    expect(() => routesOf(TELEGRAM, path)).toThrow(/not a spore/)
-    chats({ 1: { spore: 'triage', detail: true } })
-    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ message: expect.stringMatching(/gives chat 1 detail, which a chat does not take/), detail: 'a chat takes spore, details, show' }))
-    chats({ 1: { spore: 'triage', show: 'react', react: { taken: '👀' } } })
-    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ detail: 'a chat takes spore, details, show; react is the bot\'s, beside chats' }))
-    writeFileSync(path, JSON.stringify({ token: '${TRIAGE_BOT_TOKEN}' })) // eslint-disable-line no-template-curly-in-string
-    expect(() => routesOf(TELEGRAM, path)).toThrow(/has no chats/)
+  it('refuse the chats a bot file had before, showing the shape it has now', () => {
+    bot({ chats: { 148392011: 'triage' } })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ message: expect.stringMatching(/has a field spore does not know — chats$/), detail: expect.stringContaining('"people": { "<your user id>": "<spore>" }, "groups": ') }))
+    bot({})
+    expect(() => routesOf(TELEGRAM, path)).toThrow(/has no people and no groups/)
+  })
+
+  it('refuse a person who is not a person, or a group that is not a group', () => {
+    bot({ people: { '-1001234567': 'triage' } })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ message: expect.stringMatching(/names "-1001234567" among its people, which is not a person's id/), detail: expect.stringMatching(/goes under groups/) }))
+    bot({ groups: { 148392011: { spores: ['triage'], people: ['*'] } } })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(/names "148392011" among its groups, which is not a group's id/)
+  })
+
+  it('refuse a person without a spore, or a field it does not know, saying where one of the bot\'s goes', () => {
+    bot({ people: { 1: 42 } })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(/maps person 1 to something that is not a spore/)
+    bot({ people: { 1: { spore: 'triage', detail: true } } })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ message: expect.stringMatching(/gives person 1 detail, which a person does not take/), detail: 'a person takes spore, details, show' }))
+    bot({ people: { 1: { spore: 'triage', show: 'react', react: { taken: '👀' } } } })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ detail: 'a person takes spore, details, show; react is the bot\'s, beside people and groups' }))
+  })
+
+  it('refuse a group with no spore or more than one, without its people written out, or with a flag that is not one', () => {
+    const group = (entry) => bot({ groups: { '-5': entry } })
+    group({ spores: [], people: ['*'] })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(/has a group -5 with no spores/)
+    group({ spores: ['triage', 'ledger'], people: ['*'] })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ message: expect.stringMatching(/gives group -5 2 spores/), detail: expect.stringMatching(/a second spore there is a second bot/) }))
+    group({ spores: ['triage'] })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(/has a group -5 whose people are not user ids or \*/)
+    group({ spores: ['triage'], people: ['role:1'] })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(/whose people are not user ids or \*/)
+    group({ spores: ['triage'], people: ['*'], overhear: 'yes' })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(/has a group -5 whose overhear is not true or false/)
   })
 })
 
 describe('an update', () => {
   const update = (message, id = 7) => ({ update_id: id, message: { message_id: 40, chat: { id: 148392011, type: 'private' }, from: { id: 148392011, first_name: 'Alice', last_name: 'Martin', username: 'alice' }, ...message } })
+  const inGroup = (message) => update({ chat: { id: -100, type: 'supergroup', title: 'Payouts' }, ...message })
 
   it('is a message from someone, in a chat, under an id the bot makes its own', () => {
-    expect(normalize(update({ text: 'hello' }), 'triage')).toEqual({
+    expect(normalize(update({ text: 'hello' }), 'triage', ME)).toEqual({
       id: 'triage:7',
       conversation: '148392011',
       message: 40,
@@ -73,21 +106,43 @@ describe('an update', () => {
   })
 
   it('says which group it came from, a conversation many people share', () => {
-    expect(normalize(update({ text: 'hi', chat: { id: -100, type: 'supergroup', title: 'Payouts' } }), 'triage')).toMatchObject({ where: 'the Telegram group "Payouts"', shared: true })
+    expect(normalize(inGroup({ text: 'hi' }), 'triage', ME)).toMatchObject({ where: 'the Telegram group "Payouts"', shared: true })
   })
 
-  it('reads a command, the bot\'s name after it or not', () => {
-    expect(normalize(update({ text: '/status' }), 'triage').command).toEqual({ verb: 'status', args: '' })
-    expect(normalize(update({ text: '/extend@sporebot wall 30m' }), 'triage').command).toEqual({ verb: 'extend', args: 'wall 30m' })
+  it('reads a command, the bot\'s name after it or not, and takes none naming another bot', () => {
+    expect(normalize(update({ text: '/status' }), 'triage', ME).command).toEqual({ verb: 'status', args: '' })
+    expect(normalize(update({ text: '/extend@sporebot wall 30m' }), 'triage', ME).command).toEqual({ verb: 'extend', args: 'wall 30m' })
+    expect(normalize(inGroup({ text: '/status@otherbot' }), 'triage', ME)).toBe(null)
+  })
+
+  it('reaches the spore in a group when it mentions the bot, replies to it, or is a command for it — and names no spore otherwise', () => {
+    const addressed = (message) => normalize(inGroup(message), 'triage', ME)
+    expect(addressed({ text: '@sporebot what failed?', entities: [{ type: 'mention', offset: 0, length: 9 }] })).toMatchObject({ addresses: null, text: 'what failed?' })
+    expect(addressed({ text: 'hey @SporeBot, look', entities: [{ type: 'mention', offset: 4, length: 9 }] })).toMatchObject({ addresses: null, text: 'hey look' })
+    expect(addressed({ text: 'yes, that one', reply_to_message: { message_id: 39, from: { id: 900 } } })).toMatchObject({ addresses: null, text: 'yes, that one' })
+    expect(addressed({ text: '/stop' })).toMatchObject({ addresses: null, command: { verb: 'stop', args: '' } })
+    expect(addressed({ text: '/roll@sporebot 2' })).toMatchObject({ addresses: null, command: { verb: 'roll', args: '2' } })
+    expect(addressed({ text: 'lunch at noon?' })).toMatchObject({ addresses: [], text: 'lunch at noon?' })
+    expect(addressed({ text: 'ask @otherbot', entities: [{ type: 'mention', offset: 4, length: 9 }] })).toMatchObject({ addresses: [] })
+    expect(addressed({ text: '/roll' })).toMatchObject({ addresses: [] })
+    expect(addressed({ text: 'not to you', reply_to_message: { message_id: 39, from: { id: 41 } } })).toMatchObject({ addresses: [] })
+    expect(addressed({ new_chat_members: [{ id: 900 }] })).toMatchObject({ addresses: [], text: null })
   })
 
   it('carries a caption as its text, counts what came with it, and has none when nothing was written', () => {
-    expect(normalize(update({ caption: 'look', photo: [{}] }), 'triage')).toMatchObject({ text: 'look', files: 1 })
-    expect(normalize(update({ sticker: {} }), 'triage')).toMatchObject({ text: null, files: 1 })
+    expect(normalize(update({ caption: 'look', photo: [{}] }), 'triage', ME)).toMatchObject({ text: 'look', files: 1 })
+    expect(normalize(update({ sticker: {} }), 'triage', ME)).toMatchObject({ text: null, files: 1 })
   })
 
   it('is nothing the relay takes when it is not a chat message', () => {
-    expect(normalize({ update_id: 1, edited_message: {} }, 'triage')).toBe(null)
+    expect(normalize({ update_id: 1, edited_message: {} }, 'triage', ME)).toBe(null)
+  })
+
+  it('is refused with the line that would let it in — a person under people, a group under groups', () => {
+    const message = (chat, from = {}) => normalize(update({ text: 'hi', chat, ...from }), 'triage', ME)
+    expect(TELEGRAM.refusal(message({ id: 148392011, type: 'private' }), 'triage.json')).toBe('refused chat 148392011 (@alice) — to allow it, add "148392011": "<a spore>" to the people of triage.json')
+    expect(TELEGRAM.refusal(message({ id: -100, type: 'supergroup', title: 'Payouts' }, { from: { id: 41, first_name: 'Bob' } }), 'triage.json'))
+      .toBe('refused the Telegram group "Payouts", chat -100 — to allow it, add "-100": { "spores": ["<a spore>"], "people": ["41"] } to the groups of triage.json')
   })
 })
 

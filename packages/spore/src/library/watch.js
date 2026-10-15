@@ -153,7 +153,7 @@ export function turnsSince (ws, turn) {
   if (!turns.length) return { turn, ended: [] }
   const ended = turns.map(record => ({
     record,
-    asked: readInbox(ws, { after: record.inboxFrom, upto: record.inboxTo }).filter(entry => !entry.setAside)
+    asked: readInbox(ws, { after: record.inboxFrom, upto: record.inboxTo }).filter(entry => !entry.setAside && !entry.overheard)
   }))
   return { turn: turns.at(-1).turnNo, ended }
 }

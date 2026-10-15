@@ -762,7 +762,7 @@ const precursorNames = (ws) => {
  * anything past that is work outstanding — which is the difference between a spore that is
  * idle and one that is merely not running yet.
  */
-const waitingIn = (ws) => readInbox(ws).filter(entry => !entry.consumed && !entry.setAside)
+const waitingIn = (ws) => readInbox(ws).filter(entry => !entry.consumed && !entry.setAside && !entry.overheard)
 
 /**
  * What has happened here, one line per turn: when it ended, how, what it cost, and what
@@ -794,14 +794,14 @@ export function log ({ ws, configFile = CONFIG_FILE } = {}) {
     workUnits: turn.workUnits ?? 0,
     error: turn.error ?? null,
     detail: turn.detail ?? null,
-    asked: said.filter(entry => entry.inboxNo > turn.inboxFrom && entry.inboxNo <= turn.inboxTo && !entry.setAside)
+    asked: said.filter(entry => entry.inboxNo > turn.inboxFrom && entry.inboxNo <= turn.inboxTo && !entry.setAside && !entry.overheard)
   }))
   // A schedule the pass would fire and cannot, or will not fire at all, is work outstanding
   // the same way a message nobody answered is.
   const held = survey(path, { spore: stateOf(path), grant: definition.schedules ?? null })
     .filter(row => row.state === 'held' || row.state === 'refused')
     .map(({ message, ...row }) => row)
-  return { ws: path, turns, waiting: said.filter(entry => !entry.consumed && !entry.setAside), setAside: said.filter(entry => entry.setAside), held }
+  return { ws: path, turns, waiting: said.filter(entry => !entry.consumed && !entry.setAside && !entry.overheard), setAside: said.filter(entry => entry.setAside), held }
 }
 
 /** What a workspace can delegate to. */

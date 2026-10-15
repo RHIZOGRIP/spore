@@ -84,8 +84,8 @@ describe('a bot file', () => {
   it('reads each channel, its spores, who may address them, whether spores talk, and how a turn shows there', () => {
     const path = bot({ token: '${DISCORD_BOT_TOKEN}', channels: { 100: { spores: ['triage'], people: ['1', 'role:2'], sporesTalk: true }, 200: { spores: ['ledger'], people: ['*'], show: 'react', details: true } } }) // eslint-disable-line no-template-curly-in-string
     expect([...routesOf(DISCORD, path)]).toEqual([
-      ['100', { spores: ['triage'], details: false, show: null, people: ['1', 'role:2'], sporesTalk: true }],
-      ['200', { spores: ['ledger'], details: true, show: 'react', people: ['*'], sporesTalk: false }]
+      ['100', { spores: ['triage'], details: false, show: null, people: ['1', 'role:2'], overhear: false, sporesTalk: true }],
+      ['200', { spores: ['ledger'], details: true, show: 'react', people: ['*'], overhear: false, sporesTalk: false }]
     ])
     expect(credentialOf(DISCORD, path, 'token', { DISCORD_BOT_TOKEN: 'tok' })).toBe('tok')
     expect(() => credentialOf(DISCORD, path, 'token', {})).toThrow(expect.objectContaining({ type: 'DISCORD_NO_TOKEN' }))

@@ -7,15 +7,20 @@
  *   spec                                   the adapter's description
  *   credentials                            { <variable>: <value> } its bot files name, the first bot's first;
  *                                          none reaches a turn but those the spec's sourceVariables keep
- *   botFile(bot, table, fields)            a bot file for { <conversation>: { spore, details, show } },
- *                                          with the bot's other `fields` (`react`)
+ *   botFile(bot, table, fields)            a bot file for { <conversation>: { spore, details, show, shared,
+ *                                          people } } — `shared` a conversation many people share,
+ *                                          whose `people`, left out, are everyone and, by id, whoever
+ *                                          `say` writes as there unless told — with the bot's other
+ *                                          `fields` (`react`)
+ *   shared(n)                              the id of the nth conversation many people share
  *   platform()                             a fresh fake platform
  *   adapter(platform, bot, botFile)        the live adapter over it
  *   words(text)                            the person's words in what the spore was given for them
  *   formats                                whether the platform has a formatted mode beside a plain one
- *   say(platform, { conversation, text, files, id, shared })
- *                                          a person writes there, `id` repeating an earlier delivery,
- *                                          `shared` in a conversation many people share; answers
+ *   say(platform, { conversation, text, files, id, shared, person })
+ *                                          a person writes there, to the spore, `id` repeating an
+ *                                          earlier delivery, `shared` in a conversation many people
+ *                                          share, `person` their id there; answers
  *                                          { id, message, from }: the delivery's id, the platform's id
  *                                          for what was said, and the `from` the spore should be told
  *   seen(platform, conversation)           what was done there, in order: { op: 'post', note, text,
@@ -358,7 +363,8 @@ export function conformance (harness, platformTests = () => {}) {
 
       it('is how a conversation many people share shows a turn by default, or as its entry says', async () => {
         const other = spec.showShared === 'react' ? 'working' : 'react'
-        routes({ 7: { spore: 'triage' }, 8: { spore: 'triage', show: other } })
+        const [seven, eight] = [harness.shared(7), harness.shared(8)]
+        routes({ [seven]: { spore: 'triage', shared: true }, [eight]: { spore: 'triage', shared: true, show: other } })
         start()
         const shows = async (conversation, show) => {
           say({ conversation, text: 'hello', shared: true })
@@ -371,9 +377,9 @@ export function conformance (harness, platformTests = () => {}) {
             expect(reactions(conversation)).toEqual([])
           }
         }
-        await shows('7', spec.showShared)
+        await shows(seven, spec.showShared)
         await idle(1)
-        await shows('8', other)
+        await shows(eight, other)
       })
 
       it('marks a message the spore refuses as failed', async () => {
@@ -628,6 +634,23 @@ export function conformance (harness, platformTests = () => {}) {
         expect(posts('1')[0].text).toMatch(/^spore · anthropic\/claude-haiku-4-5\nidle · 0 turns · \$0\.0000/)
         expect(posts('1')[1].text).toBe('nothing is running')
         expect(posts('1')[2].text).toBe(spec.usage.help)
+        expect(readInbox(ws)).toEqual([])
+      })
+
+      it('stop, wrap or extend a turn in a conversation many people share only for someone its people name, not everyone "*" lets talk', async () => {
+        const group = harness.shared(5)
+        routes({ [group]: { spore: 'triage', shared: true, people: ['41', '*'] } })
+        start()
+        const command = (person, verb, args) => say({ conversation: group, text: harness.command(verb, args), shared: true, person })
+        command('42', 'stop')
+        await until(() => posted(group, `only the people this ${spec.noun} lists may stop a turn`))
+        command('42', 'extend', 'wall 30m')
+        await until(() => posted(group, `only the people this ${spec.noun} lists may extend a turn`))
+        command('42', 'status')
+        await until(() => posts(group).some(one => /^spore · /.test(one.text)))
+        command('41', 'stop')
+        await until(() => posted(group, 'nothing is running'))
+        expect(logs.filter(line => /^refused (stop|extend) from .* \(42\) .*add "42" to its people/.test(line))).toHaveLength(2)
         expect(readInbox(ws)).toEqual([])
       })
 

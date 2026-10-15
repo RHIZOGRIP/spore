@@ -166,7 +166,8 @@ id, where }` — how the person shows, `<kind>:<their id>`, and the conversation
 name it — which the turn reads in a line above the text; `traceparent`; `env`, the environment the
 turn's runner starts with; `start: false`, which says the message and starts nothing — a turn
 running reads it at its next round, and with none running it waits for the next turn something
-else starts.
+else starts; `overheard: true`, a message said where the spore is and not to it, which starts
+nothing, is owed no answer and takes `from` and no `replyTo` — the next turn reads it as context.
 
 ```js
 import { isWorkspace, lastEventSeq, loadEnvironment, readInbox, RUNNING, send, stateOf, turnOfMessage, watch, workspaceFor } from '@rhizogrip/spore'

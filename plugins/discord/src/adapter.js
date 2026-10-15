@@ -51,7 +51,7 @@ function routes (raw, path) {
     for (const flag of ['sporesTalk', 'details']) {
       if (entry[flag] !== undefined && typeof entry[flag] !== 'boolean') throw invalid(path, `has a channel ${channel} whose ${flag} is not true or false`)
     }
-    table.set(channel, { spores: entry.spores, details: entry.details === true, show: entry.show ?? null, people: entry.people, sporesTalk: entry.sporesTalk === true })
+    table.set(channel, { spores: entry.spores, details: entry.details === true, show: entry.show ?? null, people: entry.people, overhear: false, sporesTalk: entry.sporesTalk === true })
   }
   return table
 }

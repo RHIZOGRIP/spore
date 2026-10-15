@@ -29,7 +29,12 @@ import { runService } from '@rhizogrip/spore/relay'
 - **The spore is told who wrote and where** (`send`'s `from`), never as words in the text.
 - **Only whom the routing lets in reaches a spore.** Where a conversation lists its `people` — ids,
   `role:<id>`, `"*"` — anyone else is refused, and the log says the line to add; a spore's own post
-  (`spore`) is never refused.
+  (`spore`) is never refused. What a message is to the spores is one decision: said to them,
+  overheard, or dropped at a gate — not addressed (unlogged), or from someone not listed (logged).
+- **What was not said to a spore can still reach it, overheard,** where the routing says
+  `overhear`: from someone its `people` let in, written to the spore's inbox as `send`'s
+  `overheard`, starting no turn and owed no answer, and read by the next turn as what was said
+  around it. Nothing is posted for it.
 - **The conversation is told what the turn does,** as its routing's `show` says. `working`: a
   `working…` message, then the kind of each call as it runs — `reading a file`, `running a command`,
   `asking <source>` — and the call itself only where the routing says `details`. `react`: the bot's
@@ -48,7 +53,9 @@ import { runService } from '@rhizogrip/spore/relay'
   itself — status, notices — is plain.
 - **Commands**: `status`, `stop`, `wrap [10m]`, `extend <dimension> <amount>`, and a help line for
   anything else. `stop` also sets aside what that conversation sent and no turn had read, once the
-  stopped turn has ended, and says how many — with nothing running, what waited.
+  stopped turn has ended, and says how many — with nothing running, what waited. In a conversation
+  many people share, `stop`, `wrap` and `extend` are for someone its `people` name by id or role —
+  not everyone `"*"` lets talk; anyone else is told so, and the log says the line to add.
 - **Credentials stay with the service.** Every bot's credential variables are removed from the
   environment a turn's runner starts with, except one a source of the plugin's own needs.
 
@@ -71,7 +78,7 @@ The static part, which the relay reads before the service starts:
 | `kind` | the place prefix (`<kind>:<bot>/<conversation>`), the outbox kind, the state directory, the bot files' folder, the prefix of error types (`CHAT_NO_BOT`) |
 | `label`, `noun` | the platform's name and what it calls a conversation (`chat`, `channel`), for what people and the log are told |
 | `fields`, `credentials`, `example` | the bot file's fields, those holding a `${VAR}`, and a first file to show |
-| `routes(raw, path)` | the routing read into a `Map` of conversation → `{ spores: [name], details, show, people }`, `show` null where the file names none and `people` null where it names no one, refusing what it cannot read |
+| `routes(raw, path)` | the routing read into a `Map` of conversation → `{ spores: [name], details, show, people, overhear }`, `show` null where the file names none, `people` null where it names no one, and `overhear` true where what is not said to the spores reaches them overheard — refusing what it cannot read |
 | `stateFields` | the adapter's own fields in the state file, handed to its `restore` |
 | `sourceVariables` | credential variables a source of the plugin needs in a turn's environment |
 | `usage` | `{ help, extend }`: the commands as this platform types them |
@@ -88,7 +95,7 @@ The live part, made once the credentials are proved:
 | member | does |
 |---|---|
 | `restore(state, save)` | where `stateFields` names any: the state holding them, and how to write it |
-| `prepare(table, log)` | optional: what the platform readies before anyone writes, for every conversation the routing names |
+| `prepare(table, log)` | optional: what the platform readies, or checks, before anyone writes, for every conversation the routing names — Discord's roles and webhooks, Telegram's word that a group overhears while the bot hears only what is said to it |
 | `listen({ onMessage, signal, log, sleep })` | the transport, until `signal` aborts; awaits `onMessage` before confirming a message to the platform; throws an error the platform gave for good |
 | `aside(message, spore)` | optional: a line the spore is given after the text — Discord's pointer to the history it has not heard |
 | `post(conversation, text, { answering, for, markdown, as })` | posts, as a reply to the platform's message `answering` when it is not null, and with `markdown` rendered in the platform's own formatting; answers the new message's id. `as` is the spore speaking, or null for the bot itself; `for` is `[{ person, said }]`, whom the post is about, which a platform that cannot reply shows instead — and pings when it is the answer |
@@ -114,7 +121,7 @@ What `onMessage` gets, the platform normalised:
 | `shared` | whether many people share the conversation |
 | `text` | what was written, the platform's markup made plain; null when nothing was |
 | `command` | `{ verb, args }` when the text is a command, else null |
-| `addresses` | the spores the message names, or null where the conversation reaches its spores without naming them |
+| `addresses` | the spores the message names; `[]` for one that names none — in a conversation many people share, what was not said to a spore, which the relay drops or, where the routing says `overhear`, gives the spores as overheard; or null where it reaches the conversation's spores without naming them |
 | `files` | how many files came with it |
 
 ## The service
@@ -155,6 +162,7 @@ errors — go in the callback the suite hands its context to. `telegram-service.
 - Inbound authenticity is checked before anything is read: the connector's own connection, or the
   platform's signature on what it pushes.
 - A listener binds loopback only; exposing it is the operator's proxy's job.
-- In a conversation shared by many people, only a message that addresses a spore reaches it.
+- In a conversation shared by many people, only a message that addresses a spore reaches it as
+  said to it; the rest is `addresses: []`, never guessed at.
 - Nothing a spore writes pings anyone but whom it answers.
 - Nothing in a message is executed: it is text given to `send`.

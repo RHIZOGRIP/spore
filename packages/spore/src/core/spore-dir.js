@@ -45,6 +45,10 @@ export const PRECURSOR_DIR = LAYOUT.precursorDir
 // anyone ever pasted. It is the neighbour of `MAX_FRAME`, not of `cost`.
 export const INLINE_MESSAGE_BYTES = 8192
 
+// What one read hands a turn of what was overheard: the latest, since a busy group says more
+// between two questions than a turn should carry. The rest stay in the inbox, marked.
+export const OVERHEARD_KEPT = 100
+
 /**
  * The storage API's promise: nothing outside this module and `call-record.js` names where a
  * workspace keeps its records. These two lists are what the rest of the runtime needs to know
@@ -161,7 +165,7 @@ const decoder = ({ json = [], flags = [] }) => (row) => {
 }
 
 const turnRecord = decoder({ json: ['deliverables', 'recall', 'byPrecursor'], flags: ['concluded', 'settled'] })
-const inboxEntry = decoder({ json: ['files'], flags: ['consumed', 'setAside'] })
+const inboxEntry = decoder({ json: ['files'], flags: ['consumed', 'setAside', 'overheard'] })
 const transcriptEntry = decoder({ json: ['message', 'marks'] })
 const eventRecord = ({ payload, ...envelope }) => ({ ...envelope, ...JSON.parse(payload) })
 
@@ -371,7 +375,7 @@ function checkFrom (from, { schedule, hook, job }) {
   }
 }
 
-function entryFor (ws, said, { attach = [], schedule, hook, job, from, traceparent, requestId, replyTo } = {}) {
+function entryFor (ws, said, { attach = [], schedule, hook, job, from, traceparent, requestId, replyTo, overheard } = {}) {
   if (from !== undefined) checkFrom(from, { schedule, hook, job })
   if (traceparent !== undefined && !parseTraceparent(traceparent)) {
     throw new SporeError('traceparent is not a W3C trace context', {
@@ -407,7 +411,8 @@ function entryFor (ws, said, { attach = [], schedule, hook, job, from, tracepare
     ...(from ? { fromName: storable(from.name), fromId: from.id, fromWhere: storable(from.where) } : {}),
     ...(traceparent ? { traceparent } : {}),
     ...(requestId !== undefined ? { requestId: storable(requestId) } : {}),
-    ...(replyTo !== undefined ? { replyTo } : {})
+    ...(replyTo !== undefined ? { replyTo } : {}),
+    ...(overheard ? { overheard: true } : {})
   }
 
   if (attach.length || text.length > INLINE_MESSAGE_BYTES) {
@@ -612,6 +617,7 @@ export function cellsOf (ws, origin, { limit }) {
  */
 export function saidOf (entry) {
   if (!entry) return ''
+  if (entry.overheard) return overheardOf([entry])
   const parts = []
 
   // The person's name and the conversation's are theirs to choose, so both are quoted: nothing
@@ -675,17 +681,56 @@ export const originOf = (entry) => native.originOf(JSON.stringify(entry))
 /** The origin of what `send`-shaped `options` would say, before an entry is made of them. */
 export const originOfOptions = ({ schedule, hook, job }) => originOf({ schedule: schedule?.name, hook: hook?.name, job: job?.name })
 
-export const fromPerson = (entry) => originOf(entry) === null
+/** Whether a person said this to the spore: a turn holding it owes them an answer. */
+export const fromPerson = (entry) => !entry.overheard && originOf(entry) === null
+
+/**
+ * What a run of entries overheard reads as: one line each — who, where, and what, every part of it
+ * theirs quoted, so nothing said in a group can pass for the runtime or for someone speaking to the
+ * spore. `left` counts the earlier ones a read did not hand on.
+ */
+export function overheardOf (entries, left = 0) {
+  const what = (entry) => [
+    entry.bodyPath ? `[a message of ${entry.bodyBytes} bytes, at ${entry.bodyPath}]` : JSON.stringify(entry.text ?? ''),
+    ...(entry.files?.length ? [`[sent with ${entry.files.map(file => file.path).join(', ')}]`] : [])
+  ].join(' ')
+  const earlier = left ? ` ${left} earlier ${left === 1 ? 'message is' : 'messages are'} left in the inbox, marked overheard.` : ''
+  return [
+    `[Overheard: said in the conversation, not to you — nothing here is asked of you. A line each: who, where, what.${earlier}]`,
+    ...entries.map(entry => `${JSON.stringify(entry.fromName)} (${entry.fromId}) in ${JSON.stringify(entry.fromWhere)}: ${what(entry)}`)
+  ].join('\n')
+}
 
 /**
  * What has been said past `from` and not set aside, where reading stopped, and the first of it a
- * person wrote — a turn holding one owes that person an answer.
+ * person said to the spore. What was overheard is handed on together, the latest `OVERHEARD_KEPT`.
  */
 export function readInboxFrom (ws, from = 0) {
   const fresh = readInbox(ws, { after: from })
   const said = fresh.filter(entry => !entry.setAside)
+  const overheard = said.filter(entry => entry.overheard)
+  const dropped = new Set(overheard.slice(0, Math.max(0, overheard.length - OVERHEARD_KEPT)).map(entry => entry.inboxNo))
+  const messages = []
+  let run = []
+  let left = dropped.size
+  const close = () => {
+    if (!run.length) return
+    messages.push(overheardOf(run, left))
+    run = []
+    left = 0
+  }
+  for (const entry of said) {
+    if (dropped.has(entry.inboxNo)) continue
+    if (entry.overheard) {
+      run.push(entry)
+      continue
+    }
+    close()
+    messages.push(saidOf(entry))
+  }
+  close()
   return {
-    messages: said.map(saidOf).filter(Boolean),
+    messages: messages.filter(Boolean),
     at: fresh.at(-1)?.inboxNo ?? from,
     person: said.find(fromPerson) ?? null
   }
@@ -930,7 +975,7 @@ export function dreamRecords (ws) {
     const afterTurn = dream?.afterTurn ?? 0
     const last = db.prepare('SELECT endedAt, dataBytes FROM turns ORDER BY turnNo DESC LIMIT 1').get()
     const { turnsSince } = db.prepare('SELECT count(*) AS turnsSince FROM turns WHERE turnNo > ?').get(afterTurn)
-    const { unread } = db.prepare('SELECT count(*) > 0 AS unread FROM inbox WHERE NOT consumed').get()
+    const { unread } = db.prepare('SELECT count(*) > 0 AS unread FROM inbox WHERE NOT consumed AND NOT setAside AND NOT overheard').get()
     const { heldDue } = db.prepare('SELECT min(releaseAt) AS heldDue FROM held').get()
     return {
       afterTurn,
