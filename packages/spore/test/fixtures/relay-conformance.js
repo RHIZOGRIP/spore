@@ -314,6 +314,24 @@ export function conformance (harness, platformTests = () => {}) {
         expect(waited).toContain(1000)
       })
 
+      it('drops progress under a rate limit, so the answer is not held behind it', async () => {
+        const waited = []
+        const gate = new Promise(resolve => { release = resolve })
+        harness.fail(platform, 'edit', harness.retryable(30))
+        reply = async (input, round) => {
+          if (round === 0) return calls('wsexec', { command: 'echo one > data/one.txt', out: 'data/log.txt' })
+          await gate
+          return answers('done')
+        }
+        start({ sleep: (ms) => { waited.push(ms); return new Promise(resolve => setTimeout(resolve, 5)) } })
+        say({ conversation: '1', text: 'go' })
+        await until(() => logs.some(line => /progress dropped/.test(line)))
+        release()
+        await until(() => posted('1', 'done'))
+        expect(waited).not.toContain(30_000)
+        expect(seen('1').filter(one => one.op === 'edit' && WORKING.test(one.text))).toEqual([])
+      })
+
       it('marks a working message answered when the platform will not remove it', async () => {
         harness.fail(platform, 'remove', harness.refused('message can\'t be deleted'))
         start()

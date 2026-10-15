@@ -47,6 +47,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   const delivery = createDelivery({ sleep: (ms) => sleep(ms, stopping.signal), signal: stopping.signal })
   const notes = new WeakMap()
   const shown = new Map()
+  const limitedUntil = new Map()
   let followed = new Map()
   let detailed = new Set()
   let routeFailure = null
@@ -217,17 +218,29 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     return [...next.keys()]
   }
 
+  /**
+   * The calls at work, edited into each `working…` message. Progress is the one thing the relay
+   * drops: an edit the platform turns away for now is not tried again, and none is tried in that
+   * conversation until the wait it named has passed, so an answer never queues behind one.
+   */
   const repaint = (ws) => {
     const lines = shown.get(ws)
     lines.timer = null
     lines.at = Date.now()
     for (const entry of state.pending[ws] ?? []) {
-      const text = [WORKING, ...render(lines.items, { detailed: detailed.has(entry.conversation) })].join('\n')
-      delivery.to(entry.conversation, async (attempt) => {
+      const { conversation } = entry
+      const text = [WORKING, ...render(lines.items, { detailed: detailed.has(conversation) })].join('\n')
+      delivery.to(conversation, async () => {
         const note = await noteOf(entry)
-        if (note === null || !state.pending[ws]?.includes(entry)) return
-        await attempt(() => adapter.edit(entry.conversation, note, text))
-      }).catch(err => log(`${where(entry.conversation)}: progress not shown — ${said(err)}`))
+        if (note === null || !state.pending[ws]?.includes(entry) || Date.now() < (limitedUntil.get(conversation) ?? 0)) return
+        try {
+          await adapter.edit(conversation, note, text)
+        } catch (err) {
+          if (!err.retryable) throw err
+          if (err.context?.retryAfter) limitedUntil.set(conversation, Date.now() + err.context.retryAfter * 1000)
+          log(`${where(conversation)}: progress dropped — ${said(err)}`)
+        }
+      }).catch(err => log(`${where(conversation)}: progress not shown — ${said(err)}`))
     }
   }
 

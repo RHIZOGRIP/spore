@@ -29,7 +29,8 @@ import { runService } from '@rhizogrip/spore/relay'
 - **The spore is told who wrote and where** (`send`'s `from`), never as words in the text.
 - **The conversation is told what the turn does.** `working…`, then the kind of each call as it
   runs — `reading a file`, `running a command`, `asking <source>` — and the call itself only where
-  the routing says `details`. The answer is a new message replying to the question, so it notifies
+  the routing says `details`; under a rate limit that progress is dropped, never queued ahead of
+  an answer. The answer is a new message replying to the question, so it notifies
   however long the turn ran; `working…` is then removed, or marked `answered below` where the
   platform will not remove it. A turn nobody in the conversation started goes to the spore's
   `replyTo` default, labelled with where it came from; a `quiet` turn tells no one.
