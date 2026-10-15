@@ -82,14 +82,16 @@ describe.each([true, false])('a turn stopped while its model call is still open,
 
   const relayed = (n) => ({ replyTo: 'telegram:triage/1', from: { name: 'U1 (@u1)', id: 'telegram:1', where: 'a private chat on Telegram' }, requestId: `telegram:triage:${n}` })
 
-  const stopped = async (releasing, { said = () => ({}) } = {}) => {
+  const stopped = async (releasing, { said = () => ({}), endings = ['cancelled'] } = {}) => {
     expect(send(ws, 'first', { env: env(), ...said(1) }).started).toBe(true)
     await until(() => asked === 1)
     expect(send(ws, 'second', { env: env(), ...said(2) }).started).toBe(false)
     expect(stop(ws).stopped).toBe(true)
     await releasing()
     await until(() => readTurns(ws).length === 1 && stateOf(ws).state !== RUNNING)
-    expect(readTurns(ws).map(turn => [turn.stopReason, turn.inboxTo]), shown()).toEqual([['cancelled', 1]])
+    const [turn] = readTurns(ws)
+    expect(endings, shown()).toContain(turn.stopReason)
+    expect(turn.inboxTo).toBe(1)
     expect(unread()).toEqual(['second'])
   }
 
@@ -97,8 +99,8 @@ describe.each([true, false])('a turn stopped while its model call is still open,
     await stopped(() => new Promise(resolve => setTimeout(() => { release(); resolve() }, 300)))
   })
 
-  it('is written down as cancelled, having read what it read, when the call ends as it is stopped', async () => {
-    await stopped(async () => release())
+  it('is written down, having read what it read, when the call ends as it is stopped — cancelled or answered, whichever came first', async () => {
+    await stopped(async () => release(), { endings: ['cancelled', 'answer'] })
   })
 
   it('is written down so for a relay, its answer addressed to where it was asked from', async () => {
@@ -107,7 +109,7 @@ describe.each([true, false])('a turn stopped while its model call is still open,
   })
 
   it('is written down so for a relay when the call ends as it is stopped', async () => {
-    await stopped(async () => release(), { said: relayed })
+    await stopped(async () => release(), { said: relayed, endings: ['cancelled', 'answer'] })
   })
 
   it('is written down as cancelled, never left as a crash, when the stop lands as its runner starts', async () => {

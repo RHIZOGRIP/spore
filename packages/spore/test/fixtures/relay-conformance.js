@@ -585,7 +585,7 @@ export function conformance (harness, platformTests = () => {}) {
         await until(() => posts('1').some(one => /^no answer · cancelled/.test(one.text)), 15000, where)
       })
 
-      it('is written down when stopped from elsewhere as its model call ends', async () => {
+      it('is written down, having read what it read, when stopped from elsewhere as its model call ends', async () => {
         const gate = new Promise(resolve => { release = resolve })
         let asked = 0
         reply = async () => { asked += 1; await gate; return answers('late') }
@@ -597,7 +597,9 @@ export function conformance (harness, platformTests = () => {}) {
         stop(ws)
         release()
         await idle(1, where)
-        expect(readTurns(ws).map(turn => [turn.stopReason, turn.inboxTo])).toEqual([['cancelled', 1]])
+        const [turn] = readTurns(ws)
+        expect(['cancelled', 'answer']).toContain(turn.stopReason)
+        expect(turn.inboxTo).toBe(1)
       })
 
       it('with nothing running, sets aside what waited for the next turn', async () => {
