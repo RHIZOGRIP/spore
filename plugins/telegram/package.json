@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-telegram",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Telegram for spores: a bot of yours in chats, each chat reaching its spore, run as a service",
   "author": {
     "name": "Christophe Le Bars",
