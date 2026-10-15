@@ -42,7 +42,8 @@ export const defaultSporangiumPath = (configFile = CONFIG_FILE) => join(operator
  * else the operator authors, while the home holds spores and nothing else. It is copied once
  * from the package's and is authoritative afterwards, so an upgrade cannot quietly change what
  * your spores are. It is where the model new spores run on is named, and a sporangium naming no model
- * takes it from here.
+ * takes it from here. A spore of another sporangium has that one's `spore.cmk`, so only the model
+ * is read from this one; the whole of it is checked when a spore is made from it, and by `doctor`.
  */
 export function definitionFor (configFile = CONFIG_FILE, { sporangium = DEFAULT_SPORANGIUM, needsModel = true } = {}) {
   const path = defaultSporangiumPath(configFile)
@@ -65,9 +66,15 @@ export function definitionFor (configFile = CONFIG_FILE, { sporangium = DEFAULT_
 
   // Checked here rather than after copying, so the complaint names the file to edit
   // instead of the workspace that inherited the gap.
-  const held = parseDefinition(readFileSync(path, 'utf8'), { knownTools: TOOL_NAMES, seed: true })
-  if (held.error) throw new SporeError(`${path} ${held.error}`, { type: 'DEFINITION_INVALID' })
-  if (needsModel && !held.model) {
+  let model = null
+  if (sporangium === DEFAULT_SPORANGIUM) {
+    const held = parseDefinition(readFileSync(path, 'utf8'), { knownTools: TOOL_NAMES, seed: true })
+    if (held.error) throw new SporeError(`${path} ${held.error}`, { type: 'DEFINITION_INVALID' })
+    model = held.model
+  } else if (needsModel) {
+    model = defaultModel({ configFile }).model
+  }
+  if (needsModel && !model) {
     throw unset(seeded ? `${whose} on your default model, and ${path}, just seeded, names none yet` : `${whose} on your default model, and ${path} names none`)
   }
   return { path, seeded }

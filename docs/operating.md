@@ -72,7 +72,9 @@ program that makes spores itself calling `recordLayout` — and once that record
 `homeSplit`, by `config set` or by editing the file, is refused. Before it exists, nothing guards
 the value. With it, a name's last characters must be letters, digits, `-` or `_`.
 `spore config set model <provider>/<name>` is not a key: it writes the `model:` line of your
-default sporangium, `~/.config/spore/sporangia/default/spore.cmk`.
+default sporangium, `~/.config/spore/sporangia/default/spore.cmk`. A spore of another sporangium
+takes only that line from it; the rest is read when a spore is made from the default itself, and
+`spore doctor` reports any sporangium of yours `define` would refuse.
 
 **Naming a spore.** A bare name is the spore of that name in `home`; anything path-shaped — it
 starts with `.` or `~`, or holds a `/` — is taken as written; `.` is the one you are standing in. A

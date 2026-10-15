@@ -184,8 +184,8 @@ model: low
 **In `spore.cmk`**, `model` is required: a single model id, `<provider>/<name>`, which is what the
 spore runs on. Left out, the file is refused (*declares no model*). A
 sporangium's `spore.cmk` is a template, not a spore, and may leave `model` out. A spore made from
-it then runs on the model in the operator's default sporangium, which
-`spore config set model <provider>/<name>` writes.
+it then runs on the model in the operator's default sporangium — only its `model:` line is read
+for that — which `spore config set model <provider>/<name>` writes.
 
 **In a precursor**, `model` is optional and is a **name** from the spore's
 [`cell-models`](#cell-models), never a model id. It must be a name (letter first; letters,

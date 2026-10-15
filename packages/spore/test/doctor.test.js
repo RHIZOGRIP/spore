@@ -116,6 +116,22 @@ describe('spore doctor', () => {
     expect(needsTick).toEqual(['main is granted jobs'])
   })
 
+  it('reports a sporangium of yours spore define would refuse, your default among them', () => {
+    spore('main')
+    const sporangium = (name, text) => {
+      mkdirSync(join(root, 'sporangia', name), { recursive: true })
+      writeFileSync(join(root, 'sporangia', name, 'spore.cmk'), text)
+    }
+    sporangium('default', DEFINITION().replace('tools: [read]', 'tools: [read, search]'))
+    sporangium('mine', DEFINITION())
+    mkdirSync(join(root, 'sporangia', 'empty'))
+    const findings = about(examine().findings, 'sporangium')
+    expect(findings).toEqual([
+      expect.objectContaining({ area: 'operator', subject: 'sporangium default', severity: 'problem', problem: expect.stringMatching(/default\/spore\.cmk unknown tool "search"/), fix: 'fix it there — until then spore define is refused' }),
+      expect.objectContaining({ subject: 'sporangium empty', severity: 'problem', problem: expect.stringMatching(/has no spore\.cmk/), fix: 'fix it there — until then spore define --sporangium empty is refused' })
+    ])
+  })
+
   it('says where answers nobody asked for go, and what of them is still waiting to be delivered', () => {
     spore('main', 'jobs: [2, 1m]\n')
     spore('quiet')

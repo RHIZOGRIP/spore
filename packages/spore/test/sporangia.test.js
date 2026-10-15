@@ -68,6 +68,13 @@ describe('making a spore from a sporangium', () => {
     expect(listed.find(s => s.name === 'broken')).toMatchObject({ description: null, error: expect.stringContaining('broken') })
   })
 
+  it('takes only the model from your default for a spore of another sporangium, and the whole of it for a spore of its own', () => {
+    writeFileSync(defaultSporangiumPath(CONFIG), definitionWith(MODEL).replace('tools: [read,', 'tools: [search, read,'))
+    const made = define({ ws: 'r', sporangium: 'perennial', configFile: CONFIG })
+    expect(parseDefinition(readFileSync(join(made.ws, 'spore.cmk'), 'utf8'), { knownTools: TOOL_NAMES }).model).toBe(MODEL)
+    expect(() => define({ ws: 'd', configFile: CONFIG })).toThrow(expect.objectContaining({ type: 'DEFINITION_INVALID', message: expect.stringMatching(/default\/spore\.cmk unknown tool "search"/) }))
+  })
+
   it('writes the directory a new spore works in into its definition, and only a new one\'s', () => {
     const proj = resolve(OUT, 'proj')
     mkdirSync(proj, { recursive: true })

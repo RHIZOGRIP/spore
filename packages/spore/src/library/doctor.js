@@ -12,10 +12,11 @@ import { modelReadiness } from 'mohdel/readiness'
 
 import { CONFIG_FILE, containing, ENVIRONMENT_FILE, MEMORY_FILE, SOURCES_FILE, readConfig, spendLimits, workspaceFor } from './config.js'
 import { isWorkspace } from './discover.js'
-import { list, show } from './verbs.js'
+import { list, show, sporangia } from './verbs.js'
 import { containCheck, keptRefusal } from '../core/command.js'
 import { containOf, listPlugins, misplaced, secretsIn, showPlugin } from '../core/plugins.js'
 import { paused, SLOT_DIR, spendStop } from '../core/admission.js'
+import { DEFAULT_SPORANGIUM } from '../core/sporangia.js'
 import { outbox } from '../core/spore-dir.js'
 import { landlockAbi } from '../isolation/sandbox.js'
 import { hooksPath, loadHooks } from '../../webhook/hooks.js'
@@ -173,6 +174,10 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
     } catch (err) {
       problem('operator', hooks, err.message, err.detail)
     }
+  }
+
+  for (const { name, error } of sporangia({ configFile })) {
+    if (error) problem('operator', `sporangium ${name}`, error, `fix it there — until then spore define${name === DEFAULT_SPORANGIUM ? '' : ` --sporangium ${name}`} is refused`)
   }
 
   const plugins = listPlugins({ configFile })
