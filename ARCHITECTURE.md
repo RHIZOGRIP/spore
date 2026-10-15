@@ -1782,8 +1782,11 @@ not when it ended `quiet`, which says nothing to anyone who did not ask. A turn 
 and a history a fork copies, addresses nothing. An entry names its `recipient` and the `inboxNo`s
 it `answers`; its content is the turn's record, never copied. `terminal` is written `delivered`,
 since the terminal that asked follows the turn; every other entry is `pending` until whoever
-serves its kind settles it through `settleOutbox`, delivered or refused with a `reason`, once. A
-held delivery carries no reply-to: nobody typed it.
+serves its kind settles it through `settleOutbox`, delivered or refused with a `reason`, once.
+Whoever posts it marks it first (`attemptOutbox`, `attemptedAt`): a post the platform took just
+before the poster stopped is never settled, so an entry found marked may have arrived already, and
+it is posted again saying it may repeat. Dropping it instead would lose every answer whose post
+did not arrive. A held delivery carries no reply-to: nobody typed it.
 
 **What serves a chat's answers is a connector on the relay.** `@rhizogrip/spore/relay`
 (`src/relay/`) is the half every chat connector shares, so its promises are kept once: a bot file

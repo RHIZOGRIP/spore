@@ -11,6 +11,7 @@ export function createDelivery ({ sleep, signal, now = Date.now, giveUpMs = 10 *
         if (!err.retryable || signal.aborted || now() - started > giveUpMs) throw err
         const after = err.context?.retryAfter
         await sleep(after ? after * 1000 : backoff)
+        if (signal.aborted) throw err
         backoff = Math.min(backoff * 2, 60_000)
       }
     }

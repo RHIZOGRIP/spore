@@ -403,6 +403,27 @@ export function conformance (harness, platformTests = () => {}) {
         start()
         await until(() => posted('1', 'sent from elsewhere\n\ndone while you were away'))
       })
+
+      it('posts again, saying it may repeat itself, an answer it was posting when it stopped', async () => {
+        defaultReplyTo('1')
+        const first = start()
+        await until(() => savedState().cursors[ws])
+        await first.stop()
+
+        reply = async () => answers('done while you were away')
+        send(ws, 'from a terminal', { env })
+        await idle(1)
+
+        harness.fail(platform, 'post', harness.retryable(1))
+        const posting = start({ sleep: (ms, signal) => new Promise(resolve => signal.addEventListener('abort', resolve, { once: true })) })
+        await until(() => outbox(ws)[0].attemptedAt !== null)
+        await posting.stop()
+        expect(outbox(ws)[0].state).toBe('pending')
+
+        start()
+        await until(() => posted('1', '(this may repeat an earlier message)\n\nsent from elsewhere\n\ndone while you were away'))
+        await until(() => outbox(ws)[0].state === 'delivered')
+      })
     })
 
     describe('commands', () => {

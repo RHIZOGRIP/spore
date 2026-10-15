@@ -187,10 +187,10 @@ describe('delivery', () => {
     await expect(delivery.to('1', attempt => attempt(failing(1, refused)))).rejects.toBe(refused)
   })
 
-  it('gives up once it is stopping', async () => {
+  it('gives up once it is stopping, without trying again', async () => {
     const stopping = new AbortController()
     const delivery = createDelivery({ sleep: async () => stopping.abort(), signal: stopping.signal })
-    await expect(delivery.to('1', attempt => attempt(failing(5, retryable())))).rejects.toThrow('busy')
+    await expect(delivery.to('1', attempt => attempt(failing(1, retryable())))).rejects.toThrow('busy')
   })
 
   it('keeps a conversation\'s order, even past a step that failed', async () => {

@@ -18,6 +18,8 @@ import { runService } from '@rhizogrip/spore/relay'
 - **A finished turn reaches its conversation at least once.** What a turn owes a conversation is
   an outbox entry, settled after the platform took it; one the platform refuses is settled
   `refused` with its reason, one it still did not take is tried again after the next turn or start.
+  An entry is marked before its first post, so one the service stopped while posting is posted
+  again opening with `(this may repeat an earlier message)`.
 - **A reply never mixes turns,** and **a restart loses nothing**: the cursors and the messages
   still waiting on an answer are kept in a state file, `$XDG_STATE_HOME/spore/<kind>/<bot>/state.json`,
   mode 0600.

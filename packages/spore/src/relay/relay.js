@@ -13,7 +13,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
-import { changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf } from '../index.js'
+import { attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf } from '../index.js'
 import { credentialVariables, routesOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
 import { announce, leftOut, pieces, render, reply, statusText, track, unpassed, waiting } from './render.js'
@@ -23,6 +23,7 @@ const TAKES_ARGUMENTS = new Set(['extend', 'wrap'])
 const WORKING = 'working…'
 const STILL_WORKING = 'heard you — still working…'
 const ANSWERED = 'answered below'
+const MAY_REPEAT = '(this may repeat an earlier message)'
 
 const pause = (ms, signal) => new Promise(resolve => {
   const timer = setTimeout(resolve, ms)
@@ -288,7 +289,9 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
    * notifies however long the turn ran, replying to the message it answers — and settled:
    * delivered once the platform took it, refused when the conversation does not reach this spore
    * or the platform will not take it. One the platform still did not take when its retries ran out
-   * stays pending for the next pass. True when it is settled.
+   * stays pending for the next pass. It is marked before its first post, so one found marked —
+   * the service stopped between posting and settling, or an earlier pass ran out of retries — may
+   * have been posted already, and says so. True when it is settled.
    */
   const deliver = async (ws, entry) => {
     const conversation = entry.recipient.slice(prefix.length)
@@ -302,7 +305,8 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     }
     const turn = turnsSince(ws, entry.turnNo - 1).ended[0]
     const heard = turn.asked.filter(message => entry.answers.includes(message.inboxNo))
-    const text = heard.some(message => message.replyTo) ? reply(turn) : announce({ record: turn.record, asked: heard })
+    const answer = heard.some(message => message.replyTo) ? reply(turn) : announce({ record: turn.record, asked: heard })
+    const text = entry.attemptedAt === null ? answer : `${MAY_REPEAT}\n\n${answer}`
     const handed = { files: turn.record.deliverables ?? [], more: turn.record.deliverablesMore ?? 0 }
     const answering = mine.at(-1)?.asked ?? null
     const formatted = async (part, options) => {
@@ -314,6 +318,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         return adapter.post(conversation, part, options)
       }
     }
+    attemptOutbox(ws, entry.outboxNo)
     try {
       await delivery.to(conversation, async (attempt) => {
         const [first, ...rest] = pieces(text, adapter.limits.message)
@@ -338,7 +343,8 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   }
 
   /**
-   * This bot's pending outbox entries of `ws`, delivered in order: the messages still owed an
+   * This bot's pending outbox entries of `ws`, delivered in order, and none once the service is
+   * stopping, since a post cut off by the exit is one that may repeat: the messages still owed an
    * answer, or null when the spore's database could not be read or written — a busy one — and
    * what it holds waits for the next pass.
    */
@@ -347,7 +353,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     try {
       for (const entry of outbox(ws, { kind, state: 'pending' })) {
         if (!entry.recipient.startsWith(prefix)) continue
-        if (!(await deliver(ws, entry))) entry.answers.forEach(inboxNo => owed.add(inboxNo))
+        if (stopping.signal.aborted || !(await deliver(ws, entry))) entry.answers.forEach(inboxNo => owed.add(inboxNo))
       }
     } catch (err) {
       log(`${ws}: its outbox could not be read or settled — ${said(err)}`)

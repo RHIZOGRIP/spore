@@ -79,7 +79,7 @@ lists what there is to read and `.schema turns` shows one:
   `endedAt`, `status` (`running`, `ended`, `walled`, `stopped`, `interrupted`), `exit`, `signal`.
 - `outbox` — where each finished turn's answer went: one row per place, `recipient`,
   `answers` (the `inboxNo`s it answered there), and `state` — `pending` until it is delivered,
-  then `delivered`, or `refused` with a `reason`. What a message asked from nowhere goes to
+  then `delivered`, or `refused` with a `reason`; `attemptedAt` is when posting it began. What a message asked from nowhere goes to
   your owner's default place, if they set one.
 - `limits` — each turn's `rounds`, `cost` and `wall` (`dimension`), as `soft` and `hard`, in
   rounds, dollars and milliseconds from the turn's start: one `start` row per dimension, then a

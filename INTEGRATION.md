@@ -241,7 +241,8 @@ read. A message with none uses the spore's default from `replyTo` in `config.jso
 
 | export | what it does |
 |---|---|
-| `outbox(ws, { kind, state })` | outbox entries, oldest first: `{ outboxNo, at, turnId, turnNo, recipient, answers, state, settledAt, reason }`. `answers` is the inbox positions answered; `state` is `pending`, `delivered` or `refused` |
+| `outbox(ws, { kind, state })` | outbox entries, oldest first: `{ outboxNo, at, turnId, turnNo, recipient, answers, state, settledAt, reason, attemptedAt }`. `answers` is the inbox positions answered; `state` is `pending`, `delivered` or `refused` |
+| `attemptOutbox(ws, outboxNo)` | marks a pending entry as about to be posted (`attemptedAt`), the first time only. An entry found marked may have been posted already |
 | `settleOutbox(ws, outboxNo, { refused })` | marks a pending entry delivered, or refused with the reason given. Returns false when it was not pending |
 | `readTurns(ws)` | every finished turn's record, in order. The answer of an outbox entry is the `output` of the record with its `turnNo` |
 
@@ -252,8 +253,10 @@ once.
 ```js
 for (const entry of outbox(ws, { kind: 'chat', state: 'pending' })) {
   const turn = readTurns(ws).find(t => t.turnNo === entry.turnNo)
+  const text = entry.attemptedAt ? `(this may repeat an earlier message)\n\n${turn.output}` : turn.output
+  attemptOutbox(ws, entry.outboxNo)
   try {
-    await postTo(entry.recipient, turn.output)
+    await postTo(entry.recipient, text)
     settleOutbox(ws, entry.outboxNo)
   } catch (err) {
     settleOutbox(ws, entry.outboxNo, { refused: err.message })

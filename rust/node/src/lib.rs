@@ -475,6 +475,11 @@ pub fn outbox(ws: String, kind: Option<String>, state: Option<String>) -> napi::
 }
 
 #[napi]
+pub fn attempt_outbox(ws: String, outbox_no: i64) -> napi::Result<bool> {
+    workspace::attempt_outbox(Path::new(&ws), outbox_no).map_err(failed)
+}
+
+#[napi]
 pub fn settle_outbox(ws: String, outbox_no: i64, refused: Option<String>) -> napi::Result<bool> {
     workspace::settle_outbox(Path::new(&ws), outbox_no, refused.as_deref()).map_err(failed)
 }

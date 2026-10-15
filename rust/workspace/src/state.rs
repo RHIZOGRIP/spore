@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 6;
+pub const SCHEMA_VERSION: i64 = 7;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -271,18 +271,19 @@ CREATE TABLE t_outbox (
   state      TEXT    NOT NULL CHECK (state IN ('pending', 'delivered', 'refused')),
   settledAt  TEXT,
   reason     TEXT,
+  attemptedAt TEXT,
   CHECK ((state = 'pending') = (settledAt IS NULL)),
   CHECK ((state = 'refused') = (reason IS NOT NULL))
 );
 CREATE INDEX t_outbox_pending ON t_outbox (state, recipient);
 
 CREATE VIEW outbox AS
-  SELECT outboxNo, at, turnId, recipient, answers, state, settledAt, reason FROM t_outbox;
+  SELECT outboxNo, at, turnId, recipient, answers, state, settledAt, reason, attemptedAt FROM t_outbox;
 "#;
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 5] = [
+const MIGRATIONS: [(i64, &str); 6] = [
     (
         1,
         r#"
@@ -402,6 +403,16 @@ CREATE VIEW inbox AS
          i.fromName, i.fromId, i.fromWhere,
          i.inboxNo <= w.inboxConsumed AS consumed
     FROM t_inbox i, t_workspace w;
+"#,
+    ),
+    (
+        6,
+        r#"
+ALTER TABLE t_outbox ADD COLUMN attemptedAt TEXT;
+
+DROP VIEW outbox;
+CREATE VIEW outbox AS
+  SELECT outboxNo, at, turnId, recipient, answers, state, settledAt, reason, attemptedAt FROM t_outbox;
 "#,
     ),
 ];
@@ -1833,7 +1844,7 @@ pub fn outbox(ws: &Path, kind: Option<&str>, state: Option<&str>) -> Result<Valu
         let mut statement = conn
             .prepare(
                 "SELECT o.outboxNo, o.at, o.turnId, o.recipient, o.answers, o.state, o.settledAt,
-                        o.reason, t.turnNo
+                        o.reason, t.turnNo, o.attemptedAt
                    FROM outbox o JOIN turns t ON t.turnId = o.turnId
                   WHERE (?1 IS NULL OR substr(o.recipient, 1, length(?1) + 1) = ?1 || ':')
                     AND (?2 IS NULL OR o.state = ?2)
@@ -1859,7 +1870,8 @@ pub fn outbox(ws: &Path, kind: Option<&str>, state: Option<&str>) -> Result<Valu
                     "state": row.get::<_, String>(5)?,
                     "settledAt": row.get::<_, Option<String>>(6)?,
                     "reason": row.get::<_, Option<String>>(7)?,
-                    "turnNo": row.get::<_, i64>(8)?
+                    "turnNo": row.get::<_, i64>(8)?,
+                    "attemptedAt": row.get::<_, Option<String>>(9)?
                 }))
             })
             .map_err(&failed)?;
@@ -1867,6 +1879,22 @@ pub fn outbox(ws: &Path, kind: Option<&str>, state: Option<&str>) -> Result<Valu
             .collect::<rusqlite::Result<Vec<Value>>>()
             .map_err(&failed)?;
         Ok(Value::Array(entries))
+    })
+}
+
+/// A pending outbox entry marked as about to be posted, so that whoever delivers it again knows a
+/// post may have reached its place already. The first time only — false when it was marked before,
+/// is not pending, or was never written.
+pub fn attempt_outbox(ws: &Path, outbox_no: i64) -> Result<bool, String> {
+    writing(ws, |conn| {
+        let changed = conn
+            .execute(
+                "UPDATE t_outbox SET attemptedAt = ?2
+                  WHERE outboxNo = ?1 AND state = 'pending' AND attemptedAt IS NULL",
+                (outbox_no, crate::iso_now()),
+            )
+            .map_err(failed_to("mark the outbox entry attempted"))?;
+        Ok(changed == 1)
     })
 }
 
@@ -3317,7 +3345,7 @@ mod tests {
             .map(|(kind, name, sql)| {
                 // A column added later sits last in a fresh table too, so a table is compared by
                 // its columns: ALTER TABLE rewrites the text it was created with.
-                let described = if kind == "table" && name != "t_outbox" {
+                let described = if kind == "table" {
                     let columns: Vec<Value> = conn
                         .prepare(&format!("PRAGMA table_info({name})"))
                         .unwrap()
@@ -3599,5 +3627,33 @@ mod tests {
             (json!("refused"), json!("chat 42 blocked the bot"))
         );
         assert!(!settle_outbox(&ws, 99, None).unwrap());
+    }
+
+    #[test]
+    fn marks_an_outbox_entry_attempted_once_and_only_while_it_is_pending() {
+        let ws = scratch("outbox-attempted");
+        answered(
+            &ws,
+            None,
+            &[Some("telegram:main/42"), Some("telegram:main/43")],
+            "answer",
+        );
+        let entries = outbox(&ws, Some("telegram"), None).unwrap();
+        let (first, second) = (
+            entries[0]["outboxNo"].as_i64().unwrap(),
+            entries[1]["outboxNo"].as_i64().unwrap(),
+        );
+        assert_eq!(entries[0]["attemptedAt"], Value::Null);
+        assert!(attempt_outbox(&ws, first).unwrap());
+        let marked = outbox(&ws, Some("telegram"), None).unwrap()[0]["attemptedAt"].clone();
+        assert!(marked.is_string());
+        assert!(!attempt_outbox(&ws, first).unwrap());
+        assert_eq!(
+            outbox(&ws, Some("telegram"), None).unwrap()[0]["attemptedAt"],
+            marked
+        );
+        assert!(settle_outbox(&ws, second, None).unwrap());
+        assert!(!attempt_outbox(&ws, second).unwrap());
+        assert!(!attempt_outbox(&ws, 99).unwrap());
     }
 }

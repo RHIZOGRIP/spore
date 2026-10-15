@@ -565,6 +565,14 @@ export function outbox (ws, { kind, state } = {}) {
   return JSON.parse(native.outbox(ws, kind, state))
 }
 
+/**
+ * A pending entry marked as about to be posted, the first time only: one found marked again may
+ * have reached its place already. False when it was marked before or is not pending.
+ */
+export function attemptOutbox (ws, outboxNo) {
+  return native.attemptOutbox(ws, outboxNo)
+}
+
 /** A pending entry delivered, or refused saying why; false when it was not pending. */
 export function settleOutbox (ws, outboxNo, { refused } = {}) {
   return native.settleOutbox(ws, outboxNo, refused)

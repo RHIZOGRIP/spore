@@ -179,11 +179,22 @@ The guide:
 
 ```
 outbox(ws, { kind, state }) → [{ outboxNo, at, turnId, turnNo, recipient, answers, state,
-                                 settledAt, reason }]
+                                 settledAt, reason, attemptedAt }]
 ```
 
 The outbox entries whose recipient is of `kind` (`'chat'` for `chat:…`) and in `state`
 (`pending`, `delivered` or `refused`), oldest first. Omit `kind` or `state` to match any.
+
+### `attemptOutbox`
+
+```
+attemptOutbox(ws, outboxNo) → boolean
+```
+
+Marks a pending entry as about to be posted, setting its `attemptedAt` the first time. An entry
+found with `attemptedAt` set may have reached its place already — the poster stopped between
+posting and settling — so posting it again should say it may repeat. Returns `false` when the entry
+was marked before or is not pending.
 
 ### `settleOutbox`
 
