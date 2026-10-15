@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-cli",
-  "version": "1.18.0",
+  "version": "1.19.0",
   "author": {
     "name": "Christophe Le Bars",
     "email": "clb@toort.net"
@@ -50,7 +50,7 @@
     "tui": "node bin/spore.js tui"
   },
   "dependencies": {
-    "@rhizogrip/spore": "1.18.0",
+    "@rhizogrip/spore": "1.19.0",
     "chalk": "^6.0.1",
     "minimist": "^1.2.8"
   },
