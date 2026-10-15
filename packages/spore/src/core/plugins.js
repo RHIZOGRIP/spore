@@ -586,7 +586,7 @@ export function misplaced (spec) {
   }
   const elsewhere = [['url', spec.url], ['socket', spec.socket], ...Object.values(isRecord(spec.query) ? spec.query : {}).map(value => ['query', value])]
   for (const [field, value] of elsewhere) {
-    if (value !== undefined && placeholdersOf(value).includes('name')) return { found: '{name}', where: `its ${field}`, why: "only a header takes {name}, which the runner fills and the agent cannot replace" }
+    if (value !== undefined && placeholdersOf(value).includes('name')) return { found: '{name}', where: `its ${field}`, why: 'only a header takes {name}, which the runner fills and the agent cannot replace' }
   }
   return null
 }
