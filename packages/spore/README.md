@@ -423,7 +423,9 @@ each model not ready to call at all.
 
 A sub-agent's environment is built up by name rather than inherited: `PATH`,
 `HOME`, `MODEL`, the socket, and no provider key at all, nor any source's: a source is the
-runner's to call, and the agent is told only its name.
+runner's to call, and the agent is told only its name. A source's header may carry the calling
+spore's name as `{name}`, which the runner fills and the agent can neither see nor set, so one
+credential can serve many spores (docs/operating.md §Sources).
 
 `memory: vectors` keeps long-term memory in a vector store the same way: the runner reads
 `~/.config/spore/memory.json` — the store's `url`, `headers` with `${VAR}` filled from its own

@@ -14,7 +14,7 @@ import { CONFIG_FILE, containing, ENVIRONMENT_FILE, MEMORY_FILE, SOURCES_FILE, r
 import { isWorkspace } from './discover.js'
 import { list, show } from './verbs.js'
 import { containCheck, keptRefusal } from '../core/command.js'
-import { containOf, listPlugins, secretsIn, showPlugin } from '../core/plugins.js'
+import { containOf, listPlugins, misplaced, secretsIn, showPlugin } from '../core/plugins.js'
 import { paused, SLOT_DIR, spendStop } from '../core/admission.js'
 import { outbox } from '../core/spore-dir.js'
 import { landlockAbi } from '../isolation/sandbox.js'
@@ -148,15 +148,16 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
       problem('operator', path, 'is not readable JSON', err.message)
       return
     }
-    for (const { what, spec, uses } of entries(raw)) {
-      const unset = unsetIn(spec)
-      if (!unset.length) continue
+    for (const { what, spec, uses, wrong } of entries(raw)) {
       const users = spores.filter(uses).map(spore => spore.name)
       const report = users.length ? problem : note
-      report('operator', path, `${what} wants ${are(unset)}${users.length ? ` — ${users.join(', ')} cannot start a turn` : ''}`, `add ${unset.join(', ')} to ${environment}`)
+      const stopped = users.length ? ` — ${users.join(', ')} cannot start a turn` : ''
+      if (wrong) report('operator', path, `${what} has ${wrong.found} in ${wrong.where}${stopped}`, wrong.why)
+      const unset = unsetIn(spec)
+      if (unset.length) report('operator', path, `${what} wants ${are(unset)}${stopped}`, `add ${unset.join(', ')} to ${environment}`)
     }
   }
-  described(SOURCES_FILE, raw => Object.entries(raw).map(([source, spec]) => ({ what: `source ${source}`, spec, uses: spore => spore.sources.includes(source) })))
+  described(SOURCES_FILE, raw => Object.entries(raw).map(([source, spec]) => ({ what: `source ${source}`, spec, uses: spore => spore.sources.includes(source), wrong: misplaced(spec) })))
   described(MEMORY_FILE, raw => [{ what: 'the vector store', spec: raw, uses: spore => spore.memory?.backend === 'vectors' }])
 
   const hooks = hooksPath(configFile)

@@ -216,14 +216,25 @@ model mohdel declares billed by `plan` or `capacity`.
 | `url` | required; `http://` or `https://` |
 | `socket` | an absolute path: the call goes to this unix socket instead of the url's host, the url still giving the `host` header, the path and the query; the url is then `http://` |
 | `query` | parameters sent with every call, as a host default |
-| `headers` | headers sent with every call |
+| `headers` | headers sent with every call; `{name}` in a value is the calling spore's name |
 | `method` | the one method of a plain source; `GET` when absent |
 | `methods` | with `paths`, the methods a call may name |
 | `paths` | path patterns under `url` a call may name: `*` one segment, `**` one or more; `url` must then end in `/` |
 | `requires` | parameters a definition granting the source must narrow with `<source>.<param>` |
 
 `${VAR}` in `url`, `socket`, `query` and `headers` is filled from the runner's environment, which includes
-`~/.config/spore/environment`; the agent never sees the value. Without `methods` and `paths` a
+`~/.config/spore/environment`; the agent never sees the value.
+
+`{name}` in a header value is the calling spore's name, its workspace directory's name, filled
+by the runner whoever started the turn; a cell sends its root's. One credential then serves
+every spore granted the source, and the service behind it tells them apart:
+
+```json
+"headers": { "Authorization": "Bearer ${TRACKER_TOKEN}", "X-Spore": "{name}" }
+```
+
+The agent can neither set nor change it. The name is only as good as the credential beside it:
+whoever holds the credential can send any name, so the service checks both. Without `methods` and `paths` a
 source is one URL and one method, and the agent adds query parameters. With them it is an API:
 a call names a method, a path matching a pattern, and a JSON body. Spore checks only the method
 and path; give the token no more scope at the service than the agent should have.
@@ -231,8 +242,9 @@ and path; give the token no more scope at the service than the agent should have
 Refused when a turn starts, before any call: a `${VAR}` that is not set
 (`SOURCE_SECRET_MISSING`), a source the definition grants and this file does not describe, a
 `requires` parameter the definition does not narrow, a `query` default outside the values
-the definition allows, a field not in the table, and a `socket` that is not an absolute path or
-comes with an `https://` url. A socket that does not exist at call time fails that call
+the definition allows, a field not in the table, a placeholder other than `{name}` in a header or
+`{name}` in `url`, `socket` or `query` (`SOURCE_INVALID`), and a `socket` that is not an absolute
+path or comes with an `https://` url. A socket that does not exist at call time fails that call
 (`SOURCE_UNREACHABLE`), as an unreachable host does.
 
 A socket mounted where a spore runs is one its agent's commands can connect to as well; the

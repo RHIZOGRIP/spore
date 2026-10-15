@@ -66,6 +66,19 @@ describe('spore doctor', () => {
     expect(examine({ LEDGER_KEY: 'k', SPARE_KEY: 'k' }).findings).toEqual([])
   })
 
+  it('reports a source holding a placeholder the runner would refuse', () => {
+    spore('main', 'sources: [ledger]\n')
+    operator('sources.json', {
+      ledger: { url: 'https://ledger.invalid', headers: { 'x-spore': '{name}', 'x-place': '{ws}' } },
+      spare: { url: 'https://spare.invalid', query: { spore: '{name}' } }
+    })
+    const { findings } = examine()
+    expect(findings).toEqual([
+      expect.objectContaining({ severity: 'problem', problem: 'source ledger has {ws} in its x-place header — main cannot start a turn' }),
+      expect.objectContaining({ severity: 'note', problem: 'source spare has {name} in its query' })
+    ])
+  })
+
   it('reports a spore using a plugin that is not allowed, and one allowed and not installed', () => {
     spore('main', 'plugins: [brave]\n')
     operator('config.json', { home, plugins: { ghost: { settings: {}, version: '0.1.0', dir: '/nowhere' } } })

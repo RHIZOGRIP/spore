@@ -342,6 +342,13 @@ describe('endpoints a plugin describes', () => {
     expect(refusal(() => checkPlugin(plugin('spore-plugin-web', { sources: { Web: WEB } }))).message).toMatch(/source named "Web"/)
   })
 
+  it('send the calling spore\'s name where a header holds {name}, and refuse it anywhere else', () => {
+    const named = { ...WEB, headers: { ...WEB.headers, 'x-spore': '{name}' } }
+    expect(checkPlugin(plugin('spore-plugin-web', { sources: { web: named } })).sources).toEqual({ web: named })
+    expect(refusal(() => checkPlugin(plugin('spore-plugin-web', { sources: { web: { ...WEB, headers: { 'x-spore': '{ws}' } } } }))).message).toMatch(/source web with \{ws\} in its x-spore header/)
+    expect(refusal(() => checkPlugin(plugin('spore-plugin-web', { sources: { web: { ...WEB, query: { spore: '{name}' } } } }))).message).toMatch(/source web with \{name\} in its query/)
+  })
+
   it('go to the runner for a spore that uses the plugin, never into its environment', () => {
     plugin('spore-plugin-web', { sources: { web: WEB } })
     useIn(WS, ['web'])

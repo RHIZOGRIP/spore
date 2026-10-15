@@ -503,8 +503,13 @@ async fn main() {
                 )
             })
         };
+        let spore = ws
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_else(|| fail(format!("{} has no name to send as {{name}}", ws.display())));
         let loaded = file.and_then(|file| {
             source::Sources::load(
+                spore,
                 file,
                 &def.sources,
                 &def.scopes,

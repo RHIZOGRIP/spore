@@ -308,6 +308,8 @@ function checkSources (declared, refuse) {
     if (!isRecord(spec) || typeof spec.url !== 'string' || !/^https?:\/\//.test(spec.url)) {
       throw refuse(`has a source ${name} with no http:// or https:// url`, 'a source is described as the host\'s sources.json describes one: url, and headers, query, requires, methods or paths')
     }
+    const wrong = misplaced(spec)
+    if (wrong) throw refuse(`has a source ${name} with ${wrong.found} in ${wrong.where}`, wrong.why)
   }
   return declared
 }
@@ -568,6 +570,26 @@ export function upgradeDocs (ws, options = {}) {
 const SECRET = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g
 
 export const secretsIn = (described) => [...new Set([...JSON.stringify(described).matchAll(SECRET)].map(found => found[1]))]
+
+const SOURCE_PLACEHOLDER = /(?<!\$)\{([A-Za-z_][\w.]*)\}/g
+const placeholdersOf = (value) => [...String(value).matchAll(SOURCE_PLACEHOLDER)].map(found => found[1])
+
+/**
+ * A placeholder in a source's spec the runner would refuse, as `{ found, where, why }`, or null:
+ * a header may hold `{name}` and no other, and nothing else may hold it.
+ */
+export function misplaced (spec) {
+  if (!isRecord(spec)) return null
+  for (const [header, value] of Object.entries(isRecord(spec.headers) ? spec.headers : {})) {
+    const other = placeholdersOf(value).find(placeholder => placeholder !== 'name')
+    if (other !== undefined) return { found: `{${other}}`, where: `its ${header} header`, why: "a header may hold {name}, the calling spore's name, which the runner fills" }
+  }
+  const elsewhere = [['url', spec.url], ['socket', spec.socket], ...Object.values(isRecord(spec.query) ? spec.query : {}).map(value => ['query', value])]
+  for (const [field, value] of elsewhere) {
+    if (value !== undefined && placeholdersOf(value).includes('name')) return { found: '{name}', where: `its ${field}`, why: "only a header takes {name}, which the runner fills and the agent cannot replace" }
+  }
+  return null
+}
 
 const describe = (plugin) => ({
   name: plugin.name,

@@ -167,9 +167,68 @@ fn fill(name: &str, value: &str, env: &impl Fn(&str) -> Option<String>) -> Resul
     })
 }
 
+const NAMED_HEADER: &str =
+    "a header may hold {name}, the calling spore's name, which the runner fills";
+
+fn placeholders(raw: &str) -> Vec<(usize, usize)> {
+    let mut found = Vec::new();
+    let mut at = 0;
+    while let Some(open) = raw[at..].find('{').map(|i| i + at) {
+        let ident = raw[open + 1..]
+            .char_indices()
+            .take_while(|(i, c)| {
+                c.is_ascii_alphabetic()
+                    || *c == '_'
+                    || (*i > 0 && (c.is_ascii_digit() || *c == '.'))
+            })
+            .count();
+        let close = open + 1 + ident;
+        if ident > 0 && raw[close..].starts_with('}') && !raw[..open].ends_with('$') {
+            found.push((open, close + 1));
+            at = close + 1;
+        } else {
+            at = open + 1;
+        }
+    }
+    found
+}
+
+fn with_name(source: &str, header: &str, raw: &str, spore: &str) -> Result<String, Refusal> {
+    let mut out = String::with_capacity(raw.len());
+    let mut from = 0;
+    for (start, end) in placeholders(raw) {
+        let placeholder = &raw[start + 1..end - 1];
+        if placeholder != "name" {
+            return Err(invalid(
+                format!("source \"{source}\" has {{{placeholder}}} in its {header} header, which spore does not fill"),
+                NAMED_HEADER,
+            ));
+        }
+        out.push_str(&raw[from..start]);
+        out.push_str(spore);
+        from = end;
+    }
+    out.push_str(&raw[from..]);
+    Ok(out)
+}
+
+fn unnamed(source: &str, field: &str, raw: &str) -> Result<(), Refusal> {
+    if placeholders(raw)
+        .into_iter()
+        .any(|(start, end)| &raw[start + 1..end - 1] == "name")
+    {
+        return Err(invalid(
+            format!("source \"{source}\" has {{name}} in its {field}"),
+            "only a header takes {name}, which the runner fills and the agent cannot replace",
+        ));
+    }
+    Ok(())
+}
+
 fn resolve(
     name: &str,
     spec: &Value,
+    spore: &str,
     env: &impl Fn(&str) -> Option<String>,
     net: &Net,
 ) -> Result<Source, Refusal> {
@@ -191,6 +250,7 @@ fn resolve(
         Some(Value::String(url)) if !url.is_empty() => url,
         _ => return Err(invalid(format!("source \"{name}\" has no url"), shape)),
     };
+    unnamed(name, "url", raw)?;
     let filled = fill(name, raw, env)?;
     let url = Url::parse(&filled).map_err(|e| {
         invalid(
@@ -207,6 +267,7 @@ fn resolve(
     let dial = match spec.get("socket") {
         None => Dial::Net(net.clone()),
         Some(Value::String(raw)) => {
+            unnamed(name, "socket", raw)?;
             let path = socket_path(&fill(name, raw, env)?, &url).map_err(|why| {
                 invalid(format!("source \"{name}\" has a socket it cannot use"), why)
             })?;
@@ -301,7 +362,16 @@ fn resolve(
             None => Ok(Vec::new()),
             Some(Value::Object(map)) => map
                 .iter()
-                .map(|(k, v)| Ok((k.clone(), fill(name, &text(v), env)?)))
+                .map(|(k, v)| {
+                    let raw = text(v);
+                    let raw = if field == "headers" {
+                        with_name(name, k, &raw, spore)?
+                    } else {
+                        unnamed(name, field, &raw)?;
+                        raw
+                    };
+                    Ok((k.clone(), fill(name, &raw, env)?))
+                })
                 .collect(),
             Some(_) => Err(invalid(
                 format!("source \"{name}\" has {field} that is not an object"),
@@ -404,7 +474,10 @@ impl Sources {
     /// `file` is the host's `sources.json`, needed once the definition grants a source the
     /// host describes; `plugins` are the sources the plugins a spore uses describe, granted with
     /// them. Either way a secret is the host's, resolved from the runner's own environment.
+    /// `spore` is the name of the spore this runner serves: a header's `{name}`, sent on every
+    /// call its tree makes, since its cells call through these same sources.
     pub fn load(
+        spore: &str,
         file: Option<&Path>,
         granted: &[String],
         scopes: &Ordered<Ordered<Vec<String>>>,
@@ -468,7 +541,7 @@ impl Sources {
                     format!("the definition grants it and {where_} does not describe it"),
                 )
             })?;
-            let source = resolve(name, spec, &env, &net)?;
+            let source = resolve(name, spec, spore, &env, &net)?;
             let narrowed = scopes.get(name);
             for param in &source.requires {
                 if narrowed
@@ -998,6 +1071,7 @@ mod tests {
     ) -> Result<Arc<Sources>, Refusal> {
         let dir = scratch();
         Sources::load(
+            "triage",
             Some(&file(&dir, declared)),
             &granted(names),
             &scopes(narrowed),
@@ -1117,6 +1191,7 @@ mod tests {
             json!({ "ledger": { "url": "http://x.invalid", "headers": { "authorization": "Bearer ${TOKEN}" } } }),
         );
         let held = Sources::load(
+            "triage",
             Some(&path),
             &granted(&["ledger"]),
             &Ordered::default(),
@@ -1128,6 +1203,7 @@ mod tests {
         assert_eq!(value, "Bearer abc");
 
         let refused = Sources::load(
+            "triage",
             Some(&path),
             &granted(&["ledger"]),
             &Ordered::default(),
@@ -1141,6 +1217,45 @@ mod tests {
             "{}",
             refusal.message
         );
+    }
+
+    #[tokio::test]
+    async fn sends_the_spore_s_name_where_a_header_asks_for_it_and_never_reads_a_secret_as_one() {
+        let dir = scratch();
+        let path = file(
+            &dir,
+            json!({ "ledger": { "url": "http://x.invalid", "headers": { "authorization": "Bearer ${TOKEN}", "x-spore": "{name}" } } }),
+        );
+        let held = Sources::load(
+            "triage",
+            Some(&path),
+            &granted(&["ledger"]),
+            &Ordered::default(),
+            &Map::new(),
+            |v| (v == "TOKEN").then(|| "a{name}b".to_string()),
+        )
+        .unwrap();
+        let headers = &held.resolved["ledger"].headers;
+        assert!(headers
+            .iter()
+            .any(|(name, value)| name == "x-spore" && value == "triage"));
+        assert!(headers
+            .iter()
+            .any(|(name, value)| name == "authorization" && value == "Bearer a{name}b"));
+    }
+
+    #[tokio::test]
+    async fn refuses_a_placeholder_it_does_not_fill_and_a_name_the_agent_could_replace() {
+        for spec in [
+            json!({ "url": "http://x.invalid", "headers": { "x-spore": "{workspace}" } }),
+            json!({ "url": "http://x.invalid", "query": { "spore": "{name}" } }),
+            json!({ "url": "http://x.invalid/{name}/" }),
+        ] {
+            let refusal = load(json!({ "ledger": spec.clone() }), &["ledger"], &[])
+                .err()
+                .unwrap();
+            assert_eq!(refusal.kind, "SOURCE_INVALID", "{spec}");
+        }
     }
 
     #[tokio::test]
@@ -1185,6 +1300,7 @@ mod tests {
         let plugins =
             json!({ "chat": { "url": format!("{base}/channels/"), "paths": ["*/messages"] } });
         let sources = Sources::load(
+            "triage",
             None,
             &granted(&["chat"]),
             &scopes(&[("chat", "path", &["111/messages"])]),
@@ -1261,8 +1377,15 @@ mod tests {
         let plugins = json!({ "web": { "url": "https://x.invalid/search", "headers": { "x-key": "${WEB_KEY}" } } });
         let plugins = plugins.as_object().unwrap();
         let key = |name: &str| (name == "WEB_KEY").then(|| "the-key".to_string());
-        let sources =
-            Sources::load(None, &granted(&["web"]), &Ordered::default(), plugins, key).unwrap();
+        let sources = Sources::load(
+            "triage",
+            None,
+            &granted(&["web"]),
+            &Ordered::default(),
+            plugins,
+            key,
+        )
+        .unwrap();
         assert!(sources.resolved["web"]
             .headers
             .iter()
@@ -1270,6 +1393,7 @@ mod tests {
         assert_eq!(sources.granted, ["web"]);
         assert_eq!(
             kind(Sources::load(
+                "triage",
                 None,
                 &[],
                 &Ordered::default(),
@@ -1286,6 +1410,7 @@ mod tests {
         let path = file(&dir, json!({ "web": { "url": "http://x.invalid" } }));
         let plugins = json!({ "web": { "url": "http://y.invalid" } });
         let refused = Sources::load(
+            "triage",
             Some(&path),
             &[],
             &Ordered::default(),
@@ -1313,6 +1438,7 @@ mod tests {
         let path = dir.0.join("sources.json");
         std::fs::write(&path, "{ not json").unwrap();
         let refused = Sources::load(
+            "triage",
             Some(&path),
             &granted(&["ledger"]),
             &Ordered::default(),
@@ -1377,6 +1503,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sends_the_name_whatever_the_agent_asks() {
+        let (base, seen) = endpoint(Bytes::from_static(b"hi")).await;
+        let sources = load(
+            json!({ "ledger": { "url": format!("{base}/search"), "headers": { "authorization": "Spore {name}" } } }),
+            &["ledger"],
+            &[],
+        )
+        .unwrap();
+
+        sources
+            .fetch(&json!({ "source": "ledger", "params": { "authorization": "Spore other", "name": "other" } }))
+            .await
+            .unwrap();
+
+        assert_eq!(seen.last().1.as_deref(), Some("Spore triage"));
+    }
+
+    #[tokio::test]
     async fn hands_back_bytes_that_are_not_text_as_they_came() {
         let png_then_jpeg: &[u8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xd8];
         let (base, _) = endpoint(Bytes::from_static(png_then_jpeg)).await;
@@ -1406,6 +1550,7 @@ mod tests {
         );
         let socket_text = socket.to_str().unwrap().to_string();
         let sources = Sources::load(
+            "triage",
             Some(&path),
             &granted(&["docs"]),
             &scopes(&[("docs", "collection", &["lake"])]),
@@ -1500,6 +1645,7 @@ mod tests {
     async fn refuses_a_plugins_source_that_names_a_socket() {
         let plugins = json!({ "web": { "url": "http://x.invalid", "socket": "/run/s.sock" } });
         let refusal = Sources::load(
+            "triage",
             None,
             &[],
             &Ordered::default(),
@@ -1651,6 +1797,7 @@ mod tests {
             json!({ "ledger": { "url": base, "headers": { "authorization": "Bearer ${TOKEN}" } } }),
         );
         let sources = Sources::load(
+            "triage",
             Some(&path),
             &granted(&["ledger"]),
             &Ordered::default(),

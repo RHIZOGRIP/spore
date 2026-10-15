@@ -322,7 +322,9 @@ A source is granted to every spore using the plugin, whether or not its `spore.c
 its address or its key. `${VAR}` in `url`, `query` and `headers` is filled from the runner's
 environment, which includes `~/.config/spore/environment`, so the plugin's README names each
 variable the operator adds there; `spore plugin show --json` lists them as `secrets`. A turn
-starts only when every one is set (`SOURCE_SECRET_MISSING`). A source that `requires` a parameter
+starts only when every one is set (`SOURCE_SECRET_MISSING`). A header may hold `{name}`, the
+calling spore's name, as in `sources.json`; any other placeholder there, and `{name}` anywhere
+else, is refused. A source that `requires` a parameter
 needs each spore using the plugin to narrow it in its `spore.cmk` (`<source>.<param>`), or its
 turns are refused.
 
