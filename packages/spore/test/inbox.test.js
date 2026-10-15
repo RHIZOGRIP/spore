@@ -34,6 +34,24 @@ describe('the inbox', () => {
     expect(() => appendInbox(WS, 'x', { hook: { name: 'forge' } })).toThrow(/names its hook and its delivery/)
   })
 
+  it('keeps who said a message and where, and the turn reads it above what they said', () => {
+    const from = { name: 'Alice "A" Martin', id: 'telegram:148392011', where: 'a private chat on Telegram' }
+    send(WS, 'can you check the payouts?', { start: false, from })
+    expect(readInbox(WS)[0]).toMatchObject({ fromName: 'Alice "A" Martin', fromId: 'telegram:148392011', fromWhere: 'a private chat on Telegram' })
+    expect(readInboxFrom(WS)).toMatchObject({
+      messages: ['[Said by "Alice \\"A\\" Martin" (telegram:148392011) in "a private chat on Telegram".]\n\ncan you check the payouts?'],
+      person: { fromName: 'Alice "A" Martin' }
+    })
+  })
+
+  it('refuses a from that is not who and where, or that a schedule, webhook or job would also claim', () => {
+    for (const from of [{ name: 'Alice' }, { name: 'Alice', id: '148392011', where: 'a chat' }, { name: ' ', id: 'telegram:1', where: 'a chat' }, { name: 'A', id: 'telegram:1', where: 'a chat', role: 'admin' }]) {
+      expect(() => appendInbox(WS, 'x', { from })).toThrow(expect.objectContaining({ type: 'FROM_INVALID' }))
+    }
+    expect(() => appendInbox(WS, 'x', { from: { name: 'A', id: 'telegram:1', where: 'a chat' }, hook: { name: 'forge', delivery: 'd-1' } })).toThrow(expect.objectContaining({ type: 'FROM_INVALID' }))
+    expect(readInbox(WS)).toEqual([])
+  })
+
   it('reads from an inboxNo, so a turn sees only what it has not answered', () => {
     appendInbox(WS, 'first')
     const one = readInboxFrom(WS)

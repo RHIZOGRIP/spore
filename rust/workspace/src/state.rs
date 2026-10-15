@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -67,6 +67,10 @@ CREATE TABLE t_inbox (
   jobEvent     TEXT,
   jobRun       TEXT,
   replyTo      TEXT,
+  fromName     TEXT,
+  fromId       TEXT,
+  fromWhere    TEXT CHECK ((fromName IS NULL) = (fromId IS NULL) AND (fromName IS NULL) = (fromWhere IS NULL)
+                           AND (fromName IS NULL OR (schedule IS NULL AND hook IS NULL AND job IS NULL))),
   UNIQUE (schedule, due),
   CHECK ((schedule IS NULL) = (due IS NULL)),
   CHECK ((hook IS NULL) = (hookDelivery IS NULL)),
@@ -183,6 +187,7 @@ CREATE VIEW inbox AS
   SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
          i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
          i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
+         i.fromName, i.fromId, i.fromWhere,
          i.inboxNo <= w.inboxConsumed AS consumed
     FROM t_inbox i, t_workspace w;
 
@@ -277,7 +282,7 @@ CREATE VIEW outbox AS
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 4] = [
+const MIGRATIONS: [(i64, &str); 5] = [
     (
         1,
         r#"
@@ -379,6 +384,24 @@ CREATE VIEW turns AS
          byPrecursor, dataBytes, historySent, historyBound
     FROM t_turns
    WHERE state = 'final';
+"#,
+    ),
+    (
+        5,
+        r#"
+ALTER TABLE t_inbox ADD COLUMN fromName TEXT;
+ALTER TABLE t_inbox ADD COLUMN fromId TEXT;
+ALTER TABLE t_inbox ADD COLUMN fromWhere TEXT CHECK ((fromName IS NULL) = (fromId IS NULL) AND (fromName IS NULL) = (fromWhere IS NULL)
+                           AND (fromName IS NULL OR (schedule IS NULL AND hook IS NULL AND job IS NULL)));
+
+DROP VIEW inbox;
+CREATE VIEW inbox AS
+  SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
+         i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
+         i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
+         i.fromName, i.fromId, i.fromWhere,
+         i.inboxNo <= w.inboxConsumed AS consumed
+    FROM t_inbox i, t_workspace w;
 "#,
     ),
 ];
@@ -591,7 +614,7 @@ enum Kind {
 }
 
 /// What an inbox entry may say, by column. `inboxNo` is the database's to give.
-const INBOX_COLUMNS: [(&str, Kind); 18] = [
+const INBOX_COLUMNS: [(&str, Kind); 21] = [
     ("at", Kind::Text),
     ("text", Kind::Text),
     ("bodyPath", Kind::Text),
@@ -610,6 +633,9 @@ const INBOX_COLUMNS: [(&str, Kind); 18] = [
     ("jobEvent", Kind::Text),
     ("jobRun", Kind::Text),
     ("replyTo", Kind::Text),
+    ("fromName", Kind::Text),
+    ("fromId", Kind::Text),
+    ("fromWhere", Kind::Text),
 ];
 
 /// What a turn record carries into its row. `turnNo` and `inboxFrom` are finalization's to
@@ -767,7 +793,8 @@ pub fn check_reply_to(reply_to: &str) -> Result<(), String> {
 }
 
 /// Who said an inbox entry, when no person did: `schedule:<name>`, `hook:<name>` or `job:<name>`,
-/// from the field naming it. None for a person's message; refused when it names two.
+/// from the field naming it. None for a person's message, which may say who the person is with
+/// `fromName`, `fromId` and `fromWhere`, all three. Refused when it names two speakers.
 pub fn origin_of(entry: &Record) -> Result<Option<String>, String> {
     let named: Vec<String> = ["schedule", "hook", "job"]
         .iter()
@@ -777,8 +804,29 @@ pub fn origin_of(entry: &Record) -> Result<Option<String>, String> {
                 .map(|name| format!("{kind}:{name}"))
         })
         .collect();
+    let from = ["fromName", "fromId", "fromWhere"];
+    let given = |field: &str| {
+        entry
+            .get::<Value>(field)
+            .is_some_and(|value| !value.is_null())
+    };
+    if from.iter().any(|field| given(field))
+        && !from.iter().all(|field| {
+            entry
+                .get::<String>(field)
+                .is_some_and(|value| !value.is_empty())
+        })
+    {
+        return Err(
+            "an entry says who said it with fromName, fromId and fromWhere, all three and none empty"
+                .into(),
+        );
+    }
     match named.as_slice() {
         [] => Ok(None),
+        [one] if given("fromName") => Err(format!(
+            "an entry from a person does not also come from {one}"
+        )),
         [one] => Ok(Some(one.clone())),
         _ => Err(format!(
             "an entry says it came from {}, one at most",
@@ -2449,11 +2497,45 @@ mod tests {
         assert!(append_inbox(&ws, r#"{"at":"t","text":""}"#).is_err());
         assert!(append_inbox(&ws, r#"{"at":"t","text":"x","offset":3}"#).is_err());
         assert!(append_inbox(&ws, r#"{"at":"t","text":"x","schedule":"daily"}"#).is_err());
+        assert!(append_inbox(&ws, r#"{"at":"t","text":"x","fromName":"Alice"}"#).is_err());
+        assert!(append_inbox(
+            &ws,
+            r#"{"at":"t","text":"x","fromName":"","fromId":"telegram:1","fromWhere":"a chat"}"#
+        )
+        .is_err());
+        assert!(append_inbox(&ws, r#"{"at":"t","text":"x","hook":"forge","hookDelivery":"d","fromName":"Alice","fromId":"telegram:1","fromWhere":"a chat"}"#).is_err());
         assert_eq!(
             append_inbox(&ws, r#"{"at":"t","files":[{"path":"a"}]}"#)
                 .unwrap()
                 .0,
             1
+        );
+    }
+
+    #[test]
+    fn reads_an_entry_nobody_named_as_one_no_person_said() {
+        let read_back = Record::from_value(&json!({
+            "text": "x", "schedule": null, "hook": null, "job": null,
+            "fromName": null, "fromId": null, "fromWhere": null
+        }));
+        assert_eq!(origin_of(&read_back), Ok(None));
+        let clock = Record::from_value(&json!({
+            "text": "x", "schedule": "daily", "fromName": null, "fromId": null, "fromWhere": null
+        }));
+        assert_eq!(origin_of(&clock), Ok(Some("schedule:daily".into())));
+    }
+
+    #[test]
+    fn keeps_who_said_an_entry_beside_what_they_said() {
+        let ws = scratch("inbox-from");
+        append_inbox(
+            &ws,
+            r#"{"at":"t","text":"hello","fromName":"Alice","fromId":"telegram:1","fromWhere":"a private chat on Telegram"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            row(&ws, "SELECT text, fromName, fromId, fromWhere FROM inbox"),
+            json!({ "text": "hello", "fromName": "Alice", "fromId": "telegram:1", "fromWhere": "a private chat on Telegram" })
         );
     }
 

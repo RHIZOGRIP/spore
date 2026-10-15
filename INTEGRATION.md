@@ -160,7 +160,9 @@ its record.
 
 `send` options: `requestId` (taken once, see [Rules](#rules-an-integrator-keeps)); `attach`, a
 list of `{ name, mime, data }` with `data` a Buffer; `replyTo`, where the answer goes
-([Delivering answers](#delivering-answers-elsewhere)); `traceparent`; `env`, the environment the
+([Delivering answers](#delivering-answers-elsewhere)); `from`, who said it and where, as `{ name,
+id, where }` — how the person shows, `<kind>:<their id>`, and the conversation as a person would
+name it — which the turn reads in a line above the text; `traceparent`; `env`, the environment the
 turn's runner starts with; `start: false`, which says the message and starts nothing — a turn
 running reads it at its next round, and with none running it waits for the next turn something
 else starts.
@@ -401,7 +403,7 @@ All under `/v1`, JSON in and out.
 
 | route | body | answer |
 |---|---|---|
-| `POST /v1/spores/<name>/messages` | `{ "text", "requestId"?, "replyTo"?, "attach"?: [{ "name", "mime", "data": "<base64>" }] }` | `202 { "inbox", "started", "repeated" }` |
+| `POST /v1/spores/<name>/messages` | `{ "text", "requestId"?, "replyTo"?, "from"?: { "name", "id", "where" }, "attach"?: [{ "name", "mime", "data": "<base64>" }] }` | `202 { "inbox", "started", "repeated" }` |
 | `GET /v1/spores/<name>/events?after=<seq>` | — | `200`, `application/x-ndjson`: every event after `seq`, then each new one until the turn running (or about to start) ends |
 | `GET /v1/spores/<name>/events?after=<seq>&follow=false` | — | the events after `seq` that exist now, then the stream ends |
 | `GET /v1/spores/<name>` | — | `200`, what `show` returns |

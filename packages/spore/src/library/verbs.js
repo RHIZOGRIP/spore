@@ -13,7 +13,7 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 
 import { readConfig, existing, addTo, workspaceFor, CONFIG_FILE, containing, recordLayout } from './config.js'
 import { isWorkspace, sporesInHome } from './discover.js'
-import { acquireLock, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readTranscript, readTurns, releaseLock, runningLimits, saidOf, statePath, turnSummary } from '../core/spore-dir.js'
+import { acquireLock, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readTranscript, readTurns, releaseLock, runningLimits, statePath, turnSummary } from '../core/spore-dir.js'
 import { sqlLines } from './sql.js'
 import { TOOL_NAMES } from '../core/tool-names.js'
 import { cloneCapability } from '../core/clone.js'
@@ -794,7 +794,7 @@ export function log ({ ws, configFile = CONFIG_FILE } = {}) {
     workUnits: turn.workUnits ?? 0,
     error: turn.error ?? null,
     detail: turn.detail ?? null,
-    asked: said.filter(entry => entry.inboxNo > turn.inboxFrom && entry.inboxNo <= turn.inboxTo).map(saidOf)
+    asked: said.filter(entry => entry.inboxNo > turn.inboxFrom && entry.inboxNo <= turn.inboxTo)
   }))
   // A schedule the pass would fire and cannot, or will not fire at all, is work outstanding
   // the same way a message nobody answered is.

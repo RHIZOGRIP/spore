@@ -41,8 +41,9 @@ export const CHATGPT_HELPER = createRequire(import.meta.url).resolve('mohdel/cha
  * `<ws>/inbox.d/` and named in the entry. It goes through here rather than through each
  * consumer for the reason the lock race does — one naming rule, and one decision about
  * when a body stops being inline. `schedule` is the clock's `{ name, due }` and `hook` a
- * webhook's `{ name, event, delivery }`, each recorded on the entry; `traceparent` is the sender's trace context, which the turn answering it is
- * traced under.
+ * webhook's `{ name, event, delivery }`, each recorded on the entry; `from` is a person's `{ name,
+ * id, where }`, which the turn reads above what they said; `traceparent` is the sender's trace
+ * context, which the turn answering it is traced under.
  *
  * `inbox` is the message's `inboxNo`: the turn whose record's `inboxTo` first reaches it is
  * the one that answered it.
@@ -59,11 +60,11 @@ export const CHATGPT_HELPER = createRequire(import.meta.url).resolve('mohdel/cha
  *
  * @returns {{ ws: string, started: boolean, pid: number|null, inbox: number, repeated: boolean }}
  */
-export function send (ws, message, { attach = [], schedule, hook, traceparent, requestId, replyTo, start: starting = true, unsafe = false, debug = false, env = process.env } = {}) {
+export function send (ws, message, { attach = [], schedule, hook, from, traceparent, requestId, replyTo, start: starting = true, unsafe = false, debug = false, env = process.env } = {}) {
   const workspace = resolve(ws)
   const known = requestId === undefined ? null : inboxRequest(workspace, requestId)
   if (known?.consumed) return { ws: workspace, started: false, pid: null, inbox: known.inboxNo, repeated: true }
-  if (!starting) return { ws: workspace, started: false, pid: null, ...enqueue(workspace, message, { attach, schedule, hook, traceparent, requestId, replyTo }) }
+  if (!starting) return { ws: workspace, started: false, pid: null, ...enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo }) }
   // The slot is released on every path out, a failed append included: a caller that lives
   // on — a TUI, a relay — would otherwise hold it until it exits.
   const holding = (slot, then) => {
@@ -85,10 +86,10 @@ export function send (ws, message, { attach = [], schedule, hook, traceparent, r
   if (stateOf(workspace).state !== RUNNING) {
     const plugins = preparePlugins(workspace)
     const slot = takeSlot()
-    return holding(slot, () => start(slot, plugins, enqueue(workspace, message, { attach, schedule, hook, traceparent, requestId, replyTo })))
+    return holding(slot, () => start(slot, plugins, enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo })))
   }
 
-  const said = enqueue(workspace, message, { attach, schedule, hook, traceparent, requestId, replyTo })
+  const said = enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo })
   // Looked at again after appending, because the runner may have let go in between. It
   // looks at the inbox again after it lets go, so a message is read by it or finds the
   // lock free here — never neither.

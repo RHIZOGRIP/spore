@@ -790,7 +790,7 @@ describe('the read verbs', () => {
 
     const timeline = log({ ws: 'test', configFile: CONFIG })
 
-    expect(timeline.turns.map(t => t.asked)).toEqual([['do the first thing'], ['now the second']])
+    expect(timeline.turns.map(t => t.asked.map(entry => entry.text))).toEqual([['do the first thing'], ['now the second']])
     expect(timeline.turns[1]).toMatchObject({ stopReason: 'soft:cost', concluded: true, rounds: 45, treeUsd: 0.52, workUnits: 92 })
     expect(timeline.waiting.map(w => w.text)).toEqual(['and one more'])
   })

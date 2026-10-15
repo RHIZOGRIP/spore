@@ -1,12 +1,14 @@
 /**
- * What a chat is told while a turn works: what kind of call ran — reading a file, running a
- * command, asking a source by the name its host gave it — and never what it was given or what
- * came back. A Telegram message leaves the machine, and a command line or a path is the
- * operator's. A chat whose allow-list entry says `details` is shown the command or the path as
- * well: that is a choice made per chat. The answer and the stop reason cross in full.
+ * What a conversation is told of a turn. While it works: what kind of call ran — reading a file,
+ * running a command, asking a source by the name its host gave it — and never what it was given or
+ * what came back, since a chat message leaves the machine and a command line or a path is the
+ * operator's. A conversation whose routing says `details` is shown the command or the path as
+ * well. The answer and the stop reason cross in full.
  */
 
-export const MAX_MESSAGE = 4096
+import { durationText } from '../core/job.js'
+import { runningLines } from '../core/limits.js'
+import { show } from '../library/verbs.js'
 
 const PLAIN_ENDINGS = new Set(['answer', 'question'])
 
@@ -44,7 +46,7 @@ function command (text) {
   return { plain, detailed }
 }
 
-/** A call as a chat is told it, plainly and in detail, or null for one it has no use for. */
+/** A call as a conversation is told it, plainly and in detail, or null for one it has no use for. */
 export function describe (event) {
   const { name, args = {} } = event
   const file = (verb, noun) => ({ plain: `${verb} a ${noun}`, detailed: `${verb} ${cut(firstLine(args.path))}` })
@@ -57,8 +59,8 @@ export function describe (event) {
 }
 
 /**
- * A turn's events folded into what a chat is shown: a call when it starts, its time once it
- * ends slow, and that it failed. Returns whether anything changed.
+ * A turn's events folded into what a conversation is shown: a call when it starts, its time once
+ * it ends slow, and that it failed. Returns whether anything changed.
  */
 export function track (items, event) {
   if (event.event === 'tool_start') {
@@ -84,7 +86,7 @@ export function track (items, event) {
   return false
 }
 
-/** The lines a chat sees, the last few, a run of the same call counted rather than repeated. */
+/** The lines a conversation sees, the last few, a run of the same call counted rather than repeated. */
 export function render (items, { detailed = false, last = 6 } = {}) {
   const lines = []
   for (const item of items) {
@@ -108,7 +110,7 @@ export function reply ({ record }) {
   return `no answer · ${ending(record)}`
 }
 
-/** What a chat is told of a turn that answered `asked`, none of it said in a chat: who said it, then the answer. */
+/** What a conversation is told of a turn that answered `asked`, none of it said there: who said it, then the answer. */
 export function announce ({ record, asked }) {
   const named = (field) => [...new Set(asked.filter(entry => entry[field]).map(entry => `"${entry[field]}"`))]
   const origins = [
@@ -119,12 +121,16 @@ export function announce ({ record, asked }) {
   return `${origins.length ? origins.join(' · ') : 'sent from elsewhere'}\n\n${reply({ record })}`
 }
 
-/** A turn ended without reading this chat's message, and nothing is running to read it. */
+/** A turn ended without reading this conversation's message, and nothing is running to read it. */
 export function waiting ({ record }) {
   return `no answer yet · ${ending(record)} — your message waits for the next turn`
 }
 
-export function pieces (text, limit = MAX_MESSAGE) {
+export const leftOut = (more) => `and ${more} more file${more === 1 ? '' : 's'} in data/out/, in the spore's workspace`
+
+export const unpassed = (count, spores) => `only text reaches a spore for now: your ${count === 1 ? 'file' : `${count} files`} did not reach ${spores.join(' or ')}`
+
+export function pieces (text, limit) {
   const out = []
   let rest = String(text)
   while (rest.length > limit) {
@@ -135,4 +141,18 @@ export function pieces (text, limit = MAX_MESSAGE) {
   }
   if (rest) out.push(rest)
   return out
+}
+
+export function statusText (ws, configFile) {
+  const one = show({ ws, configFile })
+  return [
+    `${one.name} · ${one.model}`,
+    `${one.state}${one.draining ? ', finishing' : ''} · ${one.lastTurnNo} turns · ${one.billing !== null && one.billing.kind !== 'metered' ? `not metered · ${one.billing.label}` : `$${one.treeUsd.toFixed(4)}`}`,
+    ...(one.turnLimits ? runningLines(one.turnLimits, one.extend) : []),
+    one.last ? `last: ${[one.last.stopReason, one.last.error].filter(Boolean).join(' · ')}` : null,
+    one.waiting ? `${one.waiting} waiting` : null,
+    one.paused ? `paused${one.paused.at ? ` since ${one.paused.at}` : ''}${one.paused.why ? ` (${one.paused.why})` : ''}` : null,
+    one.held.length ? `${one.held.length} routed to wait` : null,
+    ...one.jobs.running.map(job => `job ${job.name}: ${durationText(Date.now() - Date.parse(job.startedAt))} of ${durationText(job.wallMs)}${job.progress ? ` · ${job.progress}` : ''}`)
+  ].filter(Boolean).join('\n')
 }

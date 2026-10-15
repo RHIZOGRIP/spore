@@ -51,10 +51,17 @@ export function createTelegram (token, { fetchImpl = fetch, base = BASE } = {}) 
     updates: (offset, { seconds = 30, signal } = {}) =>
       call('getUpdates', { offset, timeout: seconds, allowed_updates: ['message'] }, { timeoutMs: (seconds + 15) * 1000, signal }),
 
-    say: (chat, text) => call('sendMessage', { chat_id: chat, text, link_preview_options: { is_disabled: true } }),
+    say: (chat, text, { answering = null } = {}) => call('sendMessage', {
+      chat_id: chat,
+      text,
+      link_preview_options: { is_disabled: true },
+      ...(answering === null ? {} : { reply_parameters: { message_id: answering, allow_sending_without_reply: true } })
+    }),
 
     revise: (chat, message, text) =>
       call('editMessageText', { chat_id: chat, message_id: message, text, link_preview_options: { is_disabled: true } }),
+
+    remove: (chat, message) => call('deleteMessage', { chat_id: chat, message_id: message }),
 
     document: (chat, { path, mime }, caption) => {
       const form = new FormData()

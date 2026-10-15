@@ -50,7 +50,7 @@ and [§A service in front of many spores](../INTEGRATION.md#a-service-in-front-o
 ### `send`
 
 ```
-send(ws, text, { attach = [], requestId, replyTo, traceparent, start = true, env,
+send(ws, text, { attach = [], requestId, replyTo, from, traceparent, start = true, env,
                  schedule, hook, unsafe = false, debug = false })
 → { ws, started, pid, inbox, repeated }
 ```
@@ -65,6 +65,9 @@ position, `started` says whether this call started a turn, `pid` is the runner's
   ([INTEGRATION §Idempotency](../INTEGRATION.md#idempotency)).
 - `replyTo`: where the answer goes
   ([§Delivering answers elsewhere](../INTEGRATION.md#delivering-answers-elsewhere)).
+- `from`: `{ name, id, where }`, the person who said it — how they show, `<kind>:<their id>`
+  (`telegram:148392011`), and the conversation as a person would name it. The turn reads it in a
+  line above the text. Not with `schedule` or `hook`, which say what spoke when no person did.
 - `traceparent`: a W3C trace context the turn is traced under.
 - `start: false`: says the message and starts nothing.
 - `env`: the environment the runner starts with.
@@ -76,7 +79,7 @@ position, `started` says whether this call started a turn, `pid` is the runner's
 
 Throws `ADMISSION_FULL`, `SPEND_LIMIT`, `PAUSED` (each `retryable`; when the message was already
 said, `detail` says so), `MESSAGE_EMPTY`, `REQUEST_ID_INVALID`, `TRACEPARENT_INVALID`,
-`HOOK_INVALID`, `INBOX_UNWRITABLE`, and the refusals of a spore whose plugins cannot be
+`HOOK_INVALID`, `FROM_INVALID`, `INBOX_UNWRITABLE`, and the refusals of a spore whose plugins cannot be
 prepared, such as `PLUGIN_NOT_ALLOWED`, `PLUGIN_CHANGED`, `PLUGIN_NOT_INSTALLED`, `PLUGIN_CONFLICT`,
 `PLUGIN_INVALID`, `PLUGIN_INCOMPATIBLE`.
 
@@ -109,8 +112,8 @@ readInbox(ws, { after = 0, upto = null }) → entry[]
 The inbox entries with `inboxNo` in `(after, upto]`, every one past `after` when `upto` is null,
 in order. An entry carries `inboxNo`, `at`, `text` or a `bodyPath` with `bodyBytes`, `bodyHead`
 and `bodyTail`, `files`, `schedule`, `due`, `hook`, `hookEvent`, `hookDelivery`, `job`,
-`jobEvent`, `jobRun`, `traceparent`, `requestId`, `replyTo`, and `consumed` (a finished turn has
-read it).
+`jobEvent`, `jobRun`, `traceparent`, `requestId`, `replyTo`, `fromName`, `fromId`, `fromWhere`,
+and `consumed` (a finished turn has read it).
 
 ### `turnOfMessage`
 
@@ -242,8 +245,8 @@ log({ ws, configFile }) → { ws, turns, waiting, held }
 ```
 
 One entry per finished turn, `{ endedAt, stopReason, concluded, rounds, treeUsd, workUnits,
-error, detail, asked }`, where `asked` is the text each message it answered gave the turn
-(`saidOf`). `waiting` is the unread inbox entries; `held` is the schedules `held` or `refused`.
+error, detail, asked }`, where `asked` is the inbox entries it answered. `waiting` is the unread
+inbox entries; `held` is the schedules `held` or `refused`.
 Throws `NOT_A_WORKSPACE`, `DEFINITION_INVALID`.
 
 ### `usage`

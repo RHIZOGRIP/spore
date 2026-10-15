@@ -44,7 +44,7 @@
         "url": "https://discord.com/api/v10/channels/",
         "headers": {
           "Authorization": "Bot ${DISCORD_BOT_TOKEN}",
-          "User-Agent": "DiscordBot (https://github.com/RHIZOGRIP/spore, 0.2.0)"
+          "User-Agent": "DiscordBot (https://github.com/RHIZOGRIP/spore, 0.3.0)"
         },
         "paths": [
           "*/messages"

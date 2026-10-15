@@ -61,6 +61,11 @@ describe('originOf', () => {
     expect(originOf({ replyTo: 'discord:ops/123' })).toBe('discord')
     expect(originOf({})).toBe('elsewhere')
   })
+
+  it('names the person who said it, made printable, and where it came in', () => {
+    expect(originOf({ fromName: 'Alice', fromId: 'telegram:1', fromWhere: 'a private chat on Telegram', replyTo: 'telegram:main/1' })).toBe('Alice · telegram')
+    expect(originOf({ fromName: 'Bob\x1b[2J', fromId: 'api:bob', fromWhere: 'the portal' })).toBe('Bob[2J')
+  })
 })
 
 describe('applyEvent', () => {

@@ -388,6 +388,15 @@ node "$SPORE_SQL" state.sqlite 'SELECT entryNo, role, message FROM transcript WH
 It searches your notes *and* the conversation, including turns long gone from this
 context. A thing you were told and never wrote down is still findable.
 
+## Who is speaking
+
+A message a person sent through a chat or another service starts with a line naming them —
+`[Said by "Alice Martin (@alice)" (telegram:148392011) in "a private chat on Telegram".]` — how
+they show there, their id, and the conversation it came from. The id is the person: two messages
+with one id are one person even under another name, and two ids are two people even in one
+conversation. Your answer goes back to that conversation. A message with no such line was sent
+without saying who, most often by whoever runs you, at a terminal.
+
 ## The clock
 
 A message can come from the clock rather than from a person. It starts with a line saying

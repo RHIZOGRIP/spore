@@ -10,7 +10,7 @@ import { promisify } from 'node:util'
 
 import { showPlugin } from '@rhizogrip/spore'
 
-import { createDiscord, INTENTS } from '../src/api.js'
+import { createDiscord, INTENTS, USER_AGENT } from '../src/api.js'
 import { avatarsOf, botToken, channelsOf } from '../src/bots.js'
 import { announce, header, historyLines, isWorkingPost, pieces, plain, workingPost } from '../src/forward.js'
 
@@ -156,6 +156,12 @@ describe('the REST API', () => {
     await expect(refused.createRole('g', 'triage')).rejects.toMatchObject({ retryable: false, detail: 'Missing Permissions (50013)', context: { code: 50013 } })
   })
 
+  it('names this version of the plugin to Discord, from the service and from the source alike', () => {
+    const pkg = createRequire(import.meta.url)('../package.json')
+    expect(USER_AGENT).toBe(`DiscordBot (https://github.com/RHIZOGRIP/spore, ${pkg.version})`)
+    expect(pkg.spore.sources.discord.headers['User-Agent']).toBe(USER_AGENT)
+  })
+
   it('sends the bot token, a user agent, and asks a webhook to wait for its message', async () => {
     const asked = []
     const discord = createDiscord('tok', {
@@ -166,7 +172,7 @@ describe('the REST API', () => {
     })
     await discord.post({ id: 'h', token: 'secret' }, { username: 'triage', content: 'hi' })
     expect(asked[0].url).toBe('https://discord.com/api/v10/webhooks/h/secret?wait=true')
-    expect(asked[0].init.headers).toMatchObject({ authorization: 'Bot tok', 'user-agent': expect.stringMatching(/^DiscordBot \(/) })
+    expect(asked[0].init.headers).toMatchObject({ authorization: 'Bot tok', 'user-agent': USER_AGENT })
     expect(JSON.parse(asked[0].init.body)).toEqual({ username: 'triage', content: 'hi' })
   })
 })

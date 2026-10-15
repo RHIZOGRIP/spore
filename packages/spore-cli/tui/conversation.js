@@ -6,12 +6,19 @@
 
 import { printable } from './printable.js'
 
-export function originOf (entry) {
+/** Who said an entry, when that is known: a person by name, or the schedule, webhook or job. */
+export function saidBy (entry) {
+  if (entry.fromName) return printable(entry.fromName)
   if (entry.schedule) return `schedule "${entry.schedule}"`
   if (entry.hook) return `webhook "${entry.hook}"`
   if (entry.job) return `job "${entry.job}"`
-  if (entry.replyTo) return entry.replyTo.split(':')[0]
-  return 'elsewhere'
+  return null
+}
+
+export function originOf (entry) {
+  const kind = entry.replyTo?.split(':')[0]
+  if (entry.fromName) return kind ? `${saidBy(entry)} · ${kind}` : saidBy(entry)
+  return saidBy(entry) ?? kind ?? 'elsewhere'
 }
 
 export function saidText (entry) {

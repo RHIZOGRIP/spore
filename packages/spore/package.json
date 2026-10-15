@@ -38,6 +38,7 @@
   "exports": {
     ".": "./src/index.js",
     "./logger": "./src/observability/logger.js",
+    "./relay": "./src/relay/index.js",
     "./testing": "./src/testing.js",
     "./package.json": "./package.json"
   },

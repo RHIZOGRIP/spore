@@ -613,6 +613,15 @@ An entry is never rewritten. How far a turn read is written into its turn record
 which the next turn starts from, and finalizing the turn moves `inboxConsumed` there. A crash
 leaves `inboxConsumed` at the last finalized turn.
 
+**Who said a message is data on its entry, never words in its text.** A relay that hears a
+person passes `send`'s `from`, `{ name, id, where }`, and the entry keeps it as `fromName`,
+`fromId` and `fromWhere`: all three or none, and never beside a `schedule`, `hook` or `job`, which
+name what spoke when no person did — an entry has one speaker, and the schema's check and
+`origin_of` both refuse two. `saidOf` renders it as a line ahead of the text, in the runtime's
+voice as it renders the clock's, with the name and the conversation quoted: both are the
+person's to choose, and nothing in them may pass for the runtime speaking. The TUI and `spore log`
+read the same fields and show a name.
+
 **A file sent with a message, and a message too long to inline, land in `<ws>/inbox.d/`.** A
 turn's prompt is every unanswered message joined, so a long paste would enter context whole
 ([principle 5](PRINCIPLES.md#5-big-results-stay-in-files)). A directory at the workspace root is
@@ -1775,6 +1784,15 @@ it `answers`; its content is the turn's record, never copied. `terminal` is writ
 since the terminal that asked follows the turn; every other entry is `pending` until whoever
 serves its kind settles it through `settleOutbox`, delivered or refused with a `reason`, once. A
 held delivery carries no reply-to: nobody typed it.
+
+**What serves a chat's answers is a connector on the relay.** `@rhizogrip/spore/relay`
+(`src/relay/`) is the half every chat connector shares, so its promises are kept once: a bot file
+per bot, read on every message; the path from a message to `send` with its `from`; the `working…`
+message and the calls at work; the answer as a new message replying to the question; commands;
+the outbox drained and settled; a restart from saved cursors. A connector is its adapter — the
+transport, the platform's API, what it calls a conversation and a person — and passes the
+conformance suite (`test/fixtures/relay-conformance.js`) against its fake platform
+(`docs/relay.md`). Telegram's is `plugins/telegram/src/adapter.js`.
 
 **Journal mode.** A file is in WAL mode while a writer holds it and in rollback mode when none
 does, with `synchronous=FULL`, foreign keys on every connection, and a 5 s busy timeout on

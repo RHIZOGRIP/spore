@@ -66,7 +66,8 @@ message addressing two goes to both. A message addressing none goes to none. The
 `@you ↪ "what you said…" working…`, and when the turn ends posts its answer under its own name,
 opened with whom it answers — which pings them — and removes the `working…` post. Files the turn
 left in `data/out/` follow as attachments, up to the 50 a turn hands back, then a line counting
-the rest; one over 20 MB is named instead.
+the rest; one over 20 MB is named instead. Only a message's text reaches a spore for now: files
+attached to it do not, and whoever sent them is told.
 
 A spore is told who spoke and where, never the rest of the channel; it reads what came before
 with `$SPORE_DISCORD` when the message points at it, as its `reference.md` teaches. What it reads

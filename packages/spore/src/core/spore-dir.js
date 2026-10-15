@@ -349,7 +349,30 @@ export function turnOfMessage (ws, { inboxNo, at }) {
   })
 }
 
-function entryFor (ws, said, { attach = [], schedule, hook, job, traceparent, requestId, replyTo } = {}) {
+const FROM_FIELDS = ['name', 'id', 'where']
+const FROM_ID = /^[a-z][a-z0-9-]*:\S+$/
+
+function checkFrom (from, { schedule, hook, job }) {
+  const shaped = typeof from === 'object' && from !== null && !Array.isArray(from) &&
+    Object.keys(from).every(key => FROM_FIELDS.includes(key)) &&
+    FROM_FIELDS.every(key => typeof from[key] === 'string' && from[key].trim() !== '') &&
+    FROM_ID.test(from.id)
+  if (!shaped) {
+    throw new SporeError('a message\'s from says who said it and where', {
+      type: 'FROM_INVALID',
+      detail: `got ${JSON.stringify(from)}, expected { name, id, where }: how the person shows, <kind>:<their id> (as telegram:148392011), and the conversation as a person would name it`
+    })
+  }
+  if (schedule || hook || job) {
+    throw new SporeError('a message from a person comes from no schedule, webhook or job', {
+      type: 'FROM_INVALID',
+      detail: 'from names a person; schedule, hook and job name what said it when no person did — one or the other'
+    })
+  }
+}
+
+function entryFor (ws, said, { attach = [], schedule, hook, job, from, traceparent, requestId, replyTo } = {}) {
+  if (from !== undefined) checkFrom(from, { schedule, hook, job })
   if (traceparent !== undefined && !parseTraceparent(traceparent)) {
     throw new SporeError('traceparent is not a W3C trace context', {
       type: 'TRACEPARENT_INVALID',
@@ -381,6 +404,7 @@ function entryFor (ws, said, { attach = [], schedule, hook, job, traceparent, re
     ...(schedule ? { schedule: schedule.name, due: schedule.due } : {}),
     ...(hook ? { hook: hook.name, hookDelivery: hook.delivery, ...(hook.event ? { hookEvent: hook.event } : {}) } : {}),
     ...(job ? { job: job.name, jobEvent: job.event, jobRun: job.run } : {}),
+    ...(from ? { fromName: storable(from.name), fromId: from.id, fromWhere: storable(from.where) } : {}),
     ...(traceparent ? { traceparent } : {}),
     ...(requestId !== undefined ? { requestId: storable(requestId) } : {}),
     ...(replyTo !== undefined ? { replyTo } : {})
@@ -581,6 +605,12 @@ export function cellsOf (ws, origin, { limit }) {
 export function saidOf (entry) {
   if (!entry) return ''
   const parts = []
+
+  // The person's name and the conversation's are theirs to choose, so both are quoted: nothing
+  // in them can pass for the runtime speaking.
+  if (entry.fromName) {
+    parts.push(`[Said by ${JSON.stringify(entry.fromName)} (${entry.fromId}) in ${JSON.stringify(entry.fromWhere)}.]`)
+  }
 
   // The clock is not a person: what it says is a task set in advance, and no one is there
   // to answer a question about it. The slot is what lets a late firing be seen as late.

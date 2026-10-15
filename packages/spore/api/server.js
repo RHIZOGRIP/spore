@@ -104,6 +104,7 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
         attach: attachmentsOf(asked.attach),
         requestId: asked.requestId,
         replyTo: asked.replyTo,
+        from: asked.from,
         traceparent: formatTraceparent(span) ?? undefined,
         env: turnEnv
       })

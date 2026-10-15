@@ -6,12 +6,13 @@
  */
 
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { basename } from 'node:path'
 
 import { SporeError } from '@rhizogrip/spore'
 
 const BASE = 'https://discord.com/api/v10'
-const USER_AGENT = 'DiscordBot (https://github.com/RHIZOGRIP/spore, 0.2.0)'
+export const USER_AGENT = `DiscordBot (https://github.com/RHIZOGRIP/spore, ${createRequire(import.meta.url)('../package.json').version})`
 
 export const INTENTS = (1 << 0) | (1 << 9) | (1 << 15)
 

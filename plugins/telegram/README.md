@@ -28,8 +28,9 @@ passed to a spore's runner.
 ## What it guarantees
 
 - **A message reaches its spore once.** An update is confirmed to Telegram only after
-  `send` has taken it, and it goes to `send` under `telegram:<update_id>` as its
-  `requestId`, so an update Telegram hands over again is not said twice.
+  `send` has taken it, and it goes to `send` under `telegram:<bot>:<update_id>` as its
+  `requestId`, so an update Telegram hands over again is not said twice, and two bots' updates
+  are never taken for one another.
 - **A finished turn reaches its chat at least once.** What it owes a chat is an entry in the
   spore's outbox, settled only after Telegram accepted it; a crash between the two repeats a
   message rather than losing one. One Telegram will not take is settled refused, with
@@ -37,19 +38,22 @@ passed to a spore's runner.
   after the spore's next turn or the service's next start.
 - **A reply never mixes turns.** Each chat message gets the answer, the end state and the files
   of the turn that answered it.
-- **A restart loses nothing.** A turn running when the service stopped finishes into the
-  chat's `working…` message; a turn that ended while it was down is posted when it is back.
+- **A restart loses nothing.** A turn running when the service stopped is still answered, as a
+  reply to the message it answers; a turn that ended while it was down is posted when it is back.
 - **Nothing fails in silence.** A message a spore refuses is told to the chat; a message
   Telegram will not take is logged with its chat and turn.
 
 ## A turn in a chat
 
-Write to the bot and the message goes to the spore the chat is mapped to. The bot posts
-`working…`, shows which tools run as they run, and edits the answer into that message when
-the turn ends. How the turn ended is added only when it makes the answer partial — a wrap
-or a stop. A longer answer than Telegram's 4096 continues in further messages. What the
-turn left in `data/out/` follows as documents, up to the 50 a turn hands back, then a line
-counting the rest; a file over Telegram's 50 MB is named instead.
+Write to the bot and the message goes to the spore the chat is mapped to, which is told who
+wrote it and where — your name and username, the private chat or the group. The bot posts
+`working…` and shows which tools run as they run. When the turn ends, the answer arrives as a new
+message replying to yours, so it notifies you however long the turn took, and `working…` is
+removed; one Telegram will no longer let the bot remove, past 48 hours, says `answered below`. How
+the turn ended is added only when it makes the answer partial — a wrap or a stop. A longer answer
+than Telegram's 4096 continues in further messages. What the turn left in `data/out/` follows as
+documents, up to the 50 a turn hands back, then a line counting the rest; a file over Telegram's
+50 MB is named instead.
 
 A message sent while a turn runs lands between its rounds, and its `working…` message says it
 was heard. A turn ending in a question posts the
@@ -57,7 +61,7 @@ question, and the reply answers it. The conversation is the spore's transcript; 
 keeps none.
 
 A turn that ends without reading your message — one that failed before it got there —
-says so in your `working…` message, and the next turn answers it there.
+says so in your `working…` message, and the next turn answers it.
 
 ```
 /status    what the spore is doing, its turns and what they cost, and the running turn's limits
@@ -66,7 +70,8 @@ says so in your `working…` message, and the next turn answers it there.
 /extend wall 30m   give it more — wall, cost or rounds — up to the extend.<limit> its spore.cmk grants
 ```
 
-Only text reaches a spore for now.
+Only text reaches a spore for now: a photo's or a document's caption goes to it, and you are told
+the file did not; a message with nothing written in it is told only text reaches a spore.
 
 ## Turns nobody in a chat started
 
@@ -118,9 +123,9 @@ group's id is negative, and it is the group you add rather than the people in it
 
 ## What it keeps
 
-`$XDG_STATE_HOME/spore/telegram/<bot>/state.json`, one per bot, written whole and renamed into
-place: where it stands in each spore it follows, in that spore's database, and every message a chat sent that no turn has answered
-yet, with the `working…` message its answer goes into. A spore added later is followed from its
+`$XDG_STATE_HOME/spore/telegram/<bot>/state.json`, one per bot, mode 0600, written whole and
+renamed into place: where it stands in each spore it follows, in that spore's database, and every
+message a chat sent that no turn has answered yet, with its `working…` message. A spore added later is followed from its
 latest turn; earlier answers are not posted. Nothing is kept in the repository or in the spores'
 home.
 

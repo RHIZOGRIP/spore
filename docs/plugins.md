@@ -425,6 +425,9 @@ service name spore ships (`webhook`, `api`, `ssh-agent`, `sluice`, `tick`), or o
 plugins claim, goes to neither plugin, and `spore service ls` shows why. A plugin that declares
 services and fails its check shows there as a problem, its services not offered.
 
+A chat connector's service is built on `@rhizogrip/spore/relay`, which keeps what every
+connector promises; the plugin brings its adapter ([relay.md](relay.md)).
+
 ### The unit
 
 Spore writes the unit; the manifest names a program, never a unit line. For a service with

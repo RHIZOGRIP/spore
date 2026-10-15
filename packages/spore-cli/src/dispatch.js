@@ -16,12 +16,13 @@ import { basename, join, resolve } from 'node:path'
 import {
   addTo, allowPlugin, billingFor, changeText, define, defaultModel, disallowPlugin, durationText,
   edit, extend, getKey, jobs, list, listPlugins, log, pause, precursors, remake, remove,
-  removeFrom, removeSchedule, runningLines, saidOf, schedules, setDefaultModel, setKey, setSchedule, settings,
+  removeFrom, removeSchedule, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings,
   show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM
 } from '@rhizogrip/spore'
 import { diagnose, renderDoctor } from './doctor.js'
 import { hook } from './hooks.js'
 import { createServices } from './services.js'
+import { saidBy, saidText } from '../tui/conversation.js'
 
 const STATE_WIDTH = 9
 
@@ -298,7 +299,8 @@ async function readStdin () {
 
 const when = (iso) => (iso ? iso.replace('T', ' ').slice(0, 19) : '—'.padEnd(19))
 
-const quoted = (said) => (said.length ? said.map(one => JSON.stringify(one.length > 60 ? one.slice(0, 57) + '…' : one)).join(' ') : '')
+const cut = (text) => (text.length > 60 ? text.slice(0, 57) + '…' : text)
+const quoted = (entries) => entries.map(entry => `${saidBy(entry) ? `${saidBy(entry)}: ` : ''}${JSON.stringify(cut(saidText(entry)))}`).join(' ')
 
 function renderLog (result) {
   if (!result.turns.length && !result.waiting.length && !result.held.length) {
@@ -318,7 +320,7 @@ function renderLog (result) {
   // The time column is when a turn ended, and a waiting message has not been answered by
   // one. Blank says that; when it was said is in the record for anyone who needs it.
   for (const entry of result.waiting) {
-    console.log(`  ${' '.repeat(19)}  ${'waiting'.padEnd(12)} ${' '.repeat(19)}  ${quoted([saidOf(entry)])}`)
+    console.log(`  ${' '.repeat(19)}  ${'waiting'.padEnd(12)} ${' '.repeat(19)}  ${quoted([entry])}`)
   }
   for (const one of result.held) {
     console.log(`  ${' '.repeat(19)}  ${one.state.padEnd(12)} ${' '.repeat(19)}  schedule ${one.name} — ${one.why}`)

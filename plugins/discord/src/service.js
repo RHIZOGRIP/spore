@@ -11,6 +11,7 @@ const MAX_FILE = 20 * 1024 * 1024
 const leftOut = (more) => `and ${more} more file${more === 1 ? '' : 's'} in data/out/, in the spore's workspace`
 const HOOK_NAME = 'spore'
 const NOBODY = { parse: [] }
+const unpassed = (count, spores) => `only text reaches a spore for now: your ${count === 1 ? 'file' : `${count} files`} did not reach ${spores.join(' or ')}`
 
 const pause = (ms, signal) => new Promise(resolve => {
   const timer = setTimeout(resolve, ms)
@@ -166,6 +167,7 @@ export function createService ({ discord, me, botFile, statePath, env, log, conf
     const quote = plain(message.content, roles)
     const who = ownPost ? `${speaker} (spore)` : message.member?.nick ?? message.author.global_name ?? message.author.username
     for (const name of addressed) await pass({ name, config: read.config, message, text: `${who}, in Discord:\n${quote}`, quote, hook })
+    if (message.attachments.length) tell(hook, message.channel_id, addressed[0], `${header(message.author.id, quote)}\n${unpassed(message.attachments.length, addressed)}`)
   }
 
   const listen = () => discord.connect({

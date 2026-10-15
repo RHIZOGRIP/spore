@@ -16,11 +16,11 @@ export function createDelivery ({ sleep, signal, now = Date.now, giveUpMs = 10 *
     }
   }
 
-  const to = (chat, work) => {
-    const next = (chains.get(chat) ?? Promise.resolve()).then(() => work(attempt))
+  const to = (conversation, work) => {
+    const next = (chains.get(conversation) ?? Promise.resolve()).then(() => work(attempt))
     const settled = next.catch(() => {})
-    chains.set(chat, settled)
-    settled.then(() => { if (chains.get(chat) === settled) chains.delete(chat) })
+    chains.set(conversation, settled)
+    settled.then(() => { if (chains.get(conversation) === settled) chains.delete(conversation) })
     return next
   }
 

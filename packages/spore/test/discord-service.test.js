@@ -82,7 +82,7 @@ const standIn = () => {
   }
 }
 
-const message = ({ from = ALICE, content, roles = [], replyingTo = null, webhook = null, username = `u${from}` }) => ({
+const message = ({ from = ALICE, content, roles = [], replyingTo = null, webhook = null, username = `u${from}`, attachments = [] }) => ({
   id: String(++messageId),
   channel_id: CHANNEL,
   guild_id: 'g1',
@@ -90,6 +90,7 @@ const message = ({ from = ALICE, content, roles = [], replyingTo = null, webhook
   member: webhook ? undefined : { roles: [] },
   content,
   mention_roles: roles,
+  attachments,
   webhook_id: webhook,
   referenced_message: replyingTo
 })
@@ -189,6 +190,16 @@ describe('a message in a channel', () => {
     expect(said.text).toMatch(/^u1, in Discord:\n@triage can you check the payouts\n\n\[Discord channel 100, message \d+\. Nothing else said here since you last spoke — "\$SPORE_DISCORD" history 100 --before \d+ reads what was said before\.\]$/)
     expect(said.replyTo).toBe('discord:ops/100')
     expect(readInbox(ledger)).toEqual([])
+  })
+
+  it('passes on the text of a message with files, and tells whoever wrote it that the files did not go', async () => {
+    start()
+    await until(dc.connected)
+    await dc.say(message({ content: '<@&701> what is in these', roles: [ROLE.triage], attachments: [{ filename: 'a.png' }, { filename: 'b.pdf' }] }))
+
+    await until(() => posted().some(p => p.content.endsWith('hello back')))
+    expect(readInbox(ws)[0].text).toMatch(/^u1, in Discord:\n@triage what is in these\n/)
+    expect(posted().map(p => p.content)).toContain('<@1> ↪ "@triage what is in these"\nonly text reaches a spore for now: your 2 files did not reach triage')
   })
 
   it('shows each spore with the avatar the bot file gives it, and Discord\'s own for one it does not', async () => {
