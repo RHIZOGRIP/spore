@@ -153,7 +153,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     }
   }
 
-  const obey =(conversation, ws, name, verb, args, brief) => {
+  const obey = (conversation, ws, name, verb, args, brief) => {
     if (verb === 'stop') {
       stopTurn(conversation, ws, name)
       return
