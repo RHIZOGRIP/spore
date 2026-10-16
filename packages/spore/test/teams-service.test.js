@@ -22,6 +22,15 @@ const OPS = { post: 'send', edit: 'update', remove: 'remove' }
 
 const numberOf = (channel) => channel.slice(3, channel.indexOf('@'))
 
+const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>' }
+
+/** What a person reads of an activity's text: Teams' HTML subset read back to lines, extended Markdown as written. */
+const textOf = (activity) => {
+  if (activity.textFormat === 'extendedmarkdown') return activity.text
+  expect(activity.textFormat).toBe('xml')
+  return activity.text.replace(/<br>/g, '\n').replace(/&(amp|lt|gt);/g, (entity) => ENTITIES[entity])
+}
+
 const standIn = () => {
   const waiting = []
   const sent = []
@@ -39,7 +48,7 @@ const standIn = () => {
   const posted = (conversation, activity) => {
     id += 1
     if (activity.attachments) sent.push({ op: 'ask', conversation, id: String(id), card: activity.attachments[0].content })
-    else sent.push({ op: 'post', conversation, id: String(id), text: activity.text, answering: activity.replyToId ?? null, formatted: activity.textFormat === 'markdown' })
+    else sent.push({ op: 'post', conversation, id: String(id), text: textOf(activity), answering: activity.replyToId ?? null, formatted: activity.textFormat === 'extendedmarkdown' })
     return String(id)
   }
   return {
@@ -58,7 +67,7 @@ const standIn = () => {
       update: async (serviceUrl, conversation, activityId, activity) => {
         fault('update')
         if (activity.attachments) sent.push({ op: 'close', conversation, id: activityId, card: activity.attachments[0].content })
-        else sent.push({ op: 'edit', conversation, id: activityId, text: activity.text })
+        else sent.push({ op: 'edit', conversation, id: activityId, text: textOf(activity) })
       },
       remove: async (serviceUrl, conversation, activityId) => {
         fault('remove')

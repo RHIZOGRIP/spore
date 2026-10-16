@@ -8,7 +8,7 @@ import { botPath, routesOf } from '@rhizogrip/spore/relay'
 
 import { createConnector } from '../src/api.js'
 import { createToken, createVerifier } from '../src/auth.js'
-import { TEAMS, normalize } from '../src/adapter.js'
+import { TEAMS, createAdapter, normalize } from '../src/adapter.js'
 import { serve } from '../src/server.js'
 
 const APP = '00000000-aaaa-4000-8000-000000000001'
@@ -258,6 +258,21 @@ describe('the Bot Connector', () => {
     await expect(send(answering(403, { error: { code: 'ConversationBlockedByUser', message: 'User blocked the conversation with the bot.' } })))
       .rejects.toMatchObject({ retryable: false, detail: 'User blocked the conversation with the bot.', context: { status: 403, code: 'ConversationBlockedByUser' } })
     await expect(send(async () => { throw new Error('ECONNRESET') })).rejects.toMatchObject({ retryable: true, detail: 'ECONNRESET' })
+  })
+})
+
+describe('what the bot posts', () => {
+  it('says its own lines in Teams\' HTML subset, escaped, and an answer in extended Markdown', async () => {
+    const sent = []
+    const connector = { send: async (url, conversation, activity) => { sent.push(activity); return '7' }, create: async () => ({ id: 'a:p' }) }
+    const adapter = createAdapter({ connector, receive: () => {}, app: 'app', tenant: 't' })
+    adapter.restore({ chats: {}, channels: {} }, () => {})
+    await adapter.post('p', 'idle · 2 turns\n<b>not bold</b> & co')
+    await adapter.post('p', '| a | b |\n|---|---|\n| 1 | 2 |', { markdown: true })
+    expect(sent).toEqual([
+      { type: 'message', text: 'idle · 2 turns<br>&lt;b&gt;not bold&lt;/b&gt; &amp; co', textFormat: 'xml' },
+      { type: 'message', text: '| a | b |\n|---|---|\n| 1 | 2 |', textFormat: 'extendedmarkdown' }
+    ])
   })
 })
 

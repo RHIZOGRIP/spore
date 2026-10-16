@@ -162,6 +162,8 @@ export function normalize (activity) {
   }
 }
 
+const escapeHtml = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
 const tenantOf = (activity) => activity.conversation?.tenantId ?? activity.channelData?.tenant?.id
 
 /** Whether anything in a card, however deep — an action set, a select action, a refresh — sends a press back to the bot. */
@@ -250,10 +252,15 @@ export function createAdapter ({ connector, receive, app, tenant }) {
     return { conversation: note.slice(0, at), id: note.slice(at + 1) }
   }
 
+  /**
+   * An answer in Teams' extended Markdown, which renders the tables and fenced code a model writes;
+   * what the relay says itself in Teams' HTML subset, escaped, each line on its own — its plain
+   * format runs lines together.
+   */
   const activity = (text, { markdown = false, answering = null } = {}) => ({
     type: 'message',
-    text,
-    textFormat: markdown ? 'markdown' : 'plain',
+    text: markdown ? text : escapeHtml(text).replace(/\n/g, '<br>'),
+    textFormat: markdown ? 'extendedmarkdown' : 'xml',
     ...(answering === null ? {} : { replyToId: answering })
   })
 

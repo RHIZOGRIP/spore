@@ -83,8 +83,9 @@ it mentions the bot, and the mention is not part of what the spore is told; the 
 wrote and where. The bot posts `working…` and shows what kind of call runs as it runs; the answer
 is a new message — in a channel, in the thread of the message it answers — and `working…` is then
 removed, or marked `answered below` where Teams will not remove it; in a channel thread, Teams shows
-`This message has been deleted.` where it was. The answer is sent as Teams
-markdown. What the turn left in `data/out/` is named, one line a file: files do not cross yet,
+`This message has been deleted.` where it was. The answer is sent in Teams' extended Markdown,
+so tables and fenced code render; what the bot says itself — status, notices — is plain text,
+line for line. What the turn left in `data/out/` is named, one line a file: files do not cross yet,
 either way.
 
 ```
