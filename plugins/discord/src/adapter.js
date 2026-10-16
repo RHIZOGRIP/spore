@@ -12,7 +12,7 @@ import { SporeError } from '@rhizogrip/spore'
 import { header, isWorkingPost, plain } from './forward.js'
 
 const FIELDS = ['token', 'channels', 'avatars', 'react']
-const CHANNEL_FIELDS = ['spores', 'people', 'sporesTalk', 'details', 'show']
+const CHANNEL_FIELDS = ['spores', 'people', 'sporesTalk', 'details', 'show', 'brief']
 const SNOWFLAKE = /^\d+$/
 const VERBS = new Set(['status', 'stop', 'wrap', 'extend', 'help'])
 const HOOK_NAME = 'spore'
@@ -26,7 +26,7 @@ const someone = (who) => who === '*' || SNOWFLAKE.test(who.replace(/^role:/, '')
 /**
  * Each channel the bot serves, by id: its spores, the people who may address them (user ids,
  * `role:<id>`, `*`), whether a spore's post reaches the others (`sporesTalk`), and the relay's
- * `details` and `show`. A channel absent from the file is not the bot's: Discord shows a bot every
+ * `details`, `show` and `brief`. A channel absent from the file is not the bot's: Discord shows a bot every
  * channel it can see, and most are none of spore's business.
  */
 function routes (raw, path) {
@@ -48,15 +48,16 @@ function routes (raw, path) {
     }
     if (!names(entry.spores) || !entry.spores.length) throw invalid(path, `has a channel ${channel} with no spores`)
     if (!names(entry.people) || !entry.people.every(someone)) throw invalid(path, `has a channel ${channel} whose people are not user ids, role:<role id> or *`)
-    for (const flag of ['sporesTalk', 'details']) {
+    for (const flag of ['sporesTalk', 'details', 'brief']) {
       if (entry[flag] !== undefined && typeof entry[flag] !== 'boolean') throw invalid(path, `has a channel ${channel} whose ${flag} is not true or false`)
     }
-    table.set(channel, { spores: entry.spores, details: entry.details === true, show: entry.show ?? null, people: entry.people, overhear: false, sporesTalk: entry.sporesTalk === true })
+    table.set(channel, { spores: entry.spores, details: entry.details === true, show: entry.show ?? null, brief: entry.brief ?? null, people: entry.people, overhear: false, sporesTalk: entry.sporesTalk === true })
   }
   return table
 }
 
-const HELP = 'Address a spore by its role — @triage — or by replying to its post. "@triage status" says what it is doing; "@triage stop" ends the turn it is running and sets aside what you sent that it had not read; "@triage wrap 10m" asks it to wrap up; "@triage extend wall 30m" gives it more, as far as its spore.cmk allows.'
+const HELP = 'Address a spore by its role — @triage — or by replying to its post. "@triage status" says what it is doing; "@triage stop" ends the turn it is running and sets aside what you sent that it had not read; "@triage wrap 10m" asks it to wrap up'
+const EXTEND = '"@triage extend wall 30m" gives it more, as far as its spore.cmk allows'
 
 export const DISCORD = {
   kind: 'discord',
@@ -69,7 +70,7 @@ export const DISCORD = {
   refusals: ['DISCORD_REFUSED'],
   example: SHAPE,
   routes,
-  usage: { help: HELP, extend: '"@<spore> extend wall 30m", "@<spore> extend cost 1.50" or "@<spore> extend rounds 20"' },
+  usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '"@<spore> extend wall 30m", "@<spore> extend cost 1.50" or "@<spore> extend rounds 20"' },
   limits: { message: 1800, file: 20 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 8000 },
   can: { upload: true, remove: true, react: true, typing: true, reply: false },
   reactions: null,

@@ -18,12 +18,25 @@ spore service define teams@ops && spore service start teams@ops
 
 ## The bot
 
-Teams reaches a bot through Azure: an **Azure Bot**, single-tenant, whose app registration in
-Entra ID gives the bot file its `app` (the Microsoft App ID), its `tenant`, and a client secret,
-kept in `environment` under the variable `secret` names. The Azure Bot's messaging endpoint is a
-public HTTPS address of yours ending in `/api/messages`, which your proxy forwards to `listen` —
-a loopback address: the service never faces the internet itself. Turn on the Azure Bot's Teams
-channel, and install a Teams app for the bot in your tenant with the personal and team scopes.
+Teams reaches a bot through Azure: an **Azure Bot**, made in the Azure portal with *Single Tenant*
+as its type and a new Microsoft App ID — Microsoft no longer makes multi-tenant bots, and the
+service asks your tenant for its token. Its app registration in Entra ID gives the bot file its
+`app` (the Microsoft App ID), its `tenant`, and a client secret — the secret's value, kept in
+`environment` under the variable `secret` names. The Azure Bot's messaging endpoint is a public
+HTTPS address of yours, which your proxy forwards to `listen` — a loopback address: the service
+never faces the internet itself. With nginx, a path per bot:
+
+```nginx
+location = /ops/api/messages { proxy_pass http://127.0.0.1:3978/api/messages; }
+```
+
+Turn on the Azure Bot's Microsoft Teams channel. Then a Teams app for the bot, in the Teams
+Developer Portal: under App features, a bot with the Microsoft App ID, in the personal and team
+scopes. A manifest of version 1.25 or later with the team scope must say
+`"supportsChannelFeatures": "tier1"`, or Teams refuses the package; it lets the app into private
+and shared channels too, which the service does not serve yet, so leave it out of those. Publish
+it to your organization and approve it in the Teams admin center, under Manage apps: an app
+uploaded for one person can stay blocked by the tenant's app policies.
 
 Every activity is checked before it is read: a token Microsoft signed for this app id, with a key
 it endorses for Teams, for the `serviceUrl` the activity names. One that fails is answered 401 and
@@ -47,6 +60,14 @@ the channel, written out. A channel has one spore: the bot speaks there as itsel
 is a second bot. `details` shows the calls themselves in the `working…` message rather than their
 kinds. The file is read on every message, so a person or a channel is added by editing a line.
 
+A bot that serves people who should see their answers and not the machinery takes `"brief": true`
+beside `people` and `channels`: each conversation is then told its spore's state and its answers,
+and nothing of how it runs. `/status` says `working`, `idle`, `paused` or how many messages wait —
+never the model, the spend, the turns or the limits; an answer comes without how the turn ended, a
+turn with none says `no answer this time` and the log says why; a limit reached shows as `wrapping
+up`; and `/extend` is not offered, since what a turn may spend is yours. A person or a channel takes
+`"brief"` as well, `false` to be told everything in a brief bot; `details` is refused beside it.
+
 Someone not in the file gets silence, and the log gets the line to add:
 
 ```
@@ -61,7 +82,8 @@ In a personal chat, anything written reaches the spore. In a channel, a message 
 it mentions the bot, and the mention is not part of what the spore is told; the spore is told who
 wrote and where. The bot posts `working…` and shows what kind of call runs as it runs; the answer
 is a new message — in a channel, in the thread of the message it answers — and `working…` is then
-removed, or marked `answered below` where Teams will not remove it. The answer is sent as Teams
+removed, or marked `answered below` where Teams will not remove it; in a channel thread, Teams shows
+`This message has been deleted.` where it was. The answer is sent as Teams
 markdown. What the turn left in `data/out/` is named, one line a file: files do not cross yet,
 either way.
 

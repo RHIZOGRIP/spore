@@ -57,6 +57,12 @@ One bot per user: the source a spore reads history through takes `DISCORD_BOT_TO
   each call as it runs; the default), `react` (the bot's reaction on your message, and Discord's
   typing), or `both`.
 - `details` — `true` shows the calls themselves in the `working…` post rather than their kinds.
+- `brief` — `true` tells the channel its spores' state and their answers, and nothing of how they
+  run: `status` says `working`, `idle`, `paused` or how many messages wait — never the model, the
+  spend, the turns or the limits; an answer comes without how the turn ended, a turn with none says
+  `no answer this time` and the log says why; a limit reached shows as `wrapping up`; and `extend`
+  is not offered, since what a turn may spend is yours. `"brief": true` beside `channels` makes
+  every channel brief that does not say `false`. A channel cannot take `details` beside it.
 
 Beside `channels`, `avatars` gives a spore a face: `"avatars": { "triage": "https://…/triage.png" }`.
 Discord fetches the image from that address for every post, so it has to be public and https; a

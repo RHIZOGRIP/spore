@@ -23,14 +23,17 @@ afterEach(() => rmSync(DIR, { recursive: true, force: true }))
 describe('a bot\'s people and groups', () => {
   it('read each person\'s private chat against the spore it reaches, and each group with its spore and who may address it', () => {
     bot({
-      people: { 148392011: 'triage', 2: { spore: 'triage', details: true, show: 'both' } },
+      people: { 148392011: 'triage', 2: { spore: 'triage', details: true, show: 'both' }, 3: { spore: 'triage', brief: true } },
       groups: { '-1001234567': { spores: ['standup'], people: ['148392011', '*'], overhear: true, show: 'working' } }
     })
     expect(routesOf(TELEGRAM, path)).toEqual(new Map([
-      ['2', { spores: ['triage'], details: true, show: 'both', people: null, overhear: false }],
-      ['148392011', { spores: ['triage'], details: false, show: null, people: null, overhear: false }],
-      ['-1001234567', { spores: ['standup'], details: false, show: 'working', people: ['148392011', '*'], overhear: true }]
+      ['2', { spores: ['triage'], details: true, show: 'both', brief: false, people: null, overhear: false }],
+      ['3', { spores: ['triage'], details: false, show: null, brief: true, people: null, overhear: false }],
+      ['148392011', { spores: ['triage'], details: false, show: null, brief: false, people: null, overhear: false }],
+      ['-1001234567', { spores: ['standup'], details: false, show: 'working', brief: false, people: ['148392011', '*'], overhear: true }]
     ]))
+    bot({ people: { 148392011: { spore: 'triage', brief: 'yes' } } })
+    expect(() => routesOf(TELEGRAM, path)).toThrow(/person 148392011 whose brief is not true or false/)
   })
 
   it('take either alone, and people {} while the owner learns their id', () => {
@@ -65,9 +68,9 @@ describe('a bot\'s people and groups', () => {
     bot({ people: { 1: 42 } })
     expect(() => routesOf(TELEGRAM, path)).toThrow(/maps person 1 to something that is not a spore/)
     bot({ people: { 1: { spore: 'triage', detail: true } } })
-    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ message: expect.stringMatching(/gives person 1 detail, which a person does not take/), detail: 'a person takes spore, details, show' }))
+    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ message: expect.stringMatching(/gives person 1 detail, which a person does not take/), detail: 'a person takes spore, details, show, brief' }))
     bot({ people: { 1: { spore: 'triage', show: 'react', react: { taken: '👀' } } } })
-    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ detail: 'a person takes spore, details, show; react is the bot\'s, beside people and groups' }))
+    expect(() => routesOf(TELEGRAM, path)).toThrow(expect.objectContaining({ detail: 'a person takes spore, details, show, brief; react is the bot\'s, beside people and groups' }))
   })
 
   it('refuse a group with no spore or more than one, without its people written out, or with a flag that is not one', () => {

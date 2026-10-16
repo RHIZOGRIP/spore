@@ -47,7 +47,9 @@ describe('a running turn\'s limits', () => {
 
   it('wrap sooner when asked, and never later', () => {
     startRunning()
-    expect(changeText(wrapTurn(WS))).toMatch(/^it wraps at \d+s into the turn, and still stops at 25m$/)
+    const wrapped = wrapTurn(WS)
+    expect(changeText(wrapped)).toMatch(/^it wraps at \d+s into the turn, and still stops at 25m$/)
+    expect(changeText(wrapped, { brief: true })).toMatch(/^it wraps at \d+s into the turn$/)
     expect(changeText(wrapTurn(WS, '2h'))).toBe('it already wraps by then')
     expect(() => wrapTurn(WS, 'later')).toThrow(/not a wait/)
     expect(runningLimits(WS).limits.wall).toMatchObject({ hard: 1_500_000, why: 'wrap' })

@@ -7,11 +7,11 @@
  *   spec                                   the adapter's description
  *   credentials                            { <variable>: <value> } its bot files name, the first bot's first;
  *                                          none reaches a turn but those the spec's sourceVariables keep
- *   botFile(bot, table, fields)            a bot file for { <conversation>: { spore, details, show, shared,
- *                                          people } } — `shared` a conversation many people share,
- *                                          whose `people`, left out, are everyone and, by id, whoever
- *                                          `say` writes as there unless told — with the bot's other
- *                                          `fields` (`react`)
+ *   botFile(bot, table, fields)            a bot file for { <conversation>: { spore, details, show, brief,
+ *                                          shared, people } } — `shared` a conversation many people
+ *                                          share, whose `people`, left out, are everyone and, by id,
+ *                                          whoever `say` writes as there unless told — with the bot's
+ *                                          other `fields` (`react`, `brief`)
  *   shared(n)                              the id of the nth conversation many people share
  *   platform()                             a fresh fake platform
  *   adapter(platform, bot, botFile)        the live adapter over it
@@ -399,6 +399,26 @@ export function conformance (harness, platformTests = () => {}) {
       })
     })
 
+    describe('a brief conversation', () => {
+      it('is told the spore is working and that the turn gave no answer, and the log is told how it ended', async () => {
+        routes({ 1: { spore: 'triage' } }, {}, { brief: true })
+        let asked = 0
+        reply = async (input, round) => {
+          asked += 1
+          return round === 0 ? calls('wsexec', { command: 'sleep 30', out: 'data/sleep.txt' }) : answers('late')
+        }
+        start()
+        say({ conversation: '1', text: 'first' })
+        await until(() => asked === 1 && notes('1').length === 1)
+        say({ conversation: '1', text: harness.command('status') })
+        await until(() => posted('1', 'working'))
+        stop(ws)
+        await until(() => posted('1', 'no answer this time'))
+        expect(posts('1').some(one => /cancelled/.test(one.text))).toBe(false)
+        expect(logs.some(line => /^turn 1 ended cancelled.* — not said in .*, which is brief$/.test(line))).toBe(true)
+      })
+    })
+
     describe('delivering', () => {
       it('waits out a rate limit', async () => {
         const waited = []
@@ -652,6 +672,20 @@ export function conformance (harness, platformTests = () => {}) {
         command('41', 'stop')
         await until(() => posted(group, 'nothing is running'))
         expect(logs.filter(line => /^refused (stop|extend) from .* \(42\) .*add "42" to its people/.test(line))).toHaveLength(2)
+        expect(readInbox(ws)).toEqual([])
+      })
+
+      it('in a brief conversation say only what state the spore is in, and offer no extend', async () => {
+        routes({ 1: { spore: 'triage', brief: false }, 2: { spore: 'triage' } }, {}, { brief: true })
+        start()
+        say({ conversation: '1', text: harness.command('status') })
+        say({ conversation: '2', text: harness.command('status') })
+        say({ conversation: '2', text: harness.command('extend', 'wall 30m') })
+        say({ conversation: '2', text: harness.command('help') })
+        await until(() => posts('1').length === 1 && posts('2').length === 3)
+        expect(posts('1')[0].text).toMatch(/^spore · /)
+        expect(posts('2').map(one => one.text)).toEqual(['idle', spec.usage.briefHelp, spec.usage.briefHelp])
+        expect(spec.usage.briefHelp).not.toMatch(/extend/)
         expect(readInbox(ws)).toEqual([])
       })
 

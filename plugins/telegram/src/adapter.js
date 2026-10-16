@@ -27,8 +27,8 @@ const REACTIONS = [
 ]
 
 const FIELDS = ['token', 'people', 'groups', 'react']
-const PERSON_FIELDS = ['spore', 'details', 'show']
-const GROUP_FIELDS = ['spores', 'people', 'details', 'show', 'overhear']
+const PERSON_FIELDS = ['spore', 'details', 'show', 'brief']
+const GROUP_FIELDS = ['spores', 'people', 'details', 'show', 'overhear', 'brief']
 const PERSON = /^\d+$/
 const GROUP = /^-\d+$/
 
@@ -43,6 +43,8 @@ const strays = (path, kind, id, entry, takes) => {
   throw invalid(path, `gives ${kind} ${id} ${extra.join(', ')}, which a ${kind} does not take`, `a ${kind} takes ${takes.join(', ')}${bots.length ? `; ${bots.join(', ')} is the bot's, beside people and groups` : ''}`)
 }
 
+const briefOf = (entry) => typeof entry.brief === 'boolean' ? entry.brief : null
+
 const flags = (path, kind, id, entry, names) => {
   for (const name of names) {
     if (entry[name] !== undefined && typeof entry[name] !== 'boolean') throw invalid(path, `has a ${kind} ${id} whose ${name} is not true or false`)
@@ -50,13 +52,14 @@ const flags = (path, kind, id, entry, names) => {
 }
 
 /**
- * The private chats, `people: { "<person id>": "<spore>" }` or `{ "spore", "details", "show" }`,
- * and the groups, `groups: { "<group id>": { "spores": ["<spore>"], "people": [...], "details",
- * "show", "overhear" } }`. `details` shows a chat what each call does — its command or path — rather
- * than only what kind of call it is, since a Telegram message leaves the machine; `show` how a turn
- * shows itself there. A group names who may address its spore — user ids, or `*` for everyone in it
- * — and has one spore: in a group a bot speaks as itself, so a second spore is a second bot.
- * `overhear` gives the spore what they say there that is not to it.
+ * The private chats, `people: { "<person id>": "<spore>" }` or `{ "spore", "details", "show",
+ * "brief" }`, and the groups, `groups: { "<group id>": { "spores": ["<spore>"], "people": [...],
+ * "details", "show", "overhear", "brief" } }`. `details` shows a chat what each call does — its
+ * command or path — rather than only what kind of call it is, since a Telegram message leaves the
+ * machine; `show` how a turn shows itself there; `brief` the bot's own, for this chat. A group names
+ * who may address its spore — user ids, or `*` for everyone in it — and has one spore: in a group a
+ * bot speaks as itself, so a second spore is a second bot. `overhear` gives the spore what they say
+ * there that is not to it.
  */
 function routes (raw, path) {
   if (raw.people === undefined && raw.groups === undefined) {
@@ -73,28 +76,29 @@ function routes (raw, path) {
     const shaped = typeof entry === 'object' && entry !== null && !Array.isArray(entry)
     if (shaped) {
       strays(path, 'person', person, entry, PERSON_FIELDS)
-      flags(path, 'person', person, entry, ['details'])
+      flags(path, 'person', person, entry, ['details', 'brief'])
     }
     const spore = shaped ? entry.spore : entry
     if (typeof spore !== 'string' || !spore) throw invalid(path, `maps person ${person} to something that is not a spore`, 'each person is their id against the name of the spore they reach, or { "spore": "<name>", "details": true, "show": "react" }')
-    table.set(person, { spores: [spore], details: shaped && entry.details === true, show: shaped ? entry.show ?? null : null, people: null, overhear: false })
+    table.set(person, { spores: [spore], details: shaped && entry.details === true, show: shaped ? entry.show ?? null : null, brief: shaped ? briefOf(entry) : null, people: null, overhear: false })
   }
   for (const [group, entry] of entries('groups')) {
     if (!GROUP.test(group)) throw invalid(path, `names "${group}" among its groups, which is not a group's id`, 'a group\'s id is negative (-100… for a supergroup); a person\'s goes under people')
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) throw invalid(path, `has a group ${group} that is not { "spores": [...], "people": [...] }`)
     strays(path, 'group', group, entry, GROUP_FIELDS)
-    flags(path, 'group', group, entry, ['details', 'overhear'])
+    flags(path, 'group', group, entry, ['details', 'overhear', 'brief'])
     if (!Array.isArray(entry.spores) || !entry.spores.length || !entry.spores.every(spore => typeof spore === 'string' && spore)) throw invalid(path, `has a group ${group} with no spores`)
     if (entry.spores.length > 1) throw invalid(path, `gives group ${group} ${entry.spores.length} spores`, 'a bot speaks in a group as itself, so a group has one spore — a second spore there is a second bot')
     if (!Array.isArray(entry.people) || !entry.people.every(who => who === '*' || (typeof who === 'string' && PERSON.test(who)))) {
       throw invalid(path, `has a group ${group} whose people are not user ids or *`, 'people is who may address its spore — ["<user id>", …], or ["*"] for everyone in the group, written out')
     }
-    table.set(group, { spores: entry.spores, details: entry.details === true, show: entry.show ?? null, people: entry.people, overhear: entry.overhear === true })
+    table.set(group, { spores: entry.spores, details: entry.details === true, show: entry.show ?? null, brief: briefOf(entry), people: entry.people, overhear: entry.overhear === true })
   }
   return table
 }
 
-const HELP = 'Anything you write to me in private goes to the spore; in a group, mention me or reply to me. /status says what it is doing; /stop ends the turn it is running and sets aside what you sent that it had not read; /wrap [10m] asks it to wrap up; /extend wall 30m gives it more, as far as its spore.cmk allows.'
+const HELP = 'Anything you write to me in private goes to the spore; in a group, mention me or reply to me. /status says what it is doing; /stop ends the turn it is running and sets aside what you sent that it had not read; /wrap [10m] asks it to wrap up'
+const EXTEND = '/extend wall 30m gives it more, as far as its spore.cmk allows'
 
 export const TELEGRAM = {
   kind: 'telegram',
@@ -107,7 +111,7 @@ export const TELEGRAM = {
   refusals: ['TELEGRAM_CONFLICT'],
   example: SHAPE,
   routes,
-  usage: { help: HELP, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
+  usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 4096, file: 50 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 4000 },
   can: { upload: true, remove: true, react: true, typing: true, reply: true },
   showShared: 'react',

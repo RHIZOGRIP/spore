@@ -3,11 +3,14 @@
  * running a command, asking a source by the name its host gave it — and never what it was given or
  * what came back, since a chat message leaves the machine and a command line or a path is the
  * operator's. A conversation whose routing says `details` is shown the command or the path as
- * well. The answer and the stop reason cross in full.
+ * well. The answer and the stop reason cross in full — except to a `brief` conversation, which is
+ * told the spore's state and its answers and nothing of how it runs: no model, spend or limits,
+ * and no stop reason, which stays in the service's log.
  */
 
 import { durationText } from '../core/job.js'
 import { runningLines } from '../core/limits.js'
+import { RUNNING } from '../core/state.js'
 import { show } from '../library/verbs.js'
 
 const PLAIN_ENDINGS = new Set(['answer', 'question'])
@@ -77,20 +80,20 @@ export function track (items, event) {
     item.failed = event.outcome === undefined ? Boolean(event.error) : !['ok', 'exit'].includes(event.outcome)
     return item.failed || item.exit !== null || item.durationMs >= SLOW_MS
   }
-  const note = (text) => {
-    items.push({ plain: text, detailed: text })
+  const note = (text, brief = text) => {
+    items.push({ plain: text, detailed: text, brief })
     return true
   }
-  if (event.event === 'wrap') return note(`wrapping up — reached its ${event.dimension} limit`)
+  if (event.event === 'wrap') return note(`wrapping up — reached its ${event.dimension} limit`, 'wrapping up')
   if (event.event === 'interject') return note('heard you')
   return false
 }
 
 /** The lines a conversation sees, the last few, a run of the same call counted rather than repeated. */
-export function render (items, { detailed = false, last = 6 } = {}) {
+export function render (items, { detailed = false, brief = false, last = 6 } = {}) {
   const lines = []
   for (const item of items) {
-    const text = (detailed ? item.detailed : item.plain) +
+    const text = (detailed ? item.detailed : brief ? item.brief ?? item.plain : item.plain) +
       (item.failed ? ' — failed' : '') +
       (item.exit != null ? ` — exit ${item.exit}` : '') +
       (item.durationMs >= SLOW_MS ? ` — ${Math.round(item.durationMs / 1000)} s` : '')
@@ -103,27 +106,30 @@ export function render (items, { detailed = false, last = 6 } = {}) {
 
 const ending = (record) => [record.stopReason, record.error].filter(Boolean).join(' · ')
 
-export function reply ({ record }) {
+/** How the turn ended, where a conversation is told it beside the answer — null for an answer, a question or quiet. */
+export const endingOf = (record) => PLAIN_ENDINGS.has(record.stopReason) || record.stopReason === 'quiet' ? null : ending(record)
+
+export function reply ({ record }, { brief = false } = {}) {
   const { output } = record
-  if (output) return PLAIN_ENDINGS.has(record.stopReason) ? output : `${output}\n\n— ${ending(record)}`
+  if (output) return PLAIN_ENDINGS.has(record.stopReason) || brief ? output : `${output}\n\n— ${ending(record)}`
   if (record.stopReason === 'quiet') return 'nothing to say'
-  return `no answer · ${ending(record)}`
+  return brief ? 'no answer this time' : `no answer · ${ending(record)}`
 }
 
 /** What a conversation is told of a turn that answered `asked`, none of it said there: who said it, then the answer. */
-export function announce ({ record, asked }) {
+export function announce ({ record, asked }, { brief = false } = {}) {
   const named = (field) => [...new Set(asked.filter(entry => entry[field]).map(entry => `"${entry[field]}"`))]
   const origins = [
     named('schedule').length ? `schedule ${named('schedule').join(', ')}` : null,
     named('hook').length ? `webhook ${named('hook').join(', ')}` : null,
     named('job').length ? `job ${named('job').join(', ')}` : null
   ].filter(Boolean)
-  return `${origins.length ? origins.join(' · ') : 'sent from elsewhere'}\n\n${reply({ record })}`
+  return `${origins.length ? origins.join(' · ') : 'sent from elsewhere'}\n\n${reply({ record }, { brief })}`
 }
 
 /** A turn ended without reading this conversation's message, and nothing is running to read it. */
-export function waiting ({ record }) {
-  return `no answer yet · ${ending(record)} — your message waits for the next turn`
+export function waiting ({ record }, { brief = false } = {}) {
+  return `no answer yet${brief ? '' : ` · ${ending(record)}`} — your message waits for the next turn`
 }
 
 export const leftOut = (more) => `and ${more} more file${more === 1 ? '' : 's'} in data/out/, in the spore's workspace`
@@ -183,8 +189,18 @@ export function pieces (text, limit) {
   return out
 }
 
-export function statusText (ws, configFile) {
+const waitingText = (n) => `${n} message${n === 1 ? '' : 's'} waiting`
+
+export function statusText (ws, configFile, { brief = false } = {}) {
   const one = show({ ws, configFile })
+  if (brief) {
+    const running = one.state === RUNNING
+    return [
+      running ? 'working' : one.paused ? 'paused' : 'idle',
+      running && one.paused ? 'paused' : null,
+      one.waiting ? waitingText(one.waiting) : null
+    ].filter(Boolean).join(' · ')
+  }
   return [
     `${one.name} · ${one.model}`,
     `${one.state}${one.draining ? ', finishing' : ''} · ${one.lastTurnNo} turns · ${one.billing !== null && one.billing.kind !== 'metered' ? `not metered · ${one.billing.label}` : `$${one.treeUsd.toFixed(4)}`}`,

@@ -29,12 +29,14 @@ afterEach(() => rmSync(DIR, { recursive: true, force: true }))
 
 describe('a bot\'s people and channels', () => {
   it('read each person\'s personal chat against the spore it reaches, and each channel with its spore and who may address it', () => {
-    bot({ people: { [ALICE]: 'triage', b2c3: { spore: 'ledger', details: true } }, channels: { [CHANNEL]: { spores: ['triage'], people: [ALICE, '*'] } } })
+    bot({ people: { [ALICE]: 'triage', b2c3: { spore: 'ledger', details: true } }, channels: { [CHANNEL]: { spores: ['triage'], people: [ALICE, '*'], brief: true } } })
     expect(routesOf(TEAMS, path)).toEqual(new Map([
-      [ALICE, { spores: ['triage'], details: false, show: null, people: null, overhear: false }],
-      ['b2c3', { spores: ['ledger'], details: true, show: null, people: null, overhear: false }],
-      [CHANNEL, { spores: ['triage'], details: false, show: null, people: [ALICE, '*'], overhear: false }]
+      [ALICE, { spores: ['triage'], details: false, show: null, brief: false, people: null, overhear: false }],
+      ['b2c3', { spores: ['ledger'], details: true, show: null, brief: false, people: null, overhear: false }],
+      [CHANNEL, { spores: ['triage'], details: false, show: null, brief: true, people: [ALICE, '*'], overhear: false }]
     ]))
+    bot({ people: { [ALICE]: { spore: 'triage', brief: 'yes' } } })
+    expect(() => routesOf(TEAMS, path)).toThrow(/person .* whose brief is not true or false/)
   })
 
   it('route a channel\'s threads by the channel', () => {
@@ -63,7 +65,7 @@ describe('a bot\'s people and channels', () => {
     bot({ channels: { general: { spores: ['triage'], people: ['*'] } } })
     expect(() => routesOf(TEAMS, path)).toThrow(/names "general" among its channels, which is not a channel id/)
     bot({ people: { [ALICE]: { spore: 'triage', show: 'react' } } })
-    expect(() => routesOf(TEAMS, path)).toThrow(expect.objectContaining({ detail: 'a person takes spore, details' }))
+    expect(() => routesOf(TEAMS, path)).toThrow(expect.objectContaining({ detail: 'a person takes spore, details, brief' }))
     bot({ channels: { [CHANNEL]: { spores: ['triage'], people: ['*'], overhear: true } } })
     expect(() => routesOf(TEAMS, path)).toThrow(/gives channel .* overhear, which a channel does not take/)
     bot({})

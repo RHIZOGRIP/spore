@@ -146,8 +146,8 @@ const harness = {
   formats: false,
   botFile: (bot, table, fields = {}) => ({
     token: bot === 'triage' ? '${DISCORD_BOT_TOKEN}' : '${OTHER_BOT_TOKEN}', // eslint-disable-line no-template-curly-in-string
-    channels: Object.fromEntries(Object.entries(table).map(([channel, { spore, details, show, people = [`9${channel}`, '*'] }]) =>
-      [channel, { spores: [spore], people, ...(details ? { details } : {}), ...(show ? { show } : {}) }])),
+    channels: Object.fromEntries(Object.entries(table).map(([channel, { spore, details, show, brief, people = [`9${channel}`, '*'] }]) =>
+      [channel, { spores: [spore], people, ...(details ? { details } : {}), ...(show ? { show } : {}), ...(brief !== undefined ? { brief } : {}) }])),
     ...fields
   }),
   shared: (n) => String(n),

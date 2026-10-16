@@ -751,6 +751,14 @@ export function setAside (ws, { replyTo, upto }) {
  * row of each dimension, as `{ startedAt, limits: { rounds, cost, wall } }` of `{ limitNo, soft,
  * hard, why }` — or null when no running turn recorded any.
  */
+/** How far the turn running now has read the inbox, as its latest `inbox_read` says — null when none runs or it has read nothing yet. */
+export function runningReadTo (ws) {
+  return reading(ws, null, db => db.prepare(`SELECT json_extract(e.payload, '$.inboxTo') AS readTo
+                                               FROM t_events e JOIN t_turns t ON t.turnId = e.turnId
+                                              WHERE t.state IN ('running', 'pending') AND e.event = 'inbox_read'
+                                              ORDER BY e.seq DESC LIMIT 1`).get()?.readTo ?? null)
+}
+
 export function runningLimits (ws) {
   return reading(ws, null, db => {
     const rows = db.prepare(`SELECT t.startedAt, l.limitNo, l.dimension, l.soft, l.hard, l.why

@@ -6,7 +6,9 @@
  *
  * `spec` is the adapter's description of its file: `kind`, the `fields` it takes, which of them
  * are `credentials`, an `example` of a first file, and `routes(raw, path)`, which reads the routing
- * into conversation → `{ spores, details, show, people, overhear }` and refuses what it cannot read.
+ * into conversation → `{ spores, details, show, brief, people, overhear }` and refuses what it
+ * cannot read — `brief` null where the entry leaves it to the bot's. Every bot file also takes
+ * `brief`, for each conversation that does not say.
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
@@ -19,6 +21,7 @@ const NAME = /^[a-z0-9][a-z0-9._-]*$/i
 const VARIABLE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/
 const SHOWS = ['working', 'react', 'both']
 const REACTIONS = { taken: '👨‍💻', failed: '💔' }
+const EVERY_BOT = ['brief']
 
 const typeOf = (spec, what) => `${spec.kind.toUpperCase()}_${what}`
 
@@ -53,9 +56,13 @@ export function readBot (spec, path) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     throw new SporeError(`${path} is not a bot`, { type: typeOf(spec, 'BOT_INVALID'), detail: `a bot is ${spec.example}` })
   }
-  const unknown = Object.keys(raw).filter(key => !spec.fields.includes(key))
+  const fields = [...spec.fields, ...EVERY_BOT]
+  const unknown = Object.keys(raw).filter(key => !fields.includes(key))
   if (unknown.length) {
-    throw new SporeError(`${path} has a field spore does not know — ${unknown.join(', ')}`, { type: typeOf(spec, 'BOT_INVALID'), detail: `a bot has ${spec.fields.join(', ')}, as ${spec.example}` })
+    throw new SporeError(`${path} has a field spore does not know — ${unknown.join(', ')}`, { type: typeOf(spec, 'BOT_INVALID'), detail: `a bot has ${fields.join(', ')}, as ${spec.example}` })
+  }
+  if (raw.brief !== undefined && typeof raw.brief !== 'boolean') {
+    throw new SporeError(`${path} has a brief that is not true or false`, { type: typeOf(spec, 'BOT_INVALID'), detail: 'brief: true keeps every conversation of the bot to its spore\'s state and answers — a person, group or channel may say otherwise' })
   }
   for (const field of spec.credentials) {
     if (typeof raw[field] !== 'string' || !VARIABLE.test(raw[field])) {
@@ -71,10 +78,19 @@ export function readBot (spec, path) {
 /**
  * The routing, each conversation's `show` checked: how a turn shows itself there — `working`, the
  * `working…` message edited as it goes; `react`, a reaction on the message and the platform's
- * typing; `both` — or null where the bot file leaves it to the kind of conversation.
+ * typing; `both` — or null where the bot file leaves it to the kind of conversation. Each
+ * conversation's `brief` is its own or the bot's: a brief conversation is told its spore's state
+ * and its answers, and nothing of how it runs, so it cannot also ask for `details`.
  */
 export function routesOf (spec, path) {
-  const table = spec.routes(readBot(spec, path), path)
+  const raw = readBot(spec, path)
+  const table = spec.routes(raw, path)
+  for (const [conversation, routed] of table) {
+    routed.brief = routed.brief ?? raw.brief === true
+    if (routed.brief && routed.details) {
+      throw new SporeError(`${path} gives ${conversation} both brief and details`, { type: typeOf(spec, 'BOT_INVALID'), detail: 'details shows the calls themselves, and a brief conversation is told nothing of how the spore runs — set brief: false where details is wanted' })
+    }
+  }
   for (const [conversation, { show }] of table) {
     if (show !== null && !SHOWS.includes(show)) {
       throw new SporeError(`${path} shows ${conversation} as "${show}"`, { type: typeOf(spec, 'BOT_INVALID'), detail: 'show is working (the working… message, edited as the turn goes), react (a reaction on the message, and typing) or both' })

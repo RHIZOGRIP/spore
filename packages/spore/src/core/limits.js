@@ -48,12 +48,11 @@ export function runningLines ({ startedAt, limits }, extend, now = Date.now()) {
   })
 }
 
-export function changeText (answer) {
+export function changeText (answer, { brief = false } = {}) {
   if (answer.refused) return sayRefusal(answer)
   const { dimension, why, soft, hard } = answer
-  return why === 'wrap'
-    ? `it wraps at ${limitText('wall', soft)} into the turn, and still stops at ${limitText('wall', hard)}`
-    : `its ${dimension} now wraps at ${limitText(dimension, soft)} and stops at ${limitText(dimension, hard)}`
+  if (why === 'wrap') return `it wraps at ${limitText('wall', soft)} into the turn${brief ? '' : `, and still stops at ${limitText('wall', hard)}`}`
+  return `its ${dimension} now wraps at ${limitText(dimension, soft)} and stops at ${limitText(dimension, hard)}`
 }
 
 /** Raises soft and hard `dimension` of the running turn by `amount`, as written: `30m`, `1.50`, `20`. */

@@ -56,6 +56,13 @@ import { runService } from '@rhizogrip/spore/relay'
   stopped turn has ended, and says how many — with nothing running, what waited. In a conversation
   many people share, `stop`, `wrap` and `extend` are for someone its `people` name by id or role —
   not everyone `"*"` lets talk; anyone else is told so, and the log says the line to add.
+- **A brief conversation is told what it asked and nothing of how the spore runs,** where the
+  routing says `brief`: `status` is the spore's state — `working`, `idle`, `paused`, how many
+  messages wait — without its model, spend, turns or limits; an answer is posted without how the
+  turn ended, and a turn without one says `no answer this time`, the stop reason going to the log;
+  a limit's wrap shows as `wrapping up`; `wrap` says when it wraps and not when it stops; `extend` is
+  not offered, since what a turn may spend is the operator's; a refused message is `busy` or `not
+  delivered`, its reason logged; and the owner's hint for an unnamed conversation is not posted there.
 - **Credentials stay with the service.** Every bot's credential variables are removed from the
   environment a turn's runner starts with, except one a source of the plugin's own needs.
 
@@ -63,7 +70,9 @@ import { runService } from '@rhizogrip/spore/relay'
 
 One file per bot, `~/.config/spore/<kind>/<bot>.json`, read on every message: credentials as
 `${VAR}`, held in `~/.config/spore/environment`, and the routing — which conversation reaches which
-spore, and how each is shown a turn (`show`: `working`, `react` or `both`). Anything not named there
+spore, how each is shown a turn (`show`: `working`, `react` or `both`), and whether it is `brief`
+— a bot's `"brief": true` is every conversation's that does not say otherwise, and a brief
+conversation cannot also take `details`. Anything not named there
 gets nothing, and the log says the line to add; so is the bot's owner, once per conversation while
 the service runs, in each of this bot's conversations a spore's `replyTo` default names. A bot on a platform that reacts takes
 `"react": { "taken": "👨‍💻", "failed": "💔" }`, those two when it is left out; an emoji the platform
@@ -78,10 +87,10 @@ The static part, which the relay reads before the service starts:
 | `kind` | the place prefix (`<kind>:<bot>/<conversation>`), the outbox kind, the state directory, the bot files' folder, the prefix of error types (`CHAT_NO_BOT`) |
 | `label`, `noun` | the platform's name and what it calls a conversation (`chat`, `channel`), for what people and the log are told |
 | `fields`, `credentials`, `example` | the bot file's fields, those holding a `${VAR}`, and a first file to show |
-| `routes(raw, path)` | the routing read into a `Map` of conversation → `{ spores: [name], details, show, people, overhear }`, `show` null where the file names none, `people` null where it names no one, and `overhear` true where what is not said to the spores reaches them overheard — refusing what it cannot read |
+| `routes(raw, path)` | the routing read into a `Map` of conversation → `{ spores: [name], details, show, brief, people, overhear }`, `show` null where the file names none, `brief` null where the entry leaves it to the bot's, `people` null where it names no one, and `overhear` true where what is not said to the spores reaches them overheard — refusing what it cannot read |
 | `stateFields` | the adapter's own fields in the state file, handed to its `restore` |
 | `sourceVariables` | credential variables a source of the plugin needs in a turn's environment |
-| `usage` | `{ help, extend }`: the commands as this platform types them |
+| `usage` | `{ help, briefHelp, extend }`: the commands as this platform types them — `briefHelp` without `extend`, for a brief conversation |
 | `limits` | `{ message, file, editEveryMs, typingEveryMs }`: the longest message, the largest upload, how often `working…` is edited, how often typing is renewed |
 | `can` | `{ upload, remove, react, typing, reply }`: `reply` false where a post cannot reply to a message, and opens with whom it answers instead |
 | `showShared` | how a turn shows itself in a conversation many people share when the routing says nothing: `react` or `working` |

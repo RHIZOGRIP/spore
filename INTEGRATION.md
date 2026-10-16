@@ -507,6 +507,7 @@ All but `turn_end` are written by the agent's loop. `turn_end` is written by the
 | `usage` | one model call of the loop's own: `model`, `input`, `output`, `thinking`, `cacheWrite`, `cacheRead`, `cost` (as the provider priced it, unsettled), `elapsedMs` |
 | `wrap` | `dimension`, the spend at that point, and for a stall `tool` and `because` |
 | `interject` | `round`: a message reached the running turn |
+| `inbox_read` | `inboxTo`: how far the turn has read the inbox, at its start and whenever it reads more between rounds |
 | `complete` | `output`, `usage`, `rounds`, `stopReason`, `cancelled`, `terminal`, and `because` for a `quiet` turn |
 | `deliverables` | `files`, each `{ path, bytes, mtime, mime }`, and `more` |
 | `recall` | `hits`, `scores`, or `failed` |

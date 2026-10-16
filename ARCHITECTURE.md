@@ -862,9 +862,10 @@ than seeded.
 `spore log` is the turn-by-turn view: when each turn ended, how, what it cost, what it drew in
 work units, and **what was said to start it** — which the turn records carry without storing it.
 Each says which stretch of the inbox it read, `(inboxFrom, inboxTo]`, and those are exactly the
-messages that turn answered; anything no finished turn has read is waiting. That is also what
-`spore show` counts as `waiting`, and it is the difference between a spore that is idle and one
-that has not started yet. The answers are not there: they are in the transcript.
+messages that turn answered; anything no turn has read is waiting. A running turn's record is
+written when it ends, so how far it has read so far is its latest `inbox_read` event, logged as it
+reads at its start and between rounds. That is also what `spore show` counts as `waiting`, and it
+is the difference between a spore that is idle and one that has not started yet. The answers are not there: they are in the transcript.
 
 Every verb names a spore the same way, so `spore show test` and `spore send test "…"` mean the
 same one. `show` answers from the files alone — `stateOf()` for what it is doing, the parsed
@@ -1815,7 +1816,11 @@ the outbox drained and settled; a restart from saved cursors. What a message is 
 one decision, `admission`: said to them, overheard by them where the routing overhears, or dropped
 at a named gate — not addressed, or from someone the routing's `people` do not name, which is
 logged with the line to add. In a conversation many people share, stopping, wrapping or extending
-a turn is for those its `people` name, not everyone `"*"` lets talk. A connector is its adapter —
+a turn is for those its `people` name, not everyone `"*"` lets talk. A conversation the routing
+makes `brief` — each one a bot's `"brief": true` covers unless it says otherwise — is told its
+spore's state and its answers and nothing of how it runs: no model, spend, limits or stop reason,
+which go to the service's log, and no `extend`, since what a turn may spend is the operator's. A
+connector is its adapter —
 the transport, the platform's API, what it calls a conversation and a person, and whether a
 message addresses a spore — and passes the conformance suite (`test/fixtures/relay-conformance.js`)
 against its fake platform (`docs/relay.md`). Telegram's is `plugins/telegram/src/adapter.js`:

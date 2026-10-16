@@ -17,7 +17,7 @@ const SPEC = {
   can: { react: true },
   reactions: ['👨‍💻', '💔', '👀'],
   example: '{ "token": "${CHAT_TOKEN}", "rooms": {} }', // eslint-disable-line no-template-curly-in-string
-  routes: (raw) => new Map(Object.entries(raw.rooms).map(([room, entry]) => [room, { spores: [entry.spore ?? entry], details: false, show: entry.show ?? null, people: null }]))
+  routes: (raw) => new Map(Object.entries(raw.rooms).map(([room, entry]) => [room, { spores: [entry.spore ?? entry], details: entry.details === true, show: entry.show ?? null, brief: entry.brief ?? null, people: null }]))
 }
 
 let DIR
@@ -40,7 +40,7 @@ describe('a bot file', () => {
     write('ops', { token: '${OPS_TOKEN}', rooms: {}, extra: 1 }) // eslint-disable-line no-template-curly-in-string
     expect(() => routesOf(SPEC, path)).toThrow(/a field spore does not know — extra/)
     write('ops', { token: '${OPS_TOKEN}', rooms: { r1: 'triage' } }) // eslint-disable-line no-template-curly-in-string
-    expect(routesOf(SPEC, path)).toEqual(new Map([['r1', { spores: ['triage'], details: false, show: null, people: null }]]))
+    expect(routesOf(SPEC, path)).toEqual(new Map([['r1', { spores: ['triage'], details: false, show: null, brief: false, people: null }]]))
   })
 
   it('takes how a conversation is shown a turn, and refuses a way it does not know or a reaction the platform cannot make', () => {
@@ -51,6 +51,18 @@ describe('a bot file', () => {
     expect(() => routesOf(SPEC, path)).toThrow(/shows r1 as "emoji"/)
     write('ops', { token: '${OPS_TOKEN}', rooms: { r1: { spore: 'triage', show: 'both' } } }) // eslint-disable-line no-template-curly-in-string
     expect(() => routesOf({ ...SPEC, can: { react: false } }, path)).toThrow(/a Chat bot cannot react/)
+  })
+
+  it('keeps a conversation brief as its entry says, or as the bot says, and refuses brief beside details', () => {
+    const path = botPath(SPEC, 'ops', CONFIG)
+    write('ops', { token: '${OPS_TOKEN}', brief: true, rooms: { r1: 'triage', r2: { spore: 'triage', brief: false, details: true } } }) // eslint-disable-line no-template-curly-in-string
+    expect([...routesOf(SPEC, path)].map(([room, { brief, details }]) => [room, brief, details])).toEqual([['r1', true, false], ['r2', false, true]])
+    write('ops', { token: '${OPS_TOKEN}', rooms: { r1: { spore: 'triage', brief: true }, r2: 'triage' } }) // eslint-disable-line no-template-curly-in-string
+    expect([...routesOf(SPEC, path)].map(([room, { brief }]) => [room, brief])).toEqual([['r1', true], ['r2', false]])
+    write('ops', { token: '${OPS_TOKEN}', brief: true, rooms: { r1: { spore: 'triage', details: true } } }) // eslint-disable-line no-template-curly-in-string
+    expect(() => routesOf(SPEC, path)).toThrow(/gives r1 both brief and details/)
+    write('ops', { token: '${OPS_TOKEN}', brief: 'yes', rooms: {} }) // eslint-disable-line no-template-curly-in-string
+    expect(() => routesOf(SPEC, path)).toThrow(/has a brief that is not true or false/)
   })
 
   it('reacts with the emoji it names, the others as they come, and refuses one the platform does not take', () => {
@@ -170,6 +182,17 @@ describe('what of a turn reaches a conversation', () => {
 
   it('tells a conversation whose message no turn is going to read yet', () => {
     expect(waiting({ record: { stopReason: 'error', error: 'START_FAILED' } })).toBe('no answer yet · error · START_FAILED — your message waits for the next turn')
+  })
+
+  it('tells a brief conversation the answer alone, and nothing of how the turn ended', () => {
+    const brief = { brief: true }
+    expect(reply({ record: { stopReason: 'soft:cost', output: 'partial' } }, brief)).toBe('partial')
+    expect(reply({ record: { stopReason: 'error', error: 'KILLED', output: null } }, brief)).toBe('no answer this time')
+    expect(reply({ record: { stopReason: 'quiet', output: null } }, brief)).toBe('nothing to say')
+    expect(announce({ record: { stopReason: 'hard:wall', output: null }, asked: [{ schedule: 'digest' }] }, brief)).toBe('schedule "digest"\n\nno answer this time')
+    expect(waiting({ record: { stopReason: 'error', error: 'START_FAILED' } }, brief)).toBe('no answer yet — your message waits for the next turn')
+    expect(shown([{ event: 'wrap', dimension: 'cost' }], brief)).toEqual(['· wrapping up'])
+    expect(shown([{ event: 'wrap', dimension: 'cost' }])).toEqual(['· wrapping up — reached its cost limit'])
   })
 
   it('breaks a long answer at a line, or at the limit when there is none', () => {

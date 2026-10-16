@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-telegram",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Telegram for spores: a bot of yours in chats, each chat reaching its spore, run as a service",
   "author": {
     "name": "Christophe Le Bars",
@@ -31,13 +31,13 @@
     "marked": "^18.0.11"
   },
   "peerDependencies": {
-    "@rhizogrip/spore": "^1.21.0"
+    "@rhizogrip/spore": "^1.23.0"
   },
   "scripts": {
     "test": "vitest run"
   },
   "spore": {
-    "works": "^1.21.0",
+    "works": "^1.23.0",
     "services": {
       "telegram": {
         "what": "a bot of yours in Telegram chats, each chat reaching its spore",

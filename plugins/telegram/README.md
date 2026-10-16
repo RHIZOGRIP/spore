@@ -121,6 +121,15 @@ It is then shown `reading data/report.md`, `running git log --oneline -5`,
 `source forgejo --path …` — the first line, cut short. Choose it for a chat you would let
 read the commands; the others keep the kinds. A group takes `"details": true` the same way.
 
+A bot that serves people who should see their answers and not the machinery — your customers, say —
+takes `"brief": true` beside `people` and `groups`: each chat is then told its spore's state and its
+answers, and nothing of how it runs. `/status` says `working`, `idle`, `paused` or how many messages
+wait — never the model, the spend, the turns or the limits; an answer comes without how the turn
+ended, a turn with none says `no answer this time` and the log says why; a limit reached shows as
+`wrapping up`; and `/extend` is not offered, since what a turn may spend is yours. A person or a
+group takes `"brief"` as well, `false` to be told everything in a brief bot; `details` is refused
+beside it.
+
 A chat can be shown a turn more quietly, which is what a group gets unless its entry says
 otherwise: `"show": "react"` puts a 👨‍💻 on your message when the spore takes it and shows Telegram's
 `typing…` while the turn runs, then takes the 👨‍💻 off when the answer arrives — or puts a 💔 there

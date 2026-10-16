@@ -8,8 +8,8 @@
 import { SporeError } from '@rhizogrip/spore'
 
 const FIELDS = ['app', 'tenant', 'secret', 'listen', 'people', 'channels']
-const PERSON_FIELDS = ['spore', 'details']
-const CHANNEL_FIELDS = ['spores', 'people', 'details']
+const PERSON_FIELDS = ['spore', 'details', 'brief']
+const CHANNEL_FIELDS = ['spores', 'people', 'details', 'brief']
 const PERSON = /^[0-9a-f][0-9a-f-]*$/i
 const CHANNEL = /^19:[^\s;]+@thread\.[a-z0-9]+$/i
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
@@ -21,6 +21,12 @@ const SHAPE = '{ "app": "<app id>", "tenant": "<tenant id>", "secret": "${OPS_TE
 const invalid = (path, problem, detail = `a bot is ${SHAPE}`) => new SporeError(`${path} ${problem}`, { type: 'TEAMS_BOT_INVALID', detail })
 
 const record = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const flags = (path, kind, id, entry) => {
+  for (const name of ['details', 'brief']) {
+    if (entry[name] !== undefined && typeof entry[name] !== 'boolean') throw invalid(path, `has a ${kind} ${id} whose ${name} is not true or false`)
+  }
+}
 
 const strays = (path, kind, id, entry, takes) => {
   const extra = Object.keys(entry).filter(key => !takes.includes(key))
@@ -41,9 +47,10 @@ export function listenOf (raw, path) {
 
 /**
  * The bot's app and tenant, where it listens, and its routing: `people`, each person's personal
- * chat by their Entra object id — `"<spore>"` or `{ "spore", "details" }` — and `channels`, each
- * standard channel by its id, with its one spore and who may address it there: object ids, or `*`
- * for everyone in the channel. `details` shows the calls themselves rather than their kinds.
+ * chat by their Entra object id — `"<spore>"` or `{ "spore", "details", "brief" }` — and `channels`,
+ * each standard channel by its id, with its one spore and who may address it there: object ids, or
+ * `*` for everyone in the channel. `details` shows the calls themselves rather than their kinds;
+ * `brief` is the bot's own, for this conversation.
  */
 function routes (raw, path) {
   for (const field of ['app', 'tenant']) {
@@ -63,28 +70,29 @@ function routes (raw, path) {
     if (!PERSON.test(person)) throw invalid(path, `names "${person}" among its people, which is not an Entra object id`, 'a person is their object id in Entra ID; a channel\'s id begins 19: and goes under channels')
     if (record(entry)) {
       strays(path, 'person', person, entry, PERSON_FIELDS)
-      if (entry.details !== undefined && typeof entry.details !== 'boolean') throw invalid(path, `has a person ${person} whose details is not true or false`)
+      flags(path, 'person', person, entry)
     }
     const spore = record(entry) ? entry.spore : entry
     if (typeof spore !== 'string' || !spore) throw invalid(path, `maps person ${person} to something that is not a spore`, 'each person is their object id against the name of the spore they reach, or { "spore": "<name>", "details": true }')
-    table.set(person, { spores: [spore], details: record(entry) && entry.details === true, show: null, people: null, overhear: false })
+    table.set(person, { spores: [spore], details: record(entry) && entry.details === true, show: null, brief: record(entry) ? entry.brief ?? null : null, people: null, overhear: false })
   }
   for (const [channel, entry] of entries('channels')) {
     if (!CHANNEL.test(channel)) throw invalid(path, `names "${channel}" among its channels, which is not a channel id`, 'a channel id is 19:…@thread.tacv2, from the channel\'s link in Teams')
     if (!record(entry)) throw invalid(path, `has a channel ${channel} that is not { "spores": [...], "people": [...] }`)
     strays(path, 'channel', channel, entry, CHANNEL_FIELDS)
-    if (entry.details !== undefined && typeof entry.details !== 'boolean') throw invalid(path, `has a channel ${channel} whose details is not true or false`)
+    flags(path, 'channel', channel, entry)
     if (!Array.isArray(entry.spores) || !entry.spores.length || !entry.spores.every(spore => typeof spore === 'string' && spore)) throw invalid(path, `has a channel ${channel} with no spores`)
     if (entry.spores.length > 1) throw invalid(path, `gives channel ${channel} ${entry.spores.length} spores`, 'a bot speaks in a channel as itself, so a channel has one spore — a second spore there is a second bot')
     if (!Array.isArray(entry.people) || !entry.people.every(who => who === '*' || (typeof who === 'string' && PERSON.test(who)))) {
       throw invalid(path, `has a channel ${channel} whose people are not object ids or *`, 'people is who may address its spore — ["<object id>", …], or ["*"] for everyone in the channel, written out')
     }
-    table.set(channel, { spores: entry.spores, details: entry.details === true, show: null, people: entry.people, overhear: false })
+    table.set(channel, { spores: entry.spores, details: entry.details === true, show: null, brief: entry.brief ?? null, people: entry.people, overhear: false })
   }
   return table
 }
 
-const HELP = 'Anything you write to me in a personal chat goes to the spore; in a channel, mention me. /status says what it is doing; /stop ends the turn it is running and sets aside what you sent that it had not read; /wrap [10m] asks it to wrap up; /extend wall 30m gives it more, as far as its spore.cmk allows.'
+const HELP = 'Anything you write to me in a personal chat goes to the spore; in a channel, mention me. /status says what it is doing; /stop ends the turn it is running and sets aside what you sent that it had not read; /wrap [10m] asks it to wrap up'
+const EXTEND = '/extend wall 30m gives it more, as far as its spore.cmk allows'
 
 export const TEAMS = {
   kind: 'teams',
@@ -98,7 +106,7 @@ export const TEAMS = {
   example: SHAPE,
   routes,
   routeOf: (conversation) => conversation.split(THREAD)[0],
-  usage: { help: HELP, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
+  usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 40000, file: 0, editEveryMs: 2500, typingEveryMs: 4000 },
   can: { upload: false, remove: true, react: false, typing: false, reply: true },
   reactions: null,

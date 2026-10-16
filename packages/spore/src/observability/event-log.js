@@ -35,7 +35,7 @@ export const SCHEMA = EVENT_SCHEMA
  * what anything that bills, counts or closes a turn reads.
  */
 const CARRIED = [
-  'round', 'tool_start', 'tool_end', 'tool_block', 'wrap', 'interject',
+  'round', 'tool_start', 'tool_end', 'tool_block', 'wrap', 'interject', 'inbox_read',
   'heartbeat', 'stream', 'usage', 'complete', 'deliverables', 'recall', 'compaction_started', 'compaction', 'compaction_failed',
   'estimate_drift', 'empty_completion', 'recovery'
 ]

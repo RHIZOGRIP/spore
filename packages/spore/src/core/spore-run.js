@@ -193,6 +193,7 @@ export async function runSpore ({
   // that is between model calls is the only moment it is safe to change what it is doing.
   const interject = () => {
     const said = readInboxFrom(WS, inboxAt)
+    if (said.at !== inboxAt) events.emit('inbox_read', { inboxTo: said.at })
     inboxAt = said.at
     person ??= said.person
     return said.messages
@@ -245,6 +246,7 @@ export async function runSpore ({
     // Both sides: the caller is who wants deltas, and the log deliberately does not.
     has: (type) => own.has(type) || Boolean(emitter?.has?.(type))
   }
+  events.emit('inbox_read', { inboxTo: inboxAt })
   let { fns, defs } = makeTools(WS, maxOutput, trail, {
     modelIds,
     traceparent: formatTraceparent(sporeDispatchSpan),

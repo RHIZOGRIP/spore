@@ -102,10 +102,10 @@ const harness = {
   credentials: { TRIAGE_BOT_TOKEN: 'the-bot-token', OTHER_BOT_TOKEN: 'another-bot-token' },
   botFile: (bot, table, fields = {}) => {
     const entries = Object.entries(table)
-    const people = entries.filter(([, entry]) => !entry.shared).map(([chat, { spore, details, show }]) =>
-      [chat, details || show ? { spore, ...(details ? { details } : {}), ...(show ? { show } : {}) } : spore])
-    const groups = entries.filter(([, entry]) => entry.shared).map(([chat, { spore, details, show, people = [`9${-chat}`, '*'], overhear }]) =>
-      [chat, { spores: [spore], people, ...(details ? { details } : {}), ...(show ? { show } : {}), ...(overhear ? { overhear } : {}) }])
+    const people = entries.filter(([, entry]) => !entry.shared).map(([chat, { spore, details, show, brief }]) =>
+      [chat, details || show || brief !== undefined ? { spore, ...(details ? { details } : {}), ...(show ? { show } : {}), ...(brief !== undefined ? { brief } : {}) } : spore])
+    const groups = entries.filter(([, entry]) => entry.shared).map(([chat, { spore, details, show, brief, people = [`9${-chat}`, '*'], overhear }]) =>
+      [chat, { spores: [spore], people, ...(details ? { details } : {}), ...(show ? { show } : {}), ...(brief !== undefined ? { brief } : {}), ...(overhear ? { overhear } : {}) }])
     return { token: `\${${bot.toUpperCase()}_BOT_TOKEN}`, people: Object.fromEntries(people), groups: Object.fromEntries(groups), ...fields }
   },
   shared: (n) => `-${n}`,

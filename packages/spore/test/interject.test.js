@@ -9,6 +9,7 @@ import { createModelServer } from './fixtures/model-server.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { readSaidSoFar, readTurns } from '../src/core/spore-dir.js'
+import { show } from '../src/library/verbs.js'
 
 const run = promisify(execFile)
 const SPORE = resolve(dirname(fileURLToPath(import.meta.url)), '../../spore-cli/bin/spore.js')
@@ -77,6 +78,17 @@ describe('a message sent to a turn already running', () => {
       .filter(m => m.role === 'user').map(m => m.content)
     expect(said).toContain('a long job')
     expect(said).toContain('skip the appendices')
+  })
+
+  it('is waiting until the running turn reads it, and the message it is answering is not', async () => {
+    const turn = spore(['send', ws, 'a long job'])
+    await until(() => seen.length === 1)
+    expect(show({ ws }).waiting).toBe(0)
+
+    await spore(['send', ws, 'skip the appendices'])
+    await until(() => seen.some(round => round.includes('skip the appendices')))
+    expect(show({ ws }).waiting).toBe(0)
+    await turn
   })
 
   it('does not start a second turn, because the lock says one is already running', async () => {

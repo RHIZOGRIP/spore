@@ -16,7 +16,7 @@ import { basename, resolve } from 'node:path'
 import { attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf } from '../index.js'
 import { credentialVariables, reactionsOf, routesOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
-import { announce, leftOut, pieces, render, reply, statusText, track, unpassed, waiting } from './render.js'
+import { announce, endingOf, leftOut, pieces, render, reply, statusText, track, unpassed, waiting } from './render.js'
 import { loadState, saveState } from './state.js'
 
 const TAKES_ARGUMENTS = new Set(['extend', 'wrap'])
@@ -80,6 +80,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   const hinted = new Set()
   let followed = new Map()
   let detailed = new Set()
+  let briefed = new Set()
   let routeFailure = null
 
   const save = () => saveState(statePath, state, adapter)
@@ -102,14 +103,14 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   /** Whom a post about `entries` answers: each person and the first line of what they said. */
   const forOf = (entries) => entries.map(entry => ({ person: entry.person, said: entry.said }))
 
-  const change = (conversation, act, as) => {
+  const change = (conversation, act, as, brief) => {
     let answer
     try {
       answer = act()
     } catch (err) {
       return tell(conversation, said(err), as)
     }
-    return tell(conversation, changeText(answer), as)
+    return tell(conversation, changeText(answer, { brief }), as)
   }
 
   const messages = (n) => `${n} message${n === 1 ? '' : 's'}`
@@ -152,19 +153,19 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     }
   }
 
-  const obey = (conversation, ws, name, verb, args = '') => {
+  const obey =(conversation, ws, name, verb, args, brief) => {
     if (verb === 'stop') {
       stopTurn(conversation, ws, name)
       return
     }
-    if (verb === 'status') return tell(conversation, statusText(ws, configFile), name)
-    if (verb === 'wrap') return change(conversation, () => wrapTurn(ws, args.trim() || undefined), name)
-    if (verb === 'extend') {
+    if (verb === 'status') return tell(conversation, statusText(ws, configFile, { brief }), name)
+    if (verb === 'wrap') return change(conversation, () => wrapTurn(ws, args.trim() || undefined), name, brief)
+    if (verb === 'extend' && !brief) {
       const [dimension, amount] = args.trim().split(/\s+/)
       if (!dimension) return tell(conversation, adapter.usage.extend, name)
       return change(conversation, () => extendTurn(ws, dimension, amount), name)
     }
-    return tell(conversation, adapter.usage.help, name)
+    return tell(conversation, brief ? adapter.usage.briefHelp : adapter.usage.help, name)
   }
 
   /**
@@ -206,7 +207,8 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
    */
   const pass = (message, name, ws, { table, react }) => {
     const { conversation } = message
-    const show = table.get(keyOf(conversation)).show ?? (message.shared ? adapter.showShared : 'working')
+    const routed = table.get(keyOf(conversation))
+    const show = routed.show ?? (message.shared ? adapter.showShared : 'working')
     const taken = show === 'working' ? null : react.taken
     const aside = adapter.aside ? adapter.aside(message, name) : null
     if (follows(ws)) save()
@@ -221,7 +223,9 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     } catch (err) {
       log(`${where(conversation)}: send to ${name} refused — ${err.type} ${said(err)}`)
       if (taken) delivery.to(conversation, attempt => mark(attempt, conversation, message.message, () => [react.failed, null]))
-      return tell(conversation, err.type === 'ADMISSION_FULL' ? `busy — ${said(err)}` : `not delivered — ${said(err)}`, name)
+      const busy = err.type === 'ADMISSION_FULL'
+      if (routed.brief) return tell(conversation, busy ? 'busy — try again in a while' : 'not delivered — tell whoever runs me', name)
+      return tell(conversation, busy ? `busy — ${said(err)}` : `not delivered — ${said(err)}`, name)
     }
     if (sent.repeated) return log(`${where(conversation)}: message ${message.id} was already said to ${name}, as inbox ${sent.inbox}`)
 
@@ -255,7 +259,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   /**
    * Someone in a conversation the bot file does not name is told nothing; the bot's owner is told,
    * once per conversation while the service runs, in each conversation of this bot that a spore's
-   * `replyTo` default names, with the line that would let them in.
+   * `replyTo` default names and that is not brief, with the line that would let them in.
    */
   const hint = (message, { config, table }) => {
     if (hinted.has(message.conversation)) return
@@ -263,7 +267,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     const places = new Set(Object.values(config.replyTo ?? {})
       .filter(place => place.startsWith(prefix))
       .map(place => place.slice(prefix.length))
-      .filter(conversation => table.has(keyOf(conversation))))
+      .filter(conversation => table.has(keyOf(conversation)) && !table.get(keyOf(conversation)).brief))
     for (const place of places) tell(place, `${message.person.name} wrote from ${message.where}, which ${botFile} does not name.\n${adapter.refusal(message, botFile)}`)
   }
 
@@ -318,12 +322,12 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     const [first] = reached
     if (message.text === null) return tell(conversation, 'only text reaches a spore for now', first.name)
     if (message.command && reached.length === 1 && (!message.command.args || TAKES_ARGUMENTS.has(message.command.verb))) {
-      const { verb } = message.command
+      const verb = routed.brief && message.command.verb === 'extend' ? 'help' : message.command.verb
       if (OPERATING.has(verb) && !operates(message, routed)) {
         log(`refused ${verb} from ${message.person.name} (${message.person.id}) in ${where(conversation)} — only someone its people name may ${verb} a turn: ${allow}`)
         return tell(conversation, `only the people this ${noun} lists may ${verb} a turn`, first.name)
       }
-      return obey(conversation, first.ws, first.name, verb, message.command.args)
+      return obey(conversation, first.ws, first.name, verb, message.command.args ?? '', routed.brief)
     }
     for (const { name, ws } of reached) pass(message, name, ws, read)
     if (message.files) tell(conversation, unpassed(message.files, reached.map(one => one.name)), first.name)
@@ -354,6 +358,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       return [...followed.keys()]
     }
     detailed = new Set([...read.table].filter(([, routed]) => routed.details).map(([conversation]) => conversation))
+    briefed = new Set([...read.table].filter(([, routed]) => routed.brief).map(([conversation]) => conversation))
     const next = new Map()
     for (const [conversation, { spores: names }] of read.table) {
       for (const name of names) {
@@ -390,7 +395,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     lines.at = Date.now()
     for (const entry of state.pending[ws] ?? []) {
       const { conversation } = entry
-      const text = [WORKING, ...render(lines.items, { detailed: detailed.has(keyOf(conversation)) })].join('\n')
+      const text = [WORKING, ...render(lines.items, { detailed: detailed.has(keyOf(conversation)), brief: briefed.has(keyOf(conversation)) })].join('\n')
       droppable(conversation, 'progress', async () => {
         const note = await noteOf(entry)
         if (note !== null && state.pending[ws]?.includes(entry)) await adapter.edit(conversation, note, text, { for: forOf([entry]) })
@@ -496,7 +501,9 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     }
     const turn = turnsSince(ws, entry.turnNo - 1).ended[0]
     const heard = turn.asked.filter(message => entry.answers.includes(message.inboxNo))
-    const answer = heard.some(message => message.replyTo) ? reply(turn) : announce({ record: turn.record, asked: heard })
+    const brief = briefed.has(keyOf(conversation))
+    const answer = heard.some(message => message.replyTo) ? reply(turn, { brief }) : announce({ record: turn.record, asked: heard }, { brief })
+    if (brief) unsaid(turn, conversation)
     const answered = Boolean(turn.record.output) || turn.record.stopReason === 'quiet'
     const text = entry.attemptedAt === null ? answer : `${MAY_REPEAT}\n\n${answer}`
     const handed = { files: turn.record.deliverables ?? [], more: turn.record.deliverablesMore ?? 0 }
@@ -558,6 +565,12 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     return owed
   }
 
+  /** How a turn ended, logged for the operator where a brief conversation is not told it. */
+  const unsaid = (turn, conversation) => {
+    const ending = endingOf(turn.record)
+    if (ending) log(`turn ${turn.record.turnNo} ended ${ending} — not said in ${where(conversation)}, which is brief`)
+  }
+
   const tellWaiting = async (attempt, entry, text, as) => {
     const note = await noteOf(entry)
     if (note === null) return attempt(() => adapter.post(entry.conversation, text, { as, for: forOf([entry]) }))
@@ -578,7 +591,11 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     const left = (state.pending[ws] ?? []).filter(entry => !read.has(entry.inbox))
     if (left.length && stateOf(ws).state !== RUNNING) {
       const { name } = followed.get(ws)
-      const work = left.map(entry => delivery.to(entry.conversation, attempt => tellWaiting(attempt, entry, waiting(turn), name)))
+      const work = left.map(entry => {
+        const brief = briefed.has(keyOf(entry.conversation))
+        if (brief) unsaid(turn, entry.conversation)
+        return delivery.to(entry.conversation, attempt => tellWaiting(attempt, entry, waiting(turn, { brief }), name))
+      })
       for (const outcome of await Promise.allSettled(work)) {
         if (outcome.status === 'rejected') log(`turn ${turn.record.turnNo} of ${ws}: not told it is waiting — ${said(outcome.reason)}`)
       }

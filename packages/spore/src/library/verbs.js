@@ -13,7 +13,7 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 
 import { readConfig, existing, addTo, workspaceFor, CONFIG_FILE, containing, recordLayout } from './config.js'
 import { isWorkspace, sporesInHome } from './discover.js'
-import { acquireLock, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readTranscript, readTurns, releaseLock, runningLimits, statePath, turnSummary } from '../core/spore-dir.js'
+import { acquireLock, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
 import { sqlLines } from './sql.js'
 import { TOOL_NAMES } from '../core/tool-names.js'
 import { cloneCapability } from '../core/clone.js'
@@ -597,7 +597,7 @@ export function show ({ ws, configFile = CONFIG_FILE } = {}) {
     reads: definition.reads,
     writes: definition.writes,
     messages: readTranscript(path).length,
-    waiting: waitingIn(path).length,
+    waiting: waitingIn(path, state.state === RUNNING).length,
     paused: paused(),
     held: heldIn(path).map(({ origin, releaseAt, deadline, summary }) => ({ origin, releaseAt, deadline, summary })),
     cells: cellsSince(path, { since: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() }),
@@ -769,7 +769,11 @@ const precursorNames = (ws) => {
  * anything past that is work outstanding — which is the difference between a spore that is
  * idle and one that is merely not running yet.
  */
-const waitingIn = (ws) => readInbox(ws).filter(entry => !entry.consumed && !entry.setAside && !entry.overheard)
+/** What no turn has read yet: a running turn has read up to its latest `inbox_read`, and consumes it only when it ends. */
+const waitingIn = (ws, running) => {
+  const readTo = running ? runningReadTo(ws) : null
+  return readInbox(ws).filter(entry => !entry.consumed && !entry.setAside && !entry.overheard && (readTo === null || entry.inboxNo > readTo))
+}
 
 /**
  * What has happened here, one line per turn: when it ended, how, what it cost, and what
@@ -805,10 +809,11 @@ export function log ({ ws, configFile = CONFIG_FILE } = {}) {
   }))
   // A schedule the pass would fire and cannot, or will not fire at all, is work outstanding
   // the same way a message nobody answered is.
-  const held = survey(path, { spore: stateOf(path), grant: definition.schedules ?? null })
+  const spore = stateOf(path)
+  const held = survey(path, { spore, grant: definition.schedules ?? null })
     .filter(row => row.state === 'held' || row.state === 'refused')
     .map(({ message, ...row }) => row)
-  return { ws: path, turns, waiting: said.filter(entry => !entry.consumed && !entry.setAside && !entry.overheard), setAside: said.filter(entry => entry.setAside), held }
+  return { ws: path, turns, waiting: waitingIn(path, spore.state === RUNNING), setAside: said.filter(entry => entry.setAside), held }
 }
 
 /** What a workspace can delegate to. */

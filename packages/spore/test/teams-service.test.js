@@ -99,9 +99,10 @@ const harness = {
   credentials: { TRIAGE_TEAMS_SECRET: 'the-secret', OTHER_TEAMS_SECRET: 'another-secret' },
   botFile: (bot, table, fields = {}) => {
     const entries = Object.entries(table)
-    const people = entries.filter(([, entry]) => !entry.shared).map(([who, { spore, details }]) => [who, details ? { spore, details } : spore])
-    const channels = entries.filter(([, entry]) => entry.shared).map(([channel, { spore, details, people = [`9${numberOf(channel)}`, '*'] }]) =>
-      [channel, { spores: [spore], people, ...(details ? { details } : {}) }])
+    const people = entries.filter(([, entry]) => !entry.shared).map(([who, { spore, details, brief }]) =>
+      [who, details || brief !== undefined ? { spore, ...(details ? { details } : {}), ...(brief !== undefined ? { brief } : {}) } : spore])
+    const channels = entries.filter(([, entry]) => entry.shared).map(([channel, { spore, details, brief, people = [`9${numberOf(channel)}`, '*'] }]) =>
+      [channel, { spores: [spore], people, ...(details ? { details } : {}), ...(brief !== undefined ? { brief } : {}) }])
     return { app: APP, tenant: TENANT, secret: `\${${bot.toUpperCase()}_TEAMS_SECRET}`, listen: '127.0.0.1:3978', people: Object.fromEntries(people), channels: Object.fromEntries(channels), ...fields }
   },
   shared: (n) => `19:${n}@thread.tacv2`,
