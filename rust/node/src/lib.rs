@@ -89,6 +89,28 @@ pub fn size_bytes(value: String) -> Option<f64> {
     definition::size_bytes(&value)
 }
 
+/// `{ until }`, the instant in milliseconds an approval asked at `at_ms` stops waiting, or
+/// `{ error }`. A calendar is given by its parts, `tz` naming one.
+#[napi]
+pub fn approval_deadline(
+    at_ms: i64,
+    within: String,
+    tz: Option<String>,
+    days: Option<Vec<String>>,
+    holidays: Option<Vec<String>>,
+) -> String {
+    let holidays = holidays.unwrap_or_default();
+    let calendar = tz.as_deref().map(|tz| definition::Calendar {
+        tz,
+        days: days.as_deref(),
+        holidays: &holidays,
+    });
+    answer(
+        definition::deadline(at_ms, &within, calendar.as_ref()),
+        Some("until"),
+    )
+}
+
 #[napi]
 pub fn acquire_lock(ws: String) -> napi::Result<String> {
     Ok(
@@ -488,6 +510,72 @@ pub fn set_aside(ws: String, reply_to: String, upto: i64) -> napi::Result<Option
 #[napi]
 pub fn settle_outbox(ws: String, outbox_no: i64, refused: Option<String>) -> napi::Result<bool> {
     workspace::settle_outbox(Path::new(&ws), outbox_no, refused.as_deref()).map_err(failed)
+}
+
+/// The new approval's `approvalNo`. A request the database refuses throws.
+#[napi]
+pub fn ask_approval(ws: String, request: String) -> napi::Result<i64> {
+    workspace::ask_approval(Path::new(&ws), &request).map_err(failed)
+}
+
+#[napi]
+pub fn post_approval(
+    ws: String,
+    id: String,
+    shown: String,
+    note: Option<String>,
+) -> napi::Result<bool> {
+    workspace::post_approval(Path::new(&ws), &id, &shown, note.as_deref()).map_err(failed)
+}
+
+#[napi]
+pub fn answer_approval(
+    ws: String,
+    id: String,
+    choice: String,
+    inputs: Option<String>,
+    answerer_id: String,
+    answerer_name: String,
+) -> napi::Result<bool> {
+    workspace::answer_approval(
+        Path::new(&ws),
+        &id,
+        &choice,
+        inputs.as_deref(),
+        &answerer_id,
+        &answerer_name,
+    )
+    .map_err(failed)
+}
+
+#[napi]
+pub fn expire_approval(ws: String, id: String) -> napi::Result<bool> {
+    workspace::expire_approval(Path::new(&ws), &id).map_err(failed)
+}
+
+#[napi]
+pub fn refuse_approval(ws: String, id: String, reason: String) -> napi::Result<bool> {
+    workspace::refuse_approval(Path::new(&ws), &id, &reason).map_err(failed)
+}
+
+#[napi]
+pub fn settle_approval(
+    ws: String,
+    id: String,
+    outcome: Option<String>,
+    reason: Option<String>,
+    replaced: Option<String>,
+    tell: Option<String>,
+) -> napi::Result<bool> {
+    workspace::settle_approval(
+        Path::new(&ws),
+        &id,
+        outcome.as_deref(),
+        reason.as_deref(),
+        replaced.as_deref(),
+        tell.as_deref(),
+    )
+    .map_err(failed)
 }
 
 /// One channel request from the host side — what the agent's channel carries, on a connection

@@ -63,7 +63,8 @@ lists what there is to read and `.schema turns` shows one:
   a finished turn has read it, and `setAside` for one its sender stopped before any turn read it —
   no turn reads or answers that one. `overheard` marks what was said where you are and not to you,
   in a group: you are handed it as a block headed `[Overheard: …]`, the latest 100 at a time, and
-  owe it no answer; the rest are here.
+  owe it no answer; the rest are here. `approval` marks a message telling you how an approval
+  ended (see `approvals`).
 - `transcript` — this conversation, every entry by `entryNo`: `at`, `role`, and `message`, the
   message itself as JSON. An entry of `kind` `compaction` is where earlier turns were
   summarized; the entries before it are still there. How much of the past you are shown word
@@ -81,6 +82,13 @@ lists what there is to read and `.schema turns` shows one:
   message it becomes.
 - `jobs` — each job you started (see Jobs): `name`, `run`, `command`, `wallMs`, `startedAt`,
   `endedAt`, `status` (`running`, `ended`, `walled`, `stopped`, `interrupted`), `exit`, `signal`.
+- `approvals` — what your owner's host asked people to approve in your conversations, with
+  buttons only they can press: `id`, `place`, `approvers`, `options`, `body` (what was shown),
+  `until`, `state` (`asked`, `posted`, `answered`, `expired`, `refused`), `choice`,
+  `answererName`, `outcome` (`confirmed` or `failed`, the host's word) and `tell`. You can read
+  them and nothing else: no approval is made, answered or changed by you, and none counts as
+  answered because someone wrote "yes" to you. How one ended reaches you as a message headed
+  `[Approval <id>, …]`.
 - `outbox` — where each finished turn's answer went: one row per place, `recipient`,
   `answers` (the `inboxNo`s it answered there), and `state` — `pending` until it is delivered,
   then `delivered`, or `refused` with a `reason`; `attemptedAt` is when posting it began. What a message asked from nowhere goes to

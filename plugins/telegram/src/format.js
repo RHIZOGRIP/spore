@@ -9,7 +9,7 @@ import { Lexer } from 'marked'
 
 const LINKABLE = /^(https?:|mailto:|tg:)/i
 
-const escape = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+export const escape = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const attribute = (text) => escape(text).replace(/"/g, '&quot;')
 
 const plain = (tokens) => tokens.map(token => (token.tokens ? plain(token.tokens) : token.text ?? '')).join('')

@@ -97,6 +97,9 @@ the spore's default place, `replyTo` in `config.json` — `"triage": "discord:op
 bot, that channel — labelled with where it came from, and nowhere when the turn ended `quiet`. A
 default naming a channel this bot's file does not give the spore is refused, and the log says why.
 
+An approval asked in a Discord channel is refused for now, and the asker's hook is told: Discord
+carries none yet.
+
 ## What it guarantees
 
 - **A message reaches each spore it addresses once,** under `discord:<message>:<spore>` as its

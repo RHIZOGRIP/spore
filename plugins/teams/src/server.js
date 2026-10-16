@@ -2,7 +2,7 @@
  * Where the Bot Connector delivers: `POST /api/messages` on a loopback address, which the
  * operator's proxy makes the bot's public HTTPS endpoint. An activity is checked before it is
  * read, and answered 200 only once `onActivity` has it, so one the service could not take is
- * delivered again.
+ * delivered again — with the body `onActivity` answers, where an invoke needs one.
  */
 
 import { createServer } from 'node:http'
@@ -45,12 +45,14 @@ export function serve ({ host, port, verify, onActivity, signal, log, listening 
       log(`refused an activity: ${refused}`)
       return answer(401)
     }
+    let reply
     try {
-      await onActivity(activity)
+      reply = await onActivity(activity)
     } catch (err) {
       log(`activity ${activity.id} not taken — ${err.message}${err.detail ? ` — ${err.detail}` : ''}`)
       return answer(500)
     }
+    if (typeof reply === 'object' && reply !== null) return response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(reply))
     answer(200)
   })
 

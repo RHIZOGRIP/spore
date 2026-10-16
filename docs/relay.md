@@ -63,8 +63,16 @@ import { runService } from '@rhizogrip/spore/relay'
   a limit's wrap shows as `wrapping up`; `wrap` says when it wraps and not when it stops; `extend` is
   not offered, since what a turn may spend is the operator's; a refused message is `busy` or `not
   delivered`, its reason logged; and the owner's hint for an unnamed conversation is not posted there.
-- **Credentials stay with the service.** Every bot's credential variables are removed from the
-  environment a turn's runner starts with, except one a source of the plugin's own needs.
+- **An approval counts only as a press of the relay's own button,** by someone it names
+  ([ARCHITECTURE §Approvals](../ARCHITECTURE.md#approvals)). Each one the host asked in a
+  conversation of this bot is posted with a button per option, carrying `ap:<id>:<option>`; a
+  press is matched by that id, taken once, from someone in its `by`, before its deadline, and
+  acknowledged at once; then the host's hook is told, the question closed and the spore told. One
+  it cannot post is refused, the hook told. All of it is read from the spore's database each
+  second, so a restart carries on.
+- **Credentials stay with the service.** Every bot's credential variables, and the approval
+  hooks' secrets, are removed from the environment a turn's runner starts with, except one a
+  source of the plugin's own needs.
 
 ## The bot file
 
@@ -92,7 +100,7 @@ The static part, which the relay reads before the service starts:
 | `sourceVariables` | credential variables a source of the plugin needs in a turn's environment |
 | `usage` | `{ help, briefHelp, extend }`: the commands as this platform types them — `briefHelp` without `extend`, for a brief conversation |
 | `limits` | `{ message, file, editEveryMs, typingEveryMs }`: the longest message, the largest upload, how often `working…` is edited, how often typing is renewed |
-| `can` | `{ upload, remove, react, typing, reply }`: `reply` false where a post cannot reply to a message, and opens with whom it answers instead |
+| `can` | `{ upload, remove, react, typing, reply, choose }`: `reply` false where a post cannot reply to a message, and opens with whom it answers instead; `choose` where it carries approvals |
 | `showShared` | how a turn shows itself in a conversation many people share when the routing says nothing: `react` or `working` |
 | `reactions` | the emoji the platform lets a bot react with, or null for any |
 | `refusals` | error types that mean the platform will not have this bot at all: the service exits 2 and is not restarted |
@@ -106,7 +114,7 @@ The live part, made once the credentials are proved:
 | `restore(state, save)` | where `stateFields` names any: the state holding them, and how to write it |
 | `routeOf(conversation)` | optional: the routing key a conversation answers under, where they differ — a Teams channel thread routes by its channel; the conversation itself when it is left out |
 | `prepare(table, log)` | optional: what the platform readies, or checks, before anyone writes, for every conversation the routing names — Discord's roles and webhooks, Telegram's word that a group overhears while the bot hears only what is said to it |
-| `listen({ onMessage, signal, log, sleep })` | the transport, until `signal` aborts; awaits `onMessage` before confirming a message to the platform; throws an error the platform gave for good |
+| `listen({ onMessage, onChoice, signal, log, sleep })` | the transport, until `signal` aborts; awaits `onMessage` before confirming a message to the platform, and `onChoice` before confirming a press; throws an error the platform gave for good |
 | `aside(message, spore)` | optional: a line the spore is given after the text — Discord's pointer to the history it has not heard |
 | `post(conversation, text, { answering, for, markdown, as })` | posts, as a reply to the platform's message `answering` when it is not null, and with `markdown` rendered in the platform's own formatting; answers the new message's id. `as` is the spore speaking, or null for the bot itself; `for` is `[{ person, said }]`, whom the post is about, which a platform that cannot reply shows instead — and pings when it is the answer |
 | `edit(conversation, note, text, { for })` | edits a message the bot posted; an edit that changes nothing is not a failure |
@@ -114,6 +122,9 @@ The live part, made once the credentials are proved:
 | `upload(conversation, { path, mime }, caption, { as })` | where `can.upload` |
 | `react(conversation, message, emoji, was)` | where `can.react`: the bot's reaction on a person's message moved from `was` to `emoji`, either of them null for none |
 | `typing(conversation)` | where `can.typing`: the platform's typing indicator, which lasts a few seconds |
+| `checkBody(native)` | where `can.choose`: why an approval's body for this platform cannot be shown — one not the platform's shape, or one that would answer the bot by itself — or null |
+| `ask(conversation, { native, fallback }, choices, { as })` | where `can.choose`: the question posted — `native`, the body for this platform, or `fallback`, the default `{ text, facts }` drawn the platform's way — with a button per choice, `{ id, label, style, data }`, `data` what the press must carry back; answers `{ note, shown }`, its id and the payload exactly as sent |
+| `settle(conversation, note, replacement)` | where `can.choose`: the question closed, its buttons gone — replaced by `{ native, fallback }`, or kept as `{ shown, outcome }`, the payload posted with how it ended below; answers the payload sent |
 
 Every failure is a `SporeError` with `retryable` (a refusal is not) and `context.retryAfter` in
 seconds when the platform said how long to wait. A platform that refuses the formatting of a
@@ -133,6 +144,17 @@ What `onMessage` gets, the platform normalised:
 | `command` | `{ verb, args }` when the text is a command, else null |
 | `addresses` | the spores the message names; `[]` for one that names none — in a conversation many people share, what was not said to a spore, which the relay drops or, where the routing says `overhear`, gives the spores as overheard; or null where it reaches the conversation's spores without naming them |
 | `files` | how many files came with it |
+
+What `onChoice` gets for a press on one of the relay's buttons:
+
+| field | is |
+|---|---|
+| `conversation` | where it was pressed, keyed as a message there would be |
+| `data` | what the button carried, or null |
+| `inputs` | what the person filled in on the question, where the platform has fields; else null |
+| `person` | `{ id, name, groups }`, as the platform vouches for them |
+| `where` | the conversation as a person would name it |
+| `acknowledge(text)` | answers the press on the platform at once — Telegram's notice, Teams' invoke response — with `text`, or nothing for null |
 
 ## The service
 
@@ -163,8 +185,9 @@ platform, and runs the relay until a signal; `--check` stops after the proof, wh
 `packages/spore/test/fixtures/relay-conformance.js` is what every connector promises, as one suite
 against real spores — runners, agents and records, the model's replies scripted. A connector's
 service test runs it with a **harness**: its fake platform behind a small interface (say something
-as a person in a conversation; read what was posted, edited, removed and uploaded there; make a
-call fail), documented at the top of the file. Its own cases — its transport's confirmations, its
+as a person in a conversation; read what was posted, edited, removed and uploaded there; press a
+question's button, where the platform carries approvals; make a call fail), documented at the top
+of the file. Its own cases — its transport's confirmations, its
 errors — go in the callback the suite hands its context to. `telegram-service.test.js` is one.
 
 ## Rules a connector keeps

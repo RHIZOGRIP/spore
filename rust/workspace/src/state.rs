@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -72,6 +72,7 @@ CREATE TABLE t_inbox (
   fromWhere    TEXT CHECK ((fromName IS NULL) = (fromId IS NULL) AND (fromName IS NULL) = (fromWhere IS NULL)
                            AND (fromName IS NULL OR (schedule IS NULL AND hook IS NULL AND job IS NULL))),
   overheard    INTEGER NOT NULL DEFAULT 0 CHECK (overheard IN (0, 1) AND (overheard = 0 OR (fromName IS NOT NULL AND replyTo IS NULL))),
+  approval     TEXT CHECK (approval IS NULL OR (schedule IS NULL AND hook IS NULL AND job IS NULL AND overheard = 0 AND replyTo IS NOT NULL)),
   UNIQUE (schedule, due),
   CHECK ((schedule IS NULL) = (due IS NULL)),
   CHECK ((hook IS NULL) = (hookDelivery IS NULL)),
@@ -193,7 +194,7 @@ CREATE VIEW inbox AS
   SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
          i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
          i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
-         i.fromName, i.fromId, i.fromWhere, i.overheard,
+         i.fromName, i.fromId, i.fromWhere, i.overheard, i.approval,
          i.inboxNo <= w.inboxConsumed AS consumed,
          EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
     FROM t_inbox i, t_workspace w;
@@ -286,11 +287,56 @@ CREATE INDEX t_outbox_pending ON t_outbox (state, recipient);
 
 CREATE VIEW outbox AS
   SELECT outboxNo, at, turnId, recipient, answers, state, settledAt, reason, attemptedAt FROM t_outbox;
+
+CREATE TABLE t_approvals (
+  approvalNo    INTEGER PRIMARY KEY,
+  id            TEXT    NOT NULL UNIQUE,
+  at            TEXT    NOT NULL,
+  place         TEXT    NOT NULL,
+  approvers     TEXT    NOT NULL,
+  options       TEXT    NOT NULL,
+  body          TEXT    NOT NULL,
+  within        TEXT    NOT NULL,
+  calendar      TEXT,
+  until         TEXT    NOT NULL,
+  hook          TEXT,
+  state         TEXT    NOT NULL CHECK (state IN ('asked', 'posted', 'answered', 'expired', 'refused')),
+  shown         TEXT,
+  note          TEXT,
+  postedAt      TEXT,
+  choice        TEXT,
+  inputs        TEXT,
+  answererId    TEXT,
+  answererName  TEXT,
+  answeredAt    TEXT,
+  outcome       TEXT    CHECK (outcome IN ('confirmed', 'failed')),
+  replaced      TEXT,
+  tell          TEXT,
+  reason        TEXT,
+  settledAt     TEXT,
+  CHECK ((postedAt IS NULL) = (state IN ('asked', 'refused'))),
+  CHECK ((shown IS NULL) = (postedAt IS NULL)),
+  CHECK ((answeredAt IS NULL) = (state <> 'answered')),
+  CHECK ((choice IS NULL) = (answeredAt IS NULL) AND (answererId IS NULL) = (answeredAt IS NULL)
+         AND (answererName IS NULL) = (answeredAt IS NULL)),
+  CHECK (inputs IS NULL OR answeredAt IS NOT NULL),
+  CHECK (outcome IS NULL OR (state = 'answered' AND settledAt IS NOT NULL)),
+  CHECK ((reason IS NOT NULL) = (state = 'refused' OR coalesce(outcome, '') = 'failed')),
+  CHECK (settledAt IS NULL OR state IN ('answered', 'expired', 'refused')),
+  CHECK ((replaced IS NULL AND tell IS NULL) OR settledAt IS NOT NULL)
+);
+CREATE INDEX t_approvals_open ON t_approvals (settledAt, state);
+
+CREATE VIEW approvals AS
+  SELECT approvalNo, id, at, place, approvers, options, body, within, calendar, until, hook, state,
+         shown, note, postedAt, choice, inputs, answererId, answererName, answeredAt, outcome,
+         replaced, tell, reason, settledAt
+    FROM t_approvals;
 "#;
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 8] = [
+const MIGRATIONS: [(i64, &str); 9] = [
     (
         1,
         r#"
@@ -455,6 +501,67 @@ CREATE VIEW inbox AS
          i.inboxNo <= w.inboxConsumed AS consumed,
          EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
     FROM t_inbox i, t_workspace w;
+"#,
+    ),
+    (
+        9,
+        r#"
+ALTER TABLE t_inbox ADD COLUMN approval TEXT CHECK (approval IS NULL OR (schedule IS NULL AND hook IS NULL AND job IS NULL AND overheard = 0 AND replyTo IS NOT NULL));
+
+DROP VIEW inbox;
+CREATE VIEW inbox AS
+  SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
+         i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
+         i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
+         i.fromName, i.fromId, i.fromWhere, i.overheard, i.approval,
+         i.inboxNo <= w.inboxConsumed AS consumed,
+         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
+    FROM t_inbox i, t_workspace w;
+
+CREATE TABLE t_approvals (
+  approvalNo    INTEGER PRIMARY KEY,
+  id            TEXT    NOT NULL UNIQUE,
+  at            TEXT    NOT NULL,
+  place         TEXT    NOT NULL,
+  approvers     TEXT    NOT NULL,
+  options       TEXT    NOT NULL,
+  body          TEXT    NOT NULL,
+  within        TEXT    NOT NULL,
+  calendar      TEXT,
+  until         TEXT    NOT NULL,
+  hook          TEXT,
+  state         TEXT    NOT NULL CHECK (state IN ('asked', 'posted', 'answered', 'expired', 'refused')),
+  shown         TEXT,
+  note          TEXT,
+  postedAt      TEXT,
+  choice        TEXT,
+  inputs        TEXT,
+  answererId    TEXT,
+  answererName  TEXT,
+  answeredAt    TEXT,
+  outcome       TEXT    CHECK (outcome IN ('confirmed', 'failed')),
+  replaced      TEXT,
+  tell          TEXT,
+  reason        TEXT,
+  settledAt     TEXT,
+  CHECK ((postedAt IS NULL) = (state IN ('asked', 'refused'))),
+  CHECK ((shown IS NULL) = (postedAt IS NULL)),
+  CHECK ((answeredAt IS NULL) = (state <> 'answered')),
+  CHECK ((choice IS NULL) = (answeredAt IS NULL) AND (answererId IS NULL) = (answeredAt IS NULL)
+         AND (answererName IS NULL) = (answeredAt IS NULL)),
+  CHECK (inputs IS NULL OR answeredAt IS NOT NULL),
+  CHECK (outcome IS NULL OR (state = 'answered' AND settledAt IS NOT NULL)),
+  CHECK ((reason IS NOT NULL) = (state = 'refused' OR coalesce(outcome, '') = 'failed')),
+  CHECK (settledAt IS NULL OR state IN ('answered', 'expired', 'refused')),
+  CHECK ((replaced IS NULL AND tell IS NULL) OR settledAt IS NOT NULL)
+);
+CREATE INDEX t_approvals_open ON t_approvals (settledAt, state);
+
+CREATE VIEW approvals AS
+  SELECT approvalNo, id, at, place, approvers, options, body, within, calendar, until, hook, state,
+         shown, note, postedAt, choice, inputs, answererId, answererName, answeredAt, outcome,
+         replaced, tell, reason, settledAt
+    FROM t_approvals;
 "#,
     ),
 ];
@@ -667,7 +774,7 @@ enum Kind {
 }
 
 /// What an inbox entry may say, by column. `inboxNo` is the database's to give.
-const INBOX_COLUMNS: [(&str, Kind); 22] = [
+const INBOX_COLUMNS: [(&str, Kind); 23] = [
     ("at", Kind::Text),
     ("text", Kind::Text),
     ("bodyPath", Kind::Text),
@@ -690,6 +797,7 @@ const INBOX_COLUMNS: [(&str, Kind); 22] = [
     ("fromId", Kind::Text),
     ("fromWhere", Kind::Text),
     ("overheard", Kind::Flag),
+    ("approval", Kind::Text),
 ];
 
 /// What a turn record carries into its row. `turnNo` and `inboxFrom` are finalization's to
@@ -2037,6 +2145,140 @@ pub fn settle_outbox(ws: &Path, outbox_no: i64, refused: Option<&str>) -> Result
     })
 }
 
+/// What an approval asks, as columns. The library checks the request and computes `until`.
+const APPROVAL_COLUMNS: [(&str, Kind); 10] = [
+    ("id", Kind::Text),
+    ("at", Kind::Text),
+    ("place", Kind::Text),
+    ("approvers", Kind::Json),
+    ("options", Kind::Json),
+    ("body", Kind::Json),
+    ("within", Kind::Text),
+    ("calendar", Kind::Json),
+    ("until", Kind::Text),
+    ("hook", Kind::Text),
+];
+
+/// An approval asked of the people it names, in the conversation `place` names — never a
+/// terminal, which has no button to press. Answers its `approvalNo`.
+pub fn ask_approval(ws: &Path, request: &str) -> Result<i64, String> {
+    let record =
+        Record::parse(request).map_err(|e| format!("an approval is a JSON object — {e}"))?;
+    let place = record
+        .get::<String>("place")
+        .ok_or("an approval names the place it is asked in")?;
+    check_reply_to(&place)?;
+    if place == "terminal" {
+        return Err("an approval is asked in a conversation, and a terminal is none".into());
+    }
+    let mut row = columns(&record, &APPROVAL_COLUMNS, &[])?;
+    row.push(("state", SqlValue::Text("asked".into())));
+    writing(ws, |conn| {
+        let tx = immediate(conn)?;
+        insert(&tx, "t_approvals", &row).map_err(|e| format!("cannot ask the approval — {e}"))?;
+        let approval_no = tx.last_insert_rowid();
+        tx.commit().map_err(failed_to("ask the approval"))?;
+        Ok(approval_no)
+    })
+}
+
+fn update_approval(
+    ws: &Path,
+    what: &'static str,
+    sql: &str,
+    params: impl rusqlite::Params,
+) -> Result<bool, String> {
+    writing(ws, |conn| {
+        let changed = conn.execute(sql, params).map_err(failed_to(what))?;
+        Ok(changed == 1)
+    })
+}
+
+/// An asked approval posted: `shown`, the payload the platform was given with its buttons, and
+/// `note`, the platform's id for it. False when it is no longer asked.
+pub fn post_approval(ws: &Path, id: &str, shown: &str, note: Option<&str>) -> Result<bool, String> {
+    serde_json::from_str::<Value>(shown).map_err(|e| format!("what was shown is JSON — {e}"))?;
+    update_approval(
+        ws,
+        "post the approval",
+        "UPDATE t_approvals SET state = 'posted', shown = ?2, note = ?3, postedAt = ?4
+          WHERE id = ?1 AND state = 'asked'",
+        (id, shown, note, crate::iso_now()),
+    )
+}
+
+/// The first press on a posted approval before its deadline, by someone the relay checked it
+/// names, with what the person filled in. False when it is no longer posted or its time is up:
+/// a second press, or a late one, changes nothing.
+pub fn answer_approval(
+    ws: &Path,
+    id: &str,
+    choice: &str,
+    inputs: Option<&str>,
+    answerer_id: &str,
+    answerer_name: &str,
+) -> Result<bool, String> {
+    if let Some(inputs) = inputs {
+        serde_json::from_str::<Value>(inputs)
+            .map_err(|e| format!("what was filled in is JSON — {e}"))?;
+    }
+    let now = crate::iso_now();
+    update_approval(
+        ws,
+        "answer the approval",
+        "UPDATE t_approvals SET state = 'answered', choice = ?2, inputs = ?3, answererId = ?4,
+                answererName = ?5, answeredAt = ?6
+          WHERE id = ?1 AND state = 'posted' AND until > ?6",
+        (id, choice, inputs, answerer_id, answerer_name, now),
+    )
+}
+
+/// A posted approval whose deadline has passed, expired. False when it is not posted, or not due.
+pub fn expire_approval(ws: &Path, id: &str) -> Result<bool, String> {
+    update_approval(
+        ws,
+        "expire the approval",
+        "UPDATE t_approvals SET state = 'expired' WHERE id = ?1 AND state = 'posted' AND until <= ?2",
+        (id, crate::iso_now()),
+    )
+}
+
+/// An asked approval that will not be posted, refused for `reason`. False when it is no longer
+/// asked.
+pub fn refuse_approval(ws: &Path, id: &str, reason: &str) -> Result<bool, String> {
+    update_approval(
+        ws,
+        "refuse the approval",
+        "UPDATE t_approvals SET state = 'refused', reason = ?2 WHERE id = ?1 AND state = 'asked'",
+        (id, reason),
+    )
+}
+
+/// An answered, expired or refused approval seen through to its end: the hook's word on an
+/// answer — `confirmed`, or `failed` for `reason` — `replaced`, the payload the question was
+/// replaced with, and `tell`, what the hook said the spore should know. Once: false when it was
+/// settled already or has not ended.
+pub fn settle_approval(
+    ws: &Path,
+    id: &str,
+    outcome: Option<&str>,
+    reason: Option<&str>,
+    replaced: Option<&str>,
+    tell: Option<&str>,
+) -> Result<bool, String> {
+    if let Some(replaced) = replaced {
+        serde_json::from_str::<Value>(replaced)
+            .map_err(|e| format!("what replaced the question is JSON — {e}"))?;
+    }
+    update_approval(
+        ws,
+        "settle the approval",
+        "UPDATE t_approvals SET settledAt = ?2, outcome = ?3, reason = coalesce(?4, reason), replaced = ?5, tell = ?6
+          WHERE id = ?1 AND settledAt IS NULL AND state IN ('answered', 'expired', 'refused')",
+        (id, crate::iso_now(), outcome, reason, replaced, tell),
+    )
+}
+
 /// `turn_end`: the turn as it was made final, in the same transaction, so a follower never sees
 /// one without the other. Where `complete` is the agent's account the moment its loop ends — the
 /// answer, but its own spend only and a stop reason the record may yet revise — this is the
@@ -2395,6 +2637,7 @@ mod tests {
         assert_eq!(
             names(&conn, "view"),
             [
+                "approvals",
                 "calls",
                 "cells",
                 "events",
@@ -2410,6 +2653,7 @@ mod tests {
         assert_eq!(
             names(&conn, "table"),
             [
+                "t_approvals",
                 "t_calls",
                 "t_cells",
                 "t_events",
@@ -3896,5 +4140,180 @@ mod tests {
         assert!(settle_outbox(&ws, second, None).unwrap());
         assert!(!attempt_outbox(&ws, second).unwrap());
         assert!(!attempt_outbox(&ws, 99).unwrap());
+    }
+
+    fn asked(ws: &Path, id: &str, until: &str) {
+        ask_approval(
+            ws,
+            &json!({
+                "id": id, "at": "a", "place": "telegram:main/42", "approvers": ["42"],
+                "options": [{ "id": "apply", "label": "Apply" }], "body": { "default": { "text": "x" } },
+                "within": "2h", "until": until
+            })
+            .to_string(),
+        )
+        .unwrap();
+    }
+
+    fn approval(
+        ws: &Path,
+        id: &str,
+    ) -> (String, Option<String>, Option<String>, Option<String>, bool) {
+        let conn = Connection::open(ws.join(STATE_FILE)).unwrap();
+        conn.query_row(
+            "SELECT state, choice, outcome, reason, settledAt IS NOT NULL FROM approvals WHERE id = ?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn takes_the_first_press_on_a_posted_approval_and_settles_it_once() {
+        let ws = scratch("approval-answered");
+        asked(&ws, "a1", "2999-01-01T00:00:00.000Z");
+        assert!(!answer_approval(&ws, "a1", "apply", None, "42", "Ann").unwrap());
+        assert!(post_approval(&ws, "a1", r#"{"text":"x"}"#, Some("7")).unwrap());
+        assert!(!post_approval(&ws, "a1", r#"{"text":"x"}"#, Some("7")).unwrap());
+        assert!(
+            answer_approval(&ws, "a1", "apply", Some(r#"{"note":"ok"}"#), "42", "Ann").unwrap()
+        );
+        assert!(!answer_approval(&ws, "a1", "apply", None, "43", "Bob").unwrap());
+        assert!(!expire_approval(&ws, "a1").unwrap());
+        assert!(settle_approval(&ws, "a1", Some("failed"), None, None, None).is_err());
+        assert!(settle_approval(
+            &ws,
+            "a1",
+            Some("confirmed"),
+            None,
+            Some(r#"{"text":"done"}"#),
+            Some("82 % is in")
+        )
+        .unwrap());
+        assert!(!settle_approval(&ws, "a1", Some("confirmed"), None, None, None).unwrap());
+        let kept: (String, String) = Connection::open(ws.join(STATE_FILE))
+            .unwrap()
+            .query_row(
+                "SELECT replaced, tell FROM approvals WHERE id = 'a1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(kept, (r#"{"text":"done"}"#.into(), "82 % is in".into()));
+        assert_eq!(
+            approval(&ws, "a1"),
+            (
+                "answered".into(),
+                Some("apply".into()),
+                Some("confirmed".into()),
+                None,
+                true
+            )
+        );
+    }
+
+    #[test]
+    fn takes_no_press_past_the_deadline_and_expires_what_was_posted() {
+        let ws = scratch("approval-expired");
+        asked(&ws, "a1", "2000-01-01T00:00:00.000Z");
+        assert!(!expire_approval(&ws, "a1").unwrap());
+        assert!(post_approval(&ws, "a1", r#"{"text":"x"}"#, None).unwrap());
+        assert!(!answer_approval(&ws, "a1", "apply", None, "42", "Ann").unwrap());
+        assert!(expire_approval(&ws, "a1").unwrap());
+        assert!(!expire_approval(&ws, "a1").unwrap());
+        assert!(settle_approval(&ws, "a1", Some("confirmed"), None, None, None).is_err());
+        assert!(
+            settle_approval(&ws, "a1", None, None, Some(r#"{"text":"expired"}"#), None).unwrap()
+        );
+        assert_eq!(
+            approval(&ws, "a1"),
+            ("expired".into(), None, None, None, true)
+        );
+
+        asked(&ws, "a2", "2999-01-01T00:00:00.000Z");
+        assert!(post_approval(&ws, "a2", r#"{"text":"x"}"#, None).unwrap());
+        assert!(!expire_approval(&ws, "a2").unwrap());
+        assert!(answer_approval(&ws, "a2", "apply", None, "42", "Ann").unwrap());
+        assert!(settle_approval(
+            &ws,
+            "a2",
+            Some("failed"),
+            Some("the hook answered 500"),
+            None,
+            None
+        )
+        .unwrap());
+        assert_eq!(
+            approval(&ws, "a2"),
+            (
+                "answered".into(),
+                Some("apply".into()),
+                Some("failed".into()),
+                Some("the hook answered 500".into()),
+                true
+            )
+        );
+    }
+
+    #[test]
+    fn refuses_an_approval_it_will_not_post_and_keeps_why_when_it_settles() {
+        let ws = scratch("approval-refused");
+        asked(&ws, "a1", "2999-01-01T00:00:00.000Z");
+        assert!(refuse_approval(&ws, "a1", "Telegram cannot show it").unwrap());
+        assert!(!refuse_approval(&ws, "a1", "again").unwrap());
+        assert!(!post_approval(&ws, "a1", r#"{"text":"x"}"#, None).unwrap());
+        assert!(settle_approval(&ws, "a1", None, None, None, None).unwrap());
+        assert_eq!(
+            approval(&ws, "a1"),
+            (
+                "refused".into(),
+                None,
+                None,
+                Some("Telegram cannot show it".into()),
+                true
+            )
+        );
+        assert!(!settle_approval(&ws, "a1", None, None, None, None).unwrap());
+    }
+
+    #[test]
+    fn asks_an_approval_only_in_a_conversation_and_only_once_under_its_id() {
+        let ws = scratch("approval-asked");
+        let request = |place: Value, id: &str| {
+            json!({
+                "id": id, "at": "a", "place": place, "approvers": ["42"], "options": [],
+                "body": {}, "within": "2h", "until": "b"
+            })
+            .to_string()
+        };
+        assert!(ask_approval(&ws, &request(json!("terminal"), "a1")).is_err());
+        assert!(ask_approval(&ws, &request(json!("telegram"), "a1")).is_err());
+        assert!(ask_approval(&ws, &request(Value::Null, "a1")).is_err());
+        assert_eq!(
+            ask_approval(&ws, &request(json!("telegram:main/42"), "a1")).unwrap(),
+            1
+        );
+        assert!(ask_approval(&ws, &request(json!("telegram:main/42"), "a1")).is_err());
+        let mut extra = Record::parse(&request(json!("telegram:main/42"), "a2")).unwrap();
+        extra.set("secret", json!("x"));
+        assert!(ask_approval(&ws, &extra.to_json()).is_err());
+    }
+
+    #[test]
+    fn tells_of_an_approval_only_with_a_place_to_answer_in() {
+        let ws = scratch("approval-told");
+        append_inbox(
+            &ws,
+            &json!({ "at": "a", "text": "Ann chose Apply", "approval": "a1", "replyTo": "telegram:main/42",
+                     "fromName": "Ann", "fromId": "telegram:42", "fromWhere": "a private chat on Telegram" })
+                .to_string(),
+        )
+        .unwrap();
+        for refused in [
+            json!({ "at": "b", "text": "x", "approval": "a1" }),
+            json!({ "at": "b", "text": "x", "approval": "a1", "replyTo": "telegram:main/42", "schedule": "s", "due": "c" }),
+        ] {
+            assert!(append_inbox(&ws, &refused.to_string()).is_err());
+        }
     }
 }

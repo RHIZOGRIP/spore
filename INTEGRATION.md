@@ -266,6 +266,73 @@ for (const entry of outbox(ws, { kind: 'chat', state: 'pending' })) {
 }
 ```
 
+### Asking a person to approve
+
+An answer a spore reads as text can be faked by the spore: a "yes" it was told is a "yes" it could
+have written. An **approval** is a choice your program asks named people to make, in a
+conversation a spore is reached in, that counts only as a press of a button the spore's chat
+service posted, by one of those people as the platform vouches for them. The spore can read
+that an approval exists and how it ended, and nothing it does makes one, answers one or changes
+one ([ARCHITECTURE §Approvals](ARCHITECTURE.md#approvals)).
+
+```js
+import { requestApproval } from '@rhizogrip/spore'
+
+const { approval, until } = requestApproval({
+  ws: 'finance',
+  request: {
+    to: 'teams:ops/<their object id>',
+    by: ['<their object id>'],
+    options: [{ id: 'apply', label: 'Apply', style: 'positive' }, { id: 'cancel', label: 'Cancel' }],
+    body: { default: { text: 'Apply the new **monthly churn** value?', facts: [['Was', '79 %'], ['Now', '82 %']] } },
+    within: '2wd',
+    calendar: { tz: 'Europe/Paris' },
+    hook: 'kpi'
+  }
+})
+```
+
+The same request is `spore approval ask <spore> request.json` and `POST
+/v1/spores/<name>/approvals`. What is shown is yours: `body` takes one entry per platform — an
+Adaptive Card for `teams`, `{ html }` for `telegram` — or `default`, text and facts each
+platform draws its own way, and the service adds the buttons. A body of your own may carry no
+button that answers back by itself (in Teams no `Action.Submit`, `Action.Execute` or `refresh`).
+A Teams card may carry inputs; what the person fills in comes with the press.
+
+The service of the place `to` names posts it. A press by someone `by` names is written down —
+the first one; any other is answered "this is not yours to answer" or "this was answered
+already" — and then:
+
+1. **Your hook is told**, if the request names one: `config.json`'s `approvals` names it by its URL
+   and the variable holding its secret ([docs/operating.md](docs/operating.md#approvals)). The
+   POST carries `approval`, `spore`, `place`, `outcome` (`answered`, `expired` or `refused`),
+   `choice`, `by`, `inputs`, `shown` (what was shown, exactly, buttons included), `asked`, `until`
+   and `answeredAt`. Check its signature, apply the change, and answer `{ "body"?, "tell"? }`:
+   `body` replaces the question, `tell` is what the spore should know. A network failure or a 5xx
+   is tried again for about a minute; anything else fails it, and the spore is told it was not
+   confirmed. The same approval may reach your hook twice (the service restarted on the way):
+   key on `approval`.
+2. **The question is closed**: replaced by your `body`, or kept with its buttons gone and who chose
+   what below it.
+3. **The spore is told**, once, in the same conversation — who chose what, whether you confirmed
+   it, and your `tell` — and answers there.
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto'
+
+const signed = (raw, headers, secret) => {
+  const expected = `sha256=${createHmac('sha256', secret).update(`${headers['x-spore-timestamp']}.${raw}`).digest('hex')}`
+  const given = headers['x-spore-signature'] ?? ''
+  return given.length === expected.length && timingSafeEqual(Buffer.from(given), Buffer.from(expected))
+}
+```
+
+Nobody pressing by `until` expires it: the question says so, your hook is told, and so is the
+spore. One that cannot be posted — the conversation does not reach that spore, the platform
+carries no approvals (Discord, for now), there is nothing to show there — is refused, and only
+your hook is told. `listApprovals({ ws })`, `spore approval ls` and `GET
+/v1/spores/<name>/approvals/<id>` read where each one is.
+
 ### Reading what exists
 
 Nothing here starts anything. Most take `{ ws }` (a name or a path; omitted, the current
@@ -416,6 +483,9 @@ All under `/v1`, JSON in and out.
 | `POST /v1/spores/<name>/stop` | — | `200 { "stopped", "pid" }` |
 | `POST /v1/spores/<name>/wrap` | `{ "wait"? }`, as `"10m"`; none is now | `200`, the change or `{ "refused", … }` |
 | `POST /v1/spores/<name>/extend` | `{ "dimension", "amount" }`, as `"wall"`, `"30m"` | `200`, the change or `{ "refused", … }` |
+| `POST /v1/spores/<name>/approvals` | an approval's request ([§Asking a person to approve](#asking-a-person-to-approve)) | `201 { "approval", "until" }` |
+| `GET /v1/spores/<name>/approvals` | — | `200 { "approvals": [record] }`, oldest first |
+| `GET /v1/spores/<name>/approvals/<id>` | — | `200`, the approval's record, as `approvalsIn` has it |
 
 `text` is required and must not be blank. `after` is a whole number; `0` replays what retention
 kept. A request body is at most 32 MiB.

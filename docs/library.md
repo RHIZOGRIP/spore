@@ -27,17 +27,18 @@ Conventions that hold throughout:
 
 1. [Saying something and following it](#saying-something-and-following-it)
 2. [Answers addressed elsewhere](#answers-addressed-elsewhere)
-3. [Reading a spore](#reading-a-spore)
-4. [Defining and changing spores](#defining-and-changing-spores)
-5. [Stopping, pausing and running many](#stopping-pausing-and-running-many)
-6. [Limits on a running turn](#limits-on-a-running-turn)
-7. [The clock and held deliveries](#the-clock-and-held-deliveries)
-8. [Host configuration](#host-configuration)
-9. [Plugins and services](#plugins-and-services)
-10. [Models and the machine](#models-and-the-machine)
-11. [Definitions](#definitions)
-12. [Low-level readers and helpers](#low-level-readers-and-helpers)
-13. [Events, errors, tracing and logging](#events-errors-tracing-and-logging)
+3. [Approvals](#approvals)
+4. [Reading a spore](#reading-a-spore)
+5. [Defining and changing spores](#defining-and-changing-spores)
+6. [Stopping, pausing and running many](#stopping-pausing-and-running-many)
+7. [Limits on a running turn](#limits-on-a-running-turn)
+8. [The clock and held deliveries](#the-clock-and-held-deliveries)
+9. [Host configuration](#host-configuration)
+10. [Plugins and services](#plugins-and-services)
+11. [Models and the machine](#models-and-the-machine)
+12. [Definitions](#definitions)
+13. [Low-level readers and helpers](#low-level-readers-and-helpers)
+14. [Events, errors, tracing and logging](#events-errors-tracing-and-logging)
 
 ---
 
@@ -51,7 +52,7 @@ and [§A service in front of many spores](../INTEGRATION.md#a-service-in-front-o
 
 ```
 send(ws, text, { attach = [], requestId, replyTo, from, traceparent, start = true, env,
-                 overheard = false, schedule, hook, unsafe = false, debug = false })
+                 overheard = false, approval, schedule, hook, unsafe = false, debug = false })
 → { ws, started, pid, inbox, repeated }
 ```
 
@@ -73,6 +74,8 @@ position, `started` says whether this call started a turn, `pid` is the runner's
 - `overheard: true`: a message said where the spore is and not to it — in a group, around what is
   addressed to it. It starts nothing, no turn answers it, and the next turn reads it as context,
   with who said it and where; it takes `from` and no `replyTo`.
+- `approval`: the id of an approval this message tells of — a relay says it once the approval
+  was answered or expired, with `replyTo` the conversation it was asked in.
 - `env`: the environment the runner starts with.
 - `schedule` (`{ name, due }`) and `hook` (`{ name, delivery, event? }`): record the message as
   said by the clock or by a webhook, as `tick` and the webhook service do.
@@ -82,7 +85,7 @@ position, `started` says whether this call started a turn, `pid` is the runner's
 
 Throws `ADMISSION_FULL`, `SPEND_LIMIT`, `PAUSED` (each `retryable`; when the message was already
 said, `detail` says so), `MESSAGE_EMPTY`, `REQUEST_ID_INVALID`, `TRACEPARENT_INVALID`,
-`HOOK_INVALID`, `FROM_INVALID`, `INBOX_UNWRITABLE`, and the refusals of a spore whose plugins cannot be
+`HOOK_INVALID`, `FROM_INVALID`, `APPROVAL_INVALID`, `INBOX_UNWRITABLE`, and the refusals of a spore whose plugins cannot be
 prepared, such as `PLUGIN_NOT_ALLOWED`, `PLUGIN_CHANGED`, `PLUGIN_NOT_INSTALLED`, `PLUGIN_CONFLICT`,
 `PLUGIN_INVALID`, `PLUGIN_INCOMPATIBLE`.
 
@@ -116,8 +119,8 @@ The inbox entries with `inboxNo` in `(after, upto]`, every one past `after` when
 in order. An entry carries `inboxNo`, `at`, `text` or a `bodyPath` with `bodyBytes`, `bodyHead`
 and `bodyTail`, `files`, `schedule`, `due`, `hook`, `hookEvent`, `hookDelivery`, `job`,
 `jobEvent`, `jobRun`, `traceparent`, `requestId`, `replyTo`, `fromName`, `fromId`, `fromWhere`,
-`overheard` (said around the spore, not to it), `consumed` (a finished turn has read it) and
-`setAside` (no turn will).
+`overheard` (said around the spore, not to it), `approval` (the approval it tells of), `consumed`
+(a finished turn has read it) and `setAside` (no turn will).
 
 ### `setAside`
 
@@ -220,6 +223,138 @@ settleOutbox(ws, outboxNo, { refused }) → boolean
 
 Marks a pending entry delivered, or refused with the reason given in `refused`. Returns `false`
 when the entry was not pending.
+
+---
+
+## Approvals
+
+The guide: [INTEGRATION §Asking a person to approve](../INTEGRATION.md#asking-a-person-to-approve);
+the design: [ARCHITECTURE §Approvals](../ARCHITECTURE.md#approvals). The host asks; the relay of
+the place the request names posts it, takes the press, tells the hook and the spore. The writers
+below are the relay's.
+
+### `requestApproval`
+
+```
+requestApproval({ ws, request, configFile }) → { ws, approval, until }
+```
+
+Asks an approval in the spore: `request` is `{ to, by, options, body, within, calendar, hook }`.
+
+- `to`: the conversation, as a reply-to place (`telegram:main/42`), never `terminal`.
+- `by`: who may answer, by the id their bot file knows them by, 1 to 50 of them.
+- `options`: 1 to 5 choices, `{ id, label, style }` — an `id` of letters, digits, `-` and `_`,
+  a plain `label` of at most 40 characters, and `style` `positive`, `destructive` or none.
+- `body`: what is shown, keyed by platform kind (`teams`: an Adaptive Card of version 1.4 or
+  later; `telegram`: `{ html }`) or `default`: `{ text, facts }`, markdown limited to bold, italic,
+  links and lists, and at most 20 `[label, value]` pairs. The relay uses its platform's entry, else
+  `default`, and adds the buttons itself.
+- `within`: how long it stays open — a duration (`2h`) or working days (`2wd`), `24h` when left
+  out. Working days need `calendar`: `{ tz, days, holidays }`, `days` Monday to Friday when left
+  out.
+- `hook`: a hook named in `config.json`'s `approvals`, told how it ended.
+
+`approval` is its id, `until` when it stops waiting. Throws `APPROVAL_INVALID` for what cannot be
+asked or shown, and `NOT_A_WORKSPACE`.
+
+### `listApprovals`
+
+```
+listApprovals({ ws, configFile }) → { ws, approvals: record[] }
+```
+
+The spore's approvals, oldest first, each as `approvalsIn` returns it.
+
+### `approvalsIn`
+
+```
+approvalsIn(ws, { open = false }) → record[]
+```
+
+The approvals of the spore at `ws`, oldest first. A record carries the request — `id`, `at`,
+`place`, `approvers`, `options`, `body`, `within`, `calendar`, `until`, `hook` — and how far it
+went: `state` (`asked`, `posted`, `answered`, `expired` or `refused`), `shown` (what the platform
+was given, buttons included) and `note` (its id there), `postedAt`, `choice`, `inputs` (what was
+filled in, where the platform has fields), `answererId`, `answererName`, `answeredAt`, `outcome`
+(the hook's: `confirmed` or `failed`), `reason`, `replaced` (what the question was replaced
+with), `tell` (what the hook said the spore should know), `settledAt`, and `told`, whether the
+spore was told. `open` keeps those a relay still has work on: not settled, or answered or expired
+and not yet told.
+
+### `approvalOf`
+
+```
+approvalOf(ws, id) → record | null
+```
+
+One approval by its id.
+
+### `postApproval`
+
+```
+postApproval(ws, id, { shown, note }) → boolean
+```
+
+Records an asked approval as posted, with the payload the platform was given and its id there.
+`false` once it is no longer asked.
+
+### `answerApproval`
+
+```
+answerApproval(ws, id, { choice, inputs, person: { id, name } }) → boolean
+```
+
+Records the first press on a posted approval before its deadline. `false` for any later press, or
+a late one: they change nothing. The caller has checked that `person` is among its `approvers` and
+`choice` among its options.
+
+### `expireApproval`
+
+```
+expireApproval(ws, id) → boolean
+```
+
+Expires a posted approval whose deadline has passed. `false` when it is not posted or not due.
+
+### `refuseApproval`
+
+```
+refuseApproval(ws, id, reason) → boolean
+```
+
+Refuses an asked approval that will not be posted. `false` once it is no longer asked.
+
+### `settleApproval`
+
+```
+settleApproval(ws, id, { outcome, reason, replaced, tell }) → boolean
+```
+
+Records an answered, expired or refused approval as seen through: the hook's `outcome` on an
+answer, `confirmed` or `failed` with its `reason`, the payload that `replaced` the question, and
+what the hook said to `tell` the spore. Once: `false` when it was settled already or has not ended.
+
+### `callApprovalHook`
+
+```
+callApprovalHook(name, payload, { configFile, env, sleep, signal, fetchImpl, retriesMs })
+  → Promise<{ body?, tell? }>
+```
+
+POSTs `payload` to the hook `name` of `config.json`'s `approvals`, signed:
+`x-spore-signature: sha256=<hex>` is the HMAC-SHA256 under its secret of
+`<x-spore-timestamp>.<body>`. A network failure or a 5xx is tried again after each of
+`retriesMs` (about a minute in all); anything else, or the last failure, throws
+`APPROVAL_HOOK_FAILED`. Answers what the hook said.
+
+### `approvalHookVariables`
+
+```
+approvalHookVariables(config) → string[]
+```
+
+The variables the approval hooks of a read `config.json` keep their secrets in, which no turn is
+given.
 
 ---
 

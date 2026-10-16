@@ -59,6 +59,7 @@ The file is written whole and renamed into place.
 | `hereSnapshots` | how many `spore here` session snapshots are kept per spore | 20 |
 | `plugins` | the plugins allowed on this machine; written by `spore plugin allow`, not by `config set` | none |
 | `replyTo` | per spore, where answers go when what a turn read asked from nowhere, as `{ "triage": "discord:ops/1234" }` | none |
+| `approvals` | the hooks an approval may tell how it ended, each by its URL and the variable holding its secret | none |
 
 A path starting with `~` is kept as written; a relative one is resolved when it is set.
 `spore setup` offers `~/.spore` as the home. `~/.config/spore` holds your configuration and keys;
@@ -140,6 +141,27 @@ own — a schedule's firing, a webhook, a job, or a message sent without one. A 
 or `<kind>:<place>`: `<kind>` lowercase letters, digits and `-`, `<place>` non-empty with no
 whitespace. Unset, such an answer is not delivered anywhere. A `quiet` turn is addressed nowhere
 either way. Whoever serves the kind — the Telegram or Discord service — delivers it.
+
+### `approvals`
+
+```json
+{ "approvals": { "kpi": { "url": "https://app.example/approved", "secret": "${KPI_HOOK_SECRET}" } } }
+```
+
+Names each hook an approval may tell how it ended ([INTEGRATION §Asking a person to
+approve](../INTEGRATION.md#asking-a-person-to-approve)): a name of letters, digits, `.`, `-` and
+`_`, an http or https `url`, and `secret`, the variable in `environment` holding the key its POSTs
+are signed with. The chat service that posted the approval makes the call; no turn is given the
+variable. Edited by hand, as `replyTo` is.
+
+Approvals are asked and read from the host:
+
+```bash
+spore approval ask <spore> request.json   # or - for stdin; prints its id and until when it is open
+spore approval ls <spore>                 # each one, and how it ended
+```
+
+Telegram and Teams carry them; an approval asked in a Discord channel is refused for now.
 
 ## `$XDG_STATE_HOME/spore/`
 

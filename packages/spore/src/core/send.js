@@ -52,6 +52,9 @@ export const CHATGPT_HELPER = createRequire(import.meta.url).resolve('mohdel/cha
  * and with none running it waits for the next turn something else starts. The webhook service
  * says a delivery so once a hook has started its hourly share of turns.
  *
+ * `approval` is the id of an approval this message tells of — a press of its buttons, or its
+ * deadline passing — said by the relay of the conversation it was asked in, which `replyTo` names.
+ *
  * `overheard: true` is a message said where the spore is and not to it — in a group, beside its
  * addressed messages. It starts nothing and is owed no answer, so it needs `from` and takes no
  * `replyTo`; whatever turn comes next reads it as what was said around it.
@@ -64,12 +67,12 @@ export const CHATGPT_HELPER = createRequire(import.meta.url).resolve('mohdel/cha
  *
  * @returns {{ ws: string, started: boolean, pid: number|null, inbox: number, repeated: boolean }}
  */
-export function send (ws, message, { attach = [], schedule, hook, from, traceparent, requestId, replyTo, overheard = false, start: starting = true, unsafe = false, debug = false, env = process.env } = {}) {
+export function send (ws, message, { attach = [], schedule, hook, from, traceparent, requestId, replyTo, overheard = false, approval, start: starting = true, unsafe = false, debug = false, env = process.env } = {}) {
   const workspace = resolve(ws)
   const known = requestId === undefined ? null : inboxRequest(workspace, requestId)
   if (known?.consumed) return { ws: workspace, started: false, pid: null, inbox: known.inboxNo, repeated: true }
   if (overheard) return { ws: workspace, started: false, pid: null, ...enqueue(workspace, message, { attach, from, traceparent, requestId, replyTo, overheard }) }
-  if (!starting) return { ws: workspace, started: false, pid: null, ...enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo }) }
+  if (!starting) return { ws: workspace, started: false, pid: null, ...enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo, approval }) }
   // The slot is released on every path out, a failed append included: a caller that lives
   // on — a TUI, a relay — would otherwise hold it until it exits.
   const holding = (slot, then) => {
@@ -91,10 +94,10 @@ export function send (ws, message, { attach = [], schedule, hook, from, tracepar
   if (stateOf(workspace).state !== RUNNING) {
     const plugins = preparePlugins(workspace)
     const slot = takeSlot()
-    return holding(slot, () => start(slot, plugins, enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo })))
+    return holding(slot, () => start(slot, plugins, enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo, approval })))
   }
 
-  const said = enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo })
+  const said = enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo, approval })
   // Looked at again after appending, because the runner may have let go in between. It
   // looks at the inbox again after it lets go, so a message is read by it or finds the
   // lock free here — never neither.

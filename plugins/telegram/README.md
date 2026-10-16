@@ -92,6 +92,17 @@ that does not reach the spore through this bot is refused, and the log says why.
 
 A turn started with `spore send` is shown only there; no chat is told.
 
+## Approvals
+
+An approval your program asks in a chat this bot reaches
+([INTEGRATION §Asking a person to approve](../../INTEGRATION.md#asking-a-person-to-approve)) is
+posted as a message — the request's `telegram` body, `{ "html": "…" }` in Telegram's HTML, or its
+`default` text and facts, a line each — with a button per option on its own row, green for
+`positive` and red for `destructive` where the Telegram app shows colours. A press is taken only
+from someone the approval names, and Telegram shows them `Apply — recorded`, or why it was not
+taken. The message is then edited: replaced by the body your hook answered, or kept with its
+buttons gone and who chose what below.
+
 ## The allow-list is the routing
 
 A bot's `people` say who may talk to it in private and which spore each reaches, as

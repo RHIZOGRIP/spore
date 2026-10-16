@@ -185,7 +185,23 @@ describe('the bot API', () => {
     const asked = []
     const tg = createTelegram('t', { fetchImpl: sending(asked) })
     await tg.updates(17)
-    expect(asked[0].body).toMatchObject({ offset: 17, timeout: 30, allowed_updates: ['message'] })
+    expect(asked[0].body).toMatchObject({ offset: 17, timeout: 30, allowed_updates: ['message', 'callback_query'] })
+  })
+
+  it('asks with a keyboard under the question, closes it with an empty one, and answers a press', async () => {
+    const asked = []
+    const tg = createTelegram('t', { fetchImpl: sending(asked) })
+    const keyboard = [[{ text: 'Yes', callback_data: 'ap:aaaaaaaaaaaa:yes', style: 'success' }]]
+    await tg.ask(5, '<b>Ship</b> it?', keyboard)
+    await tg.close(5, 41, '<b>Ship</b> it?\n\n<b>Yes — Ann</b>')
+    await tg.answer('q1', 'Yes — recorded')
+    await tg.answer('q2', null)
+    expect(asked.map(one => [one.url.split('/').at(-1), one.body])).toEqual([
+      ['sendMessage', { chat_id: 5, text: '<b>Ship</b> it?', parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup: { inline_keyboard: keyboard } }],
+      ['editMessageText', { chat_id: 5, message_id: 41, text: '<b>Ship</b> it?\n\n<b>Yes — Ann</b>', parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup: { inline_keyboard: [] } }],
+      ['answerCallbackQuery', { callback_query_id: 'q1', text: 'Yes — recorded' }],
+      ['answerCallbackQuery', { callback_query_id: 'q2' }]
+    ])
   })
 
   it('answers a message as a reply to it, still sent when that message is gone, and removes one of its own', async () => {

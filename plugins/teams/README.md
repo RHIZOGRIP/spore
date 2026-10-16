@@ -104,6 +104,19 @@ spore's `replyTo` in `config.json`: `teams:<bot>/<object id>` for a person — t
 personal chat with them if they never wrote to it — or `teams:<bot>/<channel id>`, a new post in
 the channel. A place this bot's file does not route to the spore is refused, and the log says why.
 
+## Approvals
+
+An approval your program asks in a personal chat or a channel this bot reaches
+([INTEGRATION §Asking a person to approve](../../INTEGRATION.md#asking-a-person-to-approve)) is
+posted as an Adaptive Card — the request's `teams` card, or its `default` text and facts drawn as
+a `TextBlock` and a `FactSet` — with an `Action.Execute` button per option, added by the bot. A
+card of your own must be version 1.4 or later and carry no `Action.Submit`, `Action.Execute` or
+`refresh` of its own; `Action.OpenUrl` is fine. A press is Microsoft's signed `adaptiveCard/action`
+invoke, taken only from someone the approval names and answered at once — `Apply — recorded`, or
+why it was not taken; what the person filled in on the card's inputs comes with it. The card is
+then updated: replaced by the body your hook answered, or kept with its buttons gone and who chose
+what below.
+
 ## What it guarantees
 
 - **A message reaches its spore once,** under `teams:<conversation id>:<activity id>` as its

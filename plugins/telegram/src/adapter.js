@@ -6,7 +6,7 @@
 
 import { SporeError } from '@rhizogrip/spore'
 
-import { toHtml } from './format.js'
+import { escape, toHtml } from './format.js'
 
 const COMMAND = /^\/([a-z]+)(@\w+)?(?:\s+(.+))?$/is
 const NOT_MODIFIED = /message is not modified/
@@ -31,6 +31,8 @@ const PERSON_FIELDS = ['spore', 'details', 'show', 'brief']
 const GROUP_FIELDS = ['spores', 'people', 'details', 'show', 'overhear', 'brief']
 const PERSON = /^\d+$/
 const GROUP = /^-\d+$/
+const STYLES = { positive: 'success', destructive: 'danger' }
+const BODY = 'a Telegram body is { "html": "<Telegram\'s HTML, at most 4096 characters>" }'
 
 const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
@@ -113,7 +115,7 @@ export const TELEGRAM = {
   routes,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 4096, file: 50 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 4000 },
-  can: { upload: true, remove: true, react: true, typing: true, reply: true },
+  can: { upload: true, remove: true, react: true, typing: true, reply: true, choose: true },
   showShared: 'react',
   reactions: REACTIONS,
   hint (err, { file, bot }) {
@@ -131,6 +133,32 @@ export const TELEGRAM = {
 }
 
 const FILES = ['photo', 'document', 'video', 'audio', 'voice', 'video_note', 'animation', 'sticker']
+
+const personOf = ({ id, first_name: first, last_name: last, username }) =>
+  ({ id: String(id), name: `${[first, last].filter(Boolean).join(' ')}${username ? ` (@${username})` : ''}`, username, groups: [] })
+
+const whereOf = (chat) => chat.type === 'private' ? 'a private chat on Telegram' : `the Telegram group "${chat.title}"`
+
+/** What an approval shows, in Telegram's HTML: the host's own, or the default body — its text, then each fact on a line. */
+const htmlOf = ({ native, fallback }) => native
+  ? native.html
+  : [
+      fallback.text ? toHtml(fallback.text) : null,
+      fallback.facts?.length ? fallback.facts.map(([label, value]) => `<b>${escape(label)}</b>: ${escape(value)}`).join('\n') : null
+    ].filter(Boolean).join('\n\n')
+
+/** A press on one of the bot's buttons as the relay takes it, or null for one on a message Telegram no longer shows. */
+export function choiceOf (query) {
+  if (!query.message?.chat) return null
+  return {
+    conversation: String(query.message.chat.id),
+    note: query.message.message_id,
+    data: query.data ?? null,
+    inputs: null,
+    person: personOf(query.from),
+    where: whereOf(query.message.chat)
+  }
+}
 
 /** Whether the bot's own `@username` is among what Telegram marked as mentions. */
 const mentions = (message, me) => {
@@ -157,14 +185,13 @@ export function normalize (update, bot, me) {
   const addressed = !shared || Boolean(command && (command[2] || VERBS.has(command[1].toLowerCase()))) ||
     mentions(message, me) || message.reply_to_message?.from?.id === me.id
   const text = command ? written : written?.replace(new RegExp(`@${me.username}\\b[,:]?\\s*`, 'gi'), '').trim() || null
-  const { first_name: first, last_name: last, username } = message.from
   return {
     id: `${bot}:${update.update_id}`,
     conversation: String(message.chat.id),
     message: message.message_id,
-    person: { id: String(message.from.id), name: `${[first, last].filter(Boolean).join(' ')}${username ? ` (@${username})` : ''}`, username, groups: [] },
+    person: personOf(message.from),
     spore: null,
-    where: shared ? `the Telegram group "${message.chat.title}"` : 'a private chat on Telegram',
+    where: whereOf(message.chat),
     shared,
     text,
     command: command ? { verb: command[1].toLowerCase(), args: command[3] ?? '' } : null,
@@ -187,11 +214,12 @@ export function createAdapter ({ telegram, bot, me }) {
     },
 
     /**
-     * One long poll after another until `signal` aborts. An update is handed to `onMessage` and
-     * awaited before the offset moves past it, since moving it is what confirms the update to
-     * Telegram: a message is confirmed only once the spore has it.
+     * One long poll after another until `signal` aborts. An update is handed to `onMessage`, or a
+     * press to `onChoice`, and awaited before the offset moves past it, since moving it is what
+     * confirms the update to Telegram: a message is confirmed only once the spore has it, and a
+     * press once it is written down.
      */
-    async listen ({ onMessage, signal, log, sleep }) {
+    async listen ({ onMessage, onChoice, signal, log, sleep }) {
       let offset
       let backoff = 1000
       while (!signal.aborted) {
@@ -211,8 +239,16 @@ export function createAdapter ({ telegram, bot, me }) {
           continue
         }
         for (const update of updates) {
-          const message = normalize(update, bot, me)
-          if (message) await onMessage(message)
+          const query = update.callback_query
+          if (query) {
+            const acknowledge = (text) => telegram.answer(query.id, text)
+            const choice = choiceOf(query)
+            if (choice) await onChoice({ ...choice, acknowledge })
+            else await acknowledge(null).catch(err => log(`a press was not answered — ${said(err)}`))
+          } else {
+            const message = normalize(update, bot, me)
+            if (message) await onMessage(message)
+          }
           offset = update.update_id + 1
         }
       }
@@ -244,6 +280,30 @@ export function createAdapter ({ telegram, bot, me }) {
 
     react: (conversation, message, emoji) => telegram.react(Number(conversation), message, emoji),
 
-    typing: (conversation) => telegram.typing(Number(conversation))
+    typing: (conversation) => telegram.typing(Number(conversation)),
+
+    checkBody: (native) => {
+      const fits = Object.keys(native).every(key => key === 'html') && typeof native.html === 'string' && native.html.trim() !== '' && native.html.length <= 4096
+      return fits ? null : BODY
+    },
+
+    /** The question, each choice a button on its own row, coloured where it has a style. */
+    ask: async (conversation, shown, choices) => {
+      const text = htmlOf(shown)
+      const keyboard = choices.map(choice => [{ text: choice.label, callback_data: choice.data, ...(choice.style ? { style: STYLES[choice.style] } : {}) }])
+      const message = await telegram.ask(Number(conversation), text, keyboard)
+      return { note: message.message_id, shown: { text, parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } } }
+    },
+
+    /** The question closed: replaced by `native` or `fallback`, or kept as `shown` with how it ended below. */
+    settle: async (conversation, note, replacement) => {
+      const text = replacement.shown ? `${replacement.shown.text}\n\n<b>${escape(replacement.outcome)}</b>` : htmlOf(replacement)
+      try {
+        await telegram.close(Number(conversation), Number(note), text)
+      } catch (err) {
+        if (!NOT_MODIFIED.test(err.detail ?? '')) throw err
+      }
+      return { text, parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } }
+    }
   }
 }

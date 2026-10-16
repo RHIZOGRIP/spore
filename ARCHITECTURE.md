@@ -1699,6 +1699,59 @@ origin starts in a spore a day — a hook's `perDay`, a job's `jobs.perDay`, 100
 counted from the `cells` view; past it a delivery that would have asked one is delivered now, and
 the log says why.
 
+## Approvals
+
+**An approval is a choice the host asks named people to make, which no spore can make or fake.**
+A "yes" that reaches a spore as text is one the spore could have written, and the spore is the
+party an approval must not depend on. So an approval is asked by the host — `requestApproval`,
+`spore approval ask`, `POST /v1/spores/<name>/approvals`, none of which an agent reaches: it can
+write neither `state.sqlite` nor the API's tokens — in a conversation the spore is reached in,
+of the people it names (`by`, their ids as the bot file writes them), with fixed options. It
+counts only as a press of a button the relay posted, by one of them, as the platform vouches for
+them: Telegram's callback query, Teams' signed `adaptiveCard/action` invoke. The first such press
+wins — `answer_approval` is one update on `state = 'posted'`, so a second press, a repeat of the
+first or a press past `until` changes nothing — and a press is matched to its approval by the id
+its button carries, never as whichever is pending.
+
+**Flow and presentation are separate.** The flow is spore's and the same on every platform: who
+may answer, the options, the first press, the deadline, the hook, closing the question, telling
+the spore, and `shown`, the payload exactly as posted with its buttons, which the hook receives —
+what the person saw. The presentation is the host's: `body` holds one entry per platform kind —
+an Adaptive Card for `teams`, `{ html }` for `telegram` — or `default`, text and label/value
+facts each adapter draws in its platform's own way. The relay owns the buttons whatever the body,
+so a body may carry nothing that answers back to the bot (`checkBody`; in Teams no
+`Action.Submit`, `Action.Execute` or `refresh`, wherever it sits): a button of the host's would
+bypass `by` and the first press. What a Teams card's inputs held comes with the press, as
+`inputs`, to the hook — the spore learns what the hook's `tell` says.
+
+**`t_approvals` is the record, and the relay works from it.** `state` goes `asked` → `posted` →
+`answered` or `expired`, or `asked` → `refused` when the relay will not post it: the conversation
+does not reach that spore through the bot, the platform carries no approvals (`can.choose`),
+there is nothing to show there, or the platform refuses it. Every second the relay reads each
+followed spore's open approvals and starts what each still needs, one at a time per approval, so
+a restart carries on from the database and never from memory: the host's hook told how it ended;
+the question closed — replaced by the body the hook answered, or kept with its buttons gone and how
+it ended below; `settle_approval` writing the hook's `outcome` (`confirmed`, or `failed` with its
+`reason`), what `replaced` the question and the hook's `tell`; then the spore told. A hook can
+therefore be told twice of one approval, and keys on its id.
+
+**The hook** is named in `config.json`'s `approvals` by its URL and the `${VAR}` holding its secret,
+which reaches no turn. It is a POST signed with HMAC-SHA256 over `<timestamp>.<body>`, tried again
+for about a minute on a network failure or a 5xx; its answer `{ body?, tell? }` closes the
+question and is told to the spore. Without one, the choice is still written down, the question
+closed and the spore told.
+
+**The spore is told by a message in the conversation**, under the request id `approval:<id>` so
+it is said once, carrying `approval` on its inbox entry and, for a press, the person as its
+`from`. `saidOf` reads it as recorded from the platform's buttons and typed by no one. It starts
+a turn answered in that conversation, so the conversation goes on from it. An expired approval is
+told as nobody answering; a refused one was never shown, and only the hook is told.
+
+**The deadline is `within`**: a duration (`2h`), or working days on a `calendar` (`2wd`: the same
+wall-clock time on the second working day after the day it is asked, in the calendar's zone,
+skipping the weekdays it does not work and its holidays) — `deadline()` in `rust/definition`,
+computed once when it is asked and kept as `until`.
+
 ## Jobs
 
 **A job is work a turn starts that outlives it**: an hour-long scan, a download, a build, waiting
@@ -1764,10 +1817,11 @@ are not in it: a row says what was last recorded, never whether a process is ali
 | call records | a running turn's `spore.out` and `spore.err` |
 | the workspace's totals and counters | provisioned modules |
 | outbox entries, and whether each was delivered | |
+| approvals the host asked, and how each ended | |
 
 **One way to read.** The views are the contract: `turns` (final turns only, `ownUsd` and
 `treeUsd` beside the micros), `inbox` (with `consumed`), `transcript`, `events`, `calls`,
-`limits`, `held`, `cells`, `jobs` and `outbox`. A program reads them through the library, whose
+`limits`, `held`, `cells`, `jobs`, `outbox` and `approvals`. A program reads them through the library, whose
 records are the views' rows with JSON columns parsed and flags as booleans; a person with
 `spore sql`, and the agent with `$SPORE_SQL` or `node:sqlite` in its own programs. Both commands
 are one function (`src/library/sql.js`), which opens the file read-only. The `t_` tables behind the views are storage and free to change; a view selects and filters
@@ -1812,7 +1866,8 @@ did not arrive. A held delivery carries no reply-to: nobody typed it.
 per bot, read on every message; the path from a message to `send` with its `from`; the `working…`
 message and the calls at work, or a reaction and the platform's typing; the answer as a new
 message replying to the question; commands;
-the outbox drained and settled; a restart from saved cursors. What a message is to the spores is
+the outbox drained and settled; approvals posted and seen through (§Approvals); a restart from
+saved cursors. What a message is to the spores is
 one decision, `admission`: said to them, overheard by them where the routing overhears, or dropped
 at a named gate — not addressed, or from someone the routing's `people` do not name, which is
 logged with the line to add. In a conversation many people share, stopping, wrapping or extending
@@ -1880,7 +1935,9 @@ one additive migration per version (`MIGRATIONS` in `rust/workspace`), under the
 looked at again there, so two writers migrate it once, leaving it as a fresh one at that version
 would be (`migrates_a_workspace_an_older_spore_made_into_what_a_fresh_one_is`). Readers never
 migrate; what reads a new column or table — the outbox, a fork's copy of an inbox — goes through
-a writer. A database a newer spore made is refused, naming both versions.
+a writer, except what a relay polls every second, which a writer opening the file would wake on
+its own: `approvalsIn` reads an older database as holding no approvals, which it cannot, since
+asking one goes through a writer. A database a newer spore made is refused, naming both versions.
 
 **A busy database is a failure, not a wait.** A writer still blocked after its 5 s timeout fails.
 `send` refuses with `INBOX_UNWRITABLE` and writes nothing. A turn that can record nothing says so

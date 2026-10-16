@@ -166,6 +166,7 @@ const decoder = ({ json = [], flags = [] }) => (row) => {
 
 const turnRecord = decoder({ json: ['deliverables', 'recall', 'byPrecursor'], flags: ['concluded', 'settled'] })
 const inboxEntry = decoder({ json: ['files'], flags: ['consumed', 'setAside', 'overheard'] })
+const approvalRecord = decoder({ json: ['approvers', 'options', 'body', 'calendar', 'shown', 'inputs', 'replaced'], flags: ['told'] })
 const transcriptEntry = decoder({ json: ['message', 'marks'] })
 const eventRecord = ({ payload, ...envelope }) => ({ ...envelope, ...JSON.parse(payload) })
 
@@ -375,8 +376,14 @@ function checkFrom (from, { schedule, hook, job }) {
   }
 }
 
-function entryFor (ws, said, { attach = [], schedule, hook, job, from, traceparent, requestId, replyTo, overheard } = {}) {
+function entryFor (ws, said, { attach = [], schedule, hook, job, from, traceparent, requestId, replyTo, overheard, approval } = {}) {
   if (from !== undefined) checkFrom(from, { schedule, hook, job })
+  if (approval !== undefined && !(typeof approval === 'string' && approval && replyTo !== undefined && replyTo !== 'terminal' && !schedule && !hook && !job && !overheard)) {
+    throw new SporeError('a message telling of an approval names it, and the conversation it was asked in', {
+      type: 'APPROVAL_INVALID',
+      detail: `got approval ${JSON.stringify(approval)} with replyTo ${JSON.stringify(replyTo)} — it comes from no schedule, webhook or job, and is not overheard`
+    })
+  }
   if (traceparent !== undefined && !parseTraceparent(traceparent)) {
     throw new SporeError('traceparent is not a W3C trace context', {
       type: 'TRACEPARENT_INVALID',
@@ -412,7 +419,8 @@ function entryFor (ws, said, { attach = [], schedule, hook, job, from, tracepare
     ...(traceparent ? { traceparent } : {}),
     ...(requestId !== undefined ? { requestId: storable(requestId) } : {}),
     ...(replyTo !== undefined ? { replyTo } : {}),
-    ...(overheard ? { overheard: true } : {})
+    ...(overheard ? { overheard: true } : {}),
+    ...(approval !== undefined ? { approval } : {})
   }
 
   if (attach.length || text.length > INLINE_MESSAGE_BYTES) {
@@ -583,6 +591,67 @@ export function settleOutbox (ws, outboxNo, { refused } = {}) {
   return native.settleOutbox(ws, outboxNo, refused)
 }
 
+/** An approval asked, as its row: the library checked it. Answers its `approvalNo`. */
+export function recordApproval (ws, row) {
+  return native.askApproval(ws, JSON.stringify(row))
+}
+
+const APPROVAL_ROWS = "SELECT a.*, EXISTS (SELECT 1 FROM inbox i WHERE i.requestId = 'approval:' || a.id) AS told FROM approvals a"
+
+// Asking an approval migrates the database first, so one an older spore made has none.
+const holdsApprovals = (db) => Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'view' AND name = 'approvals'").get())
+
+/**
+ * The approvals of the spore at `ws`, oldest first, each saying whether the spore was `told` how it
+ * ended — with `open`, only those whose relay still has something to do: not seen through to
+ * their end, or ended in an answer or an expiry the spore has not been told of.
+ */
+export function approvalsIn (ws, { open = false } = {}) {
+  return reading(ws, [], db => {
+    if (!holdsApprovals(db)) return []
+    const unfinished = open ? "WHERE a.settledAt IS NULL OR (a.state IN ('answered', 'expired') AND NOT told)" : ''
+    return db.prepare(`${APPROVAL_ROWS} ${unfinished} ORDER BY a.approvalNo`).all().map(approvalRecord)
+  })
+}
+
+/** One approval by its id, or null. */
+export function approvalOf (ws, id) {
+  return reading(ws, null, db => {
+    if (!holdsApprovals(db)) return null
+    const row = db.prepare(`${APPROVAL_ROWS} WHERE a.id = ?`).get(id)
+    return row ? approvalRecord(row) : null
+  })
+}
+
+/** An asked approval posted, with the payload the platform was given and its id for it; false once it is not asked. */
+export function postApproval (ws, id, { shown, note }) {
+  return native.postApproval(ws, id, JSON.stringify(shown), note === null ? undefined : String(note))
+}
+
+/** The first press on a posted approval before its deadline; false for a later or late one. */
+export function answerApproval (ws, id, { choice, inputs, person }) {
+  return native.answerApproval(ws, id, choice, inputs === null ? undefined : JSON.stringify(inputs), person.id, person.name)
+}
+
+/** A posted approval past its deadline, expired; false when it is not posted or not due. */
+export function expireApproval (ws, id) {
+  return native.expireApproval(ws, id)
+}
+
+/** An asked approval that will not be posted, refused saying why; false once it is not asked. */
+export function refuseApproval (ws, id, reason) {
+  return native.refuseApproval(ws, id, reason)
+}
+
+/**
+ * An ended approval seen through: the hook's `outcome` on an answer and its `reason` when it
+ * failed, the payload that `replaced` the question, and what the hook said to `tell` the spore.
+ * Once.
+ */
+export function settleApproval (ws, id, { outcome = null, reason = null, replaced = null, tell = null } = {}) {
+  return native.settleApproval(ws, id, outcome ?? undefined, reason ?? undefined, replaced === null ? undefined : JSON.stringify(replaced), tell ?? undefined)
+}
+
 /** What is held, oldest first. */
 export function heldIn (ws) {
   return reading(ws, [], db => db.prepare('SELECT * FROM held ORDER BY heldNo').all())
@@ -620,9 +689,14 @@ export function saidOf (entry) {
   if (entry.overheard) return overheardOf([entry])
   const parts = []
 
-  // The person's name and the conversation's are theirs to choose, so both are quoted: nothing
-  // in them can pass for the runtime speaking.
-  if (entry.fromName) {
+  // A button press is not something typed: the runtime recorded it, and only after the host's
+  // hook had its say, so what follows is the outcome and nothing to act on as a request.
+  if (entry.approval) {
+    const who = entry.fromName ? `answered by ${JSON.stringify(entry.fromName)} (${entry.fromId}) in ${JSON.stringify(entry.fromWhere)}` : 'answered by no one before its deadline'
+    parts.push(`[Approval ${entry.approval}, ${who}: recorded by the runtime from the platform's own buttons, not typed by anyone.]`)
+  } else if (entry.fromName) {
+    // The person's name and the conversation's are theirs to choose, so both are quoted: nothing
+    // in them can pass for the runtime speaking.
     parts.push(`[Said by ${JSON.stringify(entry.fromName)} (${entry.fromId}) in ${JSON.stringify(entry.fromWhere)}.]`)
   }
 

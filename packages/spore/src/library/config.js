@@ -105,7 +105,7 @@ export function loadEnvironment (file = CONFIG_FILE, env = process.env) {
 }
 
 function validate (raw, file) {
-  const known = [...KEYS, 'plugins', 'replyTo']
+  const known = [...KEYS, 'plugins', 'replyTo', 'approvals']
   const unknown = isRecord(raw) ? Object.keys(raw).filter(key => !known.includes(key)) : []
   if (!isRecord(raw) || unknown.length) {
     throw new SporeError(isRecord(raw) ? `${file} has ${unknown.join(', ')}, which spore does not read` : `${file} is not a JSON object`, {
@@ -175,6 +175,17 @@ function validate (raw, file) {
         type: 'CONFIG_INVALID',
         detail: problem
       })
+    }
+  }
+  if (raw.approvals !== undefined && !isRecord(raw.approvals)) {
+    throw new SporeError(`${file} has an approvals that is not a map`, { type: 'CONFIG_INVALID', detail: APPROVALS_DETAIL })
+  }
+  for (const [name, hook] of Object.entries(raw.approvals ?? {})) {
+    const fits = HOOK_NAME.test(name) && isRecord(hook) && Object.keys(hook).every(key => key === 'url' || key === 'secret') &&
+      typeof hook.url === 'string' && URL.canParse(hook.url) && ['http:', 'https:'].includes(new URL(hook.url).protocol) &&
+      typeof hook.secret === 'string' && /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/.test(hook.secret)
+    if (!fits) {
+      throw new SporeError(`${file} has an approval hook "${name}" spore cannot read`, { type: 'CONFIG_INVALID', detail: APPROVALS_DETAIL })
     }
   }
   if (raw.contain !== undefined && typeof raw.contain !== 'boolean') {
@@ -248,6 +259,8 @@ export function existing (paths) {
 
 const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'largestFile', 'freeFloor', 'spendPerDay', 'spendPerMonth', 'contain', 'docs', 'hereSnapshots'])
 const DOCS = ['follow', 'kept']
+const HOOK_NAME = /^[A-Za-z0-9._-]+$/
+const APPROVALS_DETAIL = 'approvals names each hook an approval may call, by a name of letters, digits, ., - and _, as { "kpi": { "url": "https://…", "secret": "${KPI_HOOK_SECRET}" } } — the secret set in environment beside config.json' // eslint-disable-line no-template-curly-in-string
 const DOCS_DETAIL = 'docs says whether a runner starts by replacing the root documents that differ from what is installed (follow) or leaves them to spore upgrade (kept) — spore config set docs follow|kept'
 const SWITCHES = { on: true, off: false }
 const COUNTS = new Set(['turns', 'modelSessions', 'hereSnapshots', 'homeSplit'])

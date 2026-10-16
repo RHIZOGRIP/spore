@@ -1,8 +1,9 @@
 /**
  * The library's verbs over HTTP, for a caller that is not on this machine or not in this
- * container: send, watch, show, list, stop, wrap, extend. Every request names its caller by token
- * and reaches only the spores that caller may; its `traceparent` is the parent of the request's
- * span, which a message carries on to its turn. Contract: ARCHITECTURE.md, "The HTTP API".
+ * container: send, watch, show, list, stop, wrap, extend, and approvals asked and read. Every
+ * request names its caller by token and reaches only the spores that caller may; its
+ * `traceparent` is the parent of the request's span, which a message carries on to its turn.
+ * Contract: ARCHITECTURE.md, "The HTTP API".
  */
 
 import { createServer } from 'node:http'
@@ -15,13 +16,14 @@ import { watch } from '../src/library/watch.js'
 import { send } from '../src/core/send.js'
 import { stop } from '../src/core/state.js'
 import { extendTurn, wrapTurn } from '../src/core/limits.js'
-import { readEvents } from '../src/core/spore-dir.js'
+import { approvalOf, approvalsIn, readEvents } from '../src/core/spore-dir.js'
+import { askApproval } from '../src/library/approvals.js'
 import { SporeError } from '../src/observability/errors.js'
 import { endSpanError, endSpanOk, formatTraceparent, parseTraceparent, startSpan } from '../src/observability/tracing.js'
 import { callerOf, reaches } from './config.js'
 
 const MAX_BODY = 32 * 1024 * 1024
-const ROUTE = /^\/v1\/spores(?:\/([^/]+)(?:\/(messages|events|stop|wrap|extend))?)?\/?$/
+const ROUTE = /^\/v1\/spores(?:\/([^/]+)(?:\/(messages|events|stop|wrap|extend|approvals)(?:\/([0-9a-f]{12}))?)?)?\/?$/
 
 const STATUS = {
   API_UNAUTHORIZED: 401,
@@ -110,6 +112,13 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       })
       return { status: 202, body: { inbox: sent.inbox, started: sent.started, repeated: Boolean(sent.repeated) } }
     },
+    'POST approvals': async ({ request, ws }) => ({ status: 201, body: askApproval(ws, await jsonOf(request), { configFile }) }),
+    'GET approvals': ({ ws }) => ({ status: 200, body: { approvals: approvalsIn(ws) } }),
+    'GET approval': ({ ws, id }) => {
+      const one = approvalOf(ws, id)
+      if (!one) throw failure('API_NOT_FOUND', `no approval ${id} in this spore`)
+      return { status: 200, body: one }
+    },
     'POST stop': ({ ws }) => ({ status: 200, body: stop(ws) }),
     'POST wrap': async ({ request, ws }) => ({ status: 200, body: wrapTurn(ws, (await jsonOf(request)).wait) }),
     'POST extend': async ({ request, ws }) => {
@@ -141,8 +150,8 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
   return createServer(async (request, response) => {
     const url = new URL(request.url, 'http://spore')
     const found = ROUTE.exec(url.pathname)
-    const [, name, action] = found ?? []
-    const route = !found ? null : !name ? 'spores' : action ?? 'spore'
+    const [, name, action, id] = found ?? []
+    const route = !found || (id && action !== 'approvals') ? null : !name ? 'spores' : id ? 'approval' : action ?? 'spore'
     const span = startSpan(`spore.api.${route ?? 'unknown'}`, { 'http.method': request.method, ...(name ? { 'spore.name': name } : {}) }, parseTraceparent(request.headers.traceparent))
     const traceparent = formatTraceparent(span)
     let caller = null
@@ -160,7 +169,7 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       }
       const handle = routes[`${request.method} ${route}`]
       if (!handle) throw failure('API_METHOD', `${request.method} is not how ${route} is asked`)
-      const { status, body } = await handle({ request, caller, ws, span })
+      const { status, body } = await handle({ request, caller, ws, id, span })
       answer(response, status, body, traceparent)
       endSpanOk(span, { 'http.status_code': status })
       log(`${caller.name} · ${request.method} ${url.pathname} · ${status}`)

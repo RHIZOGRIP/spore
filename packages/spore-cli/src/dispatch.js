@@ -15,8 +15,8 @@ import { basename, join, resolve } from 'node:path'
 
 import {
   addTo, allowPlugin, billingFor, changeText, define, defaultModel, disallowPlugin, durationText,
-  edit, extend, getKey, jobs, list, listPlugins, log, pause, precursors, remake, remove,
-  removeFrom, removeSchedule, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings,
+  edit, extend, getKey, jobs, list, listApprovals, listPlugins, log, pause, precursors, remake, remove,
+  removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings,
   show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM
 } from '@rhizogrip/spore'
 import { diagnose, renderDoctor } from './doctor.js'
@@ -288,6 +288,20 @@ function renderJobs (result) {
 function renderSchedules (result) {
   for (const one of result.schedules) console.log(scheduleLine(one))
   if (!result.schedules.length) console.log('none — nothing here is said by the clock')
+}
+
+function renderApprovals (result) {
+  const ended = (one) => {
+    if (one.state === 'answered') {
+      const host = one.outcome === 'failed' ? `, not confirmed — ${one.reason}` : one.outcome ? `, ${one.outcome}` : ''
+      return `${one.choice} by ${one.answererName}${host}`
+    }
+    if (one.state === 'refused') return `refused — ${one.reason}`
+    if (one.state === 'expired') return 'expired'
+    return `${one.state}, until ${when(one.until)}`
+  }
+  for (const one of result.approvals) console.log(`${one.id}  ${when(one.at)}  ${one.place}  ${ended(one)}`)
+  if (!result.approvals.length) console.log('none — nothing was asked here')
 }
 
 async function readStdin () {
@@ -713,6 +727,27 @@ export async function manage (verb, argv) {
       }
       const source = !from || from === '-' ? await readStdin() : readFileSync(resolve(from), 'utf8')
       return emit(setSchedule({ ws, name, source }), (r) => { console.log(`scheduled ${r.name} — ${r.path}`) })
+    }
+    if (verb === 'approval') {
+      const [, sub = 'ls', ws, from] = argv._
+      if (sub !== 'ask' && sub !== 'ls') {
+        console.error(`spore: approval has no "${sub}" — ask, ls`)
+        return 2
+      }
+      if (!ws) {
+        console.error(`spore: approval ${sub} needs a spore — ${sub === 'ask' ? 'spore approval ask <name> [<request.json>|-]' : 'spore approval ls <name>'}`)
+        return 2
+      }
+      if (sub === 'ls') return emit(listApprovals({ ws }), renderApprovals)
+      const source = !from || from === '-' ? await readStdin() : readFileSync(resolve(from), 'utf8')
+      let request
+      try {
+        request = JSON.parse(source)
+      } catch (err) {
+        console.error(`spore: the request is not JSON — ${err.message}`)
+        return 2
+      }
+      return emit(requestApproval({ ws, request }), (r) => { console.log(`asked ${r.approval}, open until ${when(r.until)} — the service of the place it names posts it`) })
     }
     if (verb === 'rm') {
       const name = argv._[1]

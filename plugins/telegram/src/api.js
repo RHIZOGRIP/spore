@@ -49,7 +49,7 @@ export function createTelegram (token, { fetchImpl = fetch, base = BASE } = {}) 
   return {
     /** `offset` confirms every update before it to Telegram. */
     updates: (offset, { seconds = 30, signal } = {}) =>
-      call('getUpdates', { offset, timeout: seconds, allowed_updates: ['message'] }, { timeoutMs: (seconds + 15) * 1000, signal }),
+      call('getUpdates', { offset, timeout: seconds, allowed_updates: ['message', 'callback_query'] }, { timeoutMs: (seconds + 15) * 1000, signal }),
 
     say: (chat, text, { answering = null, html = false } = {}) => call('sendMessage', {
       chat_id: chat,
@@ -61,6 +61,28 @@ export function createTelegram (token, { fetchImpl = fetch, base = BASE } = {}) 
 
     revise: (chat, message, text) =>
       call('editMessageText', { chat_id: chat, message_id: message, text, link_preview_options: { is_disabled: true } }),
+
+    /** A question in Telegram's HTML with `keyboard`, rows of inline buttons, under it. */
+    ask: (chat, html, keyboard) => call('sendMessage', {
+      chat_id: chat,
+      text: html,
+      parse_mode: 'HTML',
+      link_preview_options: { is_disabled: true },
+      reply_markup: { inline_keyboard: keyboard }
+    }),
+
+    /** A question's text replaced, and its buttons gone. */
+    close: (chat, message, html) => call('editMessageText', {
+      chat_id: chat,
+      message_id: message,
+      text: html,
+      parse_mode: 'HTML',
+      link_preview_options: { is_disabled: true },
+      reply_markup: { inline_keyboard: [] }
+    }),
+
+    /** A press answered, with `text` as the short notice Telegram shows, or none. */
+    answer: (query, text) => call('answerCallbackQuery', { callback_query_id: query, ...(text ? { text } : {}) }),
 
     remove: (chat, message) => call('deleteMessage', { chat_id: chat, message_id: message }),
 

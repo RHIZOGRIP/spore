@@ -297,4 +297,15 @@ describe('the listener', () => {
     expect((await post({ id: 'a2' })).status).toBe(500)
     expect(logs.at(-1)).toBe('activity a2 not taken — busy database')
   })
+
+  it('answers an invoke with the body the service answers it with, and nothing else with a body', async () => {
+    const pressed = { statusCode: 200, type: 'application/vnd.microsoft.activity.message', value: 'Apply — recorded' }
+    await listening(async () => null, async (activity) => activity.type === 'invoke' ? pressed : logs.length)
+    const invoke = await post({ id: 'a1', type: 'invoke' })
+    expect(invoke.status).toBe(200)
+    expect(await invoke.json()).toEqual(pressed)
+    const message = await post({ id: 'a2', type: 'message' })
+    expect(message.status).toBe(200)
+    expect(await message.text()).toBe('')
+  })
 })

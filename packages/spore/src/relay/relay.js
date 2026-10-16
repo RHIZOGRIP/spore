@@ -13,7 +13,8 @@
 import { existsSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
-import { attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf } from '../index.js'
+import { approvalHookVariables, attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf } from '../index.js'
+import { createApprovals } from './approvals.js'
 import { credentialVariables, reactionsOf, routesOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
 import { announce, endingOf, leftOut, pieces, render, reply, statusText, track, unpassed, waiting } from './render.js'
@@ -61,14 +62,19 @@ const admission = (message, routed) => {
 const operates = (message, routed) =>
   !message.shared || routed.people === null || admits(routed.people.filter(who => who !== '*'), message.person)
 
-export function createRelay ({ adapter, botFile, statePath, env, log, configFile = CONFIG_FILE, sleep = pause, editEveryMs = adapter.limits.editEveryMs, typingEveryMs = adapter.limits.typingEveryMs, followEveryMs = 1000 }) {
+export function createRelay ({ adapter, botFile, statePath, env, log, configFile = CONFIG_FILE, sleep = pause, editEveryMs = adapter.limits.editEveryMs, typingEveryMs = adapter.limits.typingEveryMs, followEveryMs = 1000, approveEveryMs = 1000 }) {
   const { kind, noun } = adapter
   const prefix = `${kind}:${basename(botFile, '.json')}/`
   const kept = new Set(adapter.sourceVariables)
-  const sendEnv = () => {
+  const environment = () => {
     const fresh = { ...env }
     loadEnvironment(configFile, fresh)
-    for (const variable of credentialVariables(adapter, configFile)) if (!kept.has(variable)) delete fresh[variable]
+    return fresh
+  }
+  const sendEnv = () => {
+    const fresh = environment()
+    const secrets = [...credentialVariables(adapter, configFile), ...approvalHookVariables(readConfig(configFile))]
+    for (const variable of secrets) if (!kept.has(variable)) delete fresh[variable]
     return fresh
   }
   const state = loadState(statePath, adapter)
@@ -90,6 +96,21 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   const keyOf = (conversation) => adapter.routeOf ? adapter.routeOf(conversation) : conversation
 
   const route = () => ({ config: readConfig(configFile), table: routesOf(adapter, botFile), react: adapter.can.react ? reactionsOf(adapter, botFile) : null })
+  const approvals = createApprovals({
+    adapter,
+    prefix,
+    botFile,
+    configFile,
+    keyOf,
+    where,
+    followed: () => followed,
+    delivery,
+    environment,
+    sendEnv,
+    log,
+    sleep: (ms) => sleep(ms, stopping.signal),
+    signal: stopping.signal
+  })
   const sporeOf = (name, config) => {
     const ws = workspaceFor(name, { config }).path
     return isWorkspace(ws) ? ws : null
@@ -340,6 +361,13 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       } catch (err) {
         log(`${where(message.conversation)}: message ${message.id} — ${said(err)}`)
         tell(message.conversation, `that failed — ${err.message}`)
+      }
+    },
+    onChoice: async (choice) => {
+      try {
+        await approvals.choose(choice)
+      } catch (err) {
+        log(`${where(choice.conversation)}: a press — ${said(err)}`)
       }
     },
     signal: stopping.signal,
@@ -639,9 +667,11 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       stopping.abort()
     }
     const typing = adapter.can.typing ? setInterval(type, typingEveryMs) : null
+    const approving = setInterval(approvals.pass, approveEveryMs)
     if (adapter.prepare) await prepare()
     await Promise.all([listen().catch(halt), follow().catch(halt)])
     clearInterval(typing)
+    clearInterval(approving)
     for (const lines of shown.values()) clearTimeout(lines.timer)
     save()
     if (failed.length) throw failed[0]

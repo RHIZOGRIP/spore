@@ -26,8 +26,16 @@
  *   seen(platform, conversation)           what was done there, in order: { op: 'post', note, text,
  *                                          answering, formatted }, { op: 'edit', note, text },
  *                                          { op: 'remove', note }, { op: 'upload', path, caption },
- *                                          { op: 'react', message, emoji }, { op: 'typing' };
- *                                          `formatted` says the platform was asked to render Markdown
+ *                                          { op: 'react', message, emoji }, { op: 'typing' },
+ *                                          { op: 'ask', note, text, choices: [{ label, data, style }] },
+ *                                          { op: 'close', note, text }; `formatted` says the platform
+ *                                          was asked to render Markdown, and an approval's `text` is
+ *                                          what the platform was given to show, as text
+ *   press(platform, { conversation, note, data, person, inputs })
+ *                                          where `spec.can.choose`: `person` presses the button
+ *                                          carrying `data` on the question `note`; answers
+ *                                          { acknowledged() }, what the platform showed them once
+ *                                          the press was answered — { text } — or undefined before
  *   fail(platform, op, error, times)       make `post`, `edit`, `remove` or `upload` fail
  *   retryable(retryAfter), refused(detail) the platform's errors
  *   command(verb, args)                    what a person types for a command
@@ -36,7 +44,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { createHmac } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { dirname, join } from 'node:path'
 
 import { createModelServer } from './model-server.js'
@@ -44,8 +54,9 @@ import { answers, calls, scriptedMo } from './scripted-model.js'
 import { outsideRoot } from './outside-ws.js'
 import { brokerSocketPath } from '../../src/infra/broker-socket.js'
 import { definitionWith } from '../../src/core/identity-defaults.js'
-import { outbox, readInbox, readLock, readTurns, statePath as databaseOf } from '../../src/core/spore-dir.js'
+import { answerApproval, approvalOf, outbox, readInbox, readLock, readTurns, statePath as databaseOf } from '../../src/core/spore-dir.js'
 import { CONFIG_FILE } from '../../src/library/config.js'
+import { requestApproval } from '../../src/library/verbs.js'
 import { send } from '../../src/core/send.js'
 import { RUNNING, stateOf, stop } from '../../src/core/state.js'
 import { createRelay } from '../../src/relay/index.js'
@@ -642,6 +653,163 @@ export function conformance (harness, platformTests = () => {}) {
         await until(() => posted('1', 'nothing is running — set aside 1 message that waited'), 15000, where)
         expect(readInbox(ws).map(entry => entry.setAside)).toEqual([false, true])
         expect(asked()).toBe(1)
+      })
+    })
+
+    describe('an approval', () => {
+      const SECRET = 'hook-secret'
+      const OPTIONS = [{ id: 'apply', label: 'Apply', style: 'positive' }, { id: 'cancel', label: 'Cancel' }]
+      let hook
+      let heard
+      let answering
+
+      const ask = (request = {}) => requestApproval({
+        ws,
+        configFile,
+        request: { to: `${spec.kind}:triage/1`, by: ['1'], options: OPTIONS, body: { default: { text: 'Apply the new **value**?', facts: [['Now', '82 %']] } }, hook: 'kpi', ...request }
+      }).approval
+      const approval = (id) => approvalOf(ws, id)
+      const questions = (conversation = '1') => seen(conversation).filter(one => one.op === 'ask')
+      const closing = (conversation = '1') => seen(conversation).find(one => one.op === 'close')
+      const press = (question, label, person, conversation = '1') =>
+        harness.press(platform, { conversation, note: question.note, data: question.choices.find(one => one.label === label).data, person })
+      const acknowledged = async (pressed) => {
+        await until(() => pressed.acknowledged() !== undefined)
+        return pressed.acknowledged().text
+      }
+
+      beforeEach(async () => {
+        heard = []
+        answering = () => ({ status: 200, body: {} })
+        hook = createServer((request, response) => {
+          const chunks = []
+          request.on('data', chunk => chunks.push(chunk))
+          request.on('end', () => {
+            const raw = Buffer.concat(chunks).toString('utf8')
+            const expected = createHmac('sha256', SECRET).update(`${request.headers['x-spore-timestamp']}.${raw}`).digest('hex')
+            heard.push({ payload: JSON.parse(raw), signed: request.headers['x-spore-signature'] === `sha256=${expected}` })
+            const { status, body } = answering(heard.at(-1).payload)
+            response.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body))
+          })
+        })
+        await new Promise(resolve => hook.listen(0, '127.0.0.1', resolve))
+        const secret = '${KPI_HOOK_SECRET}' // eslint-disable-line no-template-curly-in-string
+        writeFileSync(configFile, JSON.stringify({ home: join(root, 'home'), approvals: { kpi: { url: `http://127.0.0.1:${hook.address().port}/hook`, secret } } }))
+        env.KPI_HOOK_SECRET = SECRET
+      })
+
+      afterEach(() => new Promise(resolve => hook.close(resolve)))
+
+      it.runIf(spec.can.choose)('is posted with its choices, taken from someone it names, the hook told, the question closed, and the spore told once', async () => {
+        let environ = null
+        reply = async () => {
+          environ = readFileSync(`/proc/${readLock(ws).pid}/environ`, 'utf8')
+          return answers('noted')
+        }
+        answering = () => ({ status: 200, body: { tell: '82 % is in' } })
+        start({ approveEveryMs: 50 })
+        const id = ask()
+        await until(() => questions().length === 1)
+        const [question] = questions()
+        expect(question.choices.map(one => one.label)).toEqual(['Apply', 'Cancel'])
+        expect(question.text).toContain('82 %')
+
+        expect(await acknowledged(press(question, 'Apply', '1'))).toBe('Apply — recorded')
+        await until(() => posted('1', 'noted'))
+        expect(heard).toHaveLength(1)
+        expect(heard[0].signed).toBe(true)
+        expect(heard[0].payload).toMatchObject({ approval: id, spore: 'triage', place: `${spec.kind}:triage/1`, outcome: 'answered', choice: { id: 'apply', label: 'Apply' }, by: { id: '1', platform: spec.kind } })
+        expect(closing().note).toEqual(question.note)
+        expect(closing().text).toMatch(/Apply — /)
+        expect(approval(id)).toMatchObject({ state: 'answered', choice: 'apply', outcome: 'confirmed', tell: '82 % is in', told: true })
+        const told = readInbox(ws).filter(entry => entry.approval === id)
+        expect(told).toHaveLength(1)
+        expect(told[0]).toMatchObject({ requestId: `approval:${id}`, replyTo: `${spec.kind}:triage/1`, fromId: `${spec.kind}:1` })
+        expect(told[0].text).toMatch(/chose "Apply", and the host confirmed it\.\n\nThe host adds:\n82 % is in$/)
+        expect(environ).not.toContain('KPI_HOOK_SECRET')
+      })
+
+      it.runIf(spec.can.choose)('takes no press from someone it does not name, none once it is answered, and each on its own approval', async () => {
+        const group = harness.shared(5)
+        routes({ [group]: { spore: 'triage', shared: true, people: ['41', '42'] } })
+        start({ approveEveryMs: 50 })
+        const first = ask({ to: `${spec.kind}:triage/${group}`, by: ['41'], hook: undefined })
+        const second = ask({ to: `${spec.kind}:triage/${group}`, by: ['41'], hook: undefined })
+        await until(() => questions(group).length === 2)
+        const [a, b] = questions(group)
+
+        expect(await acknowledged(press(a, 'Apply', '42', group))).toBe('this is not yours to answer')
+        expect(await acknowledged(press(b, 'Cancel', '41', group))).toBe('Cancel — recorded')
+        await until(() => approval(second).told)
+        expect(approval(second)).toMatchObject({ state: 'answered', choice: 'cancel', outcome: null })
+        expect(approval(first).state).toBe('posted')
+        expect(await acknowledged(press(b, 'Apply', '41', group))).toBe('this was answered already')
+        expect(logs.some(line => line.startsWith(`approval ${first} of triage: refused a press by `) && line.includes('(42)'))).toBe(true)
+        expect(heard).toEqual([])
+      })
+
+      it.runIf(spec.can.choose)('tells the spore it was not confirmed when the hook refuses it', async () => {
+        answering = () => ({ status: 409, body: { error: 'stale' } })
+        start({ approveEveryMs: 50 })
+        const id = ask()
+        await until(() => questions().length === 1)
+        await acknowledged(press(questions()[0], 'Apply', '1'))
+        await until(() => approval(id).told)
+        expect(approval(id)).toMatchObject({ outcome: 'failed', reason: expect.stringMatching(/answered 409/) })
+        expect(closing().text).toMatch(/not confirmed/)
+        expect(readInbox(ws).find(entry => entry.approval === id).text).toMatch(/the host did not confirm it — .*answered 409/)
+      })
+
+      it.runIf(spec.can.choose)('expires when nobody answers in time: the question closed, the hook and the spore told', async () => {
+        start({ approveEveryMs: 50 })
+        const id = ask({ within: '1s' })
+        await until(() => approval(id).told)
+        expect(approval(id).state).toBe('expired')
+        expect(heard.map(one => one.payload.outcome)).toEqual(['expired'])
+        expect(closing().text).toMatch(/expired — nobody answered/)
+        const told = readInbox(ws).find(entry => entry.approval === id)
+        expect(told.fromName).toBe(null)
+        expect(told.text).toMatch(/^Nobody answered it by /)
+      })
+
+      it('is refused, the hook told, where its conversation does not reach the spore or nothing in it can be shown there', async () => {
+        start({ approveEveryMs: 50 })
+        const nowhere = ask({ to: `${spec.kind}:triage/2` })
+        const unseen = ask({ body: { elsewhere: { html: 'x' } } })
+        await until(() => approval(nowhere).settledAt && approval(unseen).settledAt)
+        expect(approval(nowhere)).toMatchObject({ state: 'refused', reason: expect.stringMatching(/does not reach this spore/) })
+        expect(approval(unseen)).toMatchObject({ state: 'refused', reason: expect.stringMatching(spec.can.choose ? /no body for/ : /cannot ask for an approval yet/) })
+        expect(heard.map(one => one.payload.outcome)).toEqual(['refused', 'refused'])
+        expect(questions()).toEqual([])
+        expect(readInbox(ws).some(entry => entry.approval)).toBe(false)
+      })
+
+      it.runIf(spec.can.choose)('is seen through by the next run when the last stopped between the press and its end, the spore told once', async () => {
+        answering = () => ({ status: 200, body: { tell: 'applied' } })
+        const first = start({ approveEveryMs: 50 })
+        const id = ask()
+        await until(() => questions().length === 1)
+        await first.stop()
+        expect(answerApproval(ws, id, { choice: 'apply', inputs: null, person: { id: '1', name: 'U1' } })).toBe(true)
+        const second = start({ approveEveryMs: 50 })
+        await until(() => approval(id).told)
+        await second.stop()
+        start({ approveEveryMs: 50 })
+        await new Promise(resolve => setTimeout(resolve, 300))
+        expect(heard).toHaveLength(1)
+        expect(readInbox(ws).filter(entry => entry.approval === id)).toHaveLength(1)
+        expect(closing().text).toMatch(/Apply — U1/)
+      })
+
+      it.runIf(spec.can.choose)('is closed with the body the hook answers', async () => {
+        answering = () => ({ status: 200, body: { body: { default: { text: 'Done: 82 % is in' } } } })
+        start({ approveEveryMs: 50 })
+        const id = ask()
+        await until(() => questions().length === 1)
+        await acknowledged(press(questions()[0], 'Apply', '1'))
+        await until(() => approval(id).told)
+        expect(closing().text).toContain('Done: 82 % is in')
+        expect(closing().text).not.toContain('Apply the new')
       })
     })
 

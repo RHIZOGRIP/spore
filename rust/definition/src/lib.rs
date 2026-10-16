@@ -11,8 +11,10 @@ use regex::Regex;
 use serde::ser::{SerializeMap, Serializer};
 use serde::Serialize;
 
+pub mod deadline;
 pub mod schedule;
 
+pub use deadline::{deadline, Calendar};
 pub use schedule::{parse_schedule, Due, Schedule};
 
 /// The tool suite, by name. Contract: ARCHITECTURE.md, "Tools".

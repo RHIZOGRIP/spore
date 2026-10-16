@@ -16,6 +16,9 @@ const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
 const THREAD = ';messageid='
 const COMMAND = /^\/([a-z]+)(?:\s+(.+))?$/is
 const SERVICE_URL = 'https://smba.trafficmanager.net/teams/'
+const CARD = 'application/vnd.microsoft.card.adaptive'
+const PRESSED = 'spore'
+const ANSWERING = new Set(['Action.Submit', 'Action.Execute'])
 const SHAPE = '{ "app": "<app id>", "tenant": "<tenant id>", "secret": "${OPS_TEAMS_SECRET}", "listen": "127.0.0.1:3978", "people": { "<object id>": "<spore>" }, "channels": { "<channel id>": { "spores": ["<spore>"], "people": ["<object id>"] } } }' // eslint-disable-line no-template-curly-in-string
 
 const invalid = (path, problem, detail = `a bot is ${SHAPE}`) => new SporeError(`${path} ${problem}`, { type: 'TEAMS_BOT_INVALID', detail })
@@ -108,7 +111,7 @@ export const TEAMS = {
   routeOf: (conversation) => conversation.split(THREAD)[0],
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 40000, file: 0, editEveryMs: 2500, typingEveryMs: 4000 },
-  can: { upload: false, remove: true, react: false, typing: false, reply: true },
+  can: { upload: false, remove: true, react: false, typing: false, reply: true, choose: true },
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {
@@ -161,6 +164,48 @@ export function normalize (activity) {
 
 const tenantOf = (activity) => activity.conversation?.tenantId ?? activity.channelData?.tenant?.id
 
+/** Whether anything in a card, however deep — an action set, a select action, a refresh — sends a press back to the bot. */
+const answersBack = (value) => Array.isArray(value)
+  ? value.some(answersBack)
+  : record(value) && (ANSWERING.has(value.type) || Object.values(value).some(answersBack))
+
+/** What an approval shows, as an Adaptive Card: the host's own, or the default body — its text, then its facts. */
+const cardOf = ({ native, fallback }) => native
+  ? structuredClone(native)
+  : {
+      type: 'AdaptiveCard',
+      $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+      version: '1.5',
+      body: [
+        ...(fallback.text ? [{ type: 'TextBlock', text: fallback.text, wrap: true }] : []),
+        ...(fallback.facts?.length ? [{ type: 'FactSet', facts: fallback.facts.map(([title, value]) => ({ title, value })) }] : [])
+      ]
+    }
+
+/** The card as it was shown, the relay's buttons gone and how it ended below. */
+const closed = (card, outcome) => ({
+  ...card,
+  body: [...(card.body ?? []), { type: 'TextBlock', text: `**${outcome}**`, wrap: true }],
+  actions: (card.actions ?? []).filter(action => !(record(action.data) && Object.hasOwn(action.data, PRESSED)))
+})
+
+/**
+ * A press on one of the relay's buttons, as the relay takes it, from an `adaptiveCard/action`
+ * invoke: what Teams merged into the action's data besides the relay's own is what the person
+ * filled in.
+ */
+export function choiceOf (activity) {
+  const personal = activity.conversation.conversationType === 'personal'
+  const { [PRESSED]: data = null, ...inputs } = record(activity.value?.action?.data) ? activity.value.action.data : {}
+  return {
+    conversation: personal ? activity.from.aadObjectId : activity.conversation.id,
+    data,
+    inputs: Object.keys(inputs).length ? inputs : null,
+    person: { id: activity.from.aadObjectId, name: activity.from.name, groups: [] },
+    where: personal ? 'a personal chat in Teams' : 'a Teams channel'
+  }
+}
+
 /**
  * The live adapter. `receive({ onActivity, signal, log })` is the transport — the listener, or a
  * test's — and hands over each activity already checked. A post to a person goes to the chat they
@@ -212,6 +257,33 @@ export function createAdapter ({ connector, receive, app, tenant }) {
     ...(answering === null ? {} : { replyToId: answering })
   })
 
+  /** An activity into a conversation, answering its note: a person's chat, made when there is none yet; a thread; or a new post in a channel. */
+  const into = async (conversation, act) => {
+    if (!conversation.startsWith('19:')) {
+      const chat = await chatOf(conversation)
+      return `${chat} ${await connector.send(serviceOf(conversation), chat, act)}`
+    }
+    if (conversation.includes(THREAD)) return `${conversation} ${await connector.send(serviceOf(conversation), conversation, act)}`
+    const { replyToId, ...root } = act
+    const made = await connector.create(serviceOf(conversation), { isGroup: true, channelData: { channel: { id: conversation }, tenant: { id: tenant } }, activity: root })
+    return `${made.id} ${made.activityId}`
+  }
+
+  /**
+   * An invoke from one of the relay's buttons handed to `onChoice`, and answered as Teams wants an
+   * `adaptiveCard/action` answered: a short message, what the relay acknowledged it with.
+   */
+  const press = async (one, onChoice, log) => {
+    const answered = (value) => ({ statusCode: 200, type: 'application/vnd.microsoft.activity.message', value })
+    if (!one.from?.aadObjectId) {
+      log(`a press in ${one.conversation.id} from ${one.from?.name ?? 'someone'} with no Entra object id, not taken`)
+      return answered('who pressed this is not known')
+    }
+    let said = 'this button no longer does anything'
+    await onChoice({ ...choiceOf(one), acknowledge: async (text) => { if (text) said = text } })
+    return answered(said)
+  }
+
   return {
     ...TEAMS,
 
@@ -220,12 +292,13 @@ export function createAdapter ({ connector, receive, app, tenant }) {
       save = persist
     },
 
-    listen: ({ onMessage, signal, log }) => receive({
+    listen: ({ onMessage, onChoice, signal, log }) => receive({
       signal,
       log,
       onActivity: async (one) => {
         if (tenantOf(one) !== tenant) return log(`dropped an activity from tenant ${tenantOf(one)}: this bot serves ${tenant}`)
         remember(one)
+        if (one.type === 'invoke' && one.name === 'adaptiveCard/action' && one.value?.trigger !== 'automatic') return press(one, onChoice, log)
         if (one.type !== 'message') return
         if (one.conversation.conversationType === 'groupChat') return log(`group chat ${one.conversation.id}: group chats are not served yet`)
         if (!one.from?.aadObjectId) return log(`a message in ${one.conversation.id} from ${one.from?.name ?? 'someone'} with no Entra object id, not taken`)
@@ -233,17 +306,7 @@ export function createAdapter ({ connector, receive, app, tenant }) {
       }
     }),
 
-    post: async (conversation, text, { answering = null, markdown = false } = {}) => {
-      if (!conversation.startsWith('19:')) {
-        const chat = await chatOf(conversation)
-        return `${chat} ${await connector.send(serviceOf(conversation), chat, activity(text, { markdown, answering }))}`
-      }
-      if (conversation.includes(THREAD)) {
-        return `${conversation} ${await connector.send(serviceOf(conversation), conversation, activity(text, { markdown, answering }))}`
-      }
-      const made = await connector.create(serviceOf(conversation), { isGroup: true, channelData: { channel: { id: conversation }, tenant: { id: tenant } }, activity: activity(text, { markdown }) })
-      return `${made.id} ${made.activityId}`
-    },
+    post: (conversation, text, { answering = null, markdown = false } = {}) => into(conversation, activity(text, { markdown, answering })),
 
     edit: async (conversation, note, text) => {
       const where = placeOf(note)
@@ -253,6 +316,32 @@ export function createAdapter ({ connector, receive, app, tenant }) {
     remove: async (conversation, note) => {
       const where = placeOf(note)
       await connector.remove(serviceOf(conversation), where.conversation, where.id)
+    },
+
+    checkBody: (native) => {
+      if (native.type !== 'AdaptiveCard' || !(Number(native.version) >= 1.4)) {
+        return 'a Teams body is an Adaptive Card of version 1.4 or later, as { "type": "AdaptiveCard", "version": "1.5", "body": [ … ] }'
+      }
+      if (answersBack(native)) return 'a Teams body carries no Action.Submit or Action.Execute, nor a refresh — the buttons that answer are the ones spore adds'
+      return null
+    },
+
+    /** The question as a card, each choice an `Action.Execute` under it. */
+    ask: async (conversation, shown, choices) => {
+      const card = cardOf(shown)
+      card.actions = [
+        ...(card.actions ?? []),
+        ...choices.map(choice => ({ type: 'Action.Execute', title: choice.label, verb: 'answer', data: { [PRESSED]: choice.data }, ...(choice.style ? { style: choice.style } : {}) }))
+      ]
+      return { note: await into(conversation, { type: 'message', attachments: [{ contentType: CARD, content: card }] }), shown: card }
+    },
+
+    /** The question closed: replaced by `native` or `fallback`, or kept as `shown` with how it ended below. */
+    settle: async (conversation, note, replacement) => {
+      const card = replacement.shown ? closed(replacement.shown, replacement.outcome) : cardOf(replacement)
+      const where = placeOf(note)
+      await connector.update(serviceOf(conversation), where.conversation, where.id, { type: 'message', id: where.id, attachments: [{ contentType: CARD, content: card }] })
+      return card
     }
   }
 }

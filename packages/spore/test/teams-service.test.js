@@ -5,10 +5,12 @@
 
 import './fixtures/own-config.js'
 import { describe, it, expect } from 'vitest'
+import { join } from 'node:path'
 
 import { conformance } from './fixtures/relay-conformance.js'
 import { answers } from './fixtures/scripted-model.js'
-import { readInbox } from '../src/core/spore-dir.js'
+import { approvalOf, readInbox } from '../src/core/spore-dir.js'
+import { requestApproval } from '../src/library/verbs.js'
 import { send } from '../src/core/send.js'
 import { SporeError } from '../src/index.js'
 import { TEAMS, createAdapter } from '../../../plugins/teams/src/adapter.js'
@@ -36,13 +38,15 @@ const standIn = () => {
   }
   const posted = (conversation, activity) => {
     id += 1
-    sent.push({ op: 'post', conversation, id: String(id), text: activity.text, answering: activity.replyToId ?? null, formatted: activity.textFormat === 'markdown' })
+    if (activity.attachments) sent.push({ op: 'ask', conversation, id: String(id), card: activity.attachments[0].content })
+    else sent.push({ op: 'post', conversation, id: String(id), text: activity.text, answering: activity.replyToId ?? null, formatted: activity.textFormat === 'markdown' })
     return String(id)
   }
   return {
     sent,
     created,
     delivered,
+    replies: new Map(),
     lastMessage: 0,
     push (activity) { waiting.push(activity); wake?.() },
     fail: (op, error, times = 1) => faults.push({ op, error, times }),
@@ -53,7 +57,8 @@ const standIn = () => {
       },
       update: async (serviceUrl, conversation, activityId, activity) => {
         fault('update')
-        sent.push({ op: 'edit', conversation, id: activityId, text: activity.text })
+        if (activity.attachments) sent.push({ op: 'close', conversation, id: activityId, card: activity.attachments[0].content })
+        else sent.push({ op: 'edit', conversation, id: activityId, text: activity.text })
       },
       remove: async (serviceUrl, conversation, activityId) => {
         fault('remove')
@@ -77,7 +82,9 @@ const standIn = () => {
           wake = null
           continue
         }
-        await onActivity(waiting.shift())
+        const activity = waiting.shift()
+        const reply = await onActivity(activity)
+        if (reply) this.replies.set(activity.id, reply)
       }
     }
   }
@@ -89,6 +96,8 @@ const said = (one) => {
   const note = `${one.conversation} ${one.id}`
   if (one.op === 'post') return { op: 'post', note, text: one.text, answering: one.answering, formatted: one.formatted }
   if (one.op === 'edit') return { op: 'edit', note, text: one.text }
+  if (one.op === 'ask') return { op: 'ask', note, text: JSON.stringify(one.card), choices: one.card.actions.filter(action => action.data?.spore).map(action => ({ label: action.title, data: action.data.spore, style: action.style ?? null })) }
+  if (one.op === 'close') return { op: 'close', note, text: JSON.stringify(one.card) }
   return { op: 'remove', note }
 }
 
@@ -143,6 +152,23 @@ const harness = {
     }
   },
   seen: (teams, conversation) => teams.sent.filter(one => inConversation(one, conversation)).map(said),
+  press (teams, { note, data, person, inputs = {} }) {
+    const conversation = note.slice(0, note.lastIndexOf(' '))
+    const shared = conversation.startsWith('19:')
+    const id = String(++teams.lastMessage)
+    teams.push({
+      type: 'invoke',
+      name: 'adaptiveCard/action',
+      id,
+      channelId: 'msteams',
+      serviceUrl: SERVICE,
+      conversation: { id: conversation, conversationType: shared ? 'channel' : 'personal', tenantId: TENANT },
+      from: { id: `29:${person}`, aadObjectId: person, name: `U${person} Smith` },
+      recipient: { id: `28:${APP}`, name: 'Triage' },
+      value: { action: { type: 'Action.Execute', verb: 'answer', data: { ...inputs, spore: data } }, trigger: 'manual' }
+    })
+    return { acknowledged: () => teams.replies.has(id) ? { text: teams.replies.get(id).value } : undefined }
+  },
   fail: (teams, op, error, times) => teams.fail(OPS[op], error, times),
   retryable: (retryAfter) => new SporeError('teams POST failed', { type: 'TEAMS_FAILED', retryable: true, detail: 'Too Many Requests', context: { status: 429, code: null, retryAfter } }),
   refused: (detail) => new SporeError('teams POST failed', { type: 'TEAMS_FAILED', retryable: false, detail, context: { status: 403, code: null, retryAfter: null } }),
@@ -152,6 +178,47 @@ const harness = {
 conformance(harness, (ctx) => {
   describe('on Teams', () => {
     const CHANNEL = harness.shared(5)
+    const CARD = { type: 'AdaptiveCard', version: '1.5', body: [{ type: 'TextBlock', text: 'Apply the change?' }, { type: 'Input.Text', id: 'comment' }], actions: [{ type: 'Action.OpenUrl', title: 'Preview', url: 'https://example.com/preview' }] }
+    const asking = (body) => requestApproval({
+      ws: ctx.ws,
+      configFile: join(ctx.root, 'config.json'),
+      request: { to: 'teams:triage/1', by: ['1'], options: [{ id: 'apply', label: 'Apply', style: 'positive' }], body }
+    }).approval
+
+    it('asks an approval on its own card, its buttons after the card\'s, and hands on what was filled in with the press', async () => {
+      ctx.start({ approveEveryMs: 50 })
+      const id = asking({ teams: CARD })
+      await ctx.until(() => ctx.seen('1').some(one => one.op === 'ask'))
+      const question = ctx.seen('1').find(one => one.op === 'ask')
+      const card = ctx.platform.sent.find(one => one.op === 'ask').card
+      expect(card.body).toEqual(CARD.body)
+      expect(card.actions).toEqual([CARD.actions[0], { type: 'Action.Execute', title: 'Apply', verb: 'answer', data: { spore: `ap:${id}:apply` }, style: 'positive' }])
+
+      const pressed = harness.press(ctx.platform, { note: question.note, data: question.choices[0].data, person: '1', inputs: { comment: 'looks right' } })
+      await ctx.until(() => pressed.acknowledged())
+      expect(ctx.platform.replies.get([...ctx.platform.replies.keys()].at(-1))).toEqual({ statusCode: 200, type: 'application/vnd.microsoft.activity.message', value: 'Apply — recorded' })
+      await ctx.until(() => approvalOf(ctx.ws, id).told)
+      expect(approvalOf(ctx.ws, id)).toMatchObject({ state: 'answered', inputs: { comment: 'looks right' } })
+      const closed = ctx.platform.sent.find(one => one.op === 'close').card
+      expect(closed.actions).toEqual([CARD.actions[0]])
+      expect(closed.body.at(-1)).toEqual({ type: 'TextBlock', text: '**Apply — U1 Smith**', wrap: true })
+    })
+
+    it('refuses a card that answers by itself, wherever its action sits, and one older than 1.4', async () => {
+      ctx.start({ approveEveryMs: 50 })
+      const refused = [
+        { ...CARD, body: [{ type: 'ActionSet', actions: [{ type: 'Action.Submit', title: 'Go' }] }] },
+        { ...CARD, body: [{ type: 'Container', items: [], selectAction: { type: 'Action.Execute', verb: 'go' } }] },
+        { ...CARD, refresh: { action: { type: 'Action.Execute', verb: 'go' }, userIds: [] } },
+        { ...CARD, version: '1.2' }
+      ].map(card => asking({ teams: card }))
+      await ctx.until(() => refused.every(id => approvalOf(ctx.ws, id).settledAt))
+      expect(refused.map(id => approvalOf(ctx.ws, id).reason)).toEqual([
+        ...Array(3).fill('a Teams body carries no Action.Submit or Action.Execute, nor a refresh — the buttons that answer are the ones spore adds'),
+        'a Teams body is an Adaptive Card of version 1.4 or later, as { "type": "AdaptiveCard", "version": "1.5", "body": [ … ] }'
+      ])
+      expect(ctx.seen('1').some(one => one.op === 'ask')).toBe(false)
+    })
 
     it('answers a channel message in its thread, and a turn nobody there started as a new post in the channel', async () => {
       ctx.routes({ [CHANNEL]: { spore: 'triage', shared: true } })

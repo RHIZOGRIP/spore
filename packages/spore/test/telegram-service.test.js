@@ -9,7 +9,8 @@ import { join } from 'node:path'
 
 import { conformance } from './fixtures/relay-conformance.js'
 import { answers } from './fixtures/scripted-model.js'
-import { outbox, readInbox, readTurns } from '../src/core/spore-dir.js'
+import { approvalOf, outbox, readInbox, readTurns } from '../src/core/spore-dir.js'
+import { requestApproval } from '../src/library/verbs.js'
 import { SporeError } from '../src/index.js'
 import { TELEGRAM, createAdapter } from '@rhizogrip/spore-plugin-telegram/src/adapter.js'
 
@@ -34,6 +35,7 @@ const standIn = () => {
     delivered,
     lastUpdate: 0,
     lastMessage: 0,
+    lastQuery: 0,
     onPoll: () => {},
     push (update) { waiting.push(update); wake?.() },
     fail: (op, error, times = 1) => faults.push({ op, error, times }),
@@ -82,6 +84,21 @@ const standIn = () => {
       sent.push({ op: 'typing', chat })
       return true
     },
+    ask: async (chat, text, keyboard) => {
+      fault('ask')
+      id += 1
+      sent.push({ op: 'ask', chat, message: id, text, keyboard })
+      return { message_id: id }
+    },
+    close: async (chat, message, text) => {
+      fault('close')
+      sent.push({ op: 'close', chat, message, text })
+      return true
+    },
+    answer: async (query, text) => {
+      sent.push({ op: 'answer', query, text })
+      return true
+    },
     me: async () => ME
   }
 }
@@ -92,6 +109,8 @@ const said = (one) => {
   if (one.op === 'remove') return { op: 'remove', note: one.message }
   if (one.op === 'react') return { op: 'react', message: one.message, emoji: one.emoji }
   if (one.op === 'typing') return { op: 'typing' }
+  if (one.op === 'ask') return { op: 'ask', note: one.message, text: one.text, choices: one.keyboard.map(([button]) => ({ label: button.text, data: button.callback_data, style: button.style ?? null })) }
+  if (one.op === 'close') return { op: 'close', note: one.message, text: one.text }
   return { op: 'upload', path: one.path, caption: one.caption }
 }
 
@@ -136,6 +155,12 @@ const harness = {
     }
   },
   seen: (telegram, conversation) => telegram.sent.filter(one => String(one.chat) === conversation).map(said),
+  press (telegram, { conversation, note, data, person = conversation }) {
+    const query = `q${++telegram.lastQuery}`
+    const chat = Number(conversation) < 0 ? { id: Number(conversation), type: 'group', title: `group ${conversation}` } : { id: Number(conversation), type: 'private' }
+    telegram.push({ update_id: ++telegram.lastUpdate, callback_query: { id: query, from: { id: Number(person), first_name: `U${person}`, username: `u${person}` }, message: { message_id: note, chat }, data } })
+    return { acknowledged: () => telegram.sent.find(one => one.op === 'answer' && one.query === query) }
+  },
   fail: (telegram, op, error, times) => telegram.fail(OPS[op], error, times),
   retryable: (retryAfter) => new SporeError('telegram failed', { type: 'TELEGRAM_FAILED', retryable: true, detail: 'Too Many Requests', context: { status: 429, retryAfter } }),
   refused: (detail) => new SporeError('telegram failed', { type: 'TELEGRAM_FAILED', retryable: false, detail, context: { status: 400, retryAfter: null } }),
@@ -144,6 +169,34 @@ const harness = {
 
 conformance(harness, (ctx) => {
   describe('on Telegram', () => {
+    const asking = (request) => requestApproval({
+      ws: ctx.ws,
+      configFile: join(ctx.root, 'config.json'),
+      request: { to: 'telegram:triage/1', by: ['1'], options: [{ id: 'yes', label: 'Yes', style: 'positive' }, { id: 'no', label: 'No', style: 'destructive' }, { id: 'later', label: 'Later' }], ...request }
+    }).approval
+
+    it('asks an approval in its own HTML where it has some, each choice a button coloured by its style', async () => {
+      ctx.start({ approveEveryMs: 50 })
+      const id = asking({ body: { telegram: { html: '<b>Ship</b> it?' }, default: { text: 'not this' } } })
+      await ctx.until(() => ctx.platform.sent.some(one => one.op === 'ask'))
+      const asked = ctx.platform.sent.find(one => one.op === 'ask')
+      expect(asked.text).toBe('<b>Ship</b> it?')
+      expect(asked.keyboard).toEqual([
+        [{ text: 'Yes', callback_data: `ap:${id}:yes`, style: 'success' }],
+        [{ text: 'No', callback_data: `ap:${id}:no`, style: 'danger' }],
+        [{ text: 'Later', callback_data: `ap:${id}:later` }]
+      ])
+    })
+
+    it('asks the default body as its text and a line per fact, and refuses a body of its own that is not Telegram\'s', async () => {
+      ctx.start({ approveEveryMs: 50 })
+      asking({ body: { default: { text: 'Apply **this**?', facts: [['Now', '<82 %>']] } } })
+      const wrong = asking({ body: { telegram: { text: 'x' } } })
+      await ctx.until(() => ctx.platform.sent.some(one => one.op === 'ask') && approvalOf(ctx.ws, wrong).settledAt)
+      expect(ctx.platform.sent.find(one => one.op === 'ask').text).toBe('Apply <b>this</b>?\n\n<b>Now</b>: &lt;82 %&gt;')
+      expect(approvalOf(ctx.ws, wrong)).toMatchObject({ state: 'refused', reason: expect.stringMatching(/^a Telegram body is \{ "html"/) })
+    })
+
     it('confirms an update only once the spore has it', async () => {
       const seen = []
       ctx.platform.onPoll = (offset) => seen.push({ offset, inbox: readInbox(ctx.ws).length })

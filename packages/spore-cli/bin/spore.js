@@ -69,6 +69,8 @@ const VERBS = `Usage:
   spore schedule rm <name> <sched>          remove one; what it fired stays in the inbox
   spore schedule ls [<name>]                its schedules, and why any is not firing
   spore tick                                fire every schedule that is due — run by a timer
+  spore approval ask <name> [<request.json>|-]  ask people to choose, with buttons only they can press, where the request says
+  spore approval ls <name>                  the approvals asked in it, and how each ended
   spore job ls [<name>]                     its jobs: running ones with their progress, ended ones how
   spore job stop <name> <job>               ask a running job's supervisor to stop it
   spore pause [why]                         stop every turn and job of your spores, and start none
@@ -149,6 +151,7 @@ const SHAPES = {
   upgrade: withJson(1, 'all'),
   plugin: { bare: 'ls', subs: { ls: withJson(0), show: withJson(1), allow: withJson(ALL), disallow: withJson(1) } },
   schedule: { bare: 'ls', subs: { set: withJson(3), rm: withJson(2), ls: withJson(1) } },
+  approval: { bare: 'ls', subs: { ask: withJson(2), ls: withJson(1) } },
   job: { bare: 'ls', subs: { ls: withJson(1), stop: withJson(2) } },
   tick: withJson(0),
   pause: withJson(ALL),

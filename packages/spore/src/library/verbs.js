@@ -13,7 +13,8 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 
 import { readConfig, existing, addTo, workspaceFor, CONFIG_FILE, containing, recordLayout } from './config.js'
 import { isWorkspace, sporesInHome } from './discover.js'
-import { acquireLock, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
+import { acquireLock, approvalsIn, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
+import { askApproval } from './approvals.js'
 import { sqlLines } from './sql.js'
 import { TOOL_NAMES } from '../core/tool-names.js'
 import { cloneCapability } from '../core/clone.js'
@@ -748,6 +749,18 @@ export function setSchedule ({ ws, name, source, configFile = CONFIG_FILE } = {}
 
 export function removeSchedule ({ ws, name, configFile = CONFIG_FILE } = {}) {
   return dropSchedule(here(ws, configFile), name)
+}
+
+/** An approval asked in the spore, for the relay of the place it names to post (ARCHITECTURE §Approvals). */
+export function requestApproval ({ ws, request, configFile = CONFIG_FILE } = {}) {
+  const path = here(ws, configFile)
+  return { ws: path, ...askApproval(path, request, { configFile }) }
+}
+
+/** The spore's approvals, oldest first, each as far as it has gone. */
+export function listApprovals ({ ws, configFile = CONFIG_FILE } = {}) {
+  const path = here(ws, configFile)
+  return { ws: path, approvals: approvalsIn(path) }
 }
 
 export function extend ({ ws, dimension, amount, configFile = CONFIG_FILE } = {}) {
