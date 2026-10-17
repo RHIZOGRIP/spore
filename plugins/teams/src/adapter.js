@@ -130,9 +130,20 @@ export const TEAMS = {
 
 const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': '\'', '&nbsp;': ' ' }
 
-/** Teams' markup made plain: the bot's own mention gone, anyone else's as `@name`, tags dropped. */
-const plain = (html, own) => html
-  .replace(/<at[^>]*>(.*?)<\/at>/gis, (whole, name) => own.includes(whole) ? '' : `@${name}`)
+const LEADING_AT = /^(?:\s|&nbsp;|<(?!at[\s>])[^>]*>)*(<at[^>]*>.*?<\/at>)/is
+
+const unaddressed = (html, own) => {
+  let rest = html
+  for (let found = LEADING_AT.exec(rest); found && own.includes(found[1]); found = LEADING_AT.exec(rest)) rest = rest.slice(found[0].length)
+  return rest
+}
+
+/**
+ * Teams' markup made plain: the bot's own mentions that open the message gone, since they only
+ * address it; every other mention, the bot's within the sentence included, as `@name`; tags dropped.
+ */
+const plain = (html, own) => unaddressed(html, own)
+  .replace(/<at[^>]*>(.*?)<\/at>/gis, (_, name) => `@${name}`)
   .replace(/<br\s*\/?>|<\/p>/gi, '\n')
   .replace(/<[^>]+>/g, '')
   .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (entity) => ENTITIES[entity])
@@ -143,7 +154,7 @@ const plain = (html, own) => html
  * What an activity brought, as the relay lists files. In a personal chat a file comes as a
  * download link, which needs no token; a pasted image as a link Teams serves the bot alone, which
  * gets the bot's token only where it is the activity's own service. Anything else is listed with
- * why; a file sent in a channel never comes at all, since Teams hands a bot the message alone.
+ * why; a file or picture sent in a channel never comes at all, since Teams hands a bot the text alone.
  */
 function filesOf (activity, personal) {
   const service = new URL(activity.serviceUrl).host

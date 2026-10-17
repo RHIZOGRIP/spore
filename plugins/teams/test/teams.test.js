@@ -138,6 +138,11 @@ describe('an activity', () => {
     expect(normalize(inChannel('ask <at>Bob</at>', { entities: [{ type: 'mention', mentioned: { id: '29:bob', name: 'Bob' }, text: '<at>Bob</at>' }] }))).toMatchObject({ text: 'ask @Bob', addresses: [] })
   })
 
+  it('keeps a mention of the bot that is part of the sentence, dropping only the ones that open it', () => {
+    expect(normalize(inChannel('again for <at>Triage</at>', { entities: [mentioning('Triage')] })).text).toBe('again for @Triage')
+    expect(normalize(inChannel('<p><at>Triage</at> <at>Triage</at>&nbsp;can <at>Triage</at> read this?</p>', { entities: [mentioning('Triage')] })).text).toBe('can @Triage read this?')
+  })
+
   it('reads a command once the mention is gone, and its markup as plain text', () => {
     expect(normalize(inChannel('<at>Triage</at> /extend wall 30m', { entities: [mentioning('Triage')] })).command).toEqual({ verb: 'extend', args: 'wall 30m' })
     expect(normalize(personal({ text: '<p>a &amp; b<br>c&nbsp;d</p>' })).text).toBe('a & b\nc d')

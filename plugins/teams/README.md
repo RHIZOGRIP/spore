@@ -84,8 +84,8 @@ which is also how you learn object ids: start with `"people": {}` and write to t
 ## A turn
 
 In a personal chat, anything written reaches the spore. In a channel, a message reaches it when
-it mentions the bot, and the mention is not part of what the spore is told; the spore is told who
-wrote and where. The bot posts `working…` and shows what kind of call runs as it runs; the answer
+it mentions the bot. A mention that opens the message is not part of what the spore is told, while
+one inside the sentence stays as `@<bot>`; the spore is told who wrote and where. The bot posts `working…` and shows what kind of call runs as it runs; the answer
 is a new message — in a channel, in the thread of the message it answers — and `working…` is then
 removed, or marked `answered below` where Teams will not remove it; in a channel thread, Teams shows
 `This message has been deleted.` where it was. The answer is sent in Teams' extended Markdown,
@@ -94,10 +94,10 @@ line for line. What the turn left in `data/out/` is named, one line a file.
 
 A file sent in a personal chat reaches the spore, fetched from the sender's OneDrive by the link
 Teams gives the bot, as does an image pasted there, which Teams serves the bot alone — up to 25 MB
-each, or the bot file's `"files": "10MB"` (`false` takes none). A file attached in a channel never
-reaches the bot: Teams sends it the message's text alone, with nothing saying a file came with it,
-so neither the person nor the spore is told — send it in a personal chat. A file that does not
-come is told, to the person and to the spore.
+each, or the bot file's `"files": "10MB"` (`false` takes none). A file attached in a channel, or a
+picture pasted there, never reaches the bot: Teams sends it the message's text alone, with nothing
+saying anything came with it, so neither the person nor the spore is told — send it in a personal
+chat. A file that does not come is told, to the person and to the spore.
 
 ```
 /status    what the spore is doing, its turns and what they cost, and the running turn's limits
@@ -149,7 +149,7 @@ you needed.
 
 ## Not yet
 
-Group chats (logged and left), private and shared channels, files in a channel, a spore's files
+Group chats (logged and left), private and shared channels, files and pictures in a channel, a spore's files
 sent rather than named, and a bot serving tenants other than its own.
 
 ## What it keeps
