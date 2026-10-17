@@ -6,6 +6,7 @@
  */
 
 import { SporeError } from '@rhizogrip/spore'
+import { download } from '@rhizogrip/spore/relay'
 
 const RETRYABLE = new Set([412, 429, 502, 503, 504])
 
@@ -49,6 +50,10 @@ export function createConnector ({ token, fetchImpl = fetch }) {
     remove: (serviceUrl, conversation, id) => call('DELETE', `${activities(serviceUrl, conversation)}/${encodeURIComponent(id)}`),
 
     /** A conversation made — a person's chat with the bot, or a new post in a channel: `{ id, activityId }`. */
-    create: (serviceUrl, body) => call('POST', `${base(serviceUrl)}v3/conversations`, body)
+    create: (serviceUrl, body) => call('POST', `${base(serviceUrl)}v3/conversations`, body),
+
+    /** A file a person sent, refused past `most` — `withToken` where Teams serves it only to the bot. */
+    download: async (url, { most, withToken = false }) =>
+      download(url, { most, fetchImpl, headers: withToken ? { authorization: `Bearer ${await token()}` } : {} })
   }
 }

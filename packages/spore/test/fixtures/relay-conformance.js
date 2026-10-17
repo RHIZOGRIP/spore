@@ -18,7 +18,8 @@
  *   words(text)                            the person's words in what the spore was given for them
  *   formats                                whether the platform has a formatted mode beside a plain one
  *   say(platform, { conversation, text, files, id, shared, person })
- *                                          a person writes there, to the spore, `id` repeating an
+ *                                          a person writes there, to the spore, `files` sent with
+ *                                          it as [{ name, mime, data }], `id` repeating an
  *                                          earlier delivery, `shared` in a conversation many people
  *                                          share, `person` their id there; answers
  *                                          { id, message, from }: the delivery's id, the platform's id
@@ -36,7 +37,7 @@
  *                                          carrying `data` on the question `note`; answers
  *                                          { acknowledged() }, what the platform showed them once
  *                                          the press was answered — { text } — or undefined before
- *   fail(platform, op, error, times)       make `post`, `edit`, `remove` or `upload` fail
+ *   fail(platform, op, error, times)       make `post`, `edit`, `remove`, `upload` or `fetch` fail
  *   retryable(retryAfter), refused(detail) the platform's errors
  *   command(verb, args)                    what a person types for a command
  *
@@ -54,7 +55,7 @@ import { answers, calls, scriptedMo } from './scripted-model.js'
 import { outsideRoot } from './outside-ws.js'
 import { brokerSocketPath } from '../../src/infra/broker-socket.js'
 import { definitionWith } from '../../src/core/identity-defaults.js'
-import { answerApproval, approvalOf, outbox, readInbox, readLock, readTurns, statePath as databaseOf } from '../../src/core/spore-dir.js'
+import { answerApproval, approvalOf, outbox, readInbox, readLock, readTurns, saidOf, statePath as databaseOf } from '../../src/core/spore-dir.js'
 import { CONFIG_FILE } from '../../src/library/config.js'
 import { requestApproval } from '../../src/library/verbs.js'
 import { send } from '../../src/core/send.js'
@@ -295,16 +296,11 @@ export function conformance (harness, platformTests = () => {}) {
         expect(readInbox(ws).map(entry => harness.words(entry.text))).toEqual(['hello'])
       })
 
-      it('with no text is told that only text reaches a spore, and one with files that they did not go', async () => {
+      it('with neither text nor a file is told what reaches a spore', async () => {
         start()
-        say({ conversation: '1', text: null, files: 1 })
-        await until(() => posted('1', 'only text reaches a spore for now'))
+        say({ conversation: '1', text: null })
+        await until(() => posted('1', 'only text and files reach a spore'))
         expect(readInbox(ws)).toEqual([])
-
-        say({ conversation: '1', text: 'what is in this', files: 1 })
-        await until(() => posted('1', 'only text reaches a spore for now: your file did not reach triage'))
-        await until(() => posted('1', 'hello back'))
-        expect(readInbox(ws).map(entry => harness.words(entry.text))).toEqual(['what is in this'])
       })
 
       it('shows a conversation that asked for details the command itself, and no other', async () => {
@@ -407,6 +403,64 @@ export function conformance (harness, platformTests = () => {}) {
         } finally {
           chmodSync(databaseOf(ws), 0o644)
         }
+      })
+    })
+
+    describe('files', () => {
+      const file = (name, text, mime = 'text/plain') => ({ name, mime, data: Buffer.from(text) })
+      const kept = (entry) => entry.files.map(one => ({ name: one.name, bytes: one.bytes, read: one.path === null ? null : readFileSync(join(ws, one.path), 'utf8'), missing: one.missing ?? null }))
+
+      it('reach the spore with what was said, each under its name, fetched by the bot', async () => {
+        start()
+        say({ conversation: '1', text: 'what is in this', files: [file('report.txt', 'q3 numbers')] })
+        await until(() => posted('1', 'hello back'))
+        const [entry] = readInbox(ws)
+        expect(harness.words(entry.text)).toBe('what is in this')
+        expect(kept(entry)).toEqual([{ name: 'report.txt', bytes: 10, read: 'q3 numbers', missing: null }])
+        expect(entry.files[0].path).toMatch(/^inbox\.d\/[^/]+\/report\.txt$/)
+      })
+
+      it('reach the spore on their own, with nothing written, and two of one name are both kept', async () => {
+        start()
+        say({ conversation: '1', text: null, files: [file('image.png', 'first'), file('image.png', 'second')] })
+        await until(() => posted('1', 'hello back'))
+        const [entry] = readInbox(ws)
+        expect(readInbox(ws)).toHaveLength(1)
+        expect(kept(entry).map(one => one.read)).toEqual(['first', 'second'])
+        expect(entry.files.map(one => one.path.split('/').pop())).toEqual(['image.png', 'image-2.png'])
+      })
+
+      it('over what the bot takes are told to the person and to the spore, and the rest still go', async () => {
+        routes({ 1: { spore: 'triage' } }, {}, { files: '1KB' })
+        start()
+        say({ conversation: '1', text: 'both', files: [file('small.txt', 'fits'), file('big.bin', 'x'.repeat(2048), 'application/octet-stream')] })
+        await until(() => posted('1', 'hello back'))
+        expect(posts('1').some(one => /^big\.bin did not reach the spore: (2 KB, )?over the 1 KB this bot takes$/.test(one.text))).toBe(true)
+        const [entry] = readInbox(ws)
+        const [small, big] = kept(entry)
+        expect(small).toEqual({ name: 'small.txt', bytes: 4, read: 'fits', missing: null })
+        expect(big).toMatchObject({ name: 'big.bin', read: null, missing: expect.stringMatching(/over the 1 KB this bot takes$/) })
+        expect([2048, null]).toContain(big.bytes)
+        expect(saidOf(entry)).toMatch(/big\.bin did not come: .*over the 1 KB this bot takes\]$/)
+      })
+
+      it('the bot takes none of are told so, and what was written still reaches the spore', async () => {
+        routes({ 1: { spore: 'triage' } }, {}, { files: false })
+        start()
+        say({ conversation: '1', text: 'here', files: [file('notes.txt', 'n')] })
+        await until(() => posted('1', 'hello back'))
+        expect(posted('1', 'notes.txt did not reach the spore: this bot takes no files')).toBe(true)
+        expect(readInbox(ws)[0].files[0]).toMatchObject({ path: null, missing: 'this bot takes no files' })
+      })
+
+      it('that cannot be fetched are told, and what was written still reaches the spore', async () => {
+        harness.fail(platform, 'fetch', harness.refused('Not Found'), 5)
+        start()
+        say({ conversation: '1', text: 'look', files: [file('gone.txt', 'g')] })
+        await until(() => posted('1', 'hello back'))
+        expect(posts('1').some(one => one.text.startsWith('gone.txt did not reach the spore: it could not be fetched — '))).toBe(true)
+        expect(harness.words(readInbox(ws)[0].text)).toBe('look')
+        expect(logs.some(line => line.includes('gone.txt from message'))).toBe(true)
       })
     })
 

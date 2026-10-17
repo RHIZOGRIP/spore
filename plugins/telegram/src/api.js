@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 
 import { SporeError } from '@rhizogrip/spore'
+import { download } from '@rhizogrip/spore/relay'
 
 const BASE = 'https://api.telegram.org'
 
@@ -100,6 +101,12 @@ export function createTelegram (token, { fetchImpl = fetch, base = BASE } = {}) 
       return call('sendDocument', form, { timeoutMs: 300_000 })
     },
 
-    me: () => call('getMe')
+    me: () => call('getMe'),
+
+    /** Where Telegram keeps a file a person sent: `{ file_path, file_size }`. */
+    file: (id) => call('getFile', { file_id: id }),
+
+    /** A file's bytes by its `file_path`, refused past `most`. */
+    download: (path, { most }) => download(`${base}/file/bot${token}/${path}`, { most, fetchImpl })
   }
 }

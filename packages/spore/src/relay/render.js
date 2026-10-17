@@ -134,7 +134,11 @@ export function waiting ({ record }, { brief = false } = {}) {
 
 export const leftOut = (more) => `and ${more} more file${more === 1 ? '' : 's'} in data/out/, in the spore's workspace`
 
-export const unpassed = (count, spores) => `only text reaches a spore for now: your ${count === 1 ? 'file' : `${count} files`} did not reach ${spores.join(' or ')}`
+/** A size as a person reads it: whole kilobytes under a megabyte, whole megabytes from there. */
+export const sizeOf = (bytes) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${Math.round(bytes / 1024 / 1024)} MB`
+
+/** What a person is told of the files that did not reach the spore, a line each with why. */
+export const notCome = (files) => files.map(file => `${file.name} did not reach the spore: ${file.missing}`).join('\n')
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})/
 

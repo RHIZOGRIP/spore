@@ -13,12 +13,13 @@ import { approvalOf, readInbox } from '../src/core/spore-dir.js'
 import { requestApproval } from '../src/library/verbs.js'
 import { send } from '../src/core/send.js'
 import { SporeError } from '../src/index.js'
+import { download } from '../src/relay/download.js'
 import { TEAMS, createAdapter } from '../../../plugins/teams/src/adapter.js'
 
 const APP = 'app-1'
 const TENANT = 'tenant-1'
 const SERVICE = 'https://smba.example/teams/'
-const OPS = { post: 'send', edit: 'update', remove: 'remove' }
+const OPS = { post: 'send', edit: 'update', remove: 'remove', fetch: 'download' }
 
 const numberOf = (channel) => channel.slice(3, channel.indexOf('@'))
 
@@ -37,6 +38,8 @@ const standIn = () => {
   const created = []
   const faults = []
   const delivered = new Map()
+  const stored = new Map()
+  const downloads = []
   let id = 100
   let wake = null
   const fault = (op) => {
@@ -55,6 +58,8 @@ const standIn = () => {
     sent,
     created,
     delivered,
+    stored,
+    downloads,
     replies: new Map(),
     lastMessage: 0,
     push (activity) { waiting.push(activity); wake?.() },
@@ -72,6 +77,11 @@ const standIn = () => {
       remove: async (serviceUrl, conversation, activityId) => {
         fault('remove')
         sent.push({ op: 'remove', conversation, id: activityId })
+      },
+      download: async (url, { most, withToken = false }) => {
+        fault('download')
+        downloads.push({ url, withToken })
+        return download(url, { most, fetchImpl: async () => new Response(stored.get(url)) })
       },
       create: async (serviceUrl, body) => {
         fault('create')
@@ -126,7 +136,7 @@ const harness = {
   shared: (n) => `19:${n}@thread.tacv2`,
   platform: standIn,
   adapter: (teams) => createAdapter({ connector: teams.connector, receive: (options) => teams.receive(options), app: APP, tenant: TENANT }),
-  say (teams, { conversation, text, files = 0, id, shared = false, person = shared ? `9${numberOf(conversation)}` : conversation }) {
+  say (teams, { conversation, text, files = [], id, shared = false, person = shared ? `9${numberOf(conversation)}` : conversation }) {
     const activity = id === undefined
       ? (() => {
           const activityId = String(++teams.lastMessage)
@@ -148,7 +158,11 @@ const harness = {
                 }
               : {}),
             text: text === null ? '' : `${mention}${text}`,
-            attachments: Array.from({ length: files }, () => ({ contentType: 'image/png' }))
+            attachments: files.map(({ name, data }, i) => {
+              const downloadUrl = `https://contoso.sharepoint.com/download/${activityId}/${i}/${name}`
+              teams.stored.set(downloadUrl, data)
+              return { contentType: 'application/vnd.microsoft.teams.file.download.info', name, content: { downloadUrl, fileType: name.split('.').pop() } }
+            })
           }
         })()
       : teams.delivered.get(id)
@@ -211,6 +225,40 @@ conformance(harness, (ctx) => {
       const closed = ctx.platform.sent.find(one => one.op === 'close').card
       expect(closed.actions).toEqual([CARD.actions[0]])
       expect(closed.body.at(-1)).toEqual({ type: 'TextBlock', text: '**Apply — U1 Smith**', wrap: true })
+    })
+
+    it('fetches a file sent in a personal chat by its link, and an image pasted there with the bot\'s token', async () => {
+      const sent = 'https://contoso.sharepoint.com/download/q3.pdf'
+      const pasted = `${SERVICE}v3/attachments/i1/views/original`
+      ctx.platform.stored.set(sent, Buffer.from('%PDF'))
+      ctx.platform.stored.set(pasted, Buffer.from('PNG'))
+      ctx.start()
+      ctx.platform.push({
+        type: 'message',
+        id: 'm1',
+        channelId: 'msteams',
+        serviceUrl: SERVICE,
+        conversation: { id: 'a:1', conversationType: 'personal', tenantId: TENANT },
+        from: { id: '29:1', aadObjectId: '1', name: 'U1 Smith' },
+        recipient: { id: `28:${APP}`, name: 'Triage' },
+        text: 'both of these',
+        attachments: [
+          { contentType: 'application/vnd.microsoft.teams.file.download.info', name: 'q3.pdf', content: { downloadUrl: sent, fileType: 'pdf' } },
+          { contentType: 'image/png', contentUrl: pasted }
+        ]
+      })
+      await ctx.until(() => ctx.posted('1', 'hello back'))
+      expect(ctx.platform.downloads).toEqual([{ url: sent, withToken: false }, { url: pasted, withToken: true }])
+      expect(readInbox(ctx.ws)[0].files.map(file => [file.name, file.bytes])).toEqual([['q3.pdf', 4], ['image-2.png', 3]])
+    })
+
+    it('refuses a file sent in a channel, saying where it can go', async () => {
+      ctx.routes({ [CHANNEL]: { spore: 'triage', shared: true } })
+      ctx.start()
+      ctx.say({ conversation: CHANNEL, text: 'see this', shared: true, files: [{ name: 'q3.pdf', mime: 'application/pdf', data: Buffer.from('%PDF') }] })
+      await ctx.until(() => ctx.posted(CHANNEL, 'hello back'))
+      expect(ctx.posted(CHANNEL, 'q3.pdf did not reach the spore: a file in a channel does not reach a spore — send it to me in a personal chat')).toBe(true)
+      expect(ctx.platform.downloads).toEqual([])
     })
 
     it('refuses a card that answers by itself, wherever its action sits, and one older than 1.4', async () => {

@@ -12,16 +12,18 @@ import { answers } from './fixtures/scripted-model.js'
 import { approvalOf, outbox, readInbox, readTurns } from '../src/core/spore-dir.js'
 import { requestApproval } from '../src/library/verbs.js'
 import { SporeError } from '../src/index.js'
+import { download } from '../src/relay/download.js'
 import { TELEGRAM, createAdapter } from '@rhizogrip/spore-plugin-telegram/src/adapter.js'
 
 const ME = { id: 900, username: 'sporebot', can_read_all_group_messages: true }
-const OPS = { post: 'say', edit: 'revise', remove: 'remove', upload: 'document', react: 'react', typing: 'typing', updates: 'updates' }
+const OPS = { post: 'say', edit: 'revise', remove: 'remove', upload: 'document', react: 'react', typing: 'typing', updates: 'updates', fetch: 'download' }
 
 const standIn = () => {
   const waiting = []
   const sent = []
   const faults = []
   const delivered = new Map()
+  const stored = new Map()
   let id = 100
   let wake = null
   const fault = (op) => {
@@ -33,9 +35,11 @@ const standIn = () => {
   return {
     sent,
     delivered,
+    stored,
     lastUpdate: 0,
     lastMessage: 0,
     lastQuery: 0,
+    lastFile: 0,
     onPoll: () => {},
     push (update) { waiting.push(update); wake?.() },
     fail: (op, error, times = 1) => faults.push({ op, error, times }),
@@ -99,8 +103,20 @@ const standIn = () => {
       sent.push({ op: 'answer', query, text })
       return true
     },
+    file: async (fileId) => ({ file_id: fileId, file_path: `documents/${fileId}`, file_size: stored.get(fileId).length }),
+    download: async (path, { most }) => {
+      fault('download')
+      return download(`https://files.example/${path}`, { most, fetchImpl: async () => new Response(stored.get(path.slice('documents/'.length))) })
+    },
     me: async () => ME
   }
+}
+
+/** A file a person sends, kept where the stand-in's `getFile` and download find it: its `document`. */
+const stash = (telegram, { name, mime, data }) => {
+  const fileId = `file-${++telegram.lastFile}`
+  telegram.stored.set(fileId, data)
+  return { file_id: fileId, file_unique_id: `u${telegram.lastFile}`, file_name: name, mime_type: mime, file_size: data.length }
 }
 
 const said = (one) => {
@@ -130,27 +146,32 @@ const harness = {
   shared: (n) => `-${n}`,
   platform: standIn,
   adapter: (telegram, bot) => createAdapter({ telegram, bot, me: ME }),
-  say (telegram, { conversation, text, files = 0, id, shared = false, person = shared ? `9${-conversation}` : conversation }) {
+  say (telegram, { conversation, text, files = [], id, shared = false, person = shared ? `9${-conversation}` : conversation }) {
     const mention = shared && text !== null && !text.startsWith('/')
     const written = mention ? `@${ME.username} ${text}` : text
-    const update = id === undefined
-      ? {
-          update_id: ++telegram.lastUpdate,
-          message: {
-            message_id: ++telegram.lastMessage,
-            chat: shared ? { id: Number(conversation), type: 'group', title: `group ${conversation}` } : { id: Number(conversation), type: 'private' },
-            from: { id: Number(person), first_name: `U${person}`, username: `u${person}` },
-            ...(text === null ? {} : files ? { caption: written } : { text: written }),
-            ...(mention ? { [files ? 'caption_entities' : 'entities']: [{ type: 'mention', offset: 0, length: ME.username.length + 1 }] } : {}),
-            ...(files ? { photo: [{ file_id: 'p' }] } : {})
-          }
-        }
-      : telegram.delivered.get(id)
-    telegram.delivered.set(update.update_id, update)
-    telegram.push(update)
+    const album = files.length > 1 ? `album-${telegram.lastUpdate + 1}` : null
+    const part = (file, first) => ({
+      update_id: ++telegram.lastUpdate,
+      message: {
+        message_id: ++telegram.lastMessage,
+        chat: shared ? { id: Number(conversation), type: 'group', title: `group ${conversation}` } : { id: Number(conversation), type: 'private' },
+        from: { id: Number(person), first_name: `U${person}`, username: `u${person}` },
+        ...(text === null || !first ? {} : file ? { caption: written } : { text: written }),
+        ...(mention && first ? { [file ? 'caption_entities' : 'entities']: [{ type: 'mention', offset: 0, length: ME.username.length + 1 }] } : {}),
+        ...(file ? { document: stash(telegram, file) } : {}),
+        ...(album ? { media_group_id: album } : {})
+      }
+    })
+    const updates = id === undefined
+      ? (files.length ? files.map((file, i) => part(file, i === 0)) : [part(null, true)])
+      : [telegram.delivered.get(id)]
+    for (const update of updates) {
+      telegram.delivered.set(update.update_id, update)
+      telegram.push(update)
+    }
     return {
-      id: update.update_id,
-      message: update.message.message_id,
+      id: updates[0].update_id,
+      message: updates[0].message.message_id,
       from: { name: `U${person} (@u${person})`, id: `telegram:${person}`, where: shared ? `the Telegram group "group ${conversation}"` : 'a private chat on Telegram' }
     }
   },
@@ -195,6 +216,35 @@ conformance(harness, (ctx) => {
       await ctx.until(() => ctx.platform.sent.some(one => one.op === 'ask') && approvalOf(ctx.ws, wrong).settledAt)
       expect(ctx.platform.sent.find(one => one.op === 'ask').text).toBe('Apply <b>this</b>?\n\n<b>Now</b>: &lt;82 %&gt;')
       expect(approvalOf(ctx.ws, wrong)).toMatchObject({ state: 'refused', reason: expect.stringMatching(/^a Telegram body is \{ "html"/) })
+    })
+
+    it('takes an album that arrives over two polls as one message, confirming none of it before', async () => {
+      const part = (name, caption) => ({
+        update_id: ++ctx.platform.lastUpdate,
+        message: {
+          message_id: ++ctx.platform.lastMessage,
+          chat: { id: 1, type: 'private' },
+          from: { id: 1, first_name: 'U1' },
+          media_group_id: 'pages',
+          ...(caption ? { caption } : {}),
+          document: stash(ctx.platform, { name, mime: 'text/plain', data: Buffer.from(name) })
+        }
+      })
+      const first = part('page-1.txt', 'two pages')
+      const second = part('page-2.txt')
+      const polls = []
+      ctx.platform.onPoll = (offset) => {
+        polls.push({ offset, inbox: readInbox(ctx.ws).length })
+        if (polls.length === 2) ctx.platform.push(second)
+      }
+      ctx.platform.push(first)
+      ctx.start()
+      await ctx.until(() => ctx.posted('1', 'hello back'))
+      const [entry] = readInbox(ctx.ws)
+      expect(readInbox(ctx.ws)).toHaveLength(1)
+      expect(entry.text).toBe('two pages')
+      expect(entry.files.map(file => file.name)).toEqual(['page-1.txt', 'page-2.txt'])
+      expect(polls.filter(poll => poll.offset > first.update_id && poll.inbox === 0)).toEqual([])
     })
 
     it('confirms an update only once the spore has it', async () => {

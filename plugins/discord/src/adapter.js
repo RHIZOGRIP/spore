@@ -71,7 +71,7 @@ export const DISCORD = {
   example: SHAPE,
   routes,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '"@<spore> extend wall 30m", "@<spore> extend cost 1.50" or "@<spore> extend rounds 20"' },
-  limits: { message: 1800, file: 20 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 8000 },
+  limits: { message: 1800, file: 20 * 1024 * 1024, fetch: 25 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 8000 },
   can: { upload: true, remove: true, react: true, typing: true, reply: false, choose: false },
   reactions: null,
   showShared: 'working',
@@ -202,7 +202,7 @@ export function createAdapter ({ discord, me, botFile }) {
             text: rest ? content : null,
             command: rest ? commandOf(rest) : null,
             addresses,
-            files: d.attachments.length
+            files: d.attachments.map(file => ({ name: file.filename, mime: file.content_type ?? null, bytes: file.size ?? null, ref: file.url }))
           })
         },
         onReady: (ready) => log(`connected to Discord as ${ready.user.username}`),
@@ -232,6 +232,8 @@ export function createAdapter ({ discord, me, botFile }) {
     },
 
     remove: async (conversation, note) => discord.remove(await hookOf(conversation), note),
+
+    fetch: (ref, { most }) => discord.download(ref, { most }),
 
     upload: async (conversation, file, caption, { as = null } = {}) =>
       discord.upload(await hookOf(conversation), { ...look(as), content: caption, allowed_mentions: NOBODY }, [file]),

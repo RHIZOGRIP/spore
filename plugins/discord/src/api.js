@@ -10,6 +10,7 @@ import { createRequire } from 'node:module'
 import { basename } from 'node:path'
 
 import { SporeError } from '@rhizogrip/spore'
+import { download } from '@rhizogrip/spore/relay'
 
 const BASE = 'https://discord.com/api/v10'
 export const USER_AGENT = `DiscordBot (https://github.com/RHIZOGRIP/spore, ${createRequire(import.meta.url)('../package.json').version})`
@@ -164,6 +165,8 @@ export function createDiscord (token, { fetchImpl = fetch, base = BASE, WebSocke
     typing: (channel) => call('POST', `/channels/${channel}/typing`),
     react: (channel, message, emoji) => call('PUT', `/channels/${channel}/messages/${message}/reactions/${encodeURIComponent(emoji)}/@me`),
     unreact: (channel, message, emoji) => call('DELETE', `/channels/${channel}/messages/${message}/reactions/${encodeURIComponent(emoji)}/@me`),
+    /** An attachment's bytes by its signed URL, which needs no token and expires, refused past `most`. */
+    download: (url, { most }) => download(url, { most, fetchImpl }),
     connect
   }
 }

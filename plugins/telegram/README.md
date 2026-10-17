@@ -73,8 +73,12 @@ says so in your `working…` message, and the next turn answers it.
 /extend wall 30m   give it more — wall, cost or rounds — up to the extend.<limit> its spore.cmk grants
 ```
 
-Only text reaches a spore for now: a photo's or a document's caption goes to it, and you are told
-the file did not; a message with nothing written in it is told only text reaches a spore.
+A photo, a document, a voice note, a video or a sticker reaches the spore with its caption, fetched
+by the service up to the 20 MB Telegram lets a bot fetch, or the bot file's `"files": "10MB"` —
+`false` takes none. An album is one message: its parts are held until none has come for a second,
+and confirmed to Telegram only once the spore has them all. A file that does not come is told to
+you, and to the spore, with why. In a group that overhears, what is sent around the spore is named
+to it and not fetched.
 
 ## Turns nobody in a chat started
 

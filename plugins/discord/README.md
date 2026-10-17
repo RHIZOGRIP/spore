@@ -78,8 +78,10 @@ message addressing two goes to both. A message addressing none goes to none. The
 `@you ↪ "what you said…" working…`, and when the turn ends posts its answer under its own name,
 opened with whom it answers — which pings them — and removes the `working…` post. Files the turn
 left in `data/out/` follow as attachments, up to the 50 a turn hands back, then a line counting
-the rest; one over 20 MB is named instead. Only a message's text reaches a spore for now: files
-attached to it do not, and whoever sent them is told.
+the rest; one over 20 MB is named instead. Files attached to a message addressing a spore reach it,
+fetched by the service as the message arrives — Discord's links expire — up to 25 MB each, or the
+bot file's `"files": "10MB"` (`false` takes none); one that does not come is told, to whoever sent
+it and to the spore.
 
 `@triage status` says what it is doing; `@triage stop` ends the turn it is running and sets aside
 what you sent that it had not read; `@triage wrap 10m` asks it to wrap up; `@triage extend wall

@@ -8,20 +8,22 @@
  * are `credentials`, an `example` of a first file, and `routes(raw, path)`, which reads the routing
  * into conversation → `{ spores, details, show, brief, people, overhear }` and refuses what it
  * cannot read — `brief` null where the entry leaves it to the bot's. Every bot file also takes
- * `brief`, for each conversation that does not say.
+ * `brief`, for each conversation that does not say, and `files`, the largest file it takes from a
+ * person.
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 
 import { CONFIG_FILE } from '../library/config.js'
+import { native } from '../native.js'
 import { SporeError } from '../observability/errors.js'
 
 const NAME = /^[a-z0-9][a-z0-9._-]*$/i
 const VARIABLE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/
 const SHOWS = ['working', 'react', 'both']
 const REACTIONS = { taken: '👨‍💻', failed: '💔' }
-const EVERY_BOT = ['brief']
+const EVERY_BOT = ['brief', 'files']
 
 const typeOf = (spec, what) => `${spec.kind.toUpperCase()}_${what}`
 
@@ -63,6 +65,9 @@ export function readBot (spec, path) {
   }
   if (raw.brief !== undefined && typeof raw.brief !== 'boolean') {
     throw new SporeError(`${path} has a brief that is not true or false`, { type: typeOf(spec, 'BOT_INVALID'), detail: 'brief: true keeps every conversation of the bot to its spore\'s state and answers — a person, group or channel may say otherwise' })
+  }
+  if (raw.files !== undefined && raw.files !== false && !(typeof raw.files === 'string' && native.sizeBytes(raw.files) > 0)) {
+    throw new SporeError(`${path} has a files that is not a size or false`, { type: typeOf(spec, 'BOT_INVALID'), detail: `files is the largest file the bot takes from a person, as "10MB", ${spec.label}'s own ${spec.limits.fetch / 1024 / 1024} MB when left out — or false to take none` })
   }
   for (const field of spec.credentials) {
     if (typeof raw[field] !== 'string' || !VARIABLE.test(raw[field])) {
@@ -120,6 +125,13 @@ export function reactionsOf (spec, path) {
     })
   }
   return chosen
+}
+
+/** The largest file, in bytes, the bot takes from a person: its `files`, never past what the platform lets it fetch, and 0 for none. */
+export function filesOf (spec, path) {
+  const { files } = readBot(spec, path)
+  if (files === false) return 0
+  return files === undefined ? spec.limits.fetch : Math.min(spec.limits.fetch, Math.floor(native.sizeBytes(files)))
 }
 
 export const credentialVariable = (spec, path, field) => VARIABLE.exec(readBot(spec, path)[field])[1]

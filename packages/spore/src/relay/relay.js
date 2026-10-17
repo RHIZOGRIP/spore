@@ -15,9 +15,9 @@ import { basename, resolve } from 'node:path'
 
 import { approvalHookVariables, attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf } from '../index.js'
 import { createApprovals } from './approvals.js'
-import { credentialVariables, reactionsOf, routesOf } from './bot-file.js'
+import { credentialVariables, filesOf, reactionsOf, routesOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
-import { announce, endingOf, leftOut, pieces, render, reply, statusText, track, unpassed, waiting } from './render.js'
+import { announce, endingOf, leftOut, notCome, pieces, render, reply, sizeOf, statusText, track, waiting } from './render.js'
 import { loadState, saveState } from './state.js'
 
 const TAKES_ARGUMENTS = new Set(['extend', 'wrap'])
@@ -28,6 +28,8 @@ const ANSWERED = 'answered below'
 const SET_ASIDE = 'set aside'
 const SETTLE_EVERY_MS = 1000
 const MAY_REPEAT = '(this may repeat an earlier message)'
+const FILES_MOST = 10
+const FETCH_TRIES = 3
 
 const pause = (ms, signal) => new Promise(resolve => {
   const timer = setTimeout(resolve, ms)
@@ -95,7 +97,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   const where = (conversation) => `${noun} ${conversation}`
   const keyOf = (conversation) => adapter.routeOf ? adapter.routeOf(conversation) : conversation
 
-  const route = () => ({ config: readConfig(configFile), table: routesOf(adapter, botFile), react: adapter.can.react ? reactionsOf(adapter, botFile) : null })
+  const route = () => ({ config: readConfig(configFile), table: routesOf(adapter, botFile), react: adapter.can.react ? reactionsOf(adapter, botFile) : null, files: filesOf(adapter, botFile) })
   const approvals = createApprovals({
     adapter,
     prefix,
@@ -226,7 +228,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
    * conversation many people share (`showShared`), and `working` for one with a single person, who
    * is shown what the turn does. What the platform adds for one spore (`aside`) follows the text.
    */
-  const pass = (message, name, ws, { table, react }) => {
+  const pass = (message, name, ws, { table, react }, attach) => {
     const { conversation } = message
     const routed = table.get(keyOf(conversation))
     const show = routed.show ?? (message.shared ? adapter.showShared : 'working')
@@ -235,7 +237,8 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     if (follows(ws)) save()
     let sent
     try {
-      sent = send(ws, aside ? `${message.text}\n\n${aside}` : message.text, {
+      sent = send(ws, [message.text, aside].filter(Boolean).join('\n\n'), {
+        attach,
         requestId: requestOf(message, name),
         replyTo: `${prefix}${conversation}`,
         from: fromOf(message),
@@ -250,7 +253,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     }
     if (sent.repeated) return log(`${where(conversation)}: message ${message.id} was already said to ${name}, as inbox ${sent.inbox}`)
 
-    const entry = { inbox: sent.inbox, conversation, asked: message.message, person: message.person.id, said: firstLine(message.text), note: null, taken }
+    const entry = { inbox: sent.inbox, conversation, asked: message.message, person: message.person.id, said: firstLine(message.text ?? message.files.map(file => file.name).join(', ')), note: null, taken }
     ;(state.pending[ws] ??= []).push(entry)
     save()
     if (taken) delivery.to(conversation, attempt => mark(attempt, conversation, message.message, () => [taken, null]))
@@ -267,11 +270,15 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       }))
   }
 
-  /** Said around the spore and not to it: in its inbox for the next turn, which starts for it no sooner and owes it nothing. */
+  /**
+   * Said around the spore and not to it: in its inbox for the next turn, which starts for it no
+   * sooner and owes it nothing. What came with it is named and not fetched.
+   */
   const overhear = (message, name, ws) => {
-    if (message.text === null) return
+    if (message.text === null && !message.files.length) return
+    const attach = message.files.map(file => ({ name: file.name, mime: file.mime, bytes: file.bytes, missing: 'said around you, so not fetched' }))
     try {
-      send(ws, message.text, { requestId: requestOf(message, name), from: fromOf(message), overheard: true })
+      send(ws, message.text ?? '', { attach, requestId: requestOf(message, name), from: fromOf(message), overheard: true })
     } catch (err) {
       log(`${where(message.conversation)}: what ${message.person.name} said was not given to ${name} — ${err.type} ${said(err)}`)
     }
@@ -303,6 +310,45 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     if (refused === null) return
     log(refused)
     hint(message, read)
+  }
+
+  const fetchFile = async (ref, most) => {
+    for (let tried = 1; ; tried++) {
+      try {
+        return await adapter.fetch(ref, { most })
+      } catch (err) {
+        if (!err.retryable || tried === FETCH_TRIES || stopping.signal.aborted) throw err
+        await sleep(1000, stopping.signal)
+      }
+    }
+  }
+
+  /**
+   * The files a message brought, fetched with the bot's credential up to `most` bytes each and
+   * `FILES_MOST` a message, as `send`'s `attach`: what did not come is kept there with why, and
+   * the conversation is told.
+   */
+  const gather = async (message, most, as) => {
+    const attach = []
+    for (const [i, file] of message.files.entries()) {
+      const missing = (why) => attach.push({ name: file.name, mime: file.mime, bytes: file.bytes, missing: why })
+      const over = (bytes) => `${bytes ? `${sizeOf(bytes)}, ` : ''}over the ${sizeOf(most)} this bot takes`
+      if (i >= FILES_MOST) missing(`only ${FILES_MOST} files of a message reach a spore`)
+      else if (most === 0) missing('this bot takes no files')
+      else if (file.ref === null) missing(file.why)
+      else if (file.bytes !== null && file.bytes > most) missing(over(file.bytes))
+      else {
+        try {
+          attach.push({ name: file.name, mime: file.mime, data: await fetchFile(file.ref, most) })
+        } catch (err) {
+          log(`${where(message.conversation)}: ${file.name} from message ${message.id} not fetched — ${said(err)}`)
+          missing(err.type === 'FILE_TOO_LARGE' ? over(err.context?.bytes) : `it could not be fetched — ${err.detail ?? err.message}`)
+        }
+      }
+    }
+    const lost = attach.filter(one => one.missing !== undefined)
+    if (lost.length) tell(message.conversation, notCome(lost), as)
+    return attach
   }
 
   const handle = async (message) => {
@@ -341,7 +387,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     if (!reached.length) return
 
     const [first] = reached
-    if (message.text === null) return tell(conversation, 'only text reaches a spore for now', first.name)
+    if (message.text === null && !message.files.length) return tell(conversation, 'only text and files reach a spore', first.name)
     if (message.command && reached.length === 1 && (!message.command.args || TAKES_ARGUMENTS.has(message.command.verb))) {
       const verb = routed.brief && message.command.verb === 'extend' ? 'help' : message.command.verb
       if (OPERATING.has(verb) && !operates(message, routed)) {
@@ -350,8 +396,8 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       }
       return obey(conversation, first.ws, first.name, verb, message.command.args ?? '', routed.brief)
     }
-    for (const { name, ws } of reached) pass(message, name, ws, read)
-    if (message.files) tell(conversation, unpassed(message.files, reached.map(one => one.name)), first.name)
+    const attach = message.files.length ? await gather(message, read.files, first.name) : []
+    for (const { name, ws } of reached) pass(message, name, ws, read, attach)
   }
 
   const listen = () => adapter.listen({

@@ -15,10 +15,11 @@ import { readInbox } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 import { RUNNING, stateOf, stop } from '../src/core/state.js'
 import { SporeError } from '../src/index.js'
+import { download } from '../src/relay/download.js'
 import { DISCORD, createAdapter } from '@rhizogrip/spore-plugin-discord/src/adapter.js'
 
 const ROLES = { triage: '701', ledger: '702' }
-const OPS = { post: 'post', edit: 'revise', remove: 'remove', upload: 'upload', react: 'react', typing: 'typing' }
+const OPS = { post: 'post', edit: 'revise', remove: 'remove', upload: 'upload', react: 'react', typing: 'typing', fetch: 'download' }
 const HEADER = /^(<@\d+> ↪ "[^\n]*"\n)+/
 
 const standIn = () => {
@@ -27,6 +28,7 @@ const standIn = () => {
   const created = []
   const delivered = new Map()
   const lastSaid = new Map()
+  const stored = new Map()
   let handle = null
   let log = null
   let handled = Promise.resolve()
@@ -49,9 +51,14 @@ const standIn = () => {
     sent,
     created,
     delivered,
+    stored,
     deliver,
     next: () => String(++next),
     fail: (op, error, times = 1) => faults.push({ op, error, times }),
+    download: async (url, { most }) => {
+      fault('download')
+      return download(url, { most, fetchImpl: async () => new Response(stored.get(url)) })
+    },
     channel: async (id) => ({ id, guild_id: 'g1', name: `chan-${id}` }),
     roles: async () => created.map(name => ({ id: ROLES[name], name })),
     createRole: async (guild, name) => {
@@ -102,7 +109,12 @@ const standIn = () => {
   }
 }
 
-const said = (discord, { channel, author, content, roles = [], files = 0, webhook, username, replyingTo = null }) => {
+const said = (discord, { channel, author, content, roles = [], files = [], webhook, username, replyingTo = null }) => {
+  const attachments = files.map(({ name, mime, data }) => {
+    const url = `https://cdn.example/attachments/${discord.next()}/${name}?ex=1&is=1&hm=1`
+    discord.stored.set(url, data)
+    return { filename: name, content_type: mime, size: data.length, url }
+  })
   const d = {
     id: discord.next(),
     channel_id: channel,
@@ -111,7 +123,7 @@ const said = (discord, { channel, author, content, roles = [], files = 0, webhoo
     member: webhook ? undefined : { roles: [], nick: `U${author}` },
     content,
     mention_roles: roles,
-    attachments: Array.from({ length: files }, (_, i) => ({ filename: `f${i}.png` })),
+    attachments,
     webhook_id: webhook,
     referenced_message: replyingTo
   }
@@ -153,7 +165,7 @@ const harness = {
   shared: (n) => String(n),
   platform: standIn,
   adapter: (discord, bot, botFile) => createAdapter({ discord, me: { id: '900', username: 'sporebot' }, botFile }),
-  say (discord, { conversation, text, files = 0, id, person = `9${conversation}` }) {
+  say (discord, { conversation, text, files = [], id, person = `9${conversation}` }) {
     const d = id === undefined
       ? said(discord, { channel: conversation, author: person, content: text === null ? `<@&${ROLES.triage}>` : `<@&${ROLES.triage}> ${text}`, roles: [ROLES.triage], files })
       : discord.delivered.get(id)

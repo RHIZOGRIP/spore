@@ -1866,8 +1866,10 @@ did not arrive. A held delivery carries no reply-to: nobody typed it.
 per bot, read on every message; the path from a message to `send` with its `from`; the `working…`
 message and the calls at work, or a reaction and the platform's typing; the answer as a new
 message replying to the question; commands;
-the outbox drained and settled; approvals posted and seen through (§Approvals); a restart from
-saved cursors. What a message is to the spores is
+the outbox drained and settled; approvals posted and seen through (§Approvals); the files a person
+sends fetched with the bot's credential, capped by the platform and the bot file, and kept through
+`send`'s `attach` — one that does not come kept on the entry with why, so a turn never answers as
+if it had it; a restart from saved cursors. What a message is to the spores is
 one decision, `admission`: said to them, overheard by them where the routing overhears, or dropped
 at a named gate — not addressed, or from someone the routing's `people` do not name, which is
 logged with the line to add. In a conversation many people share, stopping, wrapping or extending

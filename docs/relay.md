@@ -25,7 +25,13 @@ import { runService } from '@rhizogrip/spore/relay'
   mode 0600.
 - **Nothing fails in silence.** A refusal by the spore is told in the conversation, one by the
   platform is logged with its conversation and turn, and what cannot reach a spore — a file, a
-  message with no text — is said.
+  message with neither text nor a file — is said.
+- **A file sent to a spore reaches it**, fetched by the relay with the bot's credential: at most 10
+  a message, none larger than the platform lets a bot fetch or the bot file's `files` allows
+  (`"10MB"`, or `false` for none), each kept under `inbox.d/` by its name — a second of the same
+  name as `name-2` — through `send`'s `attach`. One that does not come is told to the person and
+  kept on the entry with why, so the turn knows of it. A file said around a spore, overheard, is
+  named and not fetched. A message that is only files reaches the spore with no text.
 - **The spore is told who wrote and where** (`send`'s `from`), never as words in the text.
 - **Only whom the routing lets in reaches a spore.** Where a conversation lists its `people` — ids,
   `role:<id>`, `"*"` — anyone else is refused, and the log says the line to add; a spore's own post
@@ -99,7 +105,7 @@ The static part, which the relay reads before the service starts:
 | `stateFields` | the adapter's own fields in the state file, handed to its `restore` |
 | `sourceVariables` | credential variables a source of the plugin needs in a turn's environment |
 | `usage` | `{ help, briefHelp, extend }`: the commands as this platform types them — `briefHelp` without `extend`, for a brief conversation |
-| `limits` | `{ message, file, editEveryMs, typingEveryMs }`: the longest message, the largest upload, how often `working…` is edited, how often typing is renewed |
+| `limits` | `{ message, file, fetch, editEveryMs, typingEveryMs }`: the longest message, the largest upload, the largest file the platform lets a bot fetch, how often `working…` is edited, how often typing is renewed |
 | `can` | `{ upload, remove, react, typing, reply, choose }`: `reply` false where a post cannot reply to a message, and opens with whom it answers instead; `choose` where it carries approvals |
 | `showShared` | how a turn shows itself in a conversation many people share when the routing says nothing: `react` or `working` |
 | `reactions` | the emoji the platform lets a bot react with, or null for any |
@@ -122,6 +128,7 @@ The live part, made once the credentials are proved:
 | `upload(conversation, { path, mime }, caption, { as })` | where `can.upload` |
 | `react(conversation, message, emoji, was)` | where `can.react`: the bot's reaction on a person's message moved from `was` to `emoji`, either of them null for none |
 | `typing(conversation)` | where `can.typing`: the platform's typing indicator, which lasts a few seconds |
+| `fetch(ref, { most })` | a file a person sent, by the `ref` its message listed: the Buffer, or `FILE_TOO_LARGE` past `most` bytes, reading no further. `download(url, { most, headers, fetchImpl })` from `@rhizogrip/spore/relay` is the capped fetch, and never names the URL in an error |
 | `checkBody(native)` | where `can.choose`: why an approval's body for this platform cannot be shown — one not the platform's shape, or one that would answer the bot by itself — or null |
 | `ask(conversation, { native, fallback }, choices, { as })` | where `can.choose`: the question posted — `native`, the body for this platform, or `fallback`, the default `{ text, facts }` drawn the platform's way — with a button per choice, `{ id, label, style, data }`, `data` what the press must carry back; answers `{ note, shown }`, its id and the payload exactly as sent |
 | `settle(conversation, note, replacement)` | where `can.choose`: the question closed, its buttons gone — replaced by `{ native, fallback }`, or kept as `{ shown, outcome }`, the payload posted with how it ended below; answers the payload sent |
@@ -143,7 +150,7 @@ What `onMessage` gets, the platform normalised:
 | `text` | what was written, the platform's markup made plain; null when nothing was |
 | `command` | `{ verb, args }` when the text is a command, else null |
 | `addresses` | the spores the message names; `[]` for one that names none — in a conversation many people share, what was not said to a spore, which the relay drops or, where the routing says `overhear`, gives the spores as overheard; or null where it reaches the conversation's spores without naming them |
-| `files` | how many files came with it |
+| `files` | what came with it, `[{ name, mime, bytes, ref, why }]`: `mime` and `bytes` null where the platform does not say, `ref` the adapter's own handle for `fetch` — or null, with `why`, for one the platform will not hand the bot |
 
 What `onChoice` gets for a press on one of the relay's buttons:
 

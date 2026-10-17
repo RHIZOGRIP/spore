@@ -116,7 +116,7 @@ describe('an activity', () => {
       text: 'hello',
       command: null,
       addresses: null,
-      files: 0
+      files: []
     })
   })
 
@@ -136,8 +136,20 @@ describe('an activity', () => {
     expect(normalize(personal({ text: '<p>a &amp; b<br>c&nbsp;d</p>' })).text).toBe('a & b\nc d')
   })
 
-  it('counts what came with it, leaving out the copy of the text Teams adds, and has no text when nothing was written', () => {
-    expect(normalize(personal({ text: '', attachments: [{ contentType: 'image/png' }, { contentType: 'text/html' }] }))).toMatchObject({ text: null, files: 1 })
+  it('lists what came with it, leaving out the copy of the text Teams adds, and has no text when nothing was written', () => {
+    const pasted = { contentType: 'image/png', contentUrl: 'https://smba.trafficmanager.net/emea/v3/attachments/x/views/original' }
+    const elsewhere = { contentType: 'image/*', contentUrl: 'https://us-api.asm.skype.com/v1/objects/y/views/imgo' }
+    const sent = { contentType: 'application/vnd.microsoft.teams.file.download.info', name: 'q3.pdf', content: { downloadUrl: 'https://contoso.sharepoint.com/download?x', fileType: 'pdf' } }
+    expect(normalize(personal({ text: '', attachments: [pasted, elsewhere, sent, { contentType: 'text/html' }] }))).toMatchObject({
+      text: null,
+      files: [
+        { name: 'image-1.png', mime: 'image/png', ref: { url: pasted.contentUrl, withToken: true } },
+        { name: 'image-2', mime: null, ref: { url: elsewhere.contentUrl, withToken: false } },
+        { name: 'q3.pdf', ref: { url: sent.content.downloadUrl, withToken: false } }
+      ]
+    })
+    expect(normalize(inChannel('<at>Triage</at> see this', { entities: [mentioning('Triage')], attachments: [{ ...sent, contentType: 'reference' }] })).files)
+      .toEqual([{ name: 'q3.pdf', mime: null, bytes: null, ref: null, why: 'a file in a channel does not reach a spore — send it to me in a personal chat' }])
   })
 
   it('is refused with the line that would let it in — a person under people, a channel under channels', () => {

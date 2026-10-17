@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 import { botPath, reactionsOf, routesOf } from '@rhizogrip/spore/relay'
 
 import { createTelegram } from '../src/api.js'
-import { TELEGRAM, normalize } from '../src/adapter.js'
+import { TELEGRAM, merged, normalize } from '../src/adapter.js'
 
 let DIR
 let path
@@ -104,7 +104,7 @@ describe('an update', () => {
       text: 'hello',
       command: null,
       addresses: null,
-      files: 0
+      files: []
     })
   })
 
@@ -132,9 +132,29 @@ describe('an update', () => {
     expect(addressed({ new_chat_members: [{ id: 900 }] })).toMatchObject({ addresses: [], text: null })
   })
 
-  it('carries a caption as its text, counts what came with it, and has none when nothing was written', () => {
-    expect(normalize(update({ caption: 'look', photo: [{}] }), 'triage', ME)).toMatchObject({ text: 'look', files: 1 })
-    expect(normalize(update({ sticker: {} }), 'triage', ME)).toMatchObject({ text: null, files: 1 })
+  it('carries a caption as its text, lists what came with it, and has none when nothing was written', () => {
+    const photo = [{ file_id: 'small', file_unique_id: 'u1', file_size: 900 }, { file_id: 'large', file_unique_id: 'u2', file_size: 90_000 }]
+    expect(normalize(update({ caption: 'look', photo }), 'triage', ME)).toMatchObject({
+      text: 'look',
+      files: [{ name: 'photo-u2.jpg', mime: 'image/jpeg', bytes: 90_000, ref: 'large' }]
+    })
+    expect(normalize(update({ sticker: { file_id: 's', file_unique_id: 'u3' } }), 'triage', ME)).toMatchObject({
+      text: null,
+      files: [{ name: 'sticker-u3.webp', mime: 'image/webp', bytes: null, ref: 's' }]
+    })
+    expect(normalize(update({ document: { file_id: 'd', file_unique_id: 'u4', file_name: 'q3.pdf', mime_type: 'application/pdf', file_size: 30 * 1024 * 1024 } }), 'triage', ME).files)
+      .toEqual([{ name: 'q3.pdf', mime: 'application/pdf', bytes: 30 * 1024 * 1024, ref: null, why: 'Telegram lets a bot fetch files up to 20 MB' }])
+    expect(normalize(update({ voice: { file_id: 'v', file_unique_id: 'u5', mime_type: 'audio/ogg' } }), 'triage', ME).files)
+      .toEqual([{ name: 'voice-u5.ogg', mime: 'audio/ogg', bytes: null, ref: 'v' }])
+  })
+
+  it('makes an album one message: what its captioned part said, and every part\'s files', () => {
+    const part = (id, fields) => normalize({ update_id: id, message: { message_id: id, chat: { id: 148392011, type: 'private' }, from: { id: 148392011, first_name: 'Alice' }, media_group_id: 'a', ...fields } }, 'triage', ME)
+    const parts = [
+      part(7, { photo: [{ file_id: 'p1', file_unique_id: 'u1' }] }),
+      part(8, { caption: 'both', photo: [{ file_id: 'p2', file_unique_id: 'u2' }] })
+    ]
+    expect(merged(parts)).toMatchObject({ id: 'triage:8', message: 8, text: 'both', files: [{ ref: 'p1' }, { ref: 'p2' }] })
   })
 
   it('is nothing the relay takes when it is not a chat message', () => {

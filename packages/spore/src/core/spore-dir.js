@@ -423,14 +423,25 @@ function entryFor (ws, said, { attach = [], schedule, hook, job, from, tracepare
     ...(approval !== undefined ? { approval } : {})
   }
 
-  if (attach.length || text.length > INLINE_MESSAGE_BYTES) {
+  for (const one of attach) {
+    const fits = one.missing === undefined ? one.data instanceof Uint8Array : typeof one.missing === 'string' && one.missing.trim() !== ''
+    if (!fits) {
+      throw new SporeError('an attachment is a file, or one that did not come and why', {
+        type: 'ATTACH_INVALID',
+        detail: `got ${JSON.stringify({ ...one, data: one.data === undefined ? undefined : typeof one.data })}, expected { name, mime, data } with data a Buffer, or { name, mime, bytes, missing }`
+      })
+    }
+  }
+  const arrived = attach.filter(one => one.missing === undefined)
+  if (arrived.length || text.length > INLINE_MESSAGE_BYTES) {
     // Named from the clock and six random bytes rather than by counting what is already
     // there: two callers append at once, and a count both of them read is a collision.
     const dir = resolve(ws, INBOX_DIR, entry.at.replace(/[-:.]/g, '') + '-' + randomBytes(3).toString('hex'))
     mkdirSync(dir, { recursive: true })
+    const taken = new Set()
 
     if (text.length > INLINE_MESSAGE_BYTES) {
-      const name = 'message.md'
+      const name = unused('message.md', taken)
       writeFileSync(resolve(dir, name), text)
       const { head, tail } = headAndTail(text)
       Object.assign(entry, {
@@ -443,18 +454,32 @@ function entryFor (ws, said, { attach = [], schedule, hook, job, from, tracepare
       entry.text = text
     }
 
-    if (attach.length) {
-      entry.files = attach.map(({ name, mime, data }, i) => {
-        const safe = safeName(name) || `attachment-${i + 1}`
-        writeFileSync(resolve(dir, safe), data)
-        return { path: [INBOX_DIR, basename(dir), safe].join('/'), name: storable(name || safe), mime: mime || null, bytes: data.length }
-      })
-    }
+    entry.files = attach.map(({ name, mime, data, bytes = null, missing }, i) => {
+      if (missing !== undefined) return missed({ name, mime, bytes, missing }, i)
+      const safe = unused(safeName(name) || `attachment-${i + 1}`, taken)
+      writeFileSync(resolve(dir, safe), data)
+      return { path: [INBOX_DIR, basename(dir), safe].join('/'), name: storable(name || safe), mime: mime || null, bytes: data.length }
+    })
   } else {
-    entry.text = text
+    if (text) entry.text = text
+    if (attach.length) entry.files = attach.map((one, i) => missed(one, i))
   }
 
   return entry
+}
+
+/** A file that did not come with the message: kept on the entry with why, and no path. */
+const missed = ({ name, mime, bytes = null, missing }, i) =>
+  ({ path: null, name: storable(name || `attachment-${i + 1}`), mime: mime || null, bytes, missing: storable(missing) })
+
+/** `name`, or `name-2`, `name-3` before its extension, whichever this message has not used. */
+function unused (name, taken) {
+  const dot = name.lastIndexOf('.')
+  const [stem, extension] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, '']
+  let candidate = name
+  for (let n = 2; taken.has(candidate); n++) candidate = `${stem}-${n}${extension}`
+  taken.add(candidate)
+  return candidate
 }
 
 /** @returns {{ inbox: number, repeated: boolean }} */
@@ -730,7 +755,9 @@ export function saidOf (entry) {
   }
 
   if (entry.files?.length) {
-    const listed = entry.files.map(f => `${f.path} — ${f.name}${f.mime ? `, ${f.mime}` : ''}, ${f.bytes} bytes`).join('\n')
+    const listed = entry.files.map(f => f.missing
+      ? `${f.name} did not come: ${f.missing}`
+      : `${f.path} — ${f.name}${f.mime ? `, ${f.mime}` : ''}, ${f.bytes} bytes`).join('\n')
     parts.push(`[Sent with this message:\n${listed}]`)
   }
 
@@ -766,7 +793,7 @@ export const fromPerson = (entry) => !entry.overheard && originOf(entry) === nul
 export function overheardOf (entries, left = 0) {
   const what = (entry) => [
     entry.bodyPath ? `[a message of ${entry.bodyBytes} bytes, at ${entry.bodyPath}]` : JSON.stringify(entry.text ?? ''),
-    ...(entry.files?.length ? [`[sent with ${entry.files.map(file => file.path).join(', ')}]`] : [])
+    ...(entry.files?.length ? [`[sent with ${entry.files.map(file => file.path ?? file.name).join(', ')}]`] : [])
   ].join(' ')
   const earlier = left ? ` ${left} earlier ${left === 1 ? 'message is' : 'messages are'} left in the inbox, marked overheard.` : ''
   return [

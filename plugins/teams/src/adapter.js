@@ -17,6 +17,8 @@ const THREAD = ';messageid='
 const COMMAND = /^\/([a-z]+)(?:\s+(.+))?$/is
 const SERVICE_URL = 'https://smba.trafficmanager.net/teams/'
 const CARD = 'application/vnd.microsoft.card.adaptive'
+const DOWNLOAD_INFO = 'application/vnd.microsoft.teams.file.download.info'
+const IMAGE = /^image\/(png|jpeg|gif|webp)$/
 const PRESSED = 'spore'
 const ANSWERING = new Set(['Action.Submit', 'Action.Execute'])
 const SHAPE = '{ "app": "<app id>", "tenant": "<tenant id>", "secret": "${OPS_TEAMS_SECRET}", "listen": "127.0.0.1:3978", "people": { "<object id>": "<spore>" }, "channels": { "<channel id>": { "spores": ["<spore>"], "people": ["<object id>"] } } }' // eslint-disable-line no-template-curly-in-string
@@ -110,7 +112,7 @@ export const TEAMS = {
   routes,
   routeOf: (conversation) => conversation.split(THREAD)[0],
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
-  limits: { message: 40000, file: 0, editEveryMs: 2500, typingEveryMs: 4000 },
+  limits: { message: 40000, file: 0, fetch: 25 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 4000 },
   can: { upload: false, remove: true, react: false, typing: false, reply: true, choose: true },
   reactions: null,
   showShared: 'working',
@@ -137,6 +139,38 @@ const plain = (html, own) => html
   .trim()
 
 /**
+ * What an activity brought, as the relay lists files. In a personal chat a file comes as a
+ * download link, which needs no token; a pasted image as a link Teams serves the bot alone, which
+ * gets the bot's token only where it is the activity's own service. A file in a channel is in
+ * SharePoint, which this bot cannot read, and is listed with why.
+ */
+function filesOf (activity, personal) {
+  const service = new URL(activity.serviceUrl).host
+  return (activity.attachments ?? []).filter(attachment => attachment.contentType !== 'text/html').map((attachment, i) => {
+    const { contentType, contentUrl, content, name } = attachment
+    if (contentType === DOWNLOAD_INFO && personal && content?.downloadUrl) {
+      return { name, mime: null, bytes: null, ref: { url: content.downloadUrl, withToken: false } }
+    }
+    if (contentType?.startsWith('image/') && contentUrl && URL.canParse(contentUrl)) {
+      const known = IMAGE.exec(contentType)
+      return {
+        name: name ?? `image-${i + 1}${known ? `.${known[1] === 'jpeg' ? 'jpg' : known[1]}` : ''}`,
+        mime: known ? contentType : null,
+        bytes: null,
+        ref: { url: contentUrl, withToken: new URL(contentUrl).host === service }
+      }
+    }
+    return {
+      name: name ?? `attachment-${i + 1}`,
+      mime: null,
+      bytes: null,
+      ref: null,
+      why: personal ? 'Teams does not hand a bot this kind of attachment' : 'a file in a channel does not reach a spore — send it to me in a personal chat'
+    }
+  })
+}
+
+/**
  * A message activity as the relay takes it, or null for none it takes: one in a personal chat
  * reaches the person's spore; one in a channel reaches the channel's when it mentions the bot,
  * and names no spore otherwise.
@@ -158,7 +192,7 @@ export function normalize (activity) {
     text,
     command: command ? { verb: command[1].toLowerCase(), args: command[2] ?? '' } : null,
     addresses: personal || own.length ? null : [],
-    files: (activity.attachments ?? []).filter(attachment => attachment.contentType !== 'text/html').length
+    files: filesOf(activity, personal)
   }
 }
 
@@ -324,6 +358,8 @@ export function createAdapter ({ connector, receive, app, tenant }) {
       const where = placeOf(note)
       await connector.remove(serviceOf(conversation), where.conversation, where.id)
     },
+
+    fetch: (ref, { most }) => connector.download(ref.url, { most, withToken: ref.withToken }),
 
     checkBody: (native) => {
       if (native.type !== 'AdaptiveCard' || !(Number(native.version) >= 1.4)) {

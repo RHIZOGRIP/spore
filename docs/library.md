@@ -61,7 +61,9 @@ it between rounds. It returns once the runner has started. `inbox` is the messag
 position, `started` says whether this call started a turn, `pid` is the runner's or `null`, and
 `repeated` is true when `requestId` had been sent before.
 
-- `attach`: `[{ name, mime, data }]`, `data` a Buffer, written under `inbox.d/`.
+- `attach`: `[{ name, mime, data }]`, `data` a Buffer, written under `inbox.d/` by its name, a second
+  of one name as `name-2`. An item `{ name, mime, bytes, missing }` is a file that did not come:
+  kept in the entry's `files` with no `path` and `missing` saying why, so the turn knows of it.
 - `requestId`: the message is taken once
   ([INTEGRATION §Idempotency](../INTEGRATION.md#idempotency)).
 - `replyTo`: where the answer goes
@@ -85,7 +87,7 @@ position, `started` says whether this call started a turn, `pid` is the runner's
 
 Throws `ADMISSION_FULL`, `SPEND_LIMIT`, `PAUSED` (each `retryable`; when the message was already
 said, `detail` says so), `MESSAGE_EMPTY`, `REQUEST_ID_INVALID`, `TRACEPARENT_INVALID`,
-`HOOK_INVALID`, `FROM_INVALID`, `APPROVAL_INVALID`, `INBOX_UNWRITABLE`, and the refusals of a spore whose plugins cannot be
+`HOOK_INVALID`, `FROM_INVALID`, `APPROVAL_INVALID`, `ATTACH_INVALID`, `INBOX_UNWRITABLE`, and the refusals of a spore whose plugins cannot be
 prepared, such as `PLUGIN_NOT_ALLOWED`, `PLUGIN_CHANGED`, `PLUGIN_NOT_INSTALLED`, `PLUGIN_CONFLICT`,
 `PLUGIN_INVALID`, `PLUGIN_INCOMPATIBLE`.
 

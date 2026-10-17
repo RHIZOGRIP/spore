@@ -57,7 +57,8 @@ lists what there is to read and `.schema turns` shows one:
   `settled` is 1 when the money is what the runtime counted once every call had finished, and
   0 when it is what the turn itself reported.
 - `inbox` — everything said to you, by `inboxNo`: `text` (or `bodyPath` for a long one),
-  `files`, `schedule` and `due` when the clock said it, `hook`, `hookEvent` and `hookDelivery`
+  `files` (each `path` under `inbox.d/`, or no `path` and `missing` saying why it did not come),
+  `schedule` and `due` when the clock said it, `hook`, `hookEvent` and `hookDelivery`
   when a webhook did, `replyTo` (where the answer to it goes: `terminal`, or a place such as
   `telegram:main/42`), `fromName`, `fromId` and `fromWhere` when a person said it, `consumed` once
   a finished turn has read it, and `setAside` for one its sender stopped before any turn read it —

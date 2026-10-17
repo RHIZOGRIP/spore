@@ -32,6 +32,8 @@ const GROUP_FIELDS = ['spores', 'people', 'details', 'show', 'overhear', 'brief'
 const PERSON = /^\d+$/
 const GROUP = /^-\d+$/
 const STYLES = { positive: 'success', destructive: 'danger' }
+const FETCH_MOST = 20 * 1024 * 1024
+const ALBUM_QUIET_MS = 1000
 const BODY = 'a Telegram body is { "html": "<Telegram\'s HTML, at most 4096 characters>" }'
 
 const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
@@ -114,7 +116,7 @@ export const TELEGRAM = {
   example: SHAPE,
   routes,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
-  limits: { message: 4096, file: 50 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 4000 },
+  limits: { message: 4096, file: 50 * 1024 * 1024, fetch: FETCH_MOST, editEveryMs: 2500, typingEveryMs: 4000 },
   can: { upload: true, remove: true, react: true, typing: true, reply: true, choose: true },
   showShared: 'react',
   reactions: REACTIONS,
@@ -132,7 +134,41 @@ export const TELEGRAM = {
     : `refused chat ${message.conversation}${message.person.username ? ` (@${message.person.username})` : ''} — to allow it, add "${message.conversation}": "<a spore>" to the people of ${botFile}`
 }
 
-const FILES = ['photo', 'document', 'video', 'audio', 'voice', 'video_note', 'animation', 'sticker']
+const KINDS = {
+  document: (file) => [file.mime_type ?? null, ''],
+  video: (file) => [file.mime_type ?? 'video/mp4', '.mp4'],
+  audio: (file) => [file.mime_type ?? 'audio/mpeg', '.mp3'],
+  animation: (file) => [file.mime_type ?? 'video/mp4', '.mp4'],
+  voice: (file) => [file.mime_type ?? 'audio/ogg', '.ogg'],
+  video_note: () => ['video/mp4', '.mp4'],
+  sticker: (file) => file.is_animated ? ['application/x-tgsticker', '.tgs'] : file.is_video ? ['video/webm', '.webm'] : ['image/webp', '.webp']
+}
+
+/**
+ * The files a message carries, as the relay lists them: the largest size of a photo, and the one
+ * file of any other kind, each under its own name or one made of its kind and Telegram's id for
+ * it. One Telegram will not let a bot fetch is listed with why.
+ */
+function filesOf (message) {
+  const found = []
+  const photo = message.photo?.at(-1)
+  if (photo) found.push({ name: `photo-${photo.file_unique_id}.jpg`, mime: 'image/jpeg', bytes: photo.file_size ?? null, id: photo.file_id })
+  for (const [kind, typed] of Object.entries(KINDS)) {
+    const file = message[kind]
+    if (!file) continue
+    const [mime, extension] = typed(file)
+    found.push({ name: file.file_name ?? `${kind.replace('_', '-')}-${file.file_unique_id}${extension}`, mime, bytes: file.file_size ?? null, id: file.file_id })
+  }
+  return found.map(({ id, ...file }) => file.bytes !== null && file.bytes > FETCH_MOST
+    ? { ...file, ref: null, why: 'Telegram lets a bot fetch files up to 20 MB' }
+    : { ...file, ref: id })
+}
+
+/** An album's parts as one message: what its captioned part said, and every part's files. */
+export function merged (messages) {
+  const said = messages.find(message => message.text !== null) ?? messages[0]
+  return { ...said, files: messages.flatMap(message => message.files), addresses: messages.some(message => message.addresses === null) ? null : [] }
+}
 
 const personOf = ({ id, first_name: first, last_name: last, username }) =>
   ({ id: String(id), name: `${[first, last].filter(Boolean).join(' ')}${username ? ` (@${username})` : ''}`, username, groups: [] })
@@ -196,7 +232,7 @@ export function normalize (update, bot, me) {
     text,
     command: command ? { verb: command[1].toLowerCase(), args: command[3] ?? '' } : null,
     addresses: addressed ? null : [],
-    files: FILES.filter(kind => message[kind]).length
+    files: filesOf(message)
   }
 }
 
@@ -217,15 +253,37 @@ export function createAdapter ({ telegram, bot, me }) {
      * One long poll after another until `signal` aborts. An update is handed to `onMessage`, or a
      * press to `onChoice`, and awaited before the offset moves past it, since moving it is what
      * confirms the update to Telegram: a message is confirmed only once the spore has it, and a
-     * press once it is written down.
+     * press once it is written down. An album's parts are held, unconfirmed, until none has come for
+     * a second, and handed on as one message.
      */
     async listen ({ onMessage, onChoice, signal, log, sleep }) {
       let offset
+      let seen = -1
+      let album = null
       let backoff = 1000
+      const take = async (update) => {
+        const query = update.callback_query
+        if (query) {
+          const acknowledge = (text) => telegram.answer(query.id, text)
+          const choice = choiceOf(query)
+          if (choice) await onChoice({ ...choice, acknowledge })
+          else await acknowledge(null).catch(err => log(`a press was not answered — ${said(err)}`))
+          return
+        }
+        const message = normalize(update, bot, me)
+        if (message) await onMessage(message)
+      }
+      const flush = async () => {
+        const { parts } = album
+        album = null
+        const messages = parts.map(update => normalize(update, bot, me)).filter(Boolean)
+        if (messages.length) await onMessage(merged(messages))
+        offset = parts.at(-1).update_id + 1
+      }
       while (!signal.aborted) {
         let updates
         try {
-          updates = await telegram.updates(offset, { signal })
+          updates = await telegram.updates(offset, { seconds: album ? 0 : 30, signal })
           backoff = 1000
         } catch (err) {
           if (signal.aborted) break
@@ -238,19 +296,21 @@ export function createAdapter ({ telegram, bot, me }) {
           backoff = Math.min(backoff * 2, 60_000)
           continue
         }
-        for (const update of updates) {
-          const query = update.callback_query
-          if (query) {
-            const acknowledge = (text) => telegram.answer(query.id, text)
-            const choice = choiceOf(query)
-            if (choice) await onChoice({ ...choice, acknowledge })
-            else await acknowledge(null).catch(err => log(`a press was not answered — ${said(err)}`))
-          } else {
-            const message = normalize(update, bot, me)
-            if (message) await onMessage(message)
+        const fresh = updates.filter(update => update.update_id > seen)
+        if (album && !fresh.some(update => update.message?.media_group_id === album.id)) await flush()
+        for (const update of fresh) {
+          seen = update.update_id
+          const group = update.message?.media_group_id
+          if (album && group !== album.id) await flush()
+          if (group) {
+            album ??= { id: group, parts: [] }
+            album.parts.push(update)
+            continue
           }
+          await take(update)
           offset = update.update_id + 1
         }
+        if (album) await sleep(ALBUM_QUIET_MS)
       }
       if (offset !== undefined) {
         await telegram.updates(offset, { seconds: 0 }).catch(err => log(`could not confirm the last updates — ${said(err)}`))
@@ -281,6 +341,8 @@ export function createAdapter ({ telegram, bot, me }) {
     react: (conversation, message, emoji) => telegram.react(Number(conversation), message, emoji),
 
     typing: (conversation) => telegram.typing(Number(conversation)),
+
+    fetch: async (ref, { most }) => telegram.download((await telegram.file(ref)).file_path, { most }),
 
     checkBody: (native) => {
       const fits = Object.keys(native).every(key => key === 'html') && typeof native.html === 'string' && native.html.trim() !== '' && native.html.length <= 4096

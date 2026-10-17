@@ -36,7 +36,8 @@ scopes. A manifest of version 1.25 or later with the team scope must say
 `"supportsChannelFeatures": "tier1"`, or Teams refuses the package; it lets the app into private
 and shared channels too, which the service does not serve yet, so leave it out of those. Publish
 it to your organization and approve it in the Teams admin center, under Manage apps: an app
-uploaded for one person can stay blocked by the tenant's app policies.
+uploaded for one person can stay blocked by the tenant's app policies. For files sent to it in a
+personal chat, the app's bot says `"supportsFiles": true` in its manifest.
 
 Every activity is checked before it is read: a token Microsoft signed for this app id, with a key
 it endorses for Teams, for the `serviceUrl` the activity names. One that fails is answered 401 and
@@ -85,8 +86,13 @@ is a new message — in a channel, in the thread of the message it answers — a
 removed, or marked `answered below` where Teams will not remove it; in a channel thread, Teams shows
 `This message has been deleted.` where it was. The answer is sent in Teams' extended Markdown,
 so tables and fenced code render; what the bot says itself — status, notices — is plain text,
-line for line. What the turn left in `data/out/` is named, one line a file: files do not cross yet,
-either way.
+line for line. What the turn left in `data/out/` is named, one line a file.
+
+A file sent in a personal chat reaches the spore, fetched from the sender's OneDrive by the link
+Teams gives the bot, as does an image pasted there, which Teams serves the bot alone — up to 25 MB
+each, or the bot file's `"files": "10MB"` (`false` takes none). A file in a channel lives in
+SharePoint, which the bot cannot read: whoever sent it is told to send it in a personal chat. A
+file that does not come is told, to the person and to the spore.
 
 ```
 /status    what the spore is doing, its turns and what they cost, and the running turn's limits
