@@ -58,7 +58,8 @@ describe('the default rendering of a running turn', () => {
   })
 
   it('counts neither a question nor a quiet ending as a call, and shows nothing of an event it has no use for', () => {
-    expect(shown([{ event: 'round', index: 3 }, { event: 'complete', output: 'the answer' }, start('quiet', { because: 'x' })])).toEqual(['working…'])
+    expect(shown([{ event: 'round', index: 3 }, start('quiet', { because: 'x' }), { event: 'complete', output: null, stopReason: 'quiet' }])).toEqual(['working…'])
+    expect(shown([{ event: 'round', index: 0 }, said('the answer'), { event: 'complete', output: 'the answer' }])).toEqual(['working…'])
     expect(shown([start('read', { path: 'a' }, 'a'), start('ask', { question: 'which?' }, 'b')])).toEqual(['working… · 1 call', '· reading a file'])
     expect(liveOf([], { startedAt: STARTED })).toBe(null)
   })

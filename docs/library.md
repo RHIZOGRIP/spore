@@ -26,19 +26,20 @@ Conventions that hold throughout:
 ## Groups
 
 1. [Saying something and following it](#saying-something-and-following-it)
-2. [Answers addressed elsewhere](#answers-addressed-elsewhere)
-3. [Approvals](#approvals)
-4. [Reading a spore](#reading-a-spore)
-5. [Defining and changing spores](#defining-and-changing-spores)
-6. [Stopping, pausing and running many](#stopping-pausing-and-running-many)
-7. [Limits on a running turn](#limits-on-a-running-turn)
-8. [The clock and held deliveries](#the-clock-and-held-deliveries)
-9. [Host configuration](#host-configuration)
-10. [Plugins and services](#plugins-and-services)
-11. [Models and the machine](#models-and-the-machine)
-12. [Definitions](#definitions)
-13. [Low-level readers and helpers](#low-level-readers-and-helpers)
-14. [Events, errors, tracing and logging](#events-errors-tracing-and-logging)
+2. [Showing a running turn](#showing-a-running-turn)
+3. [Answers addressed elsewhere](#answers-addressed-elsewhere)
+4. [Approvals](#approvals)
+5. [Reading a spore](#reading-a-spore)
+6. [Defining and changing spores](#defining-and-changing-spores)
+7. [Stopping, pausing and running many](#stopping-pausing-and-running-many)
+8. [Limits on a running turn](#limits-on-a-running-turn)
+9. [The clock and held deliveries](#the-clock-and-held-deliveries)
+10. [Host configuration](#host-configuration)
+11. [Plugins and services](#plugins-and-services)
+12. [Models and the machine](#models-and-the-machine)
+13. [Definitions](#definitions)
+14. [Low-level readers and helpers](#low-level-readers-and-helpers)
+15. [Events, errors, tracing and logging](#events-errors-tracing-and-logging)
 
 ---
 
@@ -188,6 +189,63 @@ turnsSince(ws, turnNo) → { turn, ended: [{ record, asked }] }
 
 Every turn finished after `turnNo`: its record, and `asked`, the inbox entries it answered.
 `turn` is the last `turnNo` returned, or `turnNo` when there is none.
+
+---
+
+## Showing a running turn
+
+One value folded from a running turn's events, which every surface renders — the default rendering
+for a chat or a terminal line, a layout of its own for anything showing more. The account:
+[ARCHITECTURE §What a running turn shows](../ARCHITECTURE.md#what-a-running-turn-shows).
+
+### `createLive`
+
+```
+createLive({ startedAt = null }) → live
+```
+
+An empty `live` for a turn that started at `startedAt` (ISO 8601; `null` shows no time): `rounds`,
+`text` being written, `notes`, `headline` (`{ text, source }` or `null`), `calls` (each with
+`callId`, `name`, `args`, `title`, `category`, `detail`, `done` and, once done, `durationMs`,
+`error`, `outcome`, `exit`, `killed`, `signal`), `wrapping`, `heard`, `input`, `cached`, `cost` and
+`complete`.
+
+### `applyEvent`
+
+```
+applyEvent(live, event) → boolean
+```
+
+Folds one event of the turn into `live`, in place. False when it changes nothing a surface shows.
+
+### `liveOf`
+
+```
+liveOf(events, { startedAt }) → live | null
+```
+
+`live` folded from `events`, or `null` when there are none.
+
+### `renderLive`
+
+```
+renderLive(live, { level = 'plain', now = Date.now() }) → string[]
+```
+
+The default rendering, plain text lines: `working…` with how many calls ran and, from a minute,
+for how long; the headline; the current call by its title; why the turn is wrapping up. `level` is
+`brief`, `plain` (adds how the call ended and which limit was reached) or `details` (the call's
+path or command).
+
+### `describeCall`
+
+```
+describeCall(name, args, rows = []) → { title, category, detail }
+```
+
+How a call is shown, from `rows` (a spore's `:::call` rows, then its plugins') and then the
+runtime's. A turn stores it on `tool_start`; this is for a call that carries none.
+[ARCHITECTURE §Describing a call](../ARCHITECTURE.md#describing-a-call).
 
 ---
 

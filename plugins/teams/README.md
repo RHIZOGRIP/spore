@@ -69,8 +69,9 @@ A bot that serves people who should see their answers and not the machinery take
 beside `people` and `channels`: each conversation is then told its spore's state and its answers,
 and nothing of how it runs. `/status` says `working`, `idle`, `paused` or how many messages wait —
 never the model, the spend, the turns or the limits; an answer comes without how the turn ended, a
-turn with none says `no answer this time` and the log says why; a limit reached shows as `wrapping
-up`; and `/extend` is not offered, since what a turn may spend is yours. A person or a channel takes
+turn with none says `no answer this time` and the log says why; a working turn shows the model's
+note, the kind of the call it runs, how many and for how long, never how a call ended; a limit
+reached shows as `wrapping up`; and `/extend` is not offered, since what a turn may spend is yours. A person or a channel takes
 `"brief"` as well, `false` to be told everything in a brief bot; `details` is refused beside it.
 
 Someone not in the file gets silence, and the log gets the line to add:
@@ -85,7 +86,9 @@ which is also how you learn object ids: start with `"people": {}` and write to t
 
 In a personal chat, anything written reaches the spore. In a channel, a message reaches it when
 it mentions the bot. A mention that opens the message is not part of what the spore is told, while
-one inside the sentence stays as `@<bot>`; the spore is told who wrote and where. The bot posts `working…` and shows what kind of call runs as it runs; the answer
+one inside the sentence stays as `@<bot>`; the spore is told who wrote and where. The bot posts
+`working…` and edits it as the turn goes: how many calls it has made and, once a minute has passed,
+for how long; what the model last wrote before a call; and the kind of the call running. The answer
 is a new message — in a channel, in the thread of the message it answers — and `working…` is then
 removed, or marked `answered below` where Teams will not remove it; in a channel thread, Teams shows
 `This message has been deleted.` where it was. The answer is sent in Teams' extended Markdown,

@@ -53,14 +53,17 @@ One bot per user: the source a spore reads history through takes `DISCORD_BOT_TO
   line to add.
 - `sporesTalk` — `true` lets a spore's post that mentions another spore's role reach it. False
   when left out: two spores that keep answering each other run until their limits stop them.
-- `show` — how a turn shows itself there: `working` (the `working…` post, edited with the kind of
-  each call as it runs; the default), `react` (the bot's reaction on your message, and Discord's
+- `show` — how a turn shows itself there: `working` (the `working…` post, edited as the turn goes
+  with how many calls it has made and for how long, the model's note before a call and the kind of
+  the call running; the default), `react` (the bot's reaction on your message, and Discord's
   typing), or `both`.
 - `details` — `true` shows the calls themselves in the `working…` post rather than their kinds.
 - `brief` — `true` tells the channel its spores' state and their answers, and nothing of how they
   run: `status` says `working`, `idle`, `paused` or how many messages wait — never the model, the
   spend, the turns or the limits; an answer comes without how the turn ended, a turn with none says
-  `no answer this time` and the log says why; a limit reached shows as `wrapping up`; and `extend`
+  `no answer this time` and the log says why; a working turn shows the model's note, the kind of the
+  call it runs, how many and for how long, never how a call ended; a limit reached shows as
+  `wrapping up`; and `extend`
   is not offered, since what a turn may spend is yours. `"brief": true` beside `channels` makes
   every channel brief that does not say `false`. A channel cannot take `details` beside it.
 

@@ -2089,7 +2089,30 @@ its own `spore.cmk`, and is handed its plugins' rows in `SPORE_PLUGIN_CALLS` the
 their read paths. An embedder takes part through the `spore.cmk` of the sporangium it makes its
 spores from. The rows, their checks and the match are `rust/definition`'s, one implementation for
 the definition, the plugin check and the agent. A turn its spore was upgraded under wrote
-`tool_start` without a description; the relay describes such a call from the runtime's rows.
+`tool_start` without a description; `live` describes such a call from the runtime's rows.
+
+### What a running turn shows
+
+**One value, folded from the turn's events, which every surface renders**: `live`
+(`src/library/live.js` — `createLive`, `applyEvent`, `liveOf`), so a chat, `spore send`, the API and
+the terminal show one account of a turn rather than each reading the events its own way. It carries
+every fact a surface may want — the rounds, the calls with their descriptions and how each ended,
+the text being written, the notes (a wrap and its lifting, a message heard mid-turn, compaction),
+the spend and the context of the last model call — and its `headline`, the model's own words on
+what it is doing: for now the text it wrote before its latest call.
+
+**The default rendering** (`renderLive`) is what a surface without a layout of its own shows, in a
+few plain lines: `working…` with how many calls ran and, once a minute has passed, for how long; the
+headline, one line cut short; the call running now by its title; and why the turn is wrapping up.
+`plain` adds how that call ended — slow, an exit code, failed; `details` shows its detail, the path
+or the command; `brief` drops how it ended and which limit was reached. It never shows a bound, a
+count against a total or spend: a bound reads as a promise, and a count as progress the work may not
+make. The terminal keeps its own layout, with the limits beside the turn, and an embedder may show
+more; both start from the same value.
+
+A chat relay repaints its `working…` message only when the rendering changes, at most once per the
+platform's edit interval — a call starting, one ending slow or failed, a wrap, or the minute turning,
+which the turn's 10-second heartbeats bring to it between calls.
 
 ## Spawn
 

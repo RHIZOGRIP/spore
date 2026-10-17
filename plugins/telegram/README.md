@@ -123,10 +123,15 @@ Both are read on every message and followed as they change, so a person or a gro
 moved or removed by editing a line. The file lives beside `config.json` and `sources.json`. Spores
 cannot read or change it.
 
-While a turn works, its chat is shown what kind of call ran — `reading a file`, `running a
-command`, `asking forgejo` by the source's name, a run of the same one counted, a slow one
-timed, a command that exited non-zero given its exit code, a call that failed marked — and never what it was given: a Telegram message leaves the
-machine, and a command line or a path is yours. A chat can ask for the calls themselves:
+While a turn works, its chat is shown one message, edited as the turn goes: how many calls it has
+made and, once a minute has passed, for how long — `working… · 12 calls · 3m`; what the model last
+wrote before a call, when it wrote something; and the call running now by its kind — `reading a
+file`, `running a command`, `asking forgejo` by the source's name — a slow one timed, a command that
+exited non-zero given its exit code, a call that failed marked. Never what a call was given: a
+Telegram message leaves the machine, and a command line or a path is yours. A call's kind is what
+the spore's `:::call` blocks, its plugins or spore itself name it
+([ARCHITECTURE §Describing a call](../../ARCHITECTURE.md#describing-a-call)). A chat can ask for the
+calls themselves:
 
 ```json
 { "token": "${TRIAGE_BOT_TOKEN}", "people": { "148392011": { "spore": "triage", "details": true } } }
@@ -140,8 +145,9 @@ A bot that serves people who should see their answers and not the machinery — 
 takes `"brief": true` beside `people` and `groups`: each chat is then told its spore's state and its
 answers, and nothing of how it runs. `/status` says `working`, `idle`, `paused` or how many messages
 wait — never the model, the spend, the turns or the limits; an answer comes without how the turn
-ended, a turn with none says `no answer this time` and the log says why; a limit reached shows as
-`wrapping up`; and `/extend` is not offered, since what a turn may spend is yours. A person or a
+ended, a turn with none says `no answer this time` and the log says why; a working turn shows the
+model's note, the kind of the call it runs, how many and for how long, never how a call ended; a
+limit reached shows as `wrapping up`; and `/extend` is not offered, since what a turn may spend is yours. A person or a
 group takes `"brief"` as well, `false` to be told everything in a brief bot; `details` is refused
 beside it.
 
