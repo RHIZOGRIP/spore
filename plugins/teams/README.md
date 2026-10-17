@@ -37,7 +37,11 @@ scopes. A manifest of version 1.25 or later with the team scope must say
 and shared channels too, which the service does not serve yet, so leave it out of those. Publish
 it to your organization and approve it in the Teams admin center, under Manage apps: an app
 uploaded for one person can stay blocked by the tenant's app policies. For files sent to it in a
-personal chat, the app's bot says `"supportsFiles": true` in its manifest.
+personal chat, the bot's entry in the manifest's `bots` says `"supportsFiles": true`. A changed
+manifest is published again under a new `version`, the app's own, which Teams refuses to reuse.
+Adding `supportsFiles` to an app people already have waits for each one's consent; where Teams
+offers no update, removing the app and adding it again installs the new version, and the chat
+keeps its history.
 
 Every activity is checked before it is read: a token Microsoft signed for this app id, with a key
 it endorses for Teams, for the `serviceUrl` the activity names. One that fails is answered 401 and
@@ -90,9 +94,10 @@ line for line. What the turn left in `data/out/` is named, one line a file.
 
 A file sent in a personal chat reaches the spore, fetched from the sender's OneDrive by the link
 Teams gives the bot, as does an image pasted there, which Teams serves the bot alone — up to 25 MB
-each, or the bot file's `"files": "10MB"` (`false` takes none). A file in a channel lives in
-SharePoint, which the bot cannot read: whoever sent it is told to send it in a personal chat. A
-file that does not come is told, to the person and to the spore.
+each, or the bot file's `"files": "10MB"` (`false` takes none). A file attached in a channel never
+reaches the bot: Teams sends it the message's text alone, with nothing saying a file came with it,
+so neither the person nor the spore is told — send it in a personal chat. A file that does not
+come is told, to the person and to the spore.
 
 ```
 /status    what the spore is doing, its turns and what they cost, and the running turn's limits
@@ -135,10 +140,17 @@ what below.
   settled refused with Teams' reason; a rate limit is waited out, as long as Teams says.
 - **An answer never waits behind progress.** Under a rate limit the `working…` edits are dropped.
 
+## Seeing what Teams sends
+
+`"trace": true` in the bot file writes every activity that holds to the service's log, one line
+each, as Teams sent it — names, ids and download links included. It is read on every activity, so
+it is turned on and off by editing the file, with no restart; leave it off once you have seen what
+you needed.
+
 ## Not yet
 
-Group chats (logged and left), private and shared channels, files in either direction, and a bot
-serving tenants other than its own.
+Group chats (logged and left), private and shared channels, files in a channel, a spore's files
+sent rather than named, and a bot serving tenants other than its own.
 
 ## What it keeps
 

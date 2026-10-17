@@ -134,6 +134,11 @@ export function readRules (reads, home = accountHome()) {
   }).join('\n\n')
 }
 
+const ANSWER_RULES = 'Whoever reads your answer sees the answer and the files you hand back in data/out/, never your ' +
+  'workspace: data/, state.sqlite, calls/ and the rest are yours alone, unless your instructions say the person ' +
+  'works in them with you. Never send them to a path there — say what they need in the answer, and put a file ' +
+  'they should have in data/out/.'
+
 /**
  * Only the plugins the definition names, whatever else is in `plugins/`: a file left from one it
  * no longer uses describes a program this agent is not given.
@@ -216,6 +221,6 @@ export function openWorkspace (dir, { cwd = process.cwd(), definition: given, al
     images: definition.images,
     schedules: definition.schedules ?? null,
     plugins: definition.plugins,
-    domainRules: [workRules(writes), readRules(reachable), seededRules(ws), pluginRules(ws, definition.plugins), precursorRules(describePrecursors(ws), definition.dream?.precursor), cellModelRules(definition.cellModels ?? [], definition.model)].filter(Boolean).join('\n\n')
+    domainRules: [workRules(writes), readRules(reachable), ANSWER_RULES, seededRules(ws), pluginRules(ws, definition.plugins), precursorRules(describePrecursors(ws), definition.dream?.precursor), cellModelRules(definition.cellModels ?? [], definition.model)].filter(Boolean).join('\n\n')
   }
 }

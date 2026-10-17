@@ -7,7 +7,7 @@
 
 import { SporeError } from '@rhizogrip/spore'
 
-const FIELDS = ['app', 'tenant', 'secret', 'listen', 'people', 'channels']
+const FIELDS = ['app', 'tenant', 'secret', 'listen', 'people', 'channels', 'trace']
 const PERSON_FIELDS = ['spore', 'details', 'brief']
 const CHANNEL_FIELDS = ['spores', 'people', 'details', 'brief']
 const PERSON = /^[0-9a-f][0-9a-f-]*$/i
@@ -62,6 +62,7 @@ function routes (raw, path) {
     if (typeof raw[field] !== 'string' || !raw[field]) throw invalid(path, `has no ${field}`, `${field} is the Azure Bot's ${field === 'app' ? 'Microsoft App ID' : 'app tenant ID'}`)
   }
   listenOf(raw, path)
+  if (raw.trace !== undefined && typeof raw.trace !== 'boolean') throw invalid(path, 'has a trace that is not true or false', 'trace: true writes every activity Teams delivers to the log, as it came')
   if (raw.people === undefined && raw.channels === undefined) {
     throw invalid(path, 'has no people and no channels', `a bot is ${SHAPE} — "people": {} while you learn the ids: the log names everyone it refuses`)
   }
@@ -141,8 +142,8 @@ const plain = (html, own) => html
 /**
  * What an activity brought, as the relay lists files. In a personal chat a file comes as a
  * download link, which needs no token; a pasted image as a link Teams serves the bot alone, which
- * gets the bot's token only where it is the activity's own service. A file in a channel is in
- * SharePoint, which this bot cannot read, and is listed with why.
+ * gets the bot's token only where it is the activity's own service. Anything else is listed with
+ * why; a file sent in a channel never comes at all, since Teams hands a bot the message alone.
  */
 function filesOf (activity, personal) {
   const service = new URL(activity.serviceUrl).host

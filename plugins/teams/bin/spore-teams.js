@@ -19,7 +19,8 @@ await runService({
     const token = createToken({ app, tenant, secret: credentials.secret })
     await token()
     const verify = createVerifier({ app })
-    const receive = ({ onActivity, signal, log }) => serve({ host, port, verify, onActivity, signal, log })
+    const trace = () => readBot(TEAMS, file).trace === true
+    const receive = ({ onActivity, signal, log }) => serve({ host, port, verify, onActivity, signal, log, trace })
     return { adapter: createAdapter({ connector: createConnector({ token }), receive, app, tenant }), who: `app ${app} on ${host}:${port}` }
   }
 })

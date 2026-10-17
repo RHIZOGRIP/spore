@@ -136,6 +136,15 @@ describe('what the runtime tells an agent it has been given', () => {
     expect(opened.domainRules).toContain('libraries.md')
     expect(opened.domainRules).toContain('workspace root')
   })
+
+  it('tells every identity that whoever reads its answer does not see its workspace', () => {
+    const cmk = resolve(ROOT, 'custom.cmk')
+    writeFileSync(cmk, '---\nname: custom\nmodel: anthropic/claude-haiku-4-5\ntools: [read]\nrounds: [2, 3]\ncost: [1, 2]\nwall: [1m, 2m]\n---\nYou do one job.\n')
+
+    const opened = open({ definition: 'custom.cmk' })
+    expect(opened.domainRules).toContain('Whoever reads your answer sees the answer and the files you hand back in data/out/, never your workspace')
+    expect(opened.domainRules).toContain('Never send them to a path there')
+  })
 })
 
 describe('a corpus, as the agent is told of it', () => {

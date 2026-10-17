@@ -39,6 +39,13 @@ describe('a bot\'s people and channels', () => {
     expect(() => routesOf(TEAMS, path)).toThrow(/person .* whose brief is not true or false/)
   })
 
+  it('take trace as true or false, and refuse anything else', () => {
+    bot({ trace: true, people: {} })
+    expect(routesOf(TEAMS, path)).toEqual(new Map())
+    bot({ trace: 'yes', people: {} })
+    expect(() => routesOf(TEAMS, path)).toThrow(expect.objectContaining({ message: expect.stringMatching(/has a trace that is not true or false/), detail: expect.stringMatching(/^trace: true writes every activity/) }))
+  })
+
   it('route a channel\'s threads by the channel', () => {
     expect(TEAMS.routeOf(`${CHANNEL};messageid=1729000000001`)).toBe(CHANNEL)
     expect(TEAMS.routeOf(ALICE)).toBe(ALICE)
@@ -293,10 +300,10 @@ describe('the listener', () => {
   let port
   const taken = []
   const logs = []
-  const listening = async (verify, onActivity = async (activity) => { taken.push(activity) }) => {
+  const listening = async (verify, onActivity = async (activity) => { taken.push(activity) }, trace) => {
     const controller = new AbortController()
     stop = () => controller.abort()
-    const ready = new Promise(resolve => serve({ host: '127.0.0.1', port: 0, verify, onActivity, signal: controller.signal, log: (line) => logs.push(line), listening: resolve }))
+    const ready = new Promise(resolve => serve({ host: '127.0.0.1', port: 0, verify, onActivity, signal: controller.signal, log: (line) => logs.push(line), trace, listening: resolve }))
     port = await ready
   }
   const post = (body, { path: at = '/api/messages', authorization = 'Bearer good' } = {}) =>
@@ -334,5 +341,24 @@ describe('the listener', () => {
     const message = await post({ id: 'a2', type: 'message' })
     expect(message.status).toBe(200)
     expect(await message.text()).toBe('')
+  })
+
+  it('writes each activity that holds to the log as it came while trace says so, asking again for each one', async () => {
+    let tracing = true
+    await listening(async (authorization) => authorization === 'Bearer good' ? null : 'its token is for another-app, not this bot', undefined, () => tracing)
+    const pasted = { id: 'a1', type: 'message', attachments: [{ contentType: 'text/html', content: '<p>look <img src="https://example.test/i.png"></p>' }] }
+    await post(pasted)
+    await post({ id: 'a2' }, { authorization: 'Bearer bad' })
+    tracing = false
+    await post({ id: 'a3', type: 'message' })
+    expect(logs).toEqual([`activity a1: ${JSON.stringify(pasted)}`, 'refused an activity: its token is for another-app, not this bot'])
+    expect(taken.map(activity => activity.id)).toEqual(['a1', 'a3'])
+  })
+
+  it('takes nothing while trace cannot be read, so Microsoft delivers it again', async () => {
+    await listening(async () => null, undefined, () => { throw new Error('ops.json is not readable JSON') })
+    expect((await post({ id: 'a1' })).status).toBe(500)
+    expect(logs).toEqual(['activity a1 not taken — ops.json is not readable JSON'])
+    expect(taken).toEqual([])
   })
 })

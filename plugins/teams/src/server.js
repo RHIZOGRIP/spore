@@ -23,8 +23,11 @@ const bodyOf = (request) => new Promise((resolve, reject) => {
   request.on('error', reject)
 })
 
-/** Serves until `signal` aborts, telling `listening` the port once it listens. */
-export function serve ({ host, port, verify, onActivity, signal, log, listening = () => {} }) {
+/**
+ * Serves until `signal` aborts, telling `listening` the port once it listens. `trace` is asked
+ * for each activity that holds, and when it says so the activity goes to the log as it came.
+ */
+export function serve ({ host, port, verify, onActivity, signal, log, trace = () => false, listening = () => {} }) {
   const server = createServer(async (request, response) => {
     const answer = (status) => response.writeHead(status).end()
     if (request.method !== 'POST' || request.url !== PATH) return answer(404)
@@ -47,6 +50,7 @@ export function serve ({ host, port, verify, onActivity, signal, log, listening 
     }
     let reply
     try {
+      if (trace()) log(`activity ${activity.id}: ${JSON.stringify(activity)}`)
       reply = await onActivity(activity)
     } catch (err) {
       log(`activity ${activity.id} not taken — ${err.message}${err.detail ? ` — ${err.detail}` : ''}`)

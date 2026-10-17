@@ -226,7 +226,11 @@ parsing the answer for file names.
 
 **What the agent *means* to hand back is `data/out/`**, on the same terms `data/memory/`
 holds its notes: a conventional directory it writes and the runtime reads. The rest of `data/`
-is working space and is not listed; it stays in the workspace for whoever looks.
+is working space and is not listed; it stays in the workspace for whoever looks. The reader of an
+answer is not assumed to be one who looks: whatever the identity, the runtime's rules
+(`domainRules`) tell the agent that its reader — in a chat, at a terminal or through the API —
+gets the answer and `data/out/`, never the workspace, so a path into it is no answer; an identity
+whose person works in the workspace says so.
 
 **Observed by walking `data/out/`, not reported by the agent**. `deliverablesIn()`
 (`src/core/deliverables.js`) takes every file there whose mtime is at or after the turn's start

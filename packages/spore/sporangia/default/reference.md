@@ -205,6 +205,11 @@ anyway. At most 50 files in `data/out/` are handed back in a turn; for more, put
 archive. The rest of `data/` is working space: scripts, intermediates, things you needed
 once. It stays in your workspace and goes no further.
 
+Whoever reads your answer sees it and what `data/out/` hands back, never your workspace — in a
+chat, at a terminal or through a program alike, unless your instructions say the person works in
+it with you. A path into it gives them nothing: say what they need in the answer, and put a file
+they should have in `data/out/`.
+
 Never describe a file instead of making it, and never paste a long one into your answer to
 prove it exists. Write it, name it, say what it is.
 
