@@ -570,7 +570,7 @@ All but `turn_end` are written by the agent's loop. `turn_end` is written by the
 |---|---|
 | `round` | `index` |
 | `stream` | `kind`, `delta`. `kind` is the model library's delta type: `message` is the answer's text; other kinds carry other streamed parts. Lines are batched (up to 100 ms or 4096 characters per line), and their size is not a contract |
-| `tool_start` | `name`, `args`, `callId` |
+| `tool_start` | `name`, `args`, `callId`, and how the call is shown: `title`, `category`, `detail` ([ARCHITECTURE §Describing a call](ARCHITECTURE.md#describing-a-call)) |
 | `tool_end` | `name`, `callId`, `durationMs`, `error`, `outcome`, `result` (its first 200 characters) — `outcome` is `ok`; `exit` with `exit`, a command that ran to its end and exited non-zero; `killed` with `killed` (`deadline` or `idle`); `signal` with `signal`; `spawn`; or `refused` |
 | `tool_block` | `name`, `reason` |
 | `heartbeat` | `phase` (`answer` or `tool`), `elapsedMs`, `tool` |
@@ -589,7 +589,9 @@ All but `turn_end` are written by the agent's loop. `turn_end` is written by the
 | `turn_end` | `turnNo`, `stopReason`, `concluded`, `error`, `rounds`, `ownUsd`, `treeUsd`, `workUnits`, `settled`, `inboxFrom`, `inboxTo` |
 
 `tool_start` and `tool_end` carry the agent's arguments and the start of its results: paths,
-queries, command lines. Filter them before sending them off the machine.
+queries, command lines. Filter them before sending them off the machine. A call's `title` and
+`category` carry none of it beyond what its describing row captures — a source's name, for the
+runtime's rows — and are what a chat relay shows; its `detail` is the path or the command line.
 
 ### `complete` and `turn_end`
 

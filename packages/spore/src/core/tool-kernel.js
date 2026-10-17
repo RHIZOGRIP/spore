@@ -15,6 +15,7 @@ import { isRefusal, refuse, refusalText, refusedResult } from './refusal.js'
 import { silent } from '../observability/logger.js'
 
 const noEmit = { emit () {}, on () {} }
+const noDescription = () => ({})
 
 const resultOf = (raw) => {
   if (isRefusal(raw)) return { text: refusalText(raw), images: [], refused: true, record: false }
@@ -57,7 +58,7 @@ const HEARTBEAT_INTERVAL_MS = 10_000
 /**
  * Execute a single tool call with its own abort controller and timing.
  */
-async function executeSingle (tc, { toolFns, emitter, signal, logger }) {
+async function executeSingle (tc, { toolFns, describe, emitter, signal, logger }) {
   const fn = toolFns[tc.name]
   const args = tc.arguments
   const start = Date.now()
@@ -69,7 +70,7 @@ async function executeSingle (tc, { toolFns, emitter, signal, logger }) {
     return refusedResult(tc.id, tc.name, 'not run — the turn was stopped before it started')
   }
 
-  emitter.emit('tool_start', { name: tc.name, args, callId: tc.id })
+  emitter.emit('tool_start', { name: tc.name, args, callId: tc.id, ...describe(tc.name, args) })
   logger.debug({ tool: tc.name, args }, '\u2192 tool call')
 
   // A model naming a tool it does not have used to reach `await fn(...)` on undefined
@@ -138,10 +139,10 @@ async function executeSingle (tc, { toolFns, emitter, signal, logger }) {
  * @param {object} [opts.logger]
  * @returns {Promise<Array<{role, toolCallId, toolName, content}>>}
  */
-export async function executeTools ({ toolCalls, toolFns, emitter = noEmit, mutators, signal, logger = silent }) {
+export async function executeTools ({ toolCalls, toolFns, describe = noDescription, emitter = noEmit, mutators, signal, logger = silent }) {
   if (!toolCalls.length) return []
 
-  const ctx = { toolFns, emitter, signal, logger }
+  const ctx = { toolFns, describe, emitter, signal, logger }
 
   // No mutators set — all parallel (backward compat)
   if (!mutators) {

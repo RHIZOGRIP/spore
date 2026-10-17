@@ -11,9 +11,11 @@ use regex::Regex;
 use serde::ser::{SerializeMap, Serializer};
 use serde::Serialize;
 
+pub mod call;
 pub mod deadline;
 pub mod schedule;
 
+pub use call::{CallRow, Description};
 pub use deadline::{deadline, Calendar};
 pub use schedule::{parse_schedule, Due, Schedule};
 
@@ -84,7 +86,7 @@ static TOOL_NAME: LazyLock<Regex> =
 static SCOPED_KEY: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^([A-Za-z][A-Za-z0-9_-]*)\.([A-Za-z][A-Za-z0-9_-]*)$").unwrap());
 static OPEN_BLOCK: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^:::enzyme[ \t]+(\S+)[ \t]*$").unwrap());
+    LazyLock::new(|| Regex::new(r"^:::(enzyme|call)[ \t]+(\S+)[ \t]*$").unwrap());
 static CLOSE_BLOCK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^:::[ \t]*$").unwrap());
 static DOCUMENT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$").unwrap());
@@ -294,6 +296,9 @@ pub struct Definition {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dream: Option<Dream>,
     pub plugins: Vec<String>,
+    /// How a person is shown its calls, from its `:::call` blocks, in the order written.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub calls: Vec<CallRow>,
 }
 
 /// `cell` holds a definition to a cell's rules, `seed` to the shipped template's, which is
@@ -483,48 +488,62 @@ pub fn parse_frontmatter(head: &str) -> Result<Fields, String> {
     Ok(fields)
 }
 
-/// The body is the identity, plus one `:::enzyme <name>` block per enzyme it grants. A
-/// description is a property of the use rather than of the program — two precursors may
-/// grant one binary and frame it two different ways — so it is written where the grant is
-/// and never asked of the binary itself.
-fn parse_body(body: &str) -> Result<(String, Ordered<String>), String> {
-    let left_open = |name: &str| {
-        format!("has \":::enzyme {name}\" left open — a block ends with \":::\" alone on a line")
+/// The body is the identity, plus one `:::enzyme <name>` block per enzyme it grants and one
+/// `:::call <name>` block per way of describing its calls. A description is a property of the use
+/// rather than of the program — two precursors may grant one binary and frame it two different
+/// ways — so it is written where the grant is and never asked of the binary itself.
+struct Body {
+    identity: String,
+    enzymes: Ordered<String>,
+    calls: Ordered<String>,
+}
+
+fn parse_body(body: &str) -> Result<Body, String> {
+    let left_open = |kind: &str, name: &str| {
+        format!("has \":::{kind} {name}\" left open — a block ends with \":::\" alone on a line")
     };
     let mut identity: Vec<&str> = Vec::new();
-    let mut described = Ordered::default();
-    let mut open: Option<(String, Vec<&str>)> = None;
+    let mut enzymes = Ordered::default();
+    let mut calls = Ordered::default();
+    let mut open: Option<(String, String, Vec<&str>)> = None;
 
     for line in body.split('\n') {
         let line = line.strip_suffix('\r').unwrap_or(line);
         if let Some(opening) = OPEN_BLOCK.captures(line) {
-            if let Some((name, _)) = &open {
-                return Err(left_open(name.as_str()));
+            if let Some((kind, name, _)) = &open {
+                return Err(left_open(kind, name));
             }
-            open = Some((opening[1].to_string(), Vec::new()));
+            open = Some((opening[1].to_string(), opening[2].to_string(), Vec::new()));
             continue;
         }
         if CLOSE_BLOCK.is_match(line) {
-            let Some((name, lines)) = open.take() else {
+            let Some((kind, name, lines)) = open.take() else {
                 return Err("has a \":::\" closing a block that was never opened".into());
             };
-            if described.has(&name) {
-                return Err(format!("describes \"{name}\" twice"));
+            let blocks = if kind == "call" {
+                &mut calls
+            } else {
+                &mut enzymes
+            };
+            if blocks.has(&name) {
+                return Err(format!("has two \":::{kind} {name}\" blocks"));
             }
-            described
-                .0
-                .push((name, trim(&lines.join("\n")).to_string()));
+            blocks.0.push((name, trim(&lines.join("\n")).to_string()));
             continue;
         }
         match &mut open {
-            Some((_, lines)) => lines.push(line),
+            Some((_, _, lines)) => lines.push(line),
             None => identity.push(line),
         }
     }
-    if let Some((name, _)) = &open {
-        return Err(left_open(name.as_str()));
+    if let Some((kind, name, _)) = &open {
+        return Err(left_open(kind, name));
     }
-    Ok((trim(&identity.join("\n")).to_string(), described))
+    Ok(Body {
+        identity: trim(&identity.join("\n")).to_string(),
+        enzymes,
+        calls,
+    })
 }
 
 /// `name=path`, or a bare path taking its basename.
@@ -960,7 +979,11 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         }
     }
 
-    let (identity, described) = parse_body(&document[2])?;
+    let Body {
+        identity,
+        enzymes: described,
+        calls: call_blocks,
+    } = parse_body(&document[2])?;
     if identity.is_empty() {
         return Err(
             "has no identity — the body below the frontmatter is what the sub-agent is told".into(),
@@ -1207,6 +1230,15 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         return Err("has a \":::enzyme\" block but grants no enzymes".into());
     }
 
+    if opts.cell && !call_blocks.0.is_empty() {
+        return Err("has a \":::call\" block — what a cell runs is shown to no one, so only a spore describes its calls".into());
+    }
+    let calls = call_blocks
+        .0
+        .iter()
+        .map(|(name, body)| call::parse_call_block(name, body))
+        .collect::<Result<Vec<_>, _>>()?;
+
     // Long-term memory, and the two depths it is read at. The depths are declared rather
     // than defaulted for the reason the limits are: each came from one sweep over one
     // dataset, and a number buried in code is a number nobody benchmarks.
@@ -1389,6 +1421,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         jobs,
         dream,
         plugins,
+        calls,
     })
 }
 
@@ -2103,5 +2136,39 @@ mod tests {
     fn reads_an_enzyme_block_written_with_crlf_line_endings() {
         let d = cell(&CHART.replace('\n', "\r\n")).unwrap();
         assert_eq!(d.enzymes[0].description.as_deref(), Some("Draws a chart."));
+    }
+
+    const DESCRIBED: &str = "\n\n:::call contract\ntool: read\ntitle: reading the contract\ncategory: read\n:::\n\n:::call search\ntool: [exec, wsexec]\nprogram: ^node \"?\\$SPORE_DA\"? search (.+)$\ntitle: searching for $1\ncategory: search\n:::\n";
+
+    #[test]
+    fn takes_call_blocks_out_of_the_identity_in_the_order_written() {
+        let d = parse(&format!("{WELL_FORMED}{DESCRIBED}")).unwrap();
+        assert_eq!(d.identity, "You read.");
+        let names: Vec<&str> = d.calls.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, vec!["contract", "search"]);
+        assert_eq!(d.calls[1].tools, vec!["exec", "wsexec"]);
+        assert!(parse(WELL_FORMED).unwrap().calls.is_empty());
+    }
+
+    #[test]
+    fn refuses_a_call_block_it_cannot_use() {
+        let refused =
+            |block: &str| parse(&format!("{WELL_FORMED}\n:::call x\n{block}\n:::\n")).unwrap_err();
+        assert!(refused("tool: read\ntitle: t\ncategory: shelf")
+            .contains("\":::call x\" has a category"));
+        assert!(refused("tool: read\ntitle: t").contains("category"));
+        let twice = format!("{WELL_FORMED}{DESCRIBED}\n:::call contract\ntool: edit\ntitle: t\ncategory: edit\n:::\n");
+        assert!(parse(&twice)
+            .unwrap_err()
+            .contains("two \":::call contract\" blocks"));
+        assert!(parse(&format!("{WELL_FORMED}\n:::call x\ntool: read\n"))
+            .unwrap_err()
+            .contains("\":::call x\" left open"));
+    }
+
+    #[test]
+    fn refuses_a_call_block_in_a_cell() {
+        let source = CHART.replacen("\n:::enzyme", &format!("{DESCRIBED}\n:::enzyme"), 1);
+        assert!(cell(&source).unwrap_err().contains("shown to no one"));
     }
 }

@@ -1,11 +1,12 @@
 /**
- * What a conversation is told of a turn. While it works: what kind of call ran — reading a file,
- * running a command, asking a source by the name its host gave it — and never what it was given or
- * what came back, since a chat message leaves the machine and a command line or a path is the
- * operator's. A conversation whose routing says `details` is shown the command or the path as
- * well. The answer and the stop reason cross in full — except to a `brief` conversation, which is
- * told the spore's state and its answers and nothing of how it runs: no model, spend or limits,
- * and no stop reason, which stays in the service's log.
+ * What a conversation is told of a turn. While it works, the default rendering of `live`
+ * (`library/live.js`): what kind of call ran — reading a file, running a command, asking a source by
+ * the name its host gave it — and never what it was given or what came back, since a chat message
+ * leaves the machine and a command line or a path is the operator's. A conversation whose routing
+ * says `details` is shown the command or the path as well. The answer and the stop reason cross in
+ * full — except to a `brief` conversation, which is told the spore's state and its answers and
+ * nothing of how it runs: no model, spend or limits, and no stop reason, which stays in the
+ * service's log.
  */
 
 import { durationText } from '../core/job.js'
@@ -14,95 +15,6 @@ import { RUNNING } from '../core/state.js'
 import { show } from '../library/verbs.js'
 
 const PLAIN_ENDINGS = new Set(['answer', 'question'])
-
-const LONGEST = 70
-const SLOW_MS = 5000
-
-// Spore's own programs, by the variable an agent runs them through, and what each is called.
-const PROGRAMS = [
-  [/^node\s+"?\$SPORE_SOURCE"?\s*/, 'source '],
-  [/^node\s+"?\$SPORE_FANOUT"?\s*/, 'fanout '],
-  [/^"?\$SPORE_BROWSER"?\s*/, 'browser '],
-  [/^"?\$SPORE_BRAVE"?\s*/, 'search '],
-  [/^"?\$SPORE_SPAWN"?\s*/, 'spawn '],
-  [/^"?\$SPORE_SQL"?\s*/, 'sql ']
-]
-
-const firstLine = (text) => String(text ?? '').split('\n')[0].replace(/\s+/g, ' ').trim()
-const cut = (text) => (text.length > LONGEST ? `${text.slice(0, LONGEST - 1)}…` : text)
-
-function kind (line) {
-  const source = /^node\s+"?\$SPORE_SOURCE"?\s+([\w.-]+)/.exec(line)
-  if (source) return `asking ${source[1]}`
-  if (/^"?\$SPORE_BROWSER/.test(line)) return 'using the browser'
-  if (/^"?\$SPORE_BRAVE/.test(line)) return 'searching the web'
-  if (/^(node\s+"?\$SPORE_FANOUT|"?\$SPORE_SPAWN)/.test(line)) return 'starting sub-agents'
-  if (/^"?\$SPORE_SQL/.test(line)) return 'reading its records'
-  return 'running a command'
-}
-
-function command (text) {
-  const line = firstLine(text)
-  const plain = kind(line)
-  const program = PROGRAMS.find(([pattern]) => pattern.test(line))
-  const detailed = program ? cut(line.replace(program[0], program[1]).trim()) : `running ${cut(line)}`
-  return { plain, detailed }
-}
-
-/** A call as a conversation is told it, plainly and in detail, or null for one it has no use for. */
-export function describe (event) {
-  const { name, args = {} } = event
-  const file = (verb, noun) => ({ plain: `${verb} a ${noun}`, detailed: `${verb} ${cut(firstLine(args.path))}` })
-  if (name === 'read') return file('reading', 'file')
-  if (name === 'write') return file('writing', 'file')
-  if (name === 'edit') return file('editing', 'file')
-  if (name === 'exec' || name === 'wsexec') return command(args.command)
-  if (name === 'ask' || name === 'quiet') return null
-  return { plain: name, detailed: name }
-}
-
-/**
- * A turn's events folded into what a conversation is shown: a call when it starts, its time once
- * it ends slow, and that it failed. Returns whether anything changed.
- */
-export function track (items, event) {
-  if (event.event === 'tool_start') {
-    const told = describe(event)
-    if (!told) return false
-    items.push({ callId: event.callId, ...told })
-    return true
-  }
-  if (event.event === 'tool_end') {
-    const item = items.find(i => i.callId === event.callId)
-    if (!item) return false
-    item.durationMs = event.durationMs
-    item.exit = event.outcome === 'exit' ? event.exit : null
-    item.failed = event.outcome === undefined ? Boolean(event.error) : !['ok', 'exit'].includes(event.outcome)
-    return item.failed || item.exit !== null || item.durationMs >= SLOW_MS
-  }
-  const note = (text, brief = text) => {
-    items.push({ plain: text, detailed: text, brief })
-    return true
-  }
-  if (event.event === 'wrap') return note(`wrapping up — reached its ${event.dimension} limit`, 'wrapping up')
-  if (event.event === 'interject') return note('heard you')
-  return false
-}
-
-/** The lines a conversation sees, the last few, a run of the same call counted rather than repeated. */
-export function render (items, { detailed = false, brief = false, last = 6 } = {}) {
-  const lines = []
-  for (const item of items) {
-    const text = (detailed ? item.detailed : brief ? item.brief ?? item.plain : item.plain) +
-      (item.failed ? ' — failed' : '') +
-      (item.exit != null ? ` — exit ${item.exit}` : '') +
-      (item.durationMs >= SLOW_MS ? ` — ${Math.round(item.durationMs / 1000)} s` : '')
-    const previous = lines.at(-1)
-    if (previous?.text === text) previous.count++
-    else lines.push({ text, count: 1 })
-  }
-  return lines.slice(-last).map(({ text, count }) => `· ${text}${count > 1 ? ` ×${count}` : ''}`)
-}
 
 const ending = (record) => [record.stopReason, record.error].filter(Boolean).join(' · ')
 

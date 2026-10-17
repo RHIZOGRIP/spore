@@ -394,7 +394,8 @@ caught before a cell meets it. The cell reaches them through the broker by name,
 
 **An enzyme does not describe itself. The precursor that grants it does**, in a
 `:::enzyme <name>` block in the body. Two precursors can grant one executable under different
-names and descriptions.
+names and descriptions. A `spore.cmk` takes `:::call <name>` blocks the same way, for how its
+calls are shown to a person ([§Describing a call](#describing-a-call)); a precursor's are refused.
 
 A grant with no block does not parse, and neither does a block naming something the
 precursor does not grant, nor a grant of enzymes without `exec` or `wsexec` to run them with.
@@ -484,7 +485,8 @@ is checked, not at the agent's first call.
 **A plugin is a manifest.** The `spore` field of its `package.json` says what it gives:
 `works`, the `@rhizogrip/spore` versions it works with, which is required; and, each optional,
 `settings` the host must supply, each a `port` or `text`; `programs`, a variable naming an
-executable in the plugin or in a package it depends on; `env`, more variables from `{name}`,
+executable in the plugin or in a package it depends on; `describe`, how a call of each of its
+programs is shown ([§Describing a call](#describing-a-call)); `env`, more variables from `{name}`,
 `{ws}`, `{data}`, `{sockets}` and `{settings.<key>}`; `modules`, dependencies of the plugin an agent's own
 programs may import, none of them a provisioned one; `sources`, endpoints described as the
 host's `sources.json` describes them, held by the runner and granted with the plugin; a
@@ -2052,6 +2054,42 @@ What leaves the machine is a relay's decision, not the log's.
 **The bound is `retain`**, the same one that bounds the trail: `prune_trail` drops the events of
 any run whose records it dropped. `seq` keeps climbing through that, so a cursor that has been
 pruned gets what is left rather than somebody else's event.
+
+### Describing a call
+
+**A call is described once, when it starts, and the description is stored on its `tool_start`**
+— `title`, `category`, `detail` — so every surface shows the same words, and a turn read later
+keeps the words it had. `title` is what a person is shown; `category` is one of `read`, `edit`,
+`delete`, `move`, `search`, `execute`, `fetch`, `delegate`, `ask` and `other` (the Agent Client
+Protocol's tool kinds, with `delegate` for sub-agents and `ask` for a question), for a surface
+choosing an icon or a grouping; `detail` is the path or the command line, for a conversation that
+asked for details.
+
+**Three tables, the first match winning**: the spore's `:::call` blocks in its `spore.cmk`, in the
+order written; its plugins' `describe`; then the runtime's (`rust/definition/src/call.rs`), which
+names every tool and every program the runtime gives an agent, so every call matches something. A
+row names its tools and, for `exec` and `wsexec`, a regexp over the command's first line,
+whitespace collapsed — Rust's `regex` syntax, without look-around or back-references, matched in
+time linear in a command the model wrote. Its captures fill the title and the detail as `$1`…`$9`, cut short in a
+title and shown as plain text, never as markup, so a title carries only what its row captures —
+the runtime's capture a source's name and nothing else — and a conversation shown titles alone
+never sees a path or a command. A tool no row names, one the model made up, is shown by its name.
+
+```
+:::call search
+tool: [exec, wsexec]
+program: ^node "?\$SPORE_DA"? search (.+)$
+title: searching for $1
+category: search
+:::
+```
+
+**The rows are data, not code**, because the description is made in the confined agent: it reads
+its own `spore.cmk`, and is handed its plugins' rows in `SPORE_PLUGIN_CALLS` the way it is handed
+their read paths. An embedder takes part through the `spore.cmk` of the sporangium it makes its
+spores from. The rows, their checks and the match are `rust/definition`'s, one implementation for
+the definition, the plugin check and the agent. A turn its spore was upgraded under wrote
+`tool_start` without a description; the relay describes such a call from the runtime's rows.
 
 ## Spawn
 

@@ -257,7 +257,7 @@ pub const PASSED_THROUGH: [&str; 17] = [
 
 /// What the runtime itself sets in the environment of what it starts — the agent, a cell, a job —
 /// which no variable a plugin declares may set.
-pub const RUNTIME_ENV: [&str; 21] = [
+pub const RUNTIME_ENV: [&str; 22] = [
     "HOME",
     "TMPDIR",
     "TRACEPARENT",
@@ -279,11 +279,15 @@ pub const RUNTIME_ENV: [&str; 21] = [
     "SPORE_STORE_SOCKET",
     PLUGIN_READS,
     PLUGIN_ENV,
+    PLUGIN_CALLS,
 ];
 
 /// What the agent reads of its plugins, a JSON array of paths: their packages and what they
 /// depend on, less what the system's read paths already grant.
 pub const PLUGIN_READS: &str = "SPORE_PLUGIN_READS";
+
+/// How the plugins a spore uses describe their programs' calls, a JSON array of call rows.
+pub const PLUGIN_CALLS: &str = "SPORE_PLUGIN_CALLS";
 
 /// The variable a runner reads its spore's plugin environment from, a JSON object of name to
 /// value: a process's environment is readable by its own user alone, its arguments by anyone.

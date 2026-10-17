@@ -22,15 +22,16 @@ import { SporeError } from '../observability/errors.js'
 import { native } from '../native.js'
 import { systemReadPaths } from '../isolation/sandbox.js'
 import { sporangiumOf, sporangiumTree } from './sporangia.js'
-import { DATA_DIR, definitionPath, LIBRARIES_FILE, PASSED_THROUGH, PLUGINS_DIR, REFERENCE_FILE, RUNTIME_ENV } from './spore-dir.js'
+import { DATA_DIR, definitionPath, LIBRARIES_FILE, PASSED_THROUGH, PLUGIN_CALLS, PLUGINS_DIR, REFERENCE_FILE, RUNTIME_ENV } from './spore-dir.js'
 import { TOOL_NAMES } from './tool-names.js'
+import { pluginCallRows } from './call-table.js'
 
 const SPORE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SPORE_PACKAGE = JSON.parse(readFileSync(join(SPORE_ROOT, 'package.json'), 'utf8'))
 
 const PREFIX = 'spore-plugin-'
 export const PLUGIN_READS = 'SPORE_PLUGIN_READS'
-const MANIFEST_FIELDS = ['works', 'settings', 'programs', 'env', 'contain', 'modules', 'sources', 'reference', 'precursors', 'services']
+const MANIFEST_FIELDS = ['works', 'settings', 'programs', 'describe', 'env', 'contain', 'modules', 'sources', 'reference', 'precursors', 'services']
 const CONTAIN_FIELDS = ['hide', 'keep', 'missing']
 const SERVICE_FIELDS = ['what', 'program', 'instances', 'check']
 const SERVICE_NAME = /^[a-z][a-z0-9-]*$/
@@ -269,8 +270,20 @@ export function checkPlugin (found, settings = null) {
   }
 
   const services = checkServices(found, manifest.services ?? {}, refuse)
+  const describe = checkDescribe(found, manifest.describe ?? [], Object.keys(programs), refuse)
 
-  return { name: found.name, package: found.package, version: pkg.version, dir: found.dir, range, kinds, settings, programs, env, contain, modules, sources, reference, precursors, reads, services }
+  return { name: found.name, package: found.package, version: pkg.version, dir: found.dir, range, kinds, settings, programs, describe, env, contain, modules, sources, reference, precursors, reads, services }
+}
+
+function checkDescribe (found, describe, programs, refuse) {
+  if (!Array.isArray(describe) || !describe.every(isRecord)) {
+    throw refuse('has a describe that is not a list', 'describe lists how a call of each of its programs is shown, as [{ "program": "^\\"?\\\\$SPORE_X", "title": "using x", "category": "execute" }]')
+  }
+  try {
+    return pluginCallRows(found.name, describe, programs)
+  } catch (err) {
+    throw refuse(`has a describe spore cannot use — ${err.message}`, 'each row matches a command running one of its programs, with a title and a category')
+  }
 }
 
 function checkPlaceholders (what, template, kinds, refuse) {
@@ -460,6 +473,7 @@ export function preparePlugins (ws, { config = readConfig(), roots = pluginRoots
   const sources = {}
   const describedBy = {}
   const contain = []
+  const calls = []
   const plugins = []
   for (const plugin of used) {
     const { name } = plugin
@@ -491,10 +505,12 @@ export function preparePlugins (ws, { config = readConfig(), roots = pluginRoots
     }
     if (plugin.reference) copyAbsent(plugin.reference, join(ws, PLUGINS_DIR, `${name}.md`))
     for (const precursor of plugin.precursors) copyAbsent(precursor.path, join(ws, PRECURSOR_DIR, basename(precursor.path)))
+    calls.push(...plugin.describe)
     plugins.push(plugin)
   }
   linkModules(ws, Object.fromEntries(Object.entries(modules).map(([module, { dir }]) => [module, dir])))
   if (plugins.length) env[PLUGIN_READS] = JSON.stringify(readsOf(plugins))
+  if (calls.length) env[PLUGIN_CALLS] = JSON.stringify(calls)
   return { env, plugins, sources, contain }
 }
 

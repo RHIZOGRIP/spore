@@ -23,6 +23,8 @@ export { release, send } from './core/send.js'
 export { fork, forkWorkspace, readFork } from './core/fork.js'
 export { watch, watchAll, turnsSince, outcome } from './library/watch.js'
 export { follow } from './library/follow.js'
+export { applyEvent, createLive, liveOf, renderLive } from './library/live.js'
+export { describeCall } from './core/call-table.js'
 
 // What exists, what one is, what it has done — the read verbs the `spore` command prints.
 export { doctor, modelFindings } from './library/doctor.js'

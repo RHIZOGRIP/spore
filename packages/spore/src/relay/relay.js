@@ -17,7 +17,9 @@ import { approvalHookVariables, attemptOutbox, changeText, extendTurn, isWorkspa
 import { createApprovals } from './approvals.js'
 import { credentialVariables, filesOf, reactionsOf, routesOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
-import { announce, endingOf, leftOut, notCome, pieces, render, reply, sizeOf, statusText, track, waiting } from './render.js'
+import { announce, endingOf, leftOut, notCome, pieces, reply, sizeOf, statusText, waiting } from './render.js'
+import { applyEvent, createLive, renderLive } from '../library/live.js'
+import { runningLimits } from '../core/spore-dir.js'
 import { loadState, saveState } from './state.js'
 
 const TAKES_ARGUMENTS = new Set(['extend', 'wrap'])
@@ -84,6 +86,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   const delivery = createDelivery({ sleep: (ms) => sleep(ms, stopping.signal), signal: stopping.signal })
   const notes = new WeakMap()
   const shown = new Map()
+  const painted = new WeakMap()
   const limitedUntil = new Map()
   const hinted = new Set()
   let followed = new Map()
@@ -462,18 +465,33 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     return [...next.keys()]
   }
 
-  /** The calls at work, edited into each `working…` message. */
+  const levelOf = (conversation) => detailed.has(keyOf(conversation)) ? 'details' : briefed.has(keyOf(conversation)) ? 'brief' : 'plain'
+  const textFor = (live, entry, now) => renderLive(live, { level: levelOf(entry.conversation), now }).join('\n')
+
+  /** The running turn's default rendering, edited into each `working…` message whose text it changes. */
   const repaint = (ws) => {
     const lines = shown.get(ws)
     lines.timer = null
     lines.at = Date.now()
     for (const entry of state.pending[ws] ?? []) {
       const { conversation } = entry
-      const text = [WORKING, ...render(lines.items, { detailed: detailed.has(keyOf(conversation)), brief: briefed.has(keyOf(conversation)) })].join('\n')
+      const text = textFor(lines.live, entry, lines.at)
+      if (text === painted.get(entry)) continue
       droppable(conversation, 'progress', async () => {
         const note = await noteOf(entry)
-        if (note !== null && state.pending[ws]?.includes(entry)) await adapter.edit(conversation, note, text, { for: forOf([entry]) })
+        if (note === null || !state.pending[ws]?.includes(entry)) return
+        await adapter.edit(conversation, note, text, { for: forOf([entry]) })
+        painted.set(entry, text)
       })
+    }
+  }
+
+  const startedAtOf = (ws) => {
+    try {
+      return runningLimits(ws)?.startedAt ?? null
+    } catch (err) {
+      log(`${ws}: when its turn started is not known, so its working message shows no time — ${said(err)}`)
+      return null
     }
   }
 
@@ -502,10 +520,13 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
 
   const onEvent = (ws, event) => {
     if (!state.pending[ws]?.length) return
-    const lines = shown.get(ws) ?? { items: [], timer: null, at: 0 }
-    shown.set(ws, lines)
-    if (!track(lines.items, event)) return
-    if (!lines.timer) lines.timer = setTimeout(() => repaint(ws), Math.max(0, editEveryMs - (Date.now() - lines.at)))
+    if (!shown.has(ws)) shown.set(ws, { live: createLive({ startedAt: startedAtOf(ws) }), timer: null, at: 0 })
+    const lines = shown.get(ws)
+    applyEvent(lines.live, event)
+    if (lines.timer) return
+    const now = Date.now()
+    if (state.pending[ws].every(entry => textFor(lines.live, entry, now) === painted.get(entry))) return
+    lines.timer = setTimeout(() => repaint(ws), Math.max(0, editEveryMs - (now - lines.at)))
   }
 
   const forget = (ws, gone) => {

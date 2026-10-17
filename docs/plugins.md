@@ -61,6 +61,7 @@ runs none of the plugin's code.
 | `works` | a semver range | required | the `@rhizogrip/spore` versions the plugin works with |
 | `settings` | `{ "<key>": "port" \| "text" }` | optional | values the operator gives at `allow` |
 | `programs` | `{ "<VARIABLE>": "<program>" }` | optional | `./<path>` in the plugin, or `<package>/<path>` in a dependency |
+| `describe` | `[{ "program", "title", "category", "detail"? }, …]` | optional | how a call of one of its `programs` is shown: `program` a regexp naming one of them |
 | `env` | `{ "<VARIABLE>": "<text>" }` | optional | text with `{placeholders}` |
 | `contain` | `{ "hide", "keep", "missing" }` | optional | text with `{placeholders}`: a directory of the host a contained spore sees only one directory of |
 | `modules` | `["<dependency>", …]` | optional | each in `dependencies`, none provisioned |
@@ -224,6 +225,27 @@ A program reaches a source the plugin describes through `$SPORE_SOURCE`, as `bra
 ```js
 const asked = spawnSync(process.execPath, [process.env.SPORE_SOURCE, 'brave', '--q', query, '--out', '-'], { encoding: 'utf8' })
 ```
+
+### How a call of one is shown
+
+```json
+"describe": [
+  { "program": "^\"?\\$SPORE_BRAVE\"?\\s*(.*)$", "title": "searching the web", "category": "search", "detail": "search $1" }
+]
+```
+
+What a person watching a turn is told of a call running one of your programs — in a chat, *searching
+the web* rather than *running a command*. Each row is a regexp over the command's first line,
+whitespace collapsed, in Rust's `regex` syntax (no look-around or back-references), which must name
+one of the plugin's `programs`; a `title`; a `category`, one
+of `read`, `edit`, `delete`, `move`, `search`, `execute`, `fetch`, `delegate`, `ask`, `other`; and
+an optional `detail`, shown where a conversation asked for details, the command line when absent.
+`$1`…`$9` in the title and the detail are what the regexp captured. A title is shown where commands
+and paths are not, so capture into it only what anyone watching may see. A row that names none of
+the plugin's programs, a regexp that does not compile, a `$N` the regexp does not capture, a category
+not in the list and a key not among these are each `PLUGIN_INVALID`. A spore's own `:::call` blocks
+come before these, and the runtime's rows after ([ARCHITECTURE §Describing a
+call](../ARCHITECTURE.md#describing-a-call)).
 
 ## `env`
 

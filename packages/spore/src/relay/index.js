@@ -4,4 +4,4 @@ export { botNames, botPath, botsDir, credentialOf, credentialVariable, credentia
 export { download } from './download.js'
 export { createDelivery } from './delivery.js'
 export { loadState, saveState, statePath } from './state.js'
-export { announce, describe, leftOut, pieces, render, reply, statusText, track, waiting } from './render.js'
+export { announce, leftOut, pieces, reply, statusText, waiting } from './render.js'

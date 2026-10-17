@@ -91,6 +91,15 @@ describe('openWorkspace', () => {
     expect(open().domainRules).toMatch(/- summarize \(precursors\/summarize\.cmk\)/)
   })
 
+  it('hands over how its calls are described, from its :::call blocks, and keeps them out of the identity', () => {
+    writeFileSync(definitionPath(WS), `${definitionWith(MODEL)}\n:::call contract\ntool: read\ntitle: reading the contract\ncategory: read\n:::\n`)
+    const opened = open()
+    expect(opened.calls).toEqual([{ name: 'contract', tools: ['read'], title: 'reading the contract', category: 'read' }])
+    expect(opened.identity).not.toMatch(/:::call|reading the contract/)
+    writeFileSync(definitionPath(WS), definitionWith(MODEL))
+    expect(open().calls).toEqual([])
+  })
+
   it('names the documentation of the plugins its definition uses, and of no other', () => {
     writeFileSync(definitionPath(WS), definitionWith(MODEL).replace('\n---', '\nplugins: [browser]\n---'))
     mkdirSync(resolve(WS, 'plugins'))

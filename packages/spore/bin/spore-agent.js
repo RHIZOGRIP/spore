@@ -10,7 +10,7 @@
 
 import minimist from 'minimist'
 
-import { lastSent, openChannel, readModelKey, readTranscript } from '../src/core/spore-dir.js'
+import { lastSent, openChannel, PLUGIN_CALLS, readModelKey, readTranscript } from '../src/core/spore-dir.js'
 import { buildContinuation } from '../src/core/continuation.js'
 import { readFork } from '../src/core/fork.js'
 import { PLUGIN_READS } from '../src/core/plugins.js'
@@ -71,6 +71,7 @@ try {
     reads: opened.reads,
     writes: opened.writes,
     pluginReads: process.env[PLUGIN_READS] === undefined ? [] : JSON.parse(process.env[PLUGIN_READS]),
+    calls: [...opened.calls, ...(process.env[PLUGIN_CALLS] === undefined ? [] : JSON.parse(process.env[PLUGIN_CALLS]))],
     socketDir: process.env.SPORE_SOCKET_DIR,
     limits: opened.limits,
     // Long-term memory, when the definition asks for one. Absent means this workspace

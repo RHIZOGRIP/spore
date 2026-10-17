@@ -21,6 +21,7 @@ import { compactHistory, historyBound, historyOver } from '../resilience/compact
 import { createSessionMemory } from '../resilience/session-memory.js'
 import { makeTools, recordRefusals } from '../tools/make-tools.js'
 import { loop } from './loop.js'
+import { describeCall } from './call-table.js'
 import { COMPACTED, marked } from './marks.js'
 import { DATA_DIR, appendCompaction, linkTurnTmp, appendTranscript, fromPerson, inboxConsumed, readInbox, readInboxFrom, readModelKey, readSaidSoFar, runningLimits, writableDirs, writeOutcome } from './spore-dir.js'
 import { deliverablesIn } from './deliverables.js'
@@ -111,6 +112,9 @@ export async function runSpore ({
   // What the sandbox reads of the plugins the definition uses, each plugin and the packages it
   // depends on. Only the ruleset needs them: the agent runs their programs, it does not read them.
   pluginReads = [],
+  // How its calls are described to whoever watches the turn, before the runtime's own rows: its
+  // definition's `:::call` blocks, then its plugins' `describe`.
+  calls = [],
   // The spore's socket directory, its runner's: granted read-write so a cell it spawns can bind its
   // enzyme broker there, and the only place under `/tmp` it may write.
   socketDir = null,
@@ -422,6 +426,7 @@ export async function runSpore ({
       recall,
       tools: defs,
       toolFns: fns,
+      describe: (name, args) => describeCall(name, args, calls),
       limits: live,
       relimited: () => relimits.splice(0),
       ledger,

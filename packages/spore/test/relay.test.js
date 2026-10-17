@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
 import {
-  announce, botNames, botPath, createDelivery, credentialOf, credentialVariables, describe as describeCall,
-  loadState, pieces, reactionsOf, render, reply, routesOf, saveState, statePath, track, waiting
+  announce, botNames, botPath, createDelivery, credentialOf, credentialVariables,
+  loadState, pieces, reactionsOf, reply, routesOf, saveState, statePath, waiting
 } from '../src/relay/index.js'
 
 const SPEC = {
@@ -102,66 +102,6 @@ describe('a bot file', () => {
 })
 
 describe('what of a turn reaches a conversation', () => {
-  const start = (name, args, callId = 'c1') => ({ event: 'tool_start', name, args, callId })
-  const shown = (events, options) => {
-    const items = []
-    for (const event of events) track(items, event)
-    return render(items, options)
-  }
-
-  it('says what kind of call ran, and never what it was given', () => {
-    const events = [
-      start('read', { path: 'data/secret-client.pdf' }, 'a'),
-      start('exec', { command: 'grep -r secret /etc' }, 'b'),
-      start('wsexec', { command: 'node "$SPORE_SOURCE" forgejo --path api/v1/repos/acme/x --out data/x.json' }, 'c'),
-      start('exec', { command: '"$SPORE_BRAVE" acme merger rumours', out: 'data/s.txt' }, 'd')
-    ]
-    const lines = shown(events)
-    expect(lines).toEqual(['· reading a file', '· running a command', '· asking forgejo', '· searching the web'])
-    expect(lines.join('\n')).not.toMatch(/secret|acme|etc|api/)
-  })
-
-  it('shows a conversation that asked for details the command or the path, spore\'s programs by name', () => {
-    const events = [
-      start('read', { path: 'data/report.md' }, 'a'),
-      start('wsexec', { command: 'node "$SPORE_SOURCE" forgejo --path api/v1/repos/acme/x/issues --out data/x.json' }, 'b'),
-      start('exec', { command: 'git log --oneline -5\ngit status' }, 'c')
-    ]
-    expect(shown(events, { detailed: true })).toEqual([
-      '· reading data/report.md',
-      '· source forgejo --path api/v1/repos/acme/x/issues --out data/x.json',
-      '· running git log --oneline -5'
-    ])
-  })
-
-  it('counts a run of the same call, and says when one was slow or failed', () => {
-    const events = [
-      start('read', { path: 'a' }, 'a'), start('read', { path: 'b' }, 'b'), start('read', { path: 'c' }, 'c'),
-      start('exec', { command: 'sleep 20' }, 'd'),
-      { event: 'tool_end', name: 'exec', callId: 'd', durationMs: 14_200, error: false },
-      start('exec', { command: 'false' }, 'e'),
-      { event: 'tool_end', name: 'exec', callId: 'e', durationMs: 10, error: true, result: '/home/me/.ssh/id_ed25519' }
-    ]
-    expect(shown(events)).toEqual(['· reading a file ×3', '· running a command — 14 s', '· running a command — failed'])
-  })
-
-  it('tells a command that said no apart from a call that failed', () => {
-    const events = [
-      start('exec', { command: 'grep -q x a' }, 'a'),
-      { event: 'tool_end', name: 'exec', callId: 'a', durationMs: 10, error: true, outcome: 'exit', exit: 1 },
-      start('exec', { command: 'sleep 999' }, 'b'),
-      { event: 'tool_end', name: 'exec', callId: 'b', durationMs: 10, error: true, outcome: 'killed', killed: 'idle' },
-      start('read', { path: 'a' }, 'c'),
-      { event: 'tool_end', name: 'read', callId: 'c', durationMs: 10, error: false, outcome: 'ok' }
-    ]
-    expect(shown(events)).toEqual(['· running a command — exit 1', '· running a command — failed', '· reading a file'])
-  })
-
-  it('shows nothing of an event a conversation has no use for', () => {
-    expect(shown([{ event: 'round', index: 3 }, { event: 'complete', output: 'the answer' }, start('quiet', { because: 'x' })])).toEqual([])
-    expect(describeCall({ name: 'ask', args: { question: 'which?' } })).toBe(null)
-  })
-
   it('replies with the answer, and with how the turn ended only when that makes it partial', () => {
     expect(reply({ record: { stopReason: 'answer', output: 'done' } })).toBe('done')
     expect(reply({ record: { stopReason: 'question', output: 'which year?' } })).toBe('which year?')
@@ -191,8 +131,6 @@ describe('what of a turn reaches a conversation', () => {
     expect(reply({ record: { stopReason: 'quiet', output: null } }, brief)).toBe('nothing to say')
     expect(announce({ record: { stopReason: 'hard:wall', output: null }, asked: [{ schedule: 'digest' }] }, brief)).toBe('schedule "digest"\n\nno answer this time')
     expect(waiting({ record: { stopReason: 'error', error: 'START_FAILED' } }, brief)).toBe('no answer yet — your message waits for the next turn')
-    expect(shown([{ event: 'wrap', dimension: 'cost' }], brief)).toEqual(['· wrapping up'])
-    expect(shown([{ event: 'wrap', dimension: 'cost' }])).toEqual(['· wrapping up — reached its cost limit'])
   })
 
   it('breaks a long answer at a line, or at the limit when there is none', () => {

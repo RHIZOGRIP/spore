@@ -27,6 +27,14 @@
     "programs": {
       "SPORE_BRAVE": "./bin/search.js"
     },
+    "describe": [
+      {
+        "program": "^\"?\\$SPORE_BRAVE\"?\\s*(.*)$",
+        "title": "searching the web",
+        "category": "search",
+        "detail": "search $1"
+      }
+    ],
     "sources": {
       "brave": {
         "url": "https://api.search.brave.com/res/v1/web/search",

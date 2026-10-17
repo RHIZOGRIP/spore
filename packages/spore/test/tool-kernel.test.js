@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { executeTools } from '../src/core/tool-kernel.js'
+import { describeCall } from '../src/core/call-table.js'
 import { createEmitter } from '../src/observability/emitter.js'
 import { REFUSED, marked } from '../src/core/marks.js'
 import { recorded } from '../src/core/call-record.js'
@@ -217,6 +218,22 @@ describe('tool-kernel events', () => {
     expect(events[1].callId).toBe('c1')
     expect(events[1].durationMs).toBeGreaterThanOrEqual(0)
     expect(events[1].error).toBe(false)
+  })
+
+  it('carries on tool_start how the call is described, from the rows it was given and then the runtime\'s', async () => {
+    const started = []
+    const rows = [{ name: 'contract', tools: ['read'], title: 'reading the contract', category: 'read' }]
+    await executeTools({
+      toolCalls: [tc('a', 'read', { path: 'data/c.pdf' }), tc('b', 'exec', { command: 'node "$SPORE_SOURCE" ledger' })],
+      toolFns: { read: async () => 'text', exec: async () => 'out' },
+      describe: (name, args) => describeCall(name, args, rows),
+      emitter: { emit: (type, e) => { if (type === 'tool_start') started.push(e) }, on () {} },
+      logger: silent
+    })
+    expect(started.map(({ title, category, detail }) => ({ title, category, detail }))).toEqual([
+      { title: 'reading the contract', category: 'read', detail: 'reading data/c.pdf' },
+      { title: 'asking ledger', category: 'fetch', detail: 'source ledger' }
+    ])
   })
 
   it('tool_end has error: true when tool throws', async () => {

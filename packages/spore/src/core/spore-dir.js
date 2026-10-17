@@ -32,6 +32,7 @@ export const PLUGINS_DIR = 'plugins'
 export const PASSED_THROUGH = Object.freeze(LAYOUT.passedThrough)
 export const RUNTIME_ENV = Object.freeze(LAYOUT.runtimeEnv)
 export const PLUGIN_ENV = LAYOUT.pluginEnv
+export const PLUGIN_CALLS = LAYOUT.pluginCalls
 export const INBOX_DIR = 'inbox.d'
 export const OUT_FILE = 'spore.out'
 export const ERR_FILE = 'spore.err'

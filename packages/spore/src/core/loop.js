@@ -57,13 +57,14 @@ const DRIFT_FLOOR = 2_000
  * @param {string} opts.prompt     — user prompt
  * @param {Array}  opts.tools      — tool definitions (mohdel format)
  * @param {object} opts.toolFns    — { name: async (args) => string }
+ * @param {Function} [opts.describe] — (name, args) => { title, category, detail }, carried on `tool_start`
  * @param {object} opts.limits — {rounds,cost,wall} soft/hard pairs, declared in a .cmk, never here
  * @param {Map<string, {stopReason: string, says: boolean}>} [opts.terminalTools] — tools that end the turn
  * @param {object} [opts.emitter]  — event emitter for harness
  * @param {object} [opts.logger]
  * @returns {{ output: string|null, messages: Array, rounds: number, usage: object }}
  */
-export async function loop ({ model, models, system, prompt, tools, toolFns, limits, ledger, emitter = noEmit, mutators, terminalTools, realtimeHandler, maxResultRatio, maxResultSize: maxResultSizeOverride, signal, logger = silent, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, from }) {
+export async function loop ({ model, models, system, prompt, tools, toolFns, describe, limits, ledger, emitter = noEmit, mutators, terminalTools, realtimeHandler, maxResultRatio, maxResultSize: maxResultSizeOverride, signal, logger = silent, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, from }) {
   const userMsg = { role: 'user', content: prompt }
   if (!Number.isInteger(limits?.rounds?.soft) || !Number.isInteger(limits?.rounds?.hard)) {
     throw new Error('loop needs limits.rounds — declared in a .cmk, not defaulted here')
@@ -142,7 +143,7 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, lim
   // under the runtime as it is today, and the turn goes on from what they return.
   const unanswered = continuing && messages.at(-1)?.role === 'assistant' ? messages.at(-1).toolCalls || [] : []
   if (unanswered.length) {
-    const toolResults = await executeTools({ toolCalls: unanswered, toolFns, emitter, mutators, signal, logger })
+    const toolResults = await executeTools({ toolCalls: unanswered, toolFns, describe, emitter, mutators, signal, logger })
     guard.record(toolResults)
     for (const tr of toolResults) append(tr)
   }
@@ -299,7 +300,7 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, lim
       const shelved = terminalAt === -1 ? [] : allowed.slice(terminalAt + 1)
 
       const toolResults = await executeTools({
-        toolCalls: running, toolFns, emitter, mutators, signal, logger
+        toolCalls: running, toolFns, describe, emitter, mutators, signal, logger
       })
       guard.record(toolResults)
       for (const tr of toolResults) {

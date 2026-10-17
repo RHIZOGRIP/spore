@@ -54,6 +54,36 @@ pub fn parse_frontmatter(head: String) -> String {
     answer(definition::parse_frontmatter(&head), Some("fields"))
 }
 
+fn rows_of(rows_json: &str) -> Result<Vec<definition::CallRow>, String> {
+    serde_json::from_str(rows_json).map_err(|e| format!("call rows are not readable — {e}"))
+}
+
+/// A plugin's `describe`, checked against the programs it declares.
+#[napi]
+pub fn check_call_rows(rows_json: String, programs: Vec<String>) -> String {
+    answer(
+        rows_of(&rows_json).and_then(|rows| {
+            definition::call::check_plugin_rows(&rows, &programs)?;
+            Ok(rows)
+        }),
+        Some("rows"),
+    )
+}
+
+/// One call described from `rows` and then the runtime's: the `path` of a file tool, the
+/// `command` of a shell one, read from its arguments.
+#[napi]
+pub fn describe_call(tool: String, args_json: String, rows_json: String) -> String {
+    let described = rows_of(&rows_json).and_then(|rows| {
+        let args: Value = serde_json::from_str(&args_json)
+            .map_err(|e| format!("a call's arguments are not readable — {e}"))?;
+        let path = args.get("path").and_then(Value::as_str);
+        let command = args.get("command").and_then(Value::as_str);
+        definition::call::describe(&tool, path, command, &rows)
+    });
+    answer(described, None)
+}
+
 /// A schedule's source is passed whole to each of these, because the pass that fires one
 /// holds the file's text and nothing parsed survives between passes.
 #[napi]
@@ -342,7 +372,8 @@ pub fn layout() -> String {
         "eventSchema": workspace::EVENT_SCHEMA,
         "passedThrough": workspace::PASSED_THROUGH,
         "runtimeEnv": workspace::RUNTIME_ENV,
-        "pluginEnv": workspace::PLUGIN_ENV
+        "pluginEnv": workspace::PLUGIN_ENV,
+        "pluginCalls": workspace::PLUGIN_CALLS
     })
     .to_string()
 }

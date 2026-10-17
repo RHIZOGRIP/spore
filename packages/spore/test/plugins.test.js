@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { allowPlugin, checkPlugin, containOf, differingDocs, disallowPlugin, installedPlugins, listPlugins, pluginRoots, pluginServices, preparePlugins, showPlugin, upgradeDocs, PLUGIN_READS } from '../src/core/plugins.js'
+import { PLUGIN_CALLS } from '../src/core/spore-dir.js'
 import { readConfig } from '../src/library/config.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
 import { openWorkspace } from '../src/core/workspace.js'
@@ -123,8 +124,16 @@ describe('checking a plugin', () => {
     chmodSync(join(MODULES, 'agent-browser/bin/agent-browser-linux-x64'), 0o755)
     useIn(WS, ['browser'])
 
-    const { env } = preparePlugins(WS, { config: { plugins: { browser: allowed('browser', { cdp: 9222 }) } }, roots })
+    const { env: { [PLUGIN_CALLS]: calls, ...env } } = preparePlugins(WS, { config: { plugins: { browser: allowed('browser', { cdp: 9222 }) } }, roots })
 
+    expect(JSON.parse(calls)).toEqual([{
+      name: 'browser/1',
+      tools: ['exec', 'wsexec'],
+      program: '^"?\\$SPORE_BROWSER"?\\s*(.*)$',
+      title: 'using the browser',
+      category: 'fetch',
+      detail: 'browser $1'
+    }])
     expect(env).toEqual({
       [PLUGIN_READS]: JSON.stringify([realpathSync(dir), realpathSync(join(MODULES, 'agent-browser'))]),
       SPORE_BROWSER: join(MODULES, 'agent-browser/bin/agent-browser-linux-x64'),
@@ -185,6 +194,17 @@ describe('checking a plugin', () => {
     rmSync(join(found.dir, 'bin', 'browse'))
     symlinkSync(join(elsewhere, 'browse'), join(found.dir, 'bin/browse'))
     expect(refusal(() => checkPlugin(found)).message).toMatch(/outside itself and what it depends on/)
+  })
+
+  it('takes how calls of its own programs are described, and nothing else', () => {
+    const row = { program: '^"?\\$SPORE_BROWSER"?\\s+open\\s+(\\S+)', title: 'opening $1', category: 'fetch' }
+    expect(checkPlugin(browser({ describe: [row] }), { cdp: 9222 }).describe).toEqual([{ name: 'browser/1', tools: ['exec', 'wsexec'], ...row }])
+    expect(checkPlugin(browser(), { cdp: 9222 }).describe).toEqual([])
+    expect(refusal(() => checkPlugin(browser({ describe: [{ ...row, program: '^"?\\$SPORE_SQL' }] }), { cdp: 9222 })).message).toMatch(/names none of its programs/)
+    expect(refusal(() => checkPlugin(browser({ describe: [{ ...row, title: 'opening $2' }] }), { cdp: 9222 })).message).toMatch(/fills \$2 in its title, and its program captures 1/)
+    expect(refusal(() => checkPlugin(browser({ describe: [{ ...row, category: 'surf' }] }), { cdp: 9222 })).message).toMatch(/category that does not exist/)
+    expect(refusal(() => checkPlugin(browser({ describe: [{ ...row, icon: 'globe' }] }), { cdp: 9222 })).message).toMatch(/icon/)
+    expect(refusal(() => checkPlugin(browser({ describe: row }), { cdp: 9222 })).message).toMatch(/describe that is not a list/)
   })
 
   it('finds a program in a package the plugin depends on', () => {

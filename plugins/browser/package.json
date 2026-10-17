@@ -33,6 +33,14 @@
     "programs": {
       "SPORE_BROWSER": "agent-browser/bin/agent-browser-linux-x64"
     },
+    "describe": [
+      {
+        "program": "^\"?\\$SPORE_BROWSER\"?\\s*(.*)$",
+        "title": "using the browser",
+        "category": "fetch",
+        "detail": "browser $1"
+      }
+    ],
     "env": {
       "AGENT_BROWSER_CDP": "{settings.cdp}",
       "AGENT_BROWSER_SESSION": "{name}",
