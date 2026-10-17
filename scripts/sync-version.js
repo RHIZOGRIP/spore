@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
  * Carries the root `package.json`'s version into each published package under `packages/` and
- * into the Rust workspace: `[workspace.package]` in `Cargo.toml`, which every crate inherits, and
- * those crates' entries in `Cargo.lock`, so the release commit leaves nothing for the next build
- * to rewrite. release-it's `after:bump` hook.
+ * their entries in `package-lock.json`, and into the Rust workspace: `[workspace.package]` in
+ * `Cargo.toml`, which every crate inherits, and those crates' entries in `Cargo.lock` — so the
+ * release commit leaves nothing for the next install or build to rewrite. release-it's
+ * `after:bump` hook.
  *
  *   node scripts/sync-version.js           the version package.json holds
  *   node scripts/sync-version.js 3.1.0     a given one
@@ -41,4 +42,8 @@ for (const pkg of PACKAGES) {
   rewrite(`packages/${pkg}/package.json`, /(\n {2}"version": )"[^"]+"/, 'version')
 }
 rewrite('packages/spore-cli/package.json', /(\n {4}"@rhizogrip\/spore": )"[^"]+"/, 'dependency on @rhizogrip/spore')
-console.log(`sync-version: Cargo.toml, Cargo.lock and packages/{${PACKAGES.join(',')}} at ${version}`)
+for (const pkg of PACKAGES) {
+  rewrite('package-lock.json', new RegExp(`(\\n {4}"packages/${pkg}": \\{\\n {6}"name": "@rhizogrip/${pkg}",\\n {6}"version": )"[^"]+"`), `packages/${pkg} entry`)
+}
+rewrite('package-lock.json', /(\n {4}"packages\/spore-cli": \{[^}]*?\n {8}"@rhizogrip\/spore": )"[^"]+"/, 'packages/spore-cli entry\'s dependency on @rhizogrip/spore')
+console.log(`sync-version: Cargo.toml, Cargo.lock, package-lock.json and packages/{${PACKAGES.join(',')}} at ${version}`)
