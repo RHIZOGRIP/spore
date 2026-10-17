@@ -478,6 +478,7 @@ All under `/v1`, JSON in and out.
 | `POST /v1/spores/<name>/messages` | `{ "text", "requestId"?, "replyTo"?, "from"?: { "name", "id", "where" }, "attach"?: [{ "name", "mime", "data": "<base64>" }] }` | `202 { "inbox", "started", "repeated" }` |
 | `GET /v1/spores/<name>/events?after=<seq>` | — | `200`, `application/x-ndjson`: every event after `seq`, then each new one until the turn running (or about to start) ends |
 | `GET /v1/spores/<name>/events?after=<seq>&follow=false` | — | the events after `seq` that exist now, then the stream ends |
+| `GET /v1/spores/<name>/live?level=<level>` | — | `200 { "live", "lines", "seq" }`: the running turn as a person is shown it ([ARCHITECTURE §What a running turn shows](ARCHITECTURE.md#what-a-running-turn-shows)) — `lines` its default rendering at `brief`, `plain` (the default) or `details`, `seq` its last event, to follow on from with `/events?after=<seq>`; `{ "live": null, "lines": [], "seq": null }` when nothing runs |
 | `GET /v1/spores/<name>` | — | `200`, what `show` returns |
 | `GET /v1/spores` | — | `200 { "spores": [{ "name", "state", "turns" }] }`: the spores under `home` the caller reaches |
 | `POST /v1/spores/<name>/stop` | — | `200 { "stopped", "pid" }` |

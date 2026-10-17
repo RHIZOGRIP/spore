@@ -6,6 +6,8 @@
 
 import { describeCall } from '../core/call-table.js'
 import { durationText } from '../core/job.js'
+import { readEvents, runningLimits } from '../core/spore-dir.js'
+import { RUNNING, stateOf } from '../core/state.js'
 
 const HEADLINE_MAX = 200
 const SLOW_MS = 5000
@@ -107,6 +109,19 @@ export function liveOf (events, options) {
   const live = createLive(options)
   for (const event of events) applyEvent(live, event)
   return live
+}
+
+/**
+ * The turn `ws` is running, from its events since the last turn ended and timed from its own start,
+ * with the `seq` of the last event read for a caller following on; null when nothing runs.
+ */
+export function liveIn (ws) {
+  if (stateOf(ws).state !== RUNNING) return null
+  const ended = readEvents(ws, { event: 'turn_end' }).at(-1)?.seq ?? 0
+  const events = readEvents(ws, { after: ended })
+  const live = createLive({ startedAt: runningLimits(ws)?.startedAt ?? null })
+  for (const event of events) applyEvent(live, event)
+  return { live, seq: events.at(-1)?.seq ?? ended }
 }
 
 const oneLine = (text) => Array.from(text, c => (c < ' ' || c === '\u007f' ? ' ' : c)).join('').replace(/\s+/g, ' ').trim()

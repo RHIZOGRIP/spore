@@ -3,7 +3,9 @@ import { visibleWidth } from '@earendil-works/pi-tui'
 
 import { parseCommand } from '../tui/commands.js'
 import { changeOf, counts, hunks, lineDiff } from '../tui/diff.js'
-import { applyEvent, createLive, history, liveOf, markOf, originOf } from '../tui/conversation.js'
+import { applyEvent, createLive, liveOf } from '@rhizogrip/spore'
+
+import { history, markOf, originOf } from '../tui/conversation.js'
 import { limitsText, matching, priceText, spendText, sporeLabel, stateText, statusParts } from '../tui/status.js'
 import { PromptEditor } from '../tui/prompt.js'
 import { Answer } from '../tui/answer.js'
@@ -79,7 +81,7 @@ describe('applyEvent', () => {
     applyEvent(live, { event: 'stream', kind: 'message', delta: 'done' })
     expect(live.rounds).toBe(2)
     expect(live.notes).toEqual([{ kind: 'thought', text: 'let me look' }])
-    expect(live.tools).toEqual([{ callId: 'c1', name: 'read', args: { path: 'a' }, done: true, durationMs: 12, error: false }])
+    expect(live.calls).toEqual([{ callId: 'c1', name: 'read', args: { path: 'a' }, title: 'reading a file', category: 'read', detail: 'reading a', done: true, durationMs: 12, error: false }])
     expect(live.text).toBe('done')
   })
 
@@ -96,7 +98,7 @@ describe('applyEvent', () => {
     ended('e', { error: true, outcome: 'refused' })
     ended('f', { error: true })
     applyEvent(live, { event: 'tool_start', name: 'exec', callId: 'g', args: {} })
-    expect(live.tools.map(markOf)).toEqual([
+    expect(live.calls.map(markOf)).toEqual([
       { text: '✓', tone: 'ok' },
       { text: '1', tone: 'exit' },
       { text: '✗ idle', tone: 'failed' },

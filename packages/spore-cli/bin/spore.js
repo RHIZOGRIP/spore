@@ -374,7 +374,7 @@ if (verb === 'fork') {
   }
   console.error(`spore: forked ${made.from} at ${made.at}, round ${made.rounds} — carrying it on in ${made.ws}`)
   renderHeader(made.ws, grantOf(made.ws))
-  const ended = await follow(made.ws, { lines: 0 })
+  const ended = await follow(made.ws, { lines: 0, status: true })
   if (ended === 'detached') {
     process.stderr.write(`\nspore: still running — spore attach ${made.ws}\n`)
     process.exit(DETACHED)
@@ -394,7 +394,8 @@ if (verb === 'attach') {
   if (argv.after !== undefined) fail('--after is for --json — spore attach <name> --json --after <seq>')
   const tail = argv.n ?? argv.lines
   if (tail !== undefined && !/^\d+$/.test(tail)) fail(`-n ${tail} is not a number of lines`)
-  const ended = await follow(ws, { lines: tail === undefined ? DEFAULT_TAIL : Number(tail) })
+  const running = stateOf(ws).state === RUNNING
+  const ended = await follow(ws, { lines: tail !== undefined ? Number(tail) : running ? 0 : DEFAULT_TAIL, status: true })
   process.exit(ended === 'detached' ? DETACHED : exitFor(ws))
 }
 
@@ -464,7 +465,7 @@ if (settled) {
 
 if (sent.started) renderHeader(ws, grant)
 
-const ended = await follow(ws, { lines: 0 })
+const ended = await follow(ws, { lines: 0, status: true })
 if (ended === 'detached') {
   process.stderr.write(`\nspore: still running — spore attach ${asked}\n`)
   process.exit(DETACHED)

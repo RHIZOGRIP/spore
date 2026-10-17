@@ -126,6 +126,16 @@ describe('a message through the API', () => {
   })
 })
 
+describe('the running turn', () => {
+  it('is none while nothing runs, at whichever level is asked, and a level it does not have is refused', async () => {
+    expect((await call('GET', '/v1/spores/alpha/live')).json()).toEqual({ live: null, lines: [], seq: null })
+    expect((await call('GET', '/v1/spores/alpha/live?level=brief')).status).toBe(200)
+    const loud = await call('GET', '/v1/spores/alpha/live?level=loud')
+    expect(loud.status).toBe(400)
+    expect(loud.json().error.message).toMatch(/level is brief, plain, details — not loud/)
+  })
+})
+
 describe('api.json', () => {
   const write = (config) => {
     const path = join(root, 'config', 'probe.json')

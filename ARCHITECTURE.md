@@ -2110,9 +2110,19 @@ count against a total or spend: a bound reads as a promise, and a count as progr
 make. The terminal keeps its own layout, with the limits beside the turn, and an embedder may show
 more; both start from the same value.
 
-A chat relay repaints its `working…` message only when the rendering changes, at most once per the
-platform's edit interval — a call starting, one ending slow or failed, a wrap, or the minute turning,
-which the turn's 10-second heartbeats bring to it between calls.
+Where it is shown, all from `liveIn(ws)` — the running turn folded from its events since the last
+turn ended, timed from the turn's own start, which a runner carrying on into a second turn does not
+share:
+- **a chat relay** repaints its `working…` message only when the rendering changes, at most once per
+  the platform's edit interval — a call starting, one ending slow or failed, a wrap, or the minute
+  turning, which the turn's 10-second heartbeats bring to it between calls;
+- **`spore send` and `spore attach`** draw it on one line of stderr while stderr is a terminal, at
+  `details`, cleared before anything else is written there and when the turn ends; `attach` to a
+  running turn starts there rather than replaying the tail of earlier turns;
+- **the API** answers `GET /v1/spores/<name>/live` with the value, its rendering at the level asked,
+  and the `seq` to follow on from;
+- **the terminal** keeps its own layout over the same value: every call with its arguments, the
+  notes, the answer as it streams, the limits in its status line.
 
 ## Spawn
 

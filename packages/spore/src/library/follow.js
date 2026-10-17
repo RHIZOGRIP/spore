@@ -5,15 +5,25 @@
  * than sharing a terminal: the runner's streams go to `spore.out` and `spore.err`.
  *
  * They stay two files because the answer is stdout and mixing them would make it
- * unparseable — `spore send … > answer.txt` has to keep working.
+ * unparseable — `spore send … > answer.txt` has to keep working. While stderr is a terminal, one
+ * line on it shows the running turn — `live`'s default rendering, cleared before anything else
+ * is written and drawn again after.
  */
 
 import { existsSync, openSync, readSync, closeSync, statSync } from 'node:fs'
 
-import { ERR_FILE, OUT_FILE } from '../core/spore-dir.js'
+import { ERR_FILE, OUT_FILE, readEvents } from '../core/spore-dir.js'
 import { stateOf, RUNNING } from '../core/state.js'
+import { applyEvent, liveIn, renderLive } from './live.js'
 
 const TICK_MS = 150
+const STATUS_EVERY_MS = 500
+
+/** The default rendering on one line of a terminal `width` wide, at `details`: the operator's own machine. */
+export function statusLine (live, { now = Date.now(), width = 80 } = {}) {
+  const line = renderLive(live, { level: 'details', now }).map(part => part.replace(/^· /, '')).join(' · ')
+  return line.length < width ? line : `${line.slice(0, Math.max(0, width - 2))}…`
+}
 
 const NEWLINE = 0x0a
 const continuation = (byte) => (byte & 0xc0) === 0x80
@@ -69,7 +79,7 @@ const readFrom = (path, at) => {
  *
  * @returns {'ended'|'detached'}
  */
-export async function follow (ws, { lines = 0, out = process.stdout, err = process.stderr, tick = TICK_MS, grace = 5000 } = {}) {
+export async function follow (ws, { lines = 0, out = process.stdout, err = process.stderr, tick = TICK_MS, grace = 5000, status = false } = {}) {
   const streams = [
     { path: `${ws}/${OUT_FILE}`, to: out },
     { path: `${ws}/${ERR_FILE}`, to: err }
@@ -79,6 +89,34 @@ export async function follow (ws, { lines = 0, out = process.stdout, err = proce
   const detach = () => { quit.detached = true }
   process.on('SIGINT', detach)
 
+  const showing = status && err.isTTY === true
+  let shown = null
+  let drawn = ''
+  let drawnAt = 0
+  const clear = () => {
+    if (!drawn) return
+    err.write('\r\x1b[K')
+    drawn = ''
+  }
+  const draw = () => {
+    if (!showing || Date.now() - drawnAt < STATUS_EVERY_MS) return
+    drawnAt = Date.now()
+    shown ??= liveIn(ws)
+    if (!shown) return
+    for (const event of readEvents(ws, { after: shown.seq })) {
+      shown.seq = event.seq
+      if (event.event === 'turn_end') {
+        shown = null
+        return clear()
+      }
+      applyEvent(shown.live, event)
+    }
+    const line = statusLine(shown.live, { width: err.columns })
+    if (line === drawn) return
+    err.write(`\r\x1b[K${line}`)
+    drawn = line
+  }
+
   // One decoder per stream, kept across reads: the runner writes while this reads, and a read
   // can end partway through a character.
   const drain = () => {
@@ -87,7 +125,10 @@ export async function follow (ws, { lines = 0, out = process.stdout, err = proce
       stream.at = got.at
       if (!got.bytes) continue
       const text = stream.decoder.decode(got.bytes, { stream: true })
-      if (text) stream.to.write(text)
+      if (!text) continue
+      clear()
+      drawnAt = 0
+      stream.to.write(text)
     }
   }
 
@@ -104,8 +145,10 @@ export async function follow (ws, { lines = 0, out = process.stdout, err = proce
       const running = stateOf(ws).state === RUNNING
       if (running) started = true
       else if (started || Date.now() > deadline) break
+      draw()
       await new Promise(resolve => setTimeout(resolve, tick))
     }
+    clear()
     drain()
     for (const stream of streams) {
       const rest = stream.decoder.decode()

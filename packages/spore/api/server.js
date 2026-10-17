@@ -1,6 +1,7 @@
 /**
  * The library's verbs over HTTP, for a caller that is not on this machine or not in this
- * container: send, watch, show, list, stop, wrap, extend, and approvals asked and read. Every
+ * container: send, watch, show, list, stop, wrap, extend, the running turn as a person is shown it, and
+ * approvals asked and read. Every
  * request names its caller by token and reaches only the spores that caller may; its
  * `traceparent` is the parent of the request's span, which a message carries on to its turn.
  * Contract: ARCHITECTURE.md, "The HTTP API".
@@ -13,6 +14,7 @@ import { isWorkspace } from '../src/library/discover.js'
 import { CONFIG_FILE, NAME, readConfig, workspaceFor } from '../src/library/config.js'
 import { list, show } from '../src/library/verbs.js'
 import { watch } from '../src/library/watch.js'
+import { liveIn, renderLive } from '../src/library/live.js'
 import { send } from '../src/core/send.js'
 import { stop } from '../src/core/state.js'
 import { extendTurn, wrapTurn } from '../src/core/limits.js'
@@ -23,7 +25,8 @@ import { endSpanError, endSpanOk, formatTraceparent, parseTraceparent, startSpan
 import { callerOf, reaches } from './config.js'
 
 const MAX_BODY = 32 * 1024 * 1024
-const ROUTE = /^\/v1\/spores(?:\/([^/]+)(?:\/(messages|events|stop|wrap|extend|approvals)(?:\/([0-9a-f]{12}))?)?)?\/?$/
+const ROUTE = /^\/v1\/spores(?:\/([^/]+)(?:\/(messages|events|live|stop|wrap|extend|approvals)(?:\/([0-9a-f]{12}))?)?)?\/?$/
+const LEVELS = ['brief', 'plain', 'details']
 
 const STATUS = {
   API_UNAUTHORIZED: 401,
@@ -99,6 +102,13 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       return { status: 200, body: { spores: reached } }
     },
     'GET spore': ({ ws }) => ({ status: 200, body: show({ ws, configFile }) }),
+    'GET live': ({ ws, url }) => {
+      const level = url.searchParams.get('level') ?? 'plain'
+      if (!LEVELS.includes(level)) throw failure('API_BAD_REQUEST', `level is ${LEVELS.join(', ')} — not ${level}`)
+      const running = liveIn(ws)
+      if (!running) return { status: 200, body: { live: null, lines: [], seq: null } }
+      return { status: 200, body: { live: running.live, lines: renderLive(running.live, { level }), seq: running.seq } }
+    },
     'POST messages': async ({ request, ws, span }) => {
       const asked = await jsonOf(request)
       if (typeof asked.text !== 'string' || !asked.text.trim()) throw failure('API_BAD_REQUEST', 'a message needs its text', '{ "text": "…" }')
@@ -169,7 +179,7 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       }
       const handle = routes[`${request.method} ${route}`]
       if (!handle) throw failure('API_METHOD', `${request.method} is not how ${route} is asked`)
-      const { status, body } = await handle({ request, caller, ws, id, span })
+      const { status, body } = await handle({ request, caller, ws, id, span, url })
       answer(response, status, body, traceparent)
       endSpanOk(span, { 'http.status_code': status })
       log(`${caller.name} · ${request.method} ${url.pathname} · ${status}`)

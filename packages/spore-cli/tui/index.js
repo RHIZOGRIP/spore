@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
 import { CombinedAutocompleteProvider, Input, isKeyRelease, Markdown, matchesKey, ProcessTerminal, ScrollView, SelectList, truncateToWidth, TuiAltScreen, visibleWidth, VStack, wrapTextWithAnsi } from '@earendil-works/pi-tui'
-import { changeText, curate, durationText, extendTurn, grantOf, list, loadMohdelEnvironment, outbox, pause, paused, readEvents, readInbox, readTurns, RUNNING, send, SERVICE_STATE_DIR, show, stateOf, stop, switchModel, unpause, upstream, watchAll, wrapTurn } from '@rhizogrip/spore'
+import { applyEvent, changeText, createLive, curate, durationText, extendTurn, grantOf, list, liveIn, loadMohdelEnvironment, outbox, pause, paused, readInbox, readTurns, RUNNING, send, SERVICE_STATE_DIR, show, stateOf, stop, switchModel, unpause, upstream, watchAll, wrapTurn } from '@rhizogrip/spore'
 import chalk from 'chalk'
 
 import { runningJob, scheduleLine } from '../src/dispatch.js'
 import { COMMANDS, parseCommand } from './commands.js'
-import { applyEvent, createLive, history, liveOf, markOf } from './conversation.js'
+import { history, markOf } from './conversation.js'
 import { changeOf, counts, hunks } from './diff.js'
 import { printable } from './printable.js'
 import { PromptEditor } from './prompt.js'
@@ -138,13 +138,13 @@ class Conversation {
     }
     if (this.live) {
       out.push('')
-      for (const note of this.live.notes) out.push(...lines(note.text, width, note.kind === 'thought' ? chalk.italic : dim))
-      for (const tool of this.live.tools) out.push(...(this.renderTool?.(tool, { expanded: this.expanded, width }) ?? toolLine(tool, { expanded: this.expanded, width })))
+      for (const note of this.live.notes) out.push(...lines(printable(note.text), width, note.kind === 'thought' ? chalk.italic : dim))
+      for (const call of this.live.calls) out.push(...(this.renderTool?.(call, { expanded: this.expanded, width }) ?? toolLine(call, { expanded: this.expanded, width })))
       if (this.live.text.trim()) {
-        this.liveAnswer.setText(this.live.text)
-        if (this.live.notes.length || this.live.tools.length) out.push('')
+        this.liveAnswer.setText(printable(this.live.text))
+        if (this.live.notes.length || this.live.calls.length) out.push('')
         out.push(...this.liveAnswer.render(width))
-      } else if (!this.live.complete && this.live.tools.every(tool => tool.done)) {
+      } else if (!this.live.complete && this.live.calls.every(call => call.done)) {
         out.push(dim(`thinking${'.'.repeat(1 + Math.floor(Date.now() / 1000) % 3)}`))
       }
     }
@@ -320,11 +320,10 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
     conversation.items = history({ turns: readTurns(state.ws), inbox: readInbox(state.ws) })
     conversation.live = null
     state.limits = null
-    if (stateOf(state.ws).state === RUNNING) {
-      const ends = readEvents(state.ws, { event: 'turn_end' })
-      const events = readEvents(state.ws, { after: ends.at(-1)?.seq ?? 0 })
-      if (events.length) state.lastSeq = events.at(-1).seq
-      conversation.live = liveOf(events)
+    const running = liveIn(state.ws)
+    if (running) {
+      state.lastSeq = running.seq
+      conversation.live = running.live
     }
     conversation.invalidate()
     refresh()

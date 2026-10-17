@@ -3,7 +3,8 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { follow, tailFrom } from '../src/library/follow.js'
+import { follow, statusLine, tailFrom } from '../src/library/follow.js'
+import { liveOf } from '../src/library/live.js'
 import { ERR_FILE, OUT_FILE } from '../src/core/spore-dir.js'
 
 let ws
@@ -47,5 +48,20 @@ describe('following a stream', () => {
     await follow(ws, { out, err: sink(), tick: 20, grace: 300 })
     expect(out.writes.length).toBeGreaterThan(1)
     expect(out.writes.join('')).toBe('before 😀 after\n')
+  })
+})
+
+describe('the line a terminal is shown while it follows', () => {
+  it('is the default rendering in detail, on one line cut to the terminal\'s width', () => {
+    const live = liveOf([
+      { event: 'stream', kind: 'message', delta: 'Found it.' },
+      { event: 'tool_start', name: 'read', callId: 'a', args: { path: 'a.md' } },
+      { event: 'tool_start', name: 'read', callId: 'b', args: { path: 'data/c.pdf' } }
+    ], { startedAt: '2026-10-17T10:00:00.000Z' })
+    const now = Date.parse('2026-10-17T10:03:10.000Z')
+    expect(statusLine(live, { now, width: 200 })).toBe('working… · 2 calls · 3m · Found it. · reading data/c.pdf')
+    const cut = statusLine(live, { now, width: 20 })
+    expect(cut).toHaveLength(19)
+    expect(cut.endsWith('…')).toBe(true)
   })
 })

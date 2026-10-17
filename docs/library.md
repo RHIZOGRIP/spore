@@ -226,6 +226,15 @@ liveOf(events, { startedAt }) → live | null
 
 `live` folded from `events`, or `null` when there are none.
 
+### `liveIn`
+
+```
+liveIn(ws) → { live, seq } | null
+```
+
+The turn `ws` is running, folded from its events since the last turn ended and timed from its own
+start, and `seq`, the last event read, to follow on from with `watch`; `null` when nothing runs.
+
 ### `renderLive`
 
 ```
