@@ -478,7 +478,7 @@ function renderPlugin (result) {
   }
   for (const [i, [name, path]] of Object.entries(result.programs).entries()) line(i ? '' : 'programs', `${name} → ${path}`)
   for (const [i, [name, value]] of Object.entries(result.env).entries()) line(i ? '' : 'env', `${name}=${value}`)
-  if (result.contain) line('contain', `${result.contain.keep}, and nothing else of ${result.contain.hide}`)
+  if (result.contain) line('contain', result.contain.keep ? `${result.contain.keep}, and nothing else of ${result.contain.hide}` : `nothing of ${result.contain.hide}`)
   if (result.modules.length) line('modules', `${result.modules.join(', ')} → node_modules/, for the agent's programs`)
   if (result.sources.length) line('sources', `${result.sources.join(', ')} — granted with the plugin, held by the runner`)
   if (result.reference) line('reference', `${result.reference} → plugins/${result.name}.md`)

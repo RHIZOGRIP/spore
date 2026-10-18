@@ -294,15 +294,18 @@ function checkPlaceholders (what, template, kinds, refuse) {
 }
 
 /**
- * A directory of the host a contained spore keeps in view, inside another the plugin hides from
- * it — its own socket among the sockets of every spore, say — and what it means when that
- * directory is not there. `confine --contain` lays it out; a spore not contained is refused.
+ * A directory of the host a plugin hides from a contained spore, and the one inside it the spore
+ * keeps in view, if any — its own socket among the sockets of every spore, say — with what it
+ * means when that directory is not there. `confine --contain` lays it out; a spore not contained
+ * is refused.
  */
 function checkContain (declared, kinds, refuse) {
   if (declared === undefined) return null
-  const shape = 'contain is { "hide": "<a directory>", "keep": "<a directory inside it>", "missing": "<what it means when keep is not there>" }'
-  if (!isRecord(declared) || Object.keys(declared).sort().join() !== CONTAIN_FIELDS.join()) throw refuse('has a contain spore cannot read', shape)
-  for (const field of CONTAIN_FIELDS) {
+  const shape = 'contain is { "hide": "<a directory>" }, or with "keep": "<a directory inside it>" and "missing": "<what it means when keep is not there>"'
+  if (!isRecord(declared) || !('hide' in declared) || Object.keys(declared).some(key => !CONTAIN_FIELDS.includes(key)) || ('keep' in declared) !== ('missing' in declared)) {
+    throw refuse('has a contain spore cannot read', shape)
+  }
+  for (const field of CONTAIN_FIELDS.filter(field => field in declared)) {
     if (typeof declared[field] !== 'string' || !declared[field]) throw refuse(`has a contain whose ${field} is not text`, shape)
     checkPlaceholders(`sets contain.${field}`, declared[field], kinds, refuse)
   }
@@ -392,8 +395,16 @@ function fill (plugin, ws) {
 function keptOf (plugin, ws) {
   if (!plugin.contain) return null
   const value = filled(plugin, ws)
-  const [hide, keep, missing] = CONTAIN_FIELDS.map(field => value(plugin.contain[field]))
   const plain = (path) => isAbsolute(path) && normalize(path) === path && !path.endsWith(sep)
+  const hide = value(plugin.contain.hide)
+  if (plugin.contain.keep === undefined) {
+    if (plain(hide)) return { plugin: plugin.name, hide }
+    throw new SporeError(`plugin ${plugin.name} hides ${hide}, which is not a directory`, {
+      type: 'PLUGIN_CONTAIN_INVALID',
+      detail: `it is an absolute path, written plainly — check spore plugin show ${plugin.name}`
+    })
+  }
+  const [keep, missing] = [value(plugin.contain.keep), value(plugin.contain.missing)]
   if (!plain(hide) || !plain(keep) || !keep.startsWith(`${hide}${sep}`)) {
     throw new SporeError(`plugin ${plugin.name} keeps ${keep}, which is not a directory inside the ${hide} it hides`, {
       type: 'PLUGIN_CONTAIN_INVALID',

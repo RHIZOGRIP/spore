@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { constants } from 'node:os'
 import { basename, dirname, resolve } from 'node:path'
 import { getSystemErrorName } from 'node:util'
+import { callInfo } from 'mohdel/client'
 import { modelReadiness } from 'mohdel/readiness'
 
 import { CONFIG_FILE, containing, ENVIRONMENT_FILE, MEMORY_FILE, SOURCES_FILE, readConfig, spendLimits, workspaceFor } from './config.js'
@@ -28,9 +29,10 @@ const are = (names) => `${names.join(', ')}, which ${names.length > 1 ? 'are' : 
 /**
  * What mohdel says of each model a spore names — its `model`, what it may switch to, its
  * `cell-models` — once per model: a problem when a turn on it cannot run, a note when it runs
- * unpriced, its calls then counting as $0 against `cost` and the spend limits.
+ * unpriced, its calls then counting as $0 against `cost` and the spend limits. On a host that
+ * names a gate, the gate's catalog says it.
  */
-export async function modelFindings ({ configFile = CONFIG_FILE, readiness = modelReadiness } = {}) {
+export async function modelFindings ({ configFile = CONFIG_FILE, readiness = modelReadiness, info = callInfo } = {}) {
   const used = new Map()
   for (const { ws } of list({ configFile }).workspaces) {
     let shown
@@ -42,6 +44,8 @@ export async function modelFindings ({ configFile = CONFIG_FILE, readiness = mod
     const named = [shown.model, ...shown.models, ...shown.cellModels.map(entry => entry.model)]
     for (const model of new Set(named)) used.set(model, [...(used.get(model) ?? []), basename(ws)])
   }
+  const { gate } = readConfig(configFile)
+  if (gate) return gateFindings(gate, used, info)
   const findings = []
   for (const [model, spores] of used) {
     const found = await readiness(model)
@@ -52,6 +56,30 @@ export async function modelFindings ({ configFile = CONFIG_FILE, readiness = mod
     } else if (found.priced === false) {
       findings.push({ area: 'models', subject: model, severity: 'note', problem: `has no prices in mohdel's catalog: the calls of ${who} on it count as $0, so cost and spend limits never stop them`, fix: found.fix })
     }
+  }
+  return findings
+}
+
+/**
+ * On a host that names a gate, the runner holds no key and starts no session: every call is the
+ * gate's, so whether a model runs is its catalog's answer, and its credentials are its own.
+ */
+async function gateFindings (gate, used, info) {
+  const findings = []
+  for (const [model, spores] of used) {
+    const who = spores.join(', ')
+    let entry
+    try {
+      entry = await info(model, { socketPath: gate })
+    } catch (err) {
+      if (err.type === undefined) {
+        findings.push({ area: 'models', subject: gate, severity: 'problem', problem: `is the gate every turn calls its models through, and it does not answer (${err.message}) — every turn fails`, fix: 'start the gate, or set gate in config.json to its data socket' })
+        return findings
+      }
+      findings.push({ area: 'models', subject: model, severity: 'problem', problem: `is refused by the gate — ${err.message} — so a turn of ${who} on it fails`, fix: `name a model the gate's catalog takes, in the spore.cmk of ${who}` })
+      continue
+    }
+    if (entry === null) findings.push({ area: 'models', subject: model, severity: 'problem', problem: `is not in the catalog of the gate at ${gate}, so a turn of ${who} on it fails`, fix: 'add it to the gate\'s catalog, on the gate\'s host' })
   }
   return findings
 }

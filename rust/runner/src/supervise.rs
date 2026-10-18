@@ -27,20 +27,21 @@ fn confine(root: &Path) -> PathBuf {
     root.join("build").join("Release").join("confine")
 }
 
-/// A directory a plugin keeps in view of a contained process, inside another it hides from it,
-/// as `confine --hide --keep` lays them out. `missing` says what an absent `keep` means.
+/// A directory a plugin hides from a contained process and the one inside it the process keeps
+/// in view, if any, as `confine --hide [--keep]` lays them out. `missing` says what an absent
+/// `keep` means, and comes with it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Kept {
     pub plugin: String,
     pub hide: PathBuf,
-    pub keep: PathBuf,
-    pub missing: String,
+    pub keep: Option<PathBuf>,
+    pub missing: Option<String>,
 }
 
 /// `--contain-keep`, the spore's plugins' `contain` as `preparePlugins` fills them in.
 pub fn kept_from(given: &str) -> Result<Vec<Kept>, String> {
     let shape = || {
-        format!("--contain-keep is a JSON array of {{plugin, hide, keep, missing}} — got {given}")
+        format!("--contain-keep is a JSON array of {{plugin, hide, keep?, missing?}}, keep and missing together — got {given}")
     };
     let entries: Vec<serde_json::Value> = serde_json::from_str(given).map_err(|_| shape())?;
     entries
@@ -53,18 +54,26 @@ pub fn kept_from(given: &str) -> Result<Vec<Kept>, String> {
                     .map(str::to_string)
                     .ok_or_else(shape)
             };
+            let optional = |name: &str| match entry.get(name) {
+                None => Ok(None),
+                Some(v) => v.as_str().map(|v| Some(v.to_string())).ok_or_else(shape),
+            };
+            let (keep, missing) = (optional("keep")?, optional("missing")?);
+            if keep.is_some() != missing.is_some() {
+                return Err(shape());
+            }
             Ok(Kept {
                 plugin: field("plugin")?,
                 hide: PathBuf::from(field("hide")?),
-                keep: PathBuf::from(field("keep")?),
-                missing: field("missing")?,
+                keep: keep.map(PathBuf::from),
+                missing,
             })
         })
         .collect()
 }
 
 /// Why a process of a spore that keeps `kept` cannot start: it would not be contained, so it
-/// would see everything the plugins hide, or a directory to keep is not there.
+/// would see everything the plugins hide, or a directory to hide or keep is not there.
 pub fn kept_refusal(kept: &[Kept], contained: bool) -> Option<String> {
     if kept.is_empty() {
         return None;
@@ -76,13 +85,20 @@ pub fn kept_refusal(kept: &[Kept], contained: bool) -> Option<String> {
             plugins.join(", ")
         ));
     }
-    kept.iter().find(|k| !k.keep.is_dir()).map(|k| {
-        format!(
+    kept.iter().find_map(|k| match (&k.keep, &k.missing) {
+        (Some(keep), Some(missing)) if !keep.is_dir() => Some(format!(
             "plugin {} needs {}, which is not there — {}",
             k.plugin,
-            k.keep.display(),
-            k.missing
-        )
+            keep.display(),
+            missing
+        )),
+        (None, _) if !k.hide.is_dir() => Some(format!(
+            "plugin {} hides {}, which is not there — make it, or drop {} from plugins: in its spore.cmk",
+            k.plugin,
+            k.hide.display(),
+            k.plugin
+        )),
+        _ => None,
     })
 }
 
@@ -95,11 +111,10 @@ pub fn confined(root: &Path, program: impl AsRef<OsStr>, contain: bool, kept: &[
     if contain {
         command.arg("--contain");
         for k in kept {
-            command
-                .arg("--hide")
-                .arg(&k.hide)
-                .arg("--keep")
-                .arg(&k.keep);
+            command.arg("--hide").arg(&k.hide);
+            if let Some(keep) = &k.keep {
+                command.arg("--keep").arg(keep);
+            }
         }
     }
     command.arg("--no-landlock").arg("--").arg(program);
@@ -343,7 +358,7 @@ mod tests {
         }])
         .to_string();
         let kept = kept_from(&given).unwrap();
-        assert_eq!(kept[0].keep, keep);
+        assert_eq!(kept[0].keep.as_ref(), Some(&keep));
         assert_eq!(kept_refusal(&kept, true), None);
         assert!(kept_refusal(&kept, false)
             .unwrap()
@@ -357,6 +372,46 @@ mod tests {
             "{absent}"
         );
         assert!(kept_from(r#"[{"plugin": "sluice"}]"#).is_err());
+        assert!(
+            kept_from(r#"[{"plugin": "sluice", "hide": "/run/x", "keep": "/run/x/a"}]"#).is_err()
+        );
+        assert!(
+            kept_from(r#"[{"plugin": "sluice", "hide": "/run/x", "missing": "why"}]"#).is_err()
+        );
+    }
+
+    #[test]
+    fn hides_a_directory_outright_and_refuses_one_that_is_not_there() {
+        let dir = std::env::temp_dir().join(format!("spore-hidden-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let given = serde_json::json!([{ "plugin": "cs", "hide": dir }]).to_string();
+        let kept = kept_from(&given).unwrap();
+        assert_eq!(kept[0].keep, None);
+        assert_eq!(kept_refusal(&kept, true), None);
+        let args: Vec<_> = confined(Path::new("/spore"), "agent", true, &kept)
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            [
+                "--contain",
+                "--hide",
+                dir.to_str().unwrap(),
+                "--no-landlock",
+                "--",
+                "agent"
+            ]
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+        let absent = kept_refusal(&kept, true).unwrap();
+        assert!(
+            absent.contains("plugin cs hides")
+                && absent.ends_with("drop cs from plugins: in its spore.cmk"),
+            "{absent}"
+        );
     }
 
     fn stubborn() -> Child {

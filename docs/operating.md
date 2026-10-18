@@ -193,7 +193,9 @@ and puts each turn on the day it started.
 `spore doctor`'s **models** area reads every model a spore names — `model`, `models` and the
 `cell-models` values — once each: a problem when a turn on it cannot run, a note when it has no
 prices in mohdel's catalog, its calls then counting as $0 against `cost` and the spend limits.
-Each names the `mo` command that fixes it.
+Each names the `mo` command that fixes it. On a host that names a `gate`, the gate's catalog
+answers instead (`POST /v1/info`): a problem when the gate has no entry for a model or refuses its
+lane, or when it does not answer at all. Its credentials are the gate's, and doctor does not see them.
 
 A model the catalog lacks is added through `/curate [<provider>]` in `spore tui` — a picker over
 what the provider lists beyond the catalog, with its prices, written by mohdel's `curate` — or

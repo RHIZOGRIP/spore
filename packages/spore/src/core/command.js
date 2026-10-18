@@ -21,15 +21,19 @@ export function containCheck () {
 /**
  * Why a contained command of a spore whose plugins keep `kept` in view cannot start, as
  * `{ problem, fix }`, or null: it would not be contained, and so would see all its plugins hide,
- * or a directory to keep is not there. The runner refuses a turn on the same grounds.
+ * or a directory to hide or keep is not there. The runner refuses a turn on the same grounds.
  */
 export function keptRefusal (kept, contained) {
   if (!kept.length) return null
   if (!contained) {
     return { problem: `plugin ${kept.map(k => k.plugin).join(', ')} shows this spore only its own part of the host by containing it, and this one would not be contained`, fix: 'spore config set contain on' }
   }
-  const absent = kept.find(k => !statSync(k.keep, { throwIfNoEntry: false })?.isDirectory())
-  return absent ? { problem: `plugin ${absent.plugin} needs ${absent.keep}, which is not there`, fix: absent.missing } : null
+  const there = (path) => statSync(path, { throwIfNoEntry: false })?.isDirectory()
+  const absent = kept.find(k => !there(k.keep ?? k.hide))
+  if (!absent) return null
+  return absent.keep
+    ? { problem: `plugin ${absent.plugin} needs ${absent.keep}, which is not there`, fix: absent.missing }
+    : { problem: `plugin ${absent.plugin} hides ${absent.hide}, which is not there`, fix: `make it, or drop ${absent.plugin} from plugins: in its spore.cmk` }
 }
 
 const SAMPLE_MS = 2000
@@ -73,7 +77,7 @@ export async function runShell ({ command, cwd, inAbs, outAbs, errAbs, confine, 
   const errFd = typeof errAbs === 'number' ? errAbs : openSync(errAbs, 'w')
 
   const [bin, args] = confine
-    ? [CONFINE_BIN, [...(confine.contain ? ['--contain', ...kept.flatMap(k => ['--hide', k.hide, '--keep', k.keep])] : []), ...(confine.scopeSignals ? ['--scope-signals'] : []), '--write-root', confine.writeRoot, '--write', '/dev/null', ...(confine.writes ?? []).flatMap(p => ['--write', p]), ...systemReadPaths().flatMap(p => ['--read', p]), ...confine.reads.flatMap(p => ['--read', p]), '--', 'sh', '-c', command]]
+    ? [CONFINE_BIN, [...(confine.contain ? ['--contain', ...kept.flatMap(k => ['--hide', k.hide, ...(k.keep ? ['--keep', k.keep] : [])])] : []), ...(confine.scopeSignals ? ['--scope-signals'] : []), '--write-root', confine.writeRoot, '--write', '/dev/null', ...(confine.writes ?? []).flatMap(p => ['--write', p]), ...systemReadPaths().flatMap(p => ['--read', p]), ...confine.reads.flatMap(p => ['--read', p]), '--', 'sh', '-c', command]]
     : ['sh', ['-c', command]]
 
   let exit = null

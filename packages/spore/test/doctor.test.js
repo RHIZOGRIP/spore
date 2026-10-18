@@ -243,3 +243,48 @@ describe('spore doctor on the models spores name', () => {
     expect(await examine()).toEqual([{ area: 'models', subject: 'openai/gpt-cheap', severity: 'note', problem: expect.stringMatching(/\$0, so cost and spend limits never stop them/), fix: 'mo model instructions openai' }])
   })
 })
+
+describe('spore doctor on the models spores name, on a host that names a gate', () => {
+  const GATE = '/run/gate/data.sock'
+  const asked = []
+  const readiness = async (model) => { throw new Error(`asked mohdel here of ${model}`) }
+
+  beforeEach(() => {
+    asked.length = 0
+    operator('config.json', { home, gate: GATE })
+  })
+
+  it('asks the gate\'s catalog, never this host\'s mohdel, and finds nothing when it has every model', async () => {
+    spore('main', 'models: [openrouter/x]\n')
+    const info = async (model, { socketPath }) => {
+      asked.push([model, socketPath])
+      return { model }
+    }
+    expect(await modelFindings({ configFile, readiness, info })).toEqual([])
+    expect(asked).toEqual([['anthropic/claude-haiku-4-5', GATE], ['openrouter/x', GATE]])
+  })
+
+  it('names a model the gate has no entry for, and one whose lane it refuses, with the spores they fail', async () => {
+    spore('main', 'models: [openrouter/x, openai/y:max]\n')
+    const info = async (model) => {
+      if (model === 'openai/y:max') throw Object.assign(new Error('openai/y takes no effort max'), { type: 'SESSION_INVALID_OUTPUT_EFFORT' })
+      return model === 'openrouter/x' ? null : { model }
+    }
+    expect(await modelFindings({ configFile, readiness, info })).toEqual([
+      { area: 'models', subject: 'openrouter/x', severity: 'problem', problem: `is not in the catalog of the gate at ${GATE}, so a turn of main on it fails`, fix: expect.stringMatching(/gate's catalog/) },
+      { area: 'models', subject: 'openai/y:max', severity: 'problem', problem: expect.stringMatching(/refused by the gate — openai\/y takes no effort max — so a turn of main/), fix: expect.stringMatching(/spore\.cmk of main/) }
+    ])
+  })
+
+  it('says once that the gate does not answer, and asks it nothing more', async () => {
+    spore('main', 'models: [openrouter/x]\n')
+    const info = async (model) => {
+      asked.push(model)
+      throw Object.assign(new Error(`connect ENOENT ${GATE}`), { code: 'ENOENT' })
+    }
+    expect(await modelFindings({ configFile, readiness, info })).toEqual([
+      { area: 'models', subject: GATE, severity: 'problem', problem: expect.stringMatching(/does not answer \(connect ENOENT .*\) — every turn fails/), fix: expect.stringMatching(/start the gate/) }
+    ])
+    expect(asked).toEqual(['anthropic/claude-haiku-4-5'])
+  })
+})

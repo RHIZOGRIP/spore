@@ -478,9 +478,18 @@ describe('a turn of a spore that uses plugins', () => {
     expect(refusal(() => containOf(WS, { config: config({ gate: allowed('gate', { dir: 'relative' }) }), roots })).type).toBe('PLUGIN_CONTAIN_INVALID')
   })
 
+  it('fills a directory a plugin hides outright, keeping nothing of it in view', () => {
+    plugin('spore-plugin-hider', { settings: { dir: 'text' }, contain: { hide: '{settings.dir}' } })
+    useIn(WS, ['hider'])
+    expect(containOf(WS, { config: config({ hider: allowed('hider', { dir: '/run/gate' }) }), roots })).toEqual([{ plugin: 'hider', hide: '/run/gate' }])
+    expect(refusal(() => containOf(WS, { config: config({ hider: allowed('hider', { dir: 'relative' }) }), roots })).message).toMatch(/hides relative, which is not a directory/)
+  })
+
   it('refuses a contain it cannot read', () => {
-    const partial = plugin('spore-plugin-partial', { contain: { hide: '/x' } })
-    expect(refusal(() => checkPlugin(partial)).message).toMatch(/has a contain spore cannot read/)
+    expect(checkPlugin(plugin('spore-plugin-outright', { contain: { hide: '/x' } })).contain).toEqual({ hide: '/x' })
+    for (const contain of [{ keep: '/x/a', missing: 'y' }, { hide: '/x', keep: '/x/a' }, { hide: '/x', missing: 'y' }, { hide: '/x', other: 'z' }]) {
+      expect(refusal(() => checkPlugin(plugin('spore-plugin-partial', { contain }))).message).toMatch(/has a contain spore cannot read/)
+    }
     const unfilled = plugin('spore-plugin-unfilled', { contain: { hide: '{nope}', keep: '{nope}/a', missing: 'x' } })
     expect(refusal(() => checkPlugin(unfilled)).message).toMatch(/sets contain\.hide with \{nope\}/)
   })

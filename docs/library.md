@@ -1391,11 +1391,13 @@ ABI, whether namespaces work, and whether it runs as root.
 ### `modelFindings`
 
 ```
-modelFindings({ configFile, readiness = modelReadiness }) → Promise<finding[]>
+modelFindings({ configFile, readiness = modelReadiness, info = callInfo }) → Promise<finding[]>
 ```
 
 For each model a spore names (`model`, `models`, `cell-models`), a `problem` when a turn on it
-cannot run and a `note` when it runs unpriced, each with the `mo` command that fixes it.
+cannot run and a `note` when it runs unpriced, each with the `mo` command that fixes it. With
+`gate` in `config.json`, `info` (mohdel's `callInfo`) asks the gate's catalog instead, and a gate
+that does not answer is one problem.
 
 ---
 

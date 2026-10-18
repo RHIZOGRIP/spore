@@ -63,7 +63,7 @@ runs none of the plugin's code.
 | `programs` | `{ "<VARIABLE>": "<program>" }` | optional | `./<path>` in the plugin, or `<package>/<path>` in a dependency |
 | `describe` | `[{ "program", "title", "category", "detail"? }, …]` | optional | how a call of one of its `programs` is shown: `program` a regexp naming one of them |
 | `env` | `{ "<VARIABLE>": "<text>" }` | optional | text with `{placeholders}` |
-| `contain` | `{ "hide", "keep", "missing" }` | optional | text with `{placeholders}`: a directory of the host a contained spore sees only one directory of |
+| `contain` | `{ "hide", "keep"?, "missing"? }` | optional | text with `{placeholders}`: a directory of the host a contained spore sees nothing of, or only one directory of |
 | `modules` | `["<dependency>", …]` | optional | each in `dependencies`, none provisioned |
 | `sources` | `{ "<source>": { "url": …, … } }` | optional | as `sources.json` describes a source |
 | `reference` | `"<path>"` | optional | one file in the plugin |
@@ -307,8 +307,10 @@ socket each, say — gives each spore its own part and none of the others':
 }
 ```
 
-The three take the placeholders `env` does. Filled in, `hide` and `keep` are absolute and written
-plainly, and `keep` lies inside `hide`, or the spore is refused (`PLUGIN_CONTAIN_INVALID`). Two
+A plugin that only hides a directory names `hide` alone, and the spore sees nothing of it;
+`keep` and `missing` come together or not at all. The three take the placeholders `env` does.
+Filled in, `hide` and `keep` are absolute and written plainly, and `keep` lies inside `hide`, or
+the spore is refused (`PLUGIN_CONTAIN_INVALID`). Two
 plugins of one spore that hide the same directory, or one inside the other, are refused
 (`PLUGIN_CONFLICT`).
 
@@ -316,8 +318,8 @@ Every contained process of the spore gets the same view — the agent of a turn,
 routers, a cell started outside any turn — laid out by `confine --contain` in the namespace it
 already makes, so it holds for whatever the process runs. One that is not contained (`contain
 off`, or `--unsafe`) would see all of `hide`, and is refused instead; so is one whose `keep` is not
-there, with `missing` as the fix. Both refusals are `CONTAIN_FAILED` for a turn. `spore doctor`
-reports them for each spore.
+there, with `missing` as the fix, or, with no `keep`, whose `hide` is not. These refusals are
+`CONTAIN_FAILED` for a turn. `spore doctor` reports them for each spore.
 
 ## Sources
 

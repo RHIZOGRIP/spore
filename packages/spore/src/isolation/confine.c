@@ -6,18 +6,18 @@
  * on inherited descriptors, which Landlock does not gate: it checks path
  * resolution, so a child with no writable path still writes stdout.
  *
- *   confine [--contain [--hide DIR --keep DIR]...] [--scope-signals] --write-root DIR [--read PATH]... [--write PATH]... -- CMD [ARG]...
- *   confine [--contain [--hide DIR --keep DIR]...] --no-landlock -- CMD [ARG]...     the command applies its own Landlock
+ *   confine [--contain [--hide DIR [--keep DIR]]...] [--scope-signals] --write-root DIR [--read PATH]... [--write PATH]... -- CMD [ARG]...
+ *   confine [--contain [--hide DIR [--keep DIR]]...] --no-landlock -- CMD [ARG]...     the command applies its own Landlock
  *   confine --contain-check                               exit 0 when this host can contain
  *
  * --contain runs the command in a user, PID and mount namespace of its own, with a /proc of
  * that namespace, so it sees only the processes it started; on a host that cannot make them it
  * runs nothing. Contract: ARCHITECTURE.md, "Spores of different people on one account".
  *
- * --hide DIR --keep DIR, in that namespace, lays an empty directory over DIR and puts back the one
- * directory KEEP below it: the command sees KEEP and nothing else of DIR — one socket of a
- * directory of them, say. KEEP must exist; Landlock does not gate connecting to a socket, and the
- * mount namespace is what does.
+ * --hide DIR, in that namespace, lays an empty directory over DIR, and a --keep KEEP right after it
+ * puts back the one directory KEEP below it: the command sees KEEP and nothing else of DIR — one
+ * socket of a directory of them, say — or, with no --keep, nothing of DIR at all. Both must exist;
+ * Landlock does not gate connecting to a socket, and the mount namespace is what does.
  *
  * It runs nothing as root. Exit codes: 126 confinement failed, 127 exec failed; otherwise the
  * command's own.
@@ -326,7 +326,7 @@ static void end_as (int status) {
 
 static const char *hide_paths[MAX_KEPT];
 static const char *keep_paths[MAX_KEPT];
-static int n_hide = 0, n_keep = 0;
+static int n_hide = 0;
 static char hid_step[PATH_MAX + 64];
 
 /* Makes each directory of `path` past its first `from` bytes, as mkdir -p would. */
@@ -351,11 +351,15 @@ static int make_below (const char *path, size_t from) {
  */
 static const char *hide_and_keep (int *err) {
   int kept[MAX_KEPT];
-  for (int k = 0; k < n_keep; k++) {
+  for (int k = 0; k < n_hide; k++) {
+    if (!keep_paths[k]) {
+      kept[k] = -1;
+      continue;
+    }
     kept[k] = open(keep_paths[k], O_PATH | O_DIRECTORY | O_CLOEXEC);
     if (kept[k] < 0) {
       *err = -errno;
-      for (int j = 0; j < k; j++) close(kept[j]);
+      for (int j = 0; j < k; j++) if (kept[j] >= 0) close(kept[j]);
       snprintf(hid_step, sizeof(hid_step), "cannot open %s", keep_paths[k]);
       return hid_step;
     }
@@ -368,7 +372,8 @@ static const char *hide_and_keep (int *err) {
       step = hid_step;
     }
   }
-  for (int k = 0; !step && k < n_keep; k++) {
+  for (int k = 0; !step && k < n_hide; k++) {
+    if (!keep_paths[k]) continue;
     char from[64];
     snprintf(from, sizeof(from), "/proc/self/fd/%d", kept[k]);
     if ((*err = make_below(keep_paths[k], strlen(hide_paths[k]))) < 0 || mount(from, keep_paths[k], NULL, MS_BIND, NULL) < 0) {
@@ -377,7 +382,7 @@ static const char *hide_and_keep (int *err) {
       step = hid_step;
     }
   }
-  for (int k = 0; k < n_keep; k++) close(kept[k]);
+  for (int k = 0; k < n_hide; k++) if (kept[k] >= 0) close(kept[k]);
   return step;
 }
 
@@ -495,7 +500,7 @@ static void confine_command (void) {
 }
 
 int main (int argc, char **argv) {
-  int i = 1, contain = 0, check = 0;
+  int i = 1, contain = 0, check = 0, hid_at = -1;
 
   for (; i < argc; i++) {
     if (strcmp(argv[i], "--") == 0) { i++; break; }
@@ -506,14 +511,16 @@ int main (int argc, char **argv) {
     if (i + 1 >= argc) fail("missing value for", argv[i]);
     if (strcmp(argv[i], "--hide") == 0) {
       if (n_hide >= MAX_KEPT) fail("too many directories to hide", NULL);
-      if (n_keep != n_hide) fail("--hide again before its --keep", NULL);
+      if (argv[i + 1][0] != '/') fail("--hide must be absolute", argv[i + 1]);
+      keep_paths[n_hide] = NULL;
       hide_paths[n_hide++] = argv[++i];
+      hid_at = i;
     } else if (strcmp(argv[i], "--keep") == 0) {
-      if (n_keep + 1 != n_hide) fail("--keep without the --hide it lies under", NULL);
-      const char *hide = hide_paths[n_keep], *keep = argv[++i];
+      if (hid_at != i - 1) fail("--keep not right after the --hide it lies under", NULL);
+      const char *hide = hide_paths[n_hide - 1], *keep = argv[++i];
       size_t len = strlen(hide);
-      if (hide[0] != '/' || strncmp(keep, hide, len) != 0 || keep[len] != '/' || keep[len + 1] == '\0') fail("--keep must lie under its --hide, both absolute", keep);
-      keep_paths[n_keep++] = keep;
+      if (strncmp(keep, hide, len) != 0 || keep[len] != '/' || keep[len + 1] == '\0') fail("--keep must lie under its --hide, both absolute", keep);
+      keep_paths[n_hide - 1] = keep;
     } else if (strcmp(argv[i], "--write-root") == 0) write_root = argv[++i];
     else if (strcmp(argv[i], "--read") == 0) {
       if (n_read >= MAX_PATHS) fail("too many read paths", NULL);
@@ -525,7 +532,6 @@ int main (int argc, char **argv) {
   }
 
   if (getuid() == 0 || geteuid() == 0) fail("refuses to run anything as root", "run spore as an ordinary user (in a container, USER or --user)");
-  if (n_keep != n_hide) fail("--hide without its --keep", hide_paths[n_hide - 1]);
   if (n_hide && !contain) fail("--hide and --keep need --contain", "they lay mounts in the command's own namespace");
 
   char why[256] = { 0 };

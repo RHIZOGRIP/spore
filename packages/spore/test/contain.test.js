@@ -124,6 +124,18 @@ describe(`a contained command kept to one directory of another ${CONTAINED ? '' 
     }
   })
 
+  it.skipIf(!CONTAINED)('sees nothing of a directory hidden with none kept', () => {
+    const { hide } = laidOut()
+    try {
+      const ran = confine(['--contain', '--hide', hide, '--no-landlock', '--', 'sh', '-c', `find ${hide}`])
+      expect(ran.status, ran.stderr).toBe(0)
+      expect(ran.stdout.trim()).toBe(hide)
+      expect(existsSync(join(hide, 'agent.sock'))).toBe(true)
+    } finally {
+      rmSync(hide, { recursive: true, force: true })
+    }
+  })
+
   it.skipIf(!CONTAINED)('runs nothing when the directory to keep is not there, and says which', () => {
     const { hide, keep } = laidOut()
     try {
@@ -140,7 +152,8 @@ describe(`a contained command kept to one directory of another ${CONTAINED ? '' 
   it('refuses a directory to keep outside the one hidden, and either without --contain', () => {
     expect(confine(['--contain', '--hide', '/run/x', '--keep', '/run/y', '--no-landlock', '--', 'true']).stderr).toMatch(/--keep must lie under its --hide/)
     expect(confine(['--contain', '--hide', '/run/x', '--keep', '/run/x', '--no-landlock', '--', 'true']).stderr).toMatch(/--keep must lie under its --hide/)
-    expect(confine(['--contain', '--hide', '/run/x', '--no-landlock', '--', 'true']).stderr).toMatch(/--hide without its --keep/)
+    expect(confine(['--contain', '--hide', 'run/x', '--no-landlock', '--', 'true']).stderr).toMatch(/--hide must be absolute/)
+    expect(confine(['--contain', '--hide', '/run/x', '--hide', '/run/y', '--no-landlock', '--keep', '/run/x/a', '--', 'true']).stderr).toMatch(/--keep not right after the --hide/)
     expect(confine(['--hide', '/run/x', '--keep', '/run/x/a', '--no-landlock', '--', 'true']).stderr).toMatch(/need --contain/)
   })
 
@@ -151,6 +164,9 @@ describe(`a contained command kept to one directory of another ${CONTAINED ? '' 
       const shell = (contain) => runShell({ command: 'echo ran', cwd: hide, outAbs: 1, errAbs: 2, confine: { writeRoot: hide, reads: [], contain, keep: kept }, env: process.env })
       expect((await shell(false)).spawnError).toMatch(/^plugin sluice shows this spore only its own part of the host .* — spore config set contain on$/)
       expect((await shell(true)).spawnError).toBe(`plugin sluice needs ${join(hide, 'spores', 'gone')}, which is not there — no rules for this spore`)
+      const outright = [{ plugin: 'cs', hide: join(hide, 'gone') }]
+      const hiding = await runShell({ command: 'echo ran', cwd: hide, outAbs: 1, errAbs: 2, confine: { writeRoot: hide, reads: [], contain: true, keep: outright }, env: process.env })
+      expect(hiding.spawnError).toBe(`plugin cs hides ${join(hide, 'gone')}, which is not there — make it, or drop cs from plugins: in its spore.cmk`)
     } finally {
       rmSync(hide, { recursive: true, force: true })
     }
