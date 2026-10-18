@@ -17,6 +17,8 @@ export const createLive = ({ startedAt = null } = {}) => ({
   startedAt,
   rounds: 0,
   text: '',
+  commentary: '',
+  summary: '',
   notes: [],
   headline: null,
   calls: [],
@@ -28,26 +30,50 @@ export const createLive = ({ startedAt = null } = {}) => ({
   complete: null
 })
 
+const lastParagraph = (text) => text.split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).at(-1) ?? ''
+
+const headed = (live, text, source) => {
+  if (!text) return false
+  live.headline = { text, source }
+  return true
+}
+
 const describedOf = (event) => event.title === undefined
   // A turn its spore was upgraded under wrote `tool_start` without a description.
   ? describeCall(event.name, event.args)
   : { title: event.title, category: event.category, detail: event.detail }
 
-/** False when the event changes nothing a surface shows. Text written before a call is the model's note on it; the answer is what comes last. */
+/**
+ * False when the event changes nothing a surface shows. The headline is, within a round, what the
+ * model wrote for the person, else the last paragraph of its reasoning summary, else text it wrote
+ * before a call — the answer is what comes last, never a headline.
+ */
 export function applyEvent (live, event) {
   switch (event.event) {
     case 'round':
       live.rounds = event.index + 1
+      live.commentary = ''
+      live.summary = ''
       return true
     case 'stream':
-      if (event.kind !== 'message') return false
-      live.text += event.delta
-      return true
+      if (event.kind === 'message') {
+        live.text += event.delta
+        return true
+      }
+      if (event.kind === 'commentary') {
+        live.commentary += event.delta
+        return headed(live, lastParagraph(live.commentary), 'commentary')
+      }
+      if (event.kind === 'reasoning_summary') {
+        live.summary += event.delta
+        return !live.commentary.trim() && headed(live, lastParagraph(live.summary), 'reasoning_summary')
+      }
+      return false
     case 'tool_start': {
       const note = live.text.trim()
       if (note) {
         live.notes.push({ kind: 'thought', text: note })
-        live.headline = { text: note, source: 'message' }
+        if (!live.commentary.trim() && !live.summary.trim()) live.headline = { text: note, source: 'message' }
       }
       live.text = ''
       live.heard = false

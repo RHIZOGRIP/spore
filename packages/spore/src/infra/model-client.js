@@ -24,7 +24,7 @@ import { formatTraceparent } from '../observability/tracing.js'
 import { SporeError } from '../observability/errors.js'
 import { CALLER_HEADER, MODEL_CALL_HEADER, KEY_HEADER, PRECURSOR_CALLER, ROOT_CALLER, request, typedError } from './socket-request.js'
 
-const OPTIONS = new Set(['tools', 'signal', 'parentSpan', 'realtimeHandler', 'bufferOpts'])
+const OPTIONS = new Set(['tools', 'signal', 'parentSpan', 'realtimeHandler', 'bufferOpts', 'reasoningSummaries', 'rawReasoning'])
 
 const ask = (socketPath, key, method, path, body) => request(socketPath, { key, method, path, body, what: 'model socket' })
 
@@ -71,7 +71,7 @@ export async function createModelClient ({ socketPath, modelIds = [], key, logge
               detail: `the envelope carries ${[...OPTIONS].join(', ')}`
             })
           }
-          const { tools, signal, parentSpan, realtimeHandler, bufferOpts } = options
+          const { tools, signal, parentSpan, realtimeHandler, bufferOpts, reasoningSummaries, rawReasoning } = options
           const traceparent = formatTraceparent(parentSpan)
           const envelope = {
             callId: randomUUID(),
@@ -80,6 +80,8 @@ export async function createModelClient ({ socketPath, modelIds = [], key, logge
             identifier,
             prompt,
             ...(tools?.length ? { tools } : {}),
+            ...(reasoningSummaries ? { reasoningSummaries: true } : {}),
+            ...(rawReasoning ? { rawReasoning: true } : {}),
             ...(traceparent ? { traceparent } : {})
           }
           // To the loop an abort is a rejection, which writes the turn down as cancelled.

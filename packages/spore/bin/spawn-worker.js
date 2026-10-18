@@ -91,6 +91,7 @@ try {
     excludeTools: TOOL_NAMES.filter(name => !plan.precursor.tools.includes(name)),
     limits: plan.precursor.limits,
     images: plan.precursor.images,
+    reasoning: plan.precursor.reasoning,
     sandbox: true,
     parentSpan,
     signal: stopping.signal,

@@ -1558,7 +1558,10 @@ mistakes it for an answer. The turn records `concluded: true` — it ended on it
 dealt with what it was sent — so `stateOf` reads it `idle`, the runner carries on to anything
 unread, and the command exits 0. An empty reply stays a glitch the loop nudges, and a failure is
 never quiet, so silence, a glitch and a failure never look alike
-([principle 21](PRINCIPLES.md#21-when-something-fails-it-says-so)).
+([principle 21](PRINCIPLES.md#21-when-something-fails-it-says-so)). A reply that only told the
+person what the model is about to do (mohdel's `commentaryParts`, no answer and no call) is none of
+them: it goes back into the transcript as said, its phase kept, and the loop calls again, within the
+bound an empty reply has.
 
 **Quiet is for a turn no person spoke in.** When the turn holds a message someone wrote — one with
 no schedule, hook or job as its origin (`origin_of`, `rust/workspace`), whether it started the
@@ -2029,7 +2032,9 @@ fork copies in is not turns ending, and writes no `turn_end`.
 
 **`stream` is the model's output as it is produced**, carried across the broker (§The model broker)
 and emitted by `loop` one chunk at a time, its `kind` the provider's delta type as mohdel reports
-it — `message` for the answer's text, its own kind for reasoning — at mohdel's granularity, which
+it — `message` for the answer's text, `function_call` for a call's arguments, `commentary` for what
+the model writes for the person while it works, `reasoning_summary` and `reasoning` (raw) when the
+definition's `reasoning` asks for them — at mohdel's granularity, which
 the loop sets with `bufferOpts` to at most 50 characters or half a second. `mohdel_idle` is named by
 the schema and **not produced** (`PROMISED`): mohdel's factory never calls an idle handler, so
 there is nothing to carry. It joins `EVENTS` when mohdel emits it, and every consumer has it
@@ -2099,7 +2104,9 @@ the terminal show one account of a turn rather than each reading the events its 
 every fact a surface may want — the rounds, the calls with their descriptions and how each ended,
 the text being written, the notes (a wrap and its lifting, a message heard mid-turn, compaction),
 the spend and the context of the last model call — and its `headline`, the model's own words on
-what it is doing: for now the text it wrote before its latest call.
+what it is doing, from its latest round: what it wrote for the person (`commentary`), else the last
+paragraph of its reasoning summary (`reasoning_summary`, when the definition's `reasoning` asks for
+summaries), else the text it wrote before its latest call. Raw reasoning is never shown.
 
 **The default rendering** (`renderLive`) is what a surface without a layout of its own shows, in a
 few plain lines: `working…` with how many calls ran and, once a minute has passed, for how long; the

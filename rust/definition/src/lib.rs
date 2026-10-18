@@ -22,7 +22,7 @@ pub use schedule::{parse_schedule, Due, Schedule};
 /// The tool suite, by name. Contract: ARCHITECTURE.md, "Tools".
 pub const TOOL_NAMES: [&str; 7] = ["read", "write", "edit", "exec", "wsexec", "ask", "quiet"];
 
-const FIELDS: [&str; 36] = [
+const FIELDS: [&str; 37] = [
     "name",
     "description",
     "model",
@@ -59,9 +59,13 @@ const FIELDS: [&str; 36] = [
     "dream.wall",
     "dream.precursor",
     "plugins",
+    "reasoning",
 ];
 
 const ON_WRAP: [&str; 2] = ["keep", "discard"];
+
+/// What a turn may ask its model for besides the answer: `summaries` of its reasoning, `raw` reasoning.
+const REASONING: [&str; 2] = ["summaries", "raw"];
 
 /// mohdel's bound on an envelope's `authId`.
 const AUTH_MAX_BYTES: usize = 128;
@@ -299,6 +303,9 @@ pub struct Definition {
     /// How a person is shown its calls, from its `:::call` blocks, in the order written.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub calls: Vec<CallRow>,
+    /// What each model call asks for besides the answer, from `REASONING`; empty asks for neither.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub reasoning: Vec<String>,
 }
 
 /// `cell` holds a definition to a cell's rules, `seed` to the shipped template's, which is
@@ -1029,6 +1036,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         "plugins",
         "models",
         "cell-models",
+        "reasoning",
     ] {
         if let Some(Value::Scalar(_)) = fields.get(key) {
             return Err(format!("\"{key}\" must be a list, as {key}: [a, b]"));
@@ -1396,6 +1404,19 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         }
     }
 
+    let reasoning = list(&fields, "reasoning").to_vec();
+    for (i, asked) in reasoning.iter().enumerate() {
+        if !REASONING.contains(&asked.as_str()) {
+            return Err(format!(
+                "asks for reasoning \"{asked}\" — expected {}",
+                REASONING.join(" or ")
+            ));
+        }
+        if reasoning[..i].contains(asked) {
+            return Err(format!("asks for reasoning \"{asked}\" twice"));
+        }
+    }
+
     Ok(Definition {
         name,
         description,
@@ -1422,6 +1443,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         dream,
         plugins,
         calls,
+        reasoning,
     })
 }
 
@@ -1652,6 +1674,30 @@ mod tests {
         assert_eq!(
             with("plugins: [docs, docs]\n").unwrap_err(),
             "uses the plugin \"docs\" twice"
+        );
+    }
+
+    #[test]
+    fn names_the_reasoning_each_call_asks_for() {
+        let with = |line: &str| {
+            parse(&WELL_FORMED.replace("tools: [read]\n", &format!("tools: [read]\n{line}")))
+        };
+        assert_eq!(
+            with("reasoning: [summaries, raw]\n").unwrap().reasoning,
+            vec!["summaries", "raw"]
+        );
+        assert!(parse(WELL_FORMED).unwrap().reasoning.is_empty());
+        assert_eq!(
+            with("reasoning: summaries\n").unwrap_err(),
+            "\"reasoning\" must be a list, as reasoning: [a, b]"
+        );
+        assert_eq!(
+            with("reasoning: [thoughts]\n").unwrap_err(),
+            "asks for reasoning \"thoughts\" — expected summaries or raw"
+        );
+        assert_eq!(
+            with("reasoning: [raw, raw]\n").unwrap_err(),
+            "asks for reasoning \"raw\" twice"
         );
     }
 

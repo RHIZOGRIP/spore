@@ -376,6 +376,31 @@ describe('tool loop', () => {
     expect(sent.content[0]).toEqual(thought)
   })
 
+  it('sends back what the model wrote for the person with its phase, and goes on past a reply that is only that', async () => {
+    const note = { type: 'text', text: 'Checking the lease note first.', phase: 'commentary' }
+    const m = mockModel([
+      { ...toolUse([{ name: 'echo', args: { text: 'x' } }]), commentaryParts: [note] },
+      { status: 'completed', output: null, commentaryParts: [{ ...note, text: 'Now the answer.' }] },
+      completed('done')
+    ])
+    const res = await run({ model: m, limits: { rounds: { soft: 5, hard: 9 } } })
+    expect(res).toMatchObject({ output: 'done', stopReason: 'answer' })
+    const recorded = res.messages.find(msg => msg.role === 'assistant' && msg.toolCalls)
+    expect(recorded.content).toEqual([note])
+    const said = res.messages.filter(msg => msg.role === 'assistant' && !msg.toolCalls)
+    expect(said[0].content).toEqual([{ ...note, text: 'Now the answer.' }])
+    expect(res.messages.some(msg => /previous response was empty/.test(msg.content))).toBe(false)
+  })
+
+  it('asks each call for the reasoning its definition names', async () => {
+    const m = mockModel([completed('a'), completed('b')])
+    await run({ model: m, limits: { rounds: { soft: 5, hard: 9 } }, reasoning: ['summaries', 'raw'] })
+    expect(m.calls[0].opts).toMatchObject({ reasoningSummaries: true, rawReasoning: true })
+    await run({ model: m, limits: { rounds: { soft: 5, hard: 9 } } })
+    expect(m.calls[1].opts).not.toHaveProperty('reasoningSummaries')
+    expect(m.calls[1].opts).not.toHaveProperty('rawReasoning')
+  })
+
   it('refuses a tool_use reply with no tool call in it', async () => {
     await expect(run({ model: mockModel([{ status: 'tool_use', output: 'x', toolCalls: [] }]), limits: { rounds: { soft: 5, hard: 9 } } }))
       .rejects.toMatchObject({ type: 'MODEL_REPLY_INCONSISTENT' })

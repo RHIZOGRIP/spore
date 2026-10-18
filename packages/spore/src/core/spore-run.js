@@ -70,6 +70,8 @@ export async function runSpore ({
   // defaulted here — a number buried in the runtime is a number nobody benchmarks.
   memory = null,
   images = null,
+  // `reasoning:` from the definition: what each model call asks for besides the answer.
+  reasoning = [],
   // `schedules: [count, interval]` from the root definition: whether `schedules/` is the
   // agent's to write, and what bounds it.
   schedules = null,
@@ -440,6 +442,7 @@ export async function runSpore ({
       onMessage,
       sessionMemory,
       cacheTtl,
+      reasoning,
       initialMessages: history,
       from: resume?.rounds,
       signal: wallStop.signal,

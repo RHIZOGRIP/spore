@@ -50,6 +50,17 @@ describe('the model client', () => {
     expect(envelope.callId).toMatch(/^[0-9a-f-]{36}$/)
   })
 
+  it('asks for reasoning summaries and raw reasoning only when the call does', async () => {
+    await serve(async () => answers('x'))
+    const mo = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS })
+    await mo.use(MODEL).answer(PROMPT, { reasoningSummaries: true, rawReasoning: true })
+    await mo.use(MODEL).answer(PROMPT)
+    const [asked, plain] = server.envelopes.map(({ envelope }) => envelope)
+    expect(asked).toMatchObject({ reasoningSummaries: true, rawReasoning: true })
+    expect(plain).not.toHaveProperty('reasoningSummaries')
+    expect(plain).not.toHaveProperty('rawReasoning')
+  })
+
   it('names its workspace to the provider by a hash, the same on every call and another for another workspace', async () => {
     await serve(async () => answers('x'))
     const mo = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS })

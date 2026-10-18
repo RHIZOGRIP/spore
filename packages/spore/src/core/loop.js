@@ -7,7 +7,7 @@ import { refusedResult } from './refusal.js'
 import { withRecovery } from '../resilience/recovery.js'
 import { executeTools } from './tool-kernel.js'
 import { textOf } from './message.js'
-import { accountUsage, resolveEmptyCompletion } from './answer-result.js'
+import { MAX_EMPTY_RETRIES, accountUsage, resolveEmptyCompletion } from './answer-result.js'
 import { silent } from '../observability/logger.js'
 import { SporeError } from '../observability/errors.js'
 
@@ -64,7 +64,7 @@ const DRIFT_FLOOR = 2_000
  * @param {object} [opts.logger]
  * @returns {{ output: string|null, messages: Array, rounds: number, usage: object }}
  */
-export async function loop ({ model, models, system, prompt, tools, toolFns, describe, limits, ledger, emitter = noEmit, mutators, terminalTools, realtimeHandler, maxResultRatio, maxResultSize: maxResultSizeOverride, signal, logger = silent, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, from }) {
+export async function loop ({ model, models, system, prompt, tools, toolFns, describe, limits, ledger, emitter = noEmit, mutators, terminalTools, realtimeHandler, maxResultRatio, maxResultSize: maxResultSizeOverride, signal, logger = silent, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning = [], from }) {
   const userMsg = { role: 'user', content: prompt }
   if (!Number.isInteger(limits?.rounds?.soft) || !Number.isInteger(limits?.rounds?.hard)) {
     throw new Error('loop needs limits.rounds — declared in a .cmk, not defaulted here')
@@ -211,6 +211,8 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, des
     if (contextLimit) compactIfNeeded(messages, { contextLimit, lastInputTokens, logger })
 
     const answerOpts = { tools }
+    if (reasoning.includes('summaries')) answerOpts.reasoningSummaries = true
+    if (reasoning.includes('raw')) answerOpts.rawReasoning = true
     // Without this the deadline and the user's cancel can only take effect between
     // rounds: a request already in flight runs to completion, and a hung one holds
     // the turn open indefinitely. It is also what makes the model broker's cancel
@@ -342,6 +344,15 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, des
       continue
     }
 
+    // A reply that only told the person what it is about to do is not the answer: it goes back
+    // as said, and the model goes on, within the bound an empty reply has.
+    if (!res.output && res.commentaryParts?.length && emptyState.retries < MAX_EMPTY_RETRIES) {
+      emptyState.retries++
+      logger.info({ round: i, retry: emptyState.retries }, '[loop] commentary without an answer — going on')
+      append({ role: 'assistant', content: assistantContent(res) })
+      continue
+    }
+
     // Degenerate completion (no tool call, no text): nudge for a real answer
     // (bounded) instead of returning empty. Shared with run-turn.js.
     if (resolveEmptyCompletion(res, { emptyState, emit, append, logger, round: i })) continue
@@ -355,11 +366,13 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, des
 
 // Roundtrip the model's reasoning for providers that need it: DeepSeek V4 rejects a round whose
 // assistant message lacks its `reasoning_content`, and a model whose provider carries reasoning
-// as encrypted parts (`reasoningParts`) re-plans from scratch every round without them. With
-// neither, a plain string keeps the message compact.
+// as encrypted parts (`reasoningParts`) re-plans from scratch every round without them. What it
+// wrote for the person (`commentaryParts`) goes back with its phase, so it is never read as an
+// answer. With none of these, a plain string keeps the message compact.
 function assistantContent (res) {
   const text = res.output || ''
   const reasoning = [...(res.reasoningParts ?? []), ...(res.reasoning ? [{ type: 'reasoning', text: res.reasoning }] : [])]
-  if (!reasoning.length) return text
-  return [...reasoning, { type: 'text', text }]
+  const commentary = res.commentaryParts ?? []
+  if (!reasoning.length && !commentary.length) return text
+  return [...reasoning, ...commentary, ...(text || !commentary.length ? [{ type: 'text', text }] : [])]
 }

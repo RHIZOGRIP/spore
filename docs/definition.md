@@ -129,6 +129,7 @@ that level. **Absent** says what leaving the field out means where it is accepte
 | [`retain`](#retain) | whole number | optional | refused | every turn's trail kept | turns of trail kept | [Retention](../ARCHITECTURE.md#retention) |
 | [`history`](#history) | whole number | optional | refused | 256k tokens | tokens of earlier turns re-sent word for word | [Retention](../ARCHITECTURE.md#retention) |
 | [`images`](#images) | `[count, size]` | optional | optional | cannot look at images | images `read` may show per turn | [Looking at a picture is a read](../ARCHITECTURE.md#looking-at-a-picture-is-a-read) |
+| [`reasoning`](#reasoning) | list of `summaries`, `raw` | optional | optional | neither asked for | what each model call asks for besides the answer | [What a running turn shows](../ARCHITECTURE.md#what-a-running-turn-shows) |
 | [`schedules`](#schedules) | `[count, interval]` | optional | refused | `schedules/` read-only to the agent | lets the agent write its own schedules, bounded | [Turns the clock starts](../ARCHITECTURE.md#turns-the-clock-starts) |
 | [`jobs`](#jobs) | `[count, wall]` | optional | refused | no jobs | work a turn starts that outlives it | [Jobs](../ARCHITECTURE.md#jobs) |
 | [`jobs.maxWait`](#jobsmaxwait) | duration | optional² | refused | delivered at once | longest a job's delivery may be held | [Deliveries nobody typed](../ARCHITECTURE.md#deliveries-nobody-typed) |
@@ -528,6 +529,21 @@ least one byte. This pair is intake per turn, not a soft/hard pair. Absent, `rea
 refused with that reason. The grant is not checked against the model, so a text-only model granted
 images fails at the provider
 ([Looking at a picture is a read](../ARCHITECTURE.md#looking-at-a-picture-is-a-read)).
+
+### `reasoning`
+
+```
+reasoning: [summaries]
+```
+
+Accepted at both levels. What each model call of a turn asks the model for besides its answer:
+`summaries`, a summary of its reasoning, streamed into the event log as `stream` kind
+`reasoning_summary` and shown as the running turn's headline; `raw`, its raw reasoning, streamed as
+kind `reasoning`, kept in the log and never shown. Each comes only where the provider gives it, and
+a summary from OpenAI or ChatGPT only for a key whose account may ask for one — `reasoningSummaries`
+in mohdel's `providers.json`. Asking for summaries delays the answer: about 2.5 s a round on a
+Claude model that thinks. Absent, neither is asked for; what the model writes for the person while
+it works (`commentary`) comes either way.
 
 ## The clock and jobs
 

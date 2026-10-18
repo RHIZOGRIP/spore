@@ -74,6 +74,20 @@ describe('the default rendering of a running turn', () => {
     expect(shown([said('one\u0007two\u001b[31m'), start('read', { path: 'c.pdf' })])[1]).toBe('one two [31m')
   })
 
+  it('heads it with what the model wrote for the person, else the last paragraph of its reasoning summary, never its raw reasoning', () => {
+    const stream = (kind, delta) => ({ event: 'stream', kind, delta })
+    const round = (index) => ({ event: 'round', index })
+    expect(shown([round(0), stream('reasoning', 'raw thought'), stream('reasoning_summary', '**Dates**\n\nCounting back 90 days '), stream('reasoning_summary', 'from 31 March.')])[1])
+      .toBe('Counting back 90 days from 31 March.')
+    expect(shown([round(0), stream('reasoning_summary', 'Counting back.'), stream('commentary', 'Reading the lease first.'), stream('reasoning_summary', 'More.')])[1])
+      .toBe('Reading the lease first.')
+    expect(shown([round(0), stream('reasoning_summary', 'Counting back.'), said('I will read it.'), start('read', { path: 'a' })])[1])
+      .toBe('Counting back.')
+    expect(shown([round(0), stream('commentary', 'Reading the lease.'), start('read', { path: 'a' }), round(1), stream('reasoning_summary', 'Now the notice.')])[1])
+      .toBe('Now the notice.')
+    expect(shown([round(0), stream('reasoning', 'raw thought')])).toEqual(['working…'])
+  })
+
   it('says for how long once a minute has passed, and never a bound', () => {
     const events = [start('read', { path: 'a' }, 'a'), start('read', { path: 'b' }, 'b')]
     expect(shown(events, { now: at(45_000) })[0]).toBe('working… · 2 calls')

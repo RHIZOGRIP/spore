@@ -79,6 +79,7 @@ try {
     memory: opened.memory,
     // What it may look at, and how much of it, this turn. Absent means it cannot.
     images: opened.images,
+    reasoning: opened.reasoning,
     // Whether it may write its own schedules, and within what. Absent means they are its
     // operator's alone.
     schedules: opened.schedules,

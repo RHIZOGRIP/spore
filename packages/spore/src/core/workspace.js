@@ -222,6 +222,7 @@ export function openWorkspace (dir, { cwd = process.cwd(), definition: given, al
     schedules: definition.schedules ?? null,
     plugins: definition.plugins,
     calls: definition.calls ?? [],
+    reasoning: definition.reasoning ?? [],
     domainRules: [workRules(writes), readRules(reachable), ANSWER_RULES, seededRules(ws), pluginRules(ws, definition.plugins), precursorRules(describePrecursors(ws), definition.dream?.precursor), cellModelRules(definition.cellModels ?? [], definition.model)].filter(Boolean).join('\n\n')
   }
 }
