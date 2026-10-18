@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-brave",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Web search for spores through the Brave Search API, the key held by the runner",
   "author": {
     "name": "Christophe Le Bars",
@@ -23,7 +23,7 @@
     "test": "vitest run"
   },
   "spore": {
-    "works": "^1",
+    "works": "^1.27.0",
     "programs": {
       "SPORE_BRAVE": "./bin/search.js"
     },
