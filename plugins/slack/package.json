@@ -1,0 +1,72 @@
+{
+  "name": "@rhizogrip/spore-plugin-slack",
+  "version": "0.1.0",
+  "description": "Slack for spores: a bot of yours in direct messages and channels, each reaching its spore, run as a service",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/slack"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "NOTICE"
+  ],
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "peerDependencies": {
+    "@rhizogrip/spore": "^1.28.0"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "spore": {
+    "works": "^1.28.0",
+    "services": {
+      "slack": {
+        "what": "a bot of yours in Slack, each direct message and channel reaching its spore",
+        "program": "./bin/spore-slack.js",
+        "instances": {
+          "dir": "slack",
+          "ext": ".json",
+          "called": "bot"
+        },
+        "check": [
+          "--check"
+        ]
+      }
+    }
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-slack v${version}",
+      "tagName": "plugin-slack-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}

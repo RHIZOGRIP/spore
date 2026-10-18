@@ -1901,7 +1901,10 @@ its spores read a channel's history themselves. Teams' is `plugins/teams/src/ada
 listener on loopback behind the operator's proxy, each activity's Microsoft-signed token checked
 before it is read; a person's personal chat keyed by their Entra object id, a channel message's
 conversation its thread, which routes by its channel (`routeOf`), so an answer goes back into the
-thread while the routing names channels.
+thread while the routing names channels. Slack's is `plugins/slack/src/adapter.js`: a Socket Mode
+connection the service opens, so nothing listens; a person's direct message keyed by their member
+id, a mention in a channel its thread, routed by the channel as Teams' is; an answer in a direct
+message is a reply in the thread of the message it answers, shown in the conversation as well.
 
 **Journal mode.** A file is in WAL mode while a writer holds it and in rollback mode when none
 does, with `synchronous=FULL`, foreign keys on every connection, and a 5 s busy timeout on

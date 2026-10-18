@@ -5,7 +5,7 @@ reaches a spore, and the answers come back where they were asked. `@rhizogrip/sp
 half every connector shares, so what a connector promises is kept once. A connector is a plugin
 with a service ([plugins.md §Services](plugins.md#services)) whose program hands the relay an
 **adapter**: the platform's transport, its API, and what it calls a conversation and a person.
-`plugins/telegram/`, `plugins/discord/` and `plugins/teams/` are three.
+`plugins/telegram/`, `plugins/discord/`, `plugins/teams/` and `plugins/slack/` are four.
 
 ```js
 import { runService } from '@rhizogrip/spore/relay'

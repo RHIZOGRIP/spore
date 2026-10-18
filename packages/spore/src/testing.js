@@ -11,7 +11,7 @@ import { resolve } from 'node:path'
 
 import { grantedPathContaining } from './isolation/sandbox.js'
 
-export { appendTurn, acquireLock, releaseLock } from './core/spore-dir.js'
+export { appendTurn, acquireLock, releaseLock, writeTranscriptEntries, writeTurnRecords } from './core/spore-dir.js'
 export { definitionWith } from './core/identity-defaults.js'
 
 /**

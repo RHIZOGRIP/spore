@@ -1,0 +1,83 @@
+/**
+ * Slack's Web API, as the service uses it, form-encoded under the bot's token — the app-level
+ * token for `apps.connections.open` alone. Every failure is a `SLACK_FAILED`, `retryable` for a
+ * rate limit, a Slack-side error and a request that never reached Slack, with `context.status`,
+ * `context.code` (Slack's `error`) and `context.retryAfter` (seconds, when Slack said how long to
+ * wait); a token Slack will not have at all is a `SLACK_REFUSED`.
+ */
+
+import { SporeError } from '@rhizogrip/spore'
+import { download } from '@rhizogrip/spore/relay'
+
+const BASE = 'https://slack.com/api/'
+const RETRYABLE = new Set(['ratelimited', 'internal_error', 'fatal_error', 'service_unavailable', 'request_timeout'])
+const REFUSED = new Set(['invalid_auth', 'not_authed', 'account_inactive', 'token_revoked', 'not_allowed_token_type'])
+const HINTS = {
+  not_in_channel: 'invite the bot to the channel with /invite @<the bot>',
+  channel_not_found: 'the channel is gone, or private and without the bot in it',
+  is_archived: 'the channel is archived'
+}
+
+const failed = (method, { detail, retryable, status = null, code = null, retryAfter = null }) =>
+  new SporeError(`slack ${method} failed`, {
+    type: REFUSED.has(code) ? 'SLACK_REFUSED' : 'SLACK_FAILED',
+    detail: HINTS[code] ? `${detail} — ${HINTS[code]}` : detail,
+    retryable,
+    context: { status, code, retryAfter }
+  })
+
+export function createSlack ({ token, app, fetchImpl = fetch, base = BASE }) {
+  const call = async (method, args = {}, bearer = token) => {
+    const form = new URLSearchParams()
+    for (const [name, value] of Object.entries(args)) {
+      if (value !== undefined) form.set(name, typeof value === 'string' ? value : JSON.stringify(value))
+    }
+    let response
+    try {
+      response = await fetchImpl(`${base}${method}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/x-www-form-urlencoded' },
+        body: form,
+        signal: AbortSignal.timeout(60_000)
+      })
+    } catch (err) {
+      throw failed(method, { detail: err.message, retryable: true })
+    }
+    if (response.status === 429) {
+      await response.body?.cancel()
+      const after = Number(response.headers.get('retry-after'))
+      throw failed(method, { detail: 'ratelimited', retryable: true, status: 429, code: 'ratelimited', retryAfter: Number.isFinite(after) && after > 0 ? after : null })
+    }
+    const answer = await response.json().catch(() => null)
+    if (!response.ok || answer === null) throw failed(method, { detail: `HTTP ${response.status}`, retryable: response.status >= 500, status: response.status })
+    if (!answer.ok) throw failed(method, { detail: answer.error, retryable: RETRYABLE.has(answer.error), status: response.status, code: answer.error })
+    return answer
+  }
+
+  return {
+    /** Who the bot token is: `{ user_id, user, team_id, team, bot_id }`. */
+    whoami: () => call('auth.test'),
+
+    /** A Socket Mode URL, asked under the app-level token. */
+    connection: async () => (await call('apps.connections.open', {}, app)).url,
+
+    /** A message posted; answers its `ts`. */
+    post: async (args) => (await call('chat.postMessage', args)).ts,
+
+    update: (args) => call('chat.update', args),
+
+    remove: (args) => call('chat.delete', args),
+
+    ephemeral: (args) => call('chat.postEphemeral', args),
+
+    /** The direct message between the bot and a person, opened when there is none yet: its channel id. */
+    im: async (user) => (await call('conversations.open', { users: user })).channel.id,
+
+    user: async (id) => (await call('users.info', { user: id })).user,
+
+    file: async (id) => (await call('files.info', { file: id })).file,
+
+    /** A file a person sent, by its private URL, which Slack serves under the bot's token; refused past `most`. */
+    download: (url, { most }) => download(url, { most, fetchImpl, headers: { authorization: `Bearer ${token}` } })
+  }
+}

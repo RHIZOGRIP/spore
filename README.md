@@ -155,6 +155,7 @@ The details are in [SECURITY.md](SECURITY.md).
 | [`@rhizogrip/spore-plugin-documents`](plugins/documents) | xlsx, docx, pptx, odt and PDF, for the programs an agent writes | [README](plugins/documents/README.md) |
 | [`@rhizogrip/spore-plugin-images`](plugins/images) | `sharp`, for the programs an agent writes | [README](plugins/images/README.md) |
 | [`@rhizogrip/spore-plugin-mcp`](plugins/mcp) | MCP servers' tools, as a program the agent runs | [README](plugins/mcp/README.md) |
+| [`@rhizogrip/spore-plugin-slack`](plugins/slack) | your spores in Slack direct messages and channels, as a service | [README](plugins/slack/README.md) |
 | [`@rhizogrip/spore-plugin-sluice`](plugins/sluice) | host commands for spores, as a sluice broker's rules allow them | [README](plugins/sluice/README.md) |
 | [`@rhizogrip/spore-plugin-ssh`](plugins/ssh) | SSH keys spores can use and never read | [README](plugins/ssh/README.md) |
 | [`@rhizogrip/spore-plugin-teams`](plugins/teams) | your spores in Microsoft Teams personal chats and channels, as a service | [README](plugins/teams/README.md) |
