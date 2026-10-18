@@ -884,6 +884,11 @@ export function changeLimits (ws, request) {
   return JSON.parse(native.changeLimits(ws, JSON.stringify(request)))
 }
 
+/** `{ seq }` of the embedder's line written to the running turn, or `{ refused: 'idle' }`. */
+export function appendAnnotation (ws, text) {
+  return JSON.parse(native.annotate(ws, text))
+}
+
 export function inboxConsumed (ws) {
   return reading(ws, 0, db => db.prepare('SELECT inboxConsumed FROM t_workspace').get().inboxConsumed)
 }

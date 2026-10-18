@@ -26,6 +26,7 @@ import { historyOver } from '../resilience/compaction.js'
 import { paused, pauseSpores, spendSoFar, unpauseSpores } from '../core/admission.js'
 import { dropSchedule, survey, writeSchedule } from '../core/schedule.js'
 import { DIMENSIONS, extendTurn, limitText, wrapTurn } from '../core/limits.js'
+import { annotateTurn } from './live.js'
 import { progressOf, stopSupervisor } from '../core/job.js'
 import { DEFAULT_DEFINITION_PATH } from '../core/identity-defaults.js'
 import { DEFAULT_SPORANGIUM, SPORANGIUM_RECORD, knownSporangia, operatorSporangia, recordSporangium, sporangiumOf, sporangiumTree } from '../core/sporangia.js'
@@ -769,6 +770,10 @@ export function extend ({ ws, dimension, amount, configFile = CONFIG_FILE } = {}
 
 export function wrap ({ ws, wait, configFile = CONFIG_FILE } = {}) {
   return wrapTurn(here(ws, configFile), wait)
+}
+
+export function annotate ({ ws, text, configFile = CONFIG_FILE } = {}) {
+  return annotateTurn(here(ws, configFile), text)
 }
 
 const precursorNames = (ws) => {

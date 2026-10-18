@@ -1,7 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { mkdirSync, rmSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-import { applyEvent, createLive, liveOf, renderLive } from '../src/library/live.js'
+import { annotateTurn, applyEvent, createLive, liveOf, renderLive } from '../src/library/live.js'
 import { describeCall } from '../src/core/call-table.js'
+import { readEvents } from '../src/core/spore-dir.js'
+import { native } from '../src/native.js'
 
 const BRAVE = [{ name: 'brave/1', tools: ['exec', 'wsexec'], program: '^"?\\$SPORE_BRAVE"?\\s*(.*)$', title: 'searching the web', category: 'search', detail: 'search $1' }]
 const written = (name, args, callId) => ({ event: 'tool_start', name, args, callId })
@@ -106,5 +111,36 @@ describe('the default rendering of a running turn', () => {
     const heard = [start('read', { path: 'a' }, 'a'), { event: 'interject', round: 2 }]
     expect(shown(heard).at(-1)).toBe('heard you')
     expect(shown([...heard, start('read', { path: 'b' }, 'b')]).at(-1)).toBe('· reading a file')
+  })
+})
+
+describe('a line of the embedder\'s own', () => {
+  const WS = resolve(dirname(fileURLToPath(import.meta.url)), '.live-workspace')
+
+  beforeEach(() => {
+    rmSync(WS, { recursive: true, force: true })
+    mkdirSync(WS, { recursive: true })
+  })
+
+  afterEach(() => {
+    rmSync(WS, { recursive: true, force: true })
+  })
+
+  it('shows under the header at every level, until it is taken away', () => {
+    const annotated = [start('read', { path: 'a' }), { event: 'annotation', text: 'usually 30 s –\n2 min' }]
+    for (const level of ['brief', 'plain', 'details']) expect(shown(annotated, { level })[1]).toBe('usually 30 s – 2 min')
+    expect(shown([...annotated, { event: 'annotation', text: null }])).toEqual(shown([start('read', { path: 'a' })]))
+  })
+
+  it('is written to the running turn alone, and only as a line', () => {
+    expect(annotateTurn(WS, 'usually 2 min')).toEqual({ refused: 'idle' })
+    native.beginTurn(WS)
+    expect(annotateTurn(WS, 'usually 2 min').seq).toBeGreaterThan(0)
+    expect(liveOf(readEvents(WS)).annotation).toBe('usually 2 min')
+    annotateTurn(WS, null)
+    expect(liveOf(readEvents(WS)).annotation).toBe(null)
+    for (const line of ['', '  ', 'x'.repeat(201), 3, undefined]) {
+      expect(() => annotateTurn(WS, line)).toThrow(expect.objectContaining({ type: 'ANNOTATION_INVALID' }))
+    }
   })
 })

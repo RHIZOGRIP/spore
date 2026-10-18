@@ -18,8 +18,9 @@ export const SCHEMA = EVENT_SCHEMA
 
 /**
  * Every event the log holds, by name, because an event left out is one a consumer cannot know
- * it is missing. All but the last cross from the agent; `turn_end` is the supervisor's, written
- * in the transaction that makes the turn final, so the agent's log never carries it.
+ * it is missing. All but the last two cross from the agent: `annotation` is an embedder's line,
+ * written from outside the turn (`annotateTurn`), and `turn_end` the supervisor's, written in the
+ * transaction that makes the turn final, so the agent's log never carries either.
  *
  * **`complete` and `turn_end` are not the same fact, and an implementer picks by what it needs.**
  * `complete` is the agent's account the moment its loop ends: the answer (`output`), fast — some
@@ -40,7 +41,7 @@ const CARRIED = [
   'estimate_drift', 'empty_completion', 'recovery'
 ]
 
-export const EVENTS = [...CARRIED, 'turn_end']
+export const EVENTS = [...CARRIED, 'annotation', 'turn_end']
 
 /**
  * Named by the schema and not produced: mohdel's factory never calls an idle handler, so

@@ -136,6 +136,15 @@ describe('the running turn', () => {
   })
 })
 
+describe('a line of the caller\'s own', () => {
+  it('is refused while nothing runs, and when it is not a line', async () => {
+    const idle = await call('POST', '/v1/spores/alpha/annotate', { body: { text: 'usually 2 min' } })
+    expect([idle.status, idle.json()]).toEqual([200, { refused: 'idle' }])
+    const empty = await call('POST', '/v1/spores/alpha/annotate', { body: { text: '' } })
+    expect([empty.status, empty.json().error.type]).toEqual([400, 'ANNOTATION_INVALID'])
+  })
+})
+
 describe('api.json', () => {
   const write = (config) => {
     const path = join(root, 'config', 'probe.json')

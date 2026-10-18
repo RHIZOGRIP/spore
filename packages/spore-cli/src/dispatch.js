@@ -14,7 +14,7 @@ import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
 import {
-  addTo, allowPlugin, billingFor, changeText, define, defaultModel, disallowPlugin, durationText,
+  addTo, allowPlugin, annotate, billingFor, changeText, define, defaultModel, disallowPlugin, durationText,
   edit, extend, getKey, jobs, list, listApprovals, listPlugins, log, pause, precursors, remake, remove,
   removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings,
   show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM
@@ -237,6 +237,14 @@ function renderChange (answer) {
 }
 
 const changeExit = (answer) => (answer.refused ? 1 : 0)
+
+const renderAnnotation = (text) => (answer) => {
+  if (answer.refused) {
+    console.error('spore: nothing is running — a line is shown under a running turn and goes when it ends')
+    return
+  }
+  console.log(text === null ? 'its line was taken away' : 'shown under the running turn')
+}
 
 const pausedText = (mark) => `paused${mark.at ? ` since ${mark.at}` : ''}${mark.why ? ` (${mark.why})` : ''}`
 
@@ -693,6 +701,15 @@ export async function manage (verb, argv) {
         return 2
       }
       return emit(wrap({ ws, wait }), renderChange, changeExit)
+    }
+    if (verb === 'annotate') {
+      const [, ws, ...words] = argv._.map(String)
+      const text = argv.clear ? null : words.join(' ')
+      if (!ws || (argv.clear ? words.length : !text.trim())) {
+        console.error('spore: annotate needs a spore and a line, or --clear — spore annotate <name> <line>|--clear')
+        return 2
+      }
+      return emit(annotate({ ws, text }), renderAnnotation(text), changeExit)
     }
     if (verb === 'job') {
       const [, sub, ws, name] = argv._

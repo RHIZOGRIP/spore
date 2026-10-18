@@ -83,10 +83,12 @@ describe('the event log', () => {
     expect(EVENTS).toContain('stream')
   })
 
-  it('names the supervisor\'s turn_end, and never writes one for the agent', () => {
+  it('names the supervisor\'s turn_end and an embedder\'s annotation, and never writes either for the agent', () => {
     expect(EVENTS).toContain('turn_end')
+    expect(EVENTS).toContain('annotation')
     const { emitter, close } = logging()
     emitter.emit('turn_end', { turnNo: 1 })
+    emitter.emit('annotation', { text: 'usually 2 min' })
     emitter.emit('round', { index: 0 })
     close()
 

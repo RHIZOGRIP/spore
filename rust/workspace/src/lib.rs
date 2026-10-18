@@ -22,7 +22,7 @@ pub mod spend;
 pub mod state;
 
 pub use state::{
-    answer_approval, append_inbox, ask_approval, attempt_outbox, begin_job, begin_turn,
+    annotate, answer_approval, append_inbox, ask_approval, attempt_outbox, begin_job, begin_turn,
     change_limits, check_reply_to, copy_inbox, end_channel, end_job, expire_approval, finalize,
     finalize_pending, finalize_turn, hold_delivery, inbox_consumed, leave_wal, origin_of, outbox,
     post_approval, prune_trail, record_cell, recover, refuse_approval, release_held,

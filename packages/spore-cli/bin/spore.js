@@ -25,7 +25,7 @@ const DEFAULT_TAIL = 50
 
 const argv = minimist(process.argv.slice(2), {
   string: ['_', 'definition', 'from', 'sporangium', 'at', 'model', 'plugin', 'attach', 'request-id', 'after', 'since', 'until', 'tz', 'by', 'n', 'lines'],
-  boolean: ['debug', 'help', 'version', 'unsafe', 'yes', 'replay', 'json', 'all', 'outdated', 'f'],
+  boolean: ['debug', 'help', 'version', 'unsafe', 'yes', 'replay', 'json', 'all', 'outdated', 'f', 'clear'],
   alias: { h: 'help' }
 })
 
@@ -48,6 +48,7 @@ const VERBS = `Usage:
   spore stop <name>                         SIGTERM it, mid-round
   spore extend <name> wall 30m|cost 1.50|rounds 20  give the running turn more, up to its extend.<limit>
   spore wrap <name> [10m]                   ask the running turn to wrap up, now or in a while
+  spore annotate <name> <line>|--clear      a line of yours under the running turn's header, wherever it is shown
   spore model [<name> [<model>]]            what it runs on and may switch to; with a model, switch from the next turn
   spore ls [<dir>]                          your spores and their state
   spore tui [<name>]                        talk to a spore in a terminal screen; the last one opened without a name
@@ -138,6 +139,7 @@ const SHAPES = {
   stop: { flags: [], most: 1 },
   extend: withJson(3),
   wrap: withJson(2),
+  annotate: withJson(ALL, 'clear'),
   model: withJson(2),
   define: withJson(1, 'definition', 'from', 'sporangium', 'model', 'plugin'),
   edit: withJson(1),

@@ -207,8 +207,8 @@ createLive({ startedAt = null }) → live
 An empty `live` for a turn that started at `startedAt` (ISO 8601; `null` shows no time): `rounds`,
 `text` being written, `notes`, `headline` (`{ text, source }` or `null`), `calls` (each with
 `callId`, `name`, `args`, `title`, `category`, `detail`, `done` and, once done, `durationMs`,
-`error`, `outcome`, `exit`, `killed`, `signal`), `wrapping`, `heard`, `input`, `cached`, `cost` and
-`complete`.
+`error`, `outcome`, `exit`, `killed`, `signal`), `wrapping`, `heard`, `annotation` (the embedder's
+line, or `null`), `input`, `cached`, `cost` and `complete`.
 
 ### `applyEvent`
 
@@ -242,9 +242,28 @@ renderLive(live, { level = 'plain', now = Date.now() }) → string[]
 ```
 
 The default rendering, plain text lines: `working…` with how many calls ran and, from a minute,
-for how long; the headline; the current call by its title; why the turn is wrapping up. `level` is
+for how long; the embedder's line; the headline; the current call by its title; why the turn is wrapping up. `level` is
 `brief`, `plain` (adds how the call ended and which limit was reached) or `details` (the call's
 path or command).
+
+### `annotate`
+
+```
+annotate({ ws, text, configFile }) → { seq } | { refused: 'idle' }
+```
+
+A line of the embedder's own — an estimate, a place in a queue — shown under the running turn's
+header on every surface, the chats included, until another replaces it, `text: null` takes it away
+or the turn ends. Spore does not read it. Refused while nothing runs. Throws `ANNOTATION_INVALID`
+(not 1 to 200 characters, or not `null`), `NOT_A_WORKSPACE`.
+
+### `annotateTurn`
+
+```
+annotateTurn(ws, text) → { seq } | { refused: 'idle' }
+```
+
+`annotate` on a workspace path.
 
 ### `describeCall`
 

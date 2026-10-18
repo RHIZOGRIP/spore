@@ -138,6 +138,7 @@ class Conversation {
     }
     if (this.live) {
       out.push('')
+      if (this.live.annotation) out.push(...lines(printable(this.live.annotation), width, dim))
       for (const note of this.live.notes) out.push(...lines(printable(note.text), width, note.kind === 'thought' ? chalk.italic : dim))
       for (const call of this.live.calls) out.push(...(this.renderTool?.(call, { expanded: this.expanded, width }) ?? toolLine(call, { expanded: this.expanded, width })))
       if (this.live.text.trim()) {

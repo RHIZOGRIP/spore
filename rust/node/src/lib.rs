@@ -397,6 +397,14 @@ pub fn change_limits(ws: String, request: String) -> napi::Result<String> {
         .map_err(failed)
 }
 
+/// `{ seq }` of the annotation written to the running turn, or `{ refused: "idle" }` — both JSON.
+#[napi]
+pub fn annotate(ws: String, text: Option<String>) -> napi::Result<String> {
+    workspace::annotate(Path::new(&ws), text.as_deref())
+        .map(|answer| answer.to_string())
+        .map_err(failed)
+}
+
 /// Who said an entry, as `<kind>:<name>`, or null when a person did.
 #[napi]
 pub fn origin_of(entry: String) -> napi::Result<Option<String>> {

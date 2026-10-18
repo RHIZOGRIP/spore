@@ -1,6 +1,7 @@
 /**
  * The library's verbs over HTTP, for a caller that is not on this machine or not in this
- * container: send, watch, show, list, stop, wrap, extend, the running turn as a person is shown it, and
+ * container: send, watch, show, list, stop, wrap, extend, the running turn as a person is shown it and
+ * a line of the caller's own in it, and
  * approvals asked and read. Every
  * request names its caller by token and reaches only the spores that caller may; its
  * `traceparent` is the parent of the request's span, which a message carries on to its turn.
@@ -14,7 +15,7 @@ import { isWorkspace } from '../src/library/discover.js'
 import { CONFIG_FILE, NAME, readConfig, workspaceFor } from '../src/library/config.js'
 import { list, show } from '../src/library/verbs.js'
 import { watch } from '../src/library/watch.js'
-import { liveIn, renderLive } from '../src/library/live.js'
+import { annotateTurn, liveIn, renderLive } from '../src/library/live.js'
 import { send } from '../src/core/send.js'
 import { stop } from '../src/core/state.js'
 import { extendTurn, wrapTurn } from '../src/core/limits.js'
@@ -25,7 +26,7 @@ import { endSpanError, endSpanOk, formatTraceparent, parseTraceparent, startSpan
 import { callerOf, reaches } from './config.js'
 
 const MAX_BODY = 32 * 1024 * 1024
-const ROUTE = /^\/v1\/spores(?:\/([^/]+)(?:\/(messages|events|live|stop|wrap|extend|approvals)(?:\/([0-9a-f]{12}))?)?)?\/?$/
+const ROUTE = /^\/v1\/spores(?:\/([^/]+)(?:\/(messages|events|live|annotate|stop|wrap|extend|approvals)(?:\/([0-9a-f]{12}))?)?)?\/?$/
 const LEVELS = ['brief', 'plain', 'details']
 
 const STATUS = {
@@ -129,6 +130,7 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       if (!one) throw failure('API_NOT_FOUND', `no approval ${id} in this spore`)
       return { status: 200, body: one }
     },
+    'POST annotate': async ({ request, ws }) => ({ status: 200, body: annotateTurn(ws, (await jsonOf(request)).text) }),
     'POST stop': ({ ws }) => ({ status: 200, body: stop(ws) }),
     'POST wrap': async ({ request, ws }) => ({ status: 200, body: wrapTurn(ws, (await jsonOf(request)).wait) }),
     'POST extend': async ({ request, ws }) => {

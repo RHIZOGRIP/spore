@@ -1546,6 +1546,41 @@ pub fn change_limits(ws: &Path, request: &str) -> Result<Value, String> {
     })
 }
 
+/// The line an embedder adds to what the running turn shows, or `None` to take it away: an
+/// `annotation` event on that turn, written in the transaction that finds it running, so it
+/// never lands after its `turn_end`. Answers `{ seq }`, or `{ refused: "idle" }`.
+pub fn annotate(ws: &Path, text: Option<&str>) -> Result<Value, String> {
+    writing(ws, |conn| {
+        let tx = immediate(conn)?;
+        let Some(turn) = tx
+            .query_row(
+                "SELECT turnId FROM t_turns WHERE state = 'running'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(failed_to("look for the running turn"))?
+        else {
+            return Ok(json!({ "refused": "idle" }));
+        };
+        let run: Option<String> = tx
+            .query_row(
+                "SELECT runId FROM t_events WHERE turnId = ?1 AND runId IS NOT NULL ORDER BY seq LIMIT 1",
+                [&turn],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(failed_to("look for the turn's run"))?;
+        let mut event = json!({ "v": EVENT_SCHEMA, "at": crate::iso_now(), "event": "annotation", "text": text });
+        if let Some(run) = run {
+            event["runId"] = json!(run);
+        }
+        let seq = append_event(&tx, Some(&turn), &Record::from_value(&event))?;
+        tx.commit().map_err(failed_to("annotate the turn"))?;
+        Ok(json!({ "seq": seq }))
+    })
+}
+
 /// `running` until the agent says how it ended, `pending` once it has, `final` once the
 /// supervisor has finalized it; none when there is no such turn.
 pub fn turn_state(ws: &Path, turn_id: &str) -> Result<Option<String>, String> {
@@ -2599,6 +2634,11 @@ pub fn prune_trail(ws: &Path, keep: u32) -> Result<Vec<String>, String> {
                     .map_err(failed_to("drop the run's calls"))?;
                 tx.execute("DELETE FROM t_events WHERE runId = ?1", [id])
                     .map_err(failed_to("drop the run's events"))?;
+                tx.execute(
+                    "DELETE FROM t_events WHERE runId IS NULL AND turnId IN (SELECT turnId FROM t_turns WHERE runId = ?1)",
+                    [id],
+                )
+                .map_err(failed_to("drop the run's events"))?;
             }
             tx.commit().map_err(failed_to("prune the trail"))
         })?;
@@ -3016,6 +3056,32 @@ mod tests {
         assert!(change_limits(&ws, r#"{"why":"raise"}"#)
             .unwrap_err()
             .contains("extend or wrap"));
+    }
+
+    #[test]
+    fn annotates_only_the_running_turn_under_its_run() {
+        let ws = scratch("annotate");
+        assert_eq!(
+            annotate(&ws, Some("usually 2 min")).unwrap()["refused"],
+            "idle"
+        );
+
+        let turn = begin_turn(&ws, &crate::iso_now(), None).unwrap();
+        assert_eq!(annotate(&ws, Some("usually 2 min")).unwrap()["seq"], 1);
+        ask(
+            &ws,
+            Some(&turn),
+            json!({ "id": 1, "op": "events.append", "events": [{ "v": 1, "at": "a", "runId": "r", "event": "round", "index": 0 }] }),
+        );
+        assert_eq!(annotate(&ws, None).unwrap()["seq"], 3);
+        assert_eq!(
+            row(
+                &ws,
+                "SELECT group_concat(coalesce(runId, '-'), ' ' ORDER BY seq) AS runs, group_concat(coalesce(json_extract(payload, '$.text'), '-'), ' | ' ORDER BY seq) AS texts, count(DISTINCT turnId) AS turns
+                   FROM events WHERE event = 'annotation'"
+            ),
+            json!({ "runs": "- r", "texts": "usually 2 min | -", "turns": 1 })
+        );
     }
 
     #[test]
@@ -3648,6 +3714,7 @@ mod tests {
     fn keeps_the_newest_runs_with_their_streams_and_events() {
         let ws = scratch("prune");
         let turn = begin_turn(&ws, "t", None).unwrap();
+        annotate(&ws, Some("usually 2 min")).unwrap();
         for (no, run) in ["old", "mid", "new", "mid"].iter().enumerate() {
             let call = json!({ "runId": run, "callNo": no + 1, "tool": "exec", "startedAt": "a", "record": {} });
             ask(
@@ -3663,6 +3730,14 @@ mod tests {
             std::fs::create_dir_all(ws.join(crate::CALLS_DIR).join(run)).unwrap();
         }
         std::fs::create_dir_all(ws.join(crate::CALLS_DIR).join("unrecorded")).unwrap();
+        writing(&ws, |conn| {
+            conn.execute(
+                "UPDATE t_turns SET runId = 'old' WHERE turnId = ?1",
+                [&turn],
+            )
+            .map_err(failed_to("name the turn's run"))
+        })
+        .unwrap();
         assert_eq!(prune_trail(&ws, 3).unwrap(), ["old", "unrecorded"]);
         assert!(!ws.join(crate::CALLS_DIR).join("old").exists());
         assert!(ws.join(crate::CALLS_DIR).join("new").exists());
@@ -3675,7 +3750,7 @@ mod tests {
         );
         assert_eq!(
             row(&ws, "SELECT count(*) AS n, max(seq) AS last FROM events"),
-            json!({ "n": 3, "last": 4 })
+            json!({ "n": 3, "last": 5 })
         );
     }
 

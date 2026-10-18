@@ -78,7 +78,7 @@ With `--json`, or for a repeated request id while nothing runs, the code is that
 that read your message. A plain `spore send`, `spore fork` and `spore attach`, and `spore attach
 --json`, exit by the workspace's last turn once the turn they follow has ended. `spore stop
 <name>` exits 0 once it has signalled the running turn, and 1 when nothing is running, as do
-`spore wrap`, `spore extend` and `spore job stop`.
+`spore wrap`, `spore extend`, `spore annotate` and `spore job stop`.
 
 Every other verb exits with the same code with or without `--json`.
 
@@ -117,8 +117,9 @@ the last `seq` you saw.
 `spore send` to a running spore puts the message in front of the agent between rounds; the
 `sent` line says `started: false`. `spore send <name> stop` asks the agent to wrap up with what it
 has. `spore wrap <name> [10m]` brings its wrap-up forward. `spore extend <name> wall 30m` raises a
-limit, as far as the definition's `extend.*` allows. `spore stop <name>` ends the turn mid-round,
-and the turn is recorded as `cancelled`.
+limit, as far as the definition's `extend.*` allows. `spore annotate <name> <line>` shows a line of
+yours under the turn's header wherever it is shown, until `--clear` or the turn's end. `spore stop
+<name>` ends the turn mid-round, and the turn is recorded as `cancelled`.
 
 The command takes no trace context. To trace across the boundary, use the library or the API
 ([Tracing](#tracing-across-the-boundary)).
@@ -481,6 +482,7 @@ All under `/v1`, JSON in and out.
 | `GET /v1/spores/<name>/live?level=<level>` | — | `200 { "live", "lines", "seq" }`: the running turn as a person is shown it ([ARCHITECTURE §What a running turn shows](ARCHITECTURE.md#what-a-running-turn-shows)) — `lines` its default rendering at `brief`, `plain` (the default) or `details`, `seq` its last event, to follow on from with `/events?after=<seq>`; `{ "live": null, "lines": [], "seq": null }` when nothing runs |
 | `GET /v1/spores/<name>` | — | `200`, what `show` returns |
 | `GET /v1/spores` | — | `200 { "spores": [{ "name", "state", "turns" }] }`: the spores under `home` the caller reaches |
+| `POST /v1/spores/<name>/annotate` | `{ "text" }`: a line of yours, 1 to 200 characters, or `null` to take it away | `200 { "seq" }`, or `{ "refused": "idle" }` while nothing runs |
 | `POST /v1/spores/<name>/stop` | — | `200 { "stopped", "pid" }` |
 | `POST /v1/spores/<name>/wrap` | `{ "wait"? }`, as `"10m"`; none is now | `200`, the change or `{ "refused", … }` |
 | `POST /v1/spores/<name>/extend` | `{ "dimension", "amount" }`, as `"wall"`, `"30m"` | `200`, the change or `{ "refused", … }` |
@@ -565,7 +567,8 @@ Every event carries `v` (the schema version, `1`, exported as `EVENT_SCHEMA`), `
 
 ### The event schema
 
-All but `turn_end` are written by the agent's loop. `turn_end` is written by the supervisor.
+All but `annotation` and `turn_end` are written by the agent's loop. `annotation` is written by an
+embedder, from outside the turn. `turn_end` is written by the supervisor.
 
 | event | payload |
 |---|---|
@@ -588,6 +591,7 @@ All but `turn_end` are written by the agent's loop. `turn_end` is written by the
 | `compaction_failed` | `why`, `estimated`, `sent`, `budget`: the history was over its bound and was not summarized |
 | `estimate_drift` | `round`, `model`, `estimated`, `sent`: once a turn, the provider counted far more than the estimate |
 | `empty_completion`, `recovery` | what the loop did about a bad or failed model answer |
+| `annotation` | `text`: the embedder's line shown under the running turn's header, or `null` once taken away. Its `runId` is absent when it was written before the turn's first event |
 | `turn_end` | `turnNo`, `stopReason`, `concluded`, `error`, `rounds`, `ownUsd`, `treeUsd`, `workUnits`, `settled`, `inboxFrom`, `inboxTo` |
 
 `tool_start` and `tool_end` carry the agent's arguments and the start of its results: paths,
@@ -745,6 +749,7 @@ program driving spores meets most; every function's own list is in [docs/library
 | `INBOX_UNWRITABLE` | `send` | the inbox could not be written |
 | `DEFINITION_INVALID` | `show`, `log`, `grantOf`, `extend` | the spore's `spore.cmk` does not parse |
 | `LIMIT_UNKNOWN`, `LIMIT_AMOUNT` | `extend`, `wrap` | not `rounds`, `cost` or `wall`; an amount or wait that does not read |
+| `ANNOTATION_INVALID` | `annotate` | not a line of 1 to 200 characters, and not `null` |
 | `MODEL_NOT_OFFERED` | `switchModel` | the definition does not offer that model |
 | `FORK_REFUSED` | `fork` | the cut cannot be made ([docs/operating.md](docs/operating.md#forking-a-turn-spore-fork)) |
 | `BATCH_USAGE` | `runBatch` | an errand without an `id` or messages, or a bad `atOnce` |

@@ -6,8 +6,9 @@
 
 import { describeCall } from '../core/call-table.js'
 import { durationText } from '../core/job.js'
-import { readEvents, runningLimits } from '../core/spore-dir.js'
+import { appendAnnotation, readEvents, runningLimits, storable } from '../core/spore-dir.js'
 import { RUNNING, stateOf } from '../core/state.js'
+import { SporeError } from '../observability/errors.js'
 
 const HEADLINE_MAX = 200
 const SLOW_MS = 5000
@@ -24,6 +25,7 @@ export const createLive = ({ startedAt = null } = {}) => ({
   calls: [],
   wrapping: null,
   heard: false,
+  annotation: null,
   input: null,
   cached: 0,
   cost: 0,
@@ -94,6 +96,9 @@ export function applyEvent (live, event) {
       })
       return true
     }
+    case 'annotation':
+      live.annotation = event.text
+      return true
     case 'usage':
       live.input = event.input + event.cacheRead + event.cacheWrite
       live.cached = event.cacheRead
@@ -150,6 +155,21 @@ export function liveIn (ws) {
   return { live, seq: events.at(-1)?.seq ?? ended }
 }
 
+/**
+ * A line of the embedder's own — an estimate, a place in a queue — shown under the running turn's
+ * header on every surface until `null` takes it away or the turn ends. `{ seq }`, or
+ * `{ refused: 'idle' }` when nothing runs.
+ */
+export function annotateTurn (ws, text) {
+  if (text !== null && !(typeof text === 'string' && text.trim() !== '' && text.length <= HEADLINE_MAX)) {
+    throw new SporeError('an annotation is a line of text, or null to take it away', {
+      type: 'ANNOTATION_INVALID',
+      detail: `got ${typeof text === 'string' ? `${text.length} characters` : JSON.stringify(text)}, expected 1 to ${HEADLINE_MAX}`
+    })
+  }
+  return appendAnnotation(ws, text === null ? null : storable(text))
+}
+
 const oneLine = (text) => Array.from(text, c => (c < ' ' || c === '\u007f' ? ' ' : c)).join('').replace(/\s+/g, ' ').trim()
 
 function cut (text, max) {
@@ -184,6 +204,7 @@ export function renderLive (live, { level = 'plain', now = Date.now() } = {}) {
     elapsed >= 60_000 ? durationText(elapsed) : null
   ].filter(Boolean).join(' · ')
   const lines = [header]
+  if (live.annotation) lines.push(cut(oneLine(live.annotation), HEADLINE_MAX))
   if (live.headline) lines.push(cut(oneLine(live.headline.text), HEADLINE_MAX))
   const current = calls.at(-1)
   if (current) lines.push(`· ${level === 'details' ? current.detail : current.title}${level === 'brief' ? '' : ending(current)}`)

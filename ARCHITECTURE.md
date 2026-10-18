@@ -2117,6 +2117,13 @@ count against a total or spend: a bound reads as a promise, and a count as progr
 make. The terminal keeps its own layout, with the limits beside the turn, and an embedder may show
 more; both start from the same value.
 
+**An embedder adds a line of its own** (`annotate`, `spore annotate`, the API's `annotate`): an
+estimate it computed, a place in its queue — whatever it knows that spore does not. It is an
+`annotation` event written from outside the turn, in the transaction that finds the turn running,
+so it reaches every surface as the turn's own events do, and goes with the turn: a new one replaces
+it, `null` takes it away, and the next turn starts without. Spore shows it under the header and
+never reads it; what it says, and when it changes, is the embedder's.
+
 Where it is shown, all from `liveIn(ws)` — the running turn folded from its events since the last
 turn ended, timed from the turn's own start, which a runner carrying on into a second turn does not
 share:
