@@ -305,26 +305,31 @@ export function conformance (harness, platformTests = () => {}) {
 
       it('shows a conversation that asked for details the command itself, and no other', async () => {
         routes({ 1: { spore: 'triage', details: true }, 2: { spore: 'triage' } })
-        reply = async (input, round) => round === 0
-          ? calls('wsexec', { command: 'echo checked > data/check.txt', out: 'data/log.txt' })
-          : answers('checked')
+        const shown = () => seen('1').some(one => one.op === 'edit' && one.text.includes('· running echo checked > data/check.txt'))
+        reply = async (input, round) => {
+          if (round === 0) return calls('wsexec', { command: 'echo checked > data/check.txt', out: 'data/log.txt' })
+          await until(shown)
+          return answers('checked')
+        }
         start()
         say({ conversation: '1', text: 'check' })
         await until(() => posted('1', 'checked'))
-        expect(seen('1').some(one => one.op === 'edit' && one.text.includes('· running echo checked > data/check.txt'))).toBe(true)
+        expect(shown()).toBe(true)
       })
 
       it('shows the tools at work, and hands back what the turn put in data/out', async () => {
-        reply = async (input, round) => round === 0
-          ? calls('wsexec', { command: 'mkdir -p data/out && echo report > data/out/report.md && echo done', out: 'data/log.txt' })
-          : answers('wrote it')
+        const shown = () => seen('1').some(one => one.op === 'edit' && one.note === notes('1')[0].note && one.text.includes('· running a command'))
+        reply = async (input, round) => {
+          if (round === 0) return calls('wsexec', { command: 'mkdir -p data/out && echo report > data/out/report.md && echo done', out: 'data/log.txt' })
+          await until(shown)
+          return answers('wrote it')
+        }
         start()
         say({ conversation: '1', text: 'write me a report' })
         const handed = spec.can.upload ? (one) => one.op === 'upload' : (one) => one.op === 'post' && one.text === 'data/out/report.md is in the spore\'s workspace'
         await until(() => seen('1').some(handed))
 
-        const [note] = notes('1')
-        expect(seen('1').some(one => one.op === 'edit' && one.note === note.note && one.text.includes('· running a command'))).toBe(true)
+        expect(shown()).toBe(true)
         expect(seen('1').some(one => one.text?.includes('mkdir'))).toBe(false)
         expect(posted('1', 'wrote it')).toBe(true)
         if (spec.can.upload) expect(seen('1').find(one => one.op === 'upload')).toMatchObject({ path: join(ws, 'data/out/report.md'), caption: 'data/out/report.md' })
