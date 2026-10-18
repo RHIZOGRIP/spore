@@ -157,8 +157,7 @@ const filesOf = (event) => (event.files ?? []).map((file, i) => {
 
 /**
  * A direct message or a mention of the bot in a channel, as the relay takes it: one in a direct
- * message reaches the person's spore, its answer a reply in its thread; one in a channel is its
- * thread's, answered there.
+ * message reaches the person's spore; one in a channel is its thread's, answered there.
  */
 export async function normalize (event, { team, me, nameOf }) {
   const direct = event.type === 'message'
@@ -167,7 +166,7 @@ export async function normalize (event, { team, me, nameOf }) {
   return {
     id: `${team}/${event.channel}/${event.ts}`,
     conversation: direct ? event.user : `${event.channel}${THREAD}${event.thread_ts ?? event.ts}`,
-    message: direct ? event.thread_ts ?? event.ts : event.ts,
+    message: event.ts,
     person: { id: event.user, name: await nameOf(event.user), groups: [] },
     spore: null,
     where: direct ? 'a direct message on Slack' : 'a Slack channel',
@@ -276,8 +275,8 @@ export function createAdapter ({ slack, receive, team, me }) {
 
   const target = async (conversation) => {
     const [channel, thread = null] = conversation.split(THREAD)
-    if (CHANNEL.test(channel)) return { channel, thread, direct: false }
-    return { channel: await imOf(conversation), thread: null, direct: true }
+    if (CHANNEL.test(channel)) return { channel, thread }
+    return { channel: await imOf(conversation), thread: null }
   }
 
   const placeOf = (note) => {
@@ -285,11 +284,10 @@ export function createAdapter ({ slack, receive, team, me }) {
     return { channel: note.slice(0, at), ts: note.slice(at + 1) }
   }
 
-  /** Into a conversation, answering a person's message in its thread in a direct message, where it also shows in the conversation. */
-  const into = async (conversation, body, answering) => {
-    const { channel, thread, direct } = await target(conversation)
-    const under = direct ? answering : thread
-    const ts = await slack.post({ channel, ...body, ...(under ? { thread_ts: under } : {}), ...(direct && under ? { reply_broadcast: true } : {}) })
+  /** Into a conversation: a direct message as it goes, a channel's thread in the thread. */
+  const into = async (conversation, body) => {
+    const { channel, thread } = await target(conversation)
+    const ts = await slack.post({ channel, ...body, ...(thread ? { thread_ts: thread } : {}) })
     return `${channel} ${ts}`
   }
 
@@ -353,8 +351,8 @@ export function createAdapter ({ slack, receive, team, me }) {
       }
     }),
 
-    post: (conversation, text, { answering = null, markdown = false } = {}) =>
-      into(conversation, markdown ? { markdown_text: harmless(text) } : { text: escape(text) }, answering),
+    post: (conversation, text, { markdown = false } = {}) =>
+      into(conversation, markdown ? { markdown_text: harmless(text) } : { text: escape(text) }),
 
     edit: async (conversation, note, text) => {
       const { channel, ts } = placeOf(note)
@@ -386,7 +384,7 @@ export function createAdapter ({ slack, receive, team, me }) {
         block_id: PRESSED,
         elements: choices.map((choice, i) => ({ type: 'button', action_id: `choice-${i}`, text: { type: 'plain_text', text: choice.label }, value: choice.data, ...(STYLES[choice.style] ? { style: STYLES[choice.style] } : {}) }))
       })
-      return { note: await into(conversation, { blocks, text }, null), shown: { blocks, text } }
+      return { note: await into(conversation, { blocks, text }), shown: { blocks, text } }
     },
 
     /** The question closed: replaced by `native` or `fallback`, or kept as `shown` with its buttons gone and how it ended below. */

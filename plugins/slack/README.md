@@ -90,8 +90,8 @@ In a direct message, anything written reaches the spore. In a channel, a message
 it mentions the bot. A mention that opens the message is not part of what the spore is told; the
 spore is told who wrote and where. The bot posts `working…` and edits it as the turn goes — at most
 every 5 s, since Slack allows an app about 50 edits a minute in a workspace — and the answer comes
-as a new message: in a direct message, a reply in the thread of the message it answers, shown in
-the conversation as well; in a channel, in the thread of the mention. `working…` is then removed.
+as a new message: in a direct message, after the conversation as it stands; in a channel, in the
+thread of the mention. `working…` is then removed.
 The answer is sent as Markdown, so tables and fenced code render, with Slack's mentions in it
 broken so it pings no one; what the bot says itself — status, notices — is plain text. What the
 turn left in `data/out/` is named, one line a file.

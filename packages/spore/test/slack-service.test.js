@@ -135,6 +135,7 @@ const harness = {
   spec: SLACK,
   words: (text) => text,
   formats: true,
+  replyInPrivate: false,
   credentials: { TRIAGE_SLACK_TOKEN: 'xoxb-triage', TRIAGE_SLACK_APP: 'xapp-triage', OTHER_SLACK_TOKEN: 'xoxb-other', OTHER_SLACK_APP: 'xapp-other' },
   botFile: (bot, table, fields = {}) => {
     const entries = Object.entries(table)
@@ -208,13 +209,14 @@ conformance(harness, (ctx) => {
       request: { to: 'slack:triage/1', by: ['1'], options: [{ id: 'apply', label: 'Apply', style: 'positive' }], body }
     }).approval
 
-    it('answers a direct message in a thread under it that also shows in the conversation, and posts its own lines plainly', async () => {
+    it('answers a direct message with a new message after it, never in a thread', async () => {
       ctx.start()
-      const asked = ctx.say({ conversation: '1', text: 'hello' })
+      ctx.say({ conversation: '1', text: 'hello' })
       await ctx.until(() => ctx.posted('1', 'hello back'))
       const answer = ctx.platform.sent.find(one => one.markdown_text === 'hello back')
-      expect(answer).toMatchObject({ channel: 'D1', thread_ts: asked.message, reply_broadcast: true })
-      expect(ctx.platform.sent.find(one => one.text === 'working…')).not.toHaveProperty('thread_ts')
+      expect(answer.channel).toBe('D1')
+      expect(answer).not.toHaveProperty('thread_ts')
+      expect(answer).not.toHaveProperty('reply_broadcast')
     })
 
     it('asks an approval with its own blocks, the buttons in an actions block after them, and keeps them once answered', async () => {

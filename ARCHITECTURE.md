@@ -1904,7 +1904,7 @@ conversation its thread, which routes by its channel (`routeOf`), so an answer g
 thread while the routing names channels. Slack's is `plugins/slack/src/adapter.js`: a Socket Mode
 connection the service opens, so nothing listens; a person's direct message keyed by their member
 id, a mention in a channel its thread, routed by the channel as Teams' is; an answer in a direct
-message is a reply in the thread of the message it answers, shown in the conversation as well.
+message is a plain new message, since one person's conversation reads in order without a reply.
 
 **Journal mode.** A file is in WAL mode while a writer holds it and in rollback mode when none
 does, with `synchronous=FULL`, foreign keys on every connection, and a 5 s busy timeout on

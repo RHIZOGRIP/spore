@@ -78,7 +78,7 @@ describe('a message', () => {
   const mention = (text, fields = {}) => ({ type: 'app_mention', channel: CHANNEL, user: ALICE, text, ts: '1729000002.000200', ...fields })
   const read = (event) => normalize(event, { team: TEAM, me: ME, nameOf })
 
-  it('in a direct message is the person\'s, its answer under the message it replies to', async () => {
+  it('in a direct message is the person\'s', async () => {
     expect(await read(direct())).toEqual({
       id: `${TEAM}/D0ALICE/1729000001.000100`,
       conversation: ALICE,
@@ -92,7 +92,6 @@ describe('a message', () => {
       addresses: null,
       files: []
     })
-    expect((await read(direct({ thread_ts: '1729000000.000100' }))).message).toBe('1729000000.000100')
   })
 
   it('mentioning the bot in a channel is its thread\'s, the mention that opens it not part of what was said', async () => {
@@ -180,14 +179,14 @@ describe('what the bot posts', () => {
     return adapter
   }
 
-  it('says its own lines escaped, and an answer as Markdown in which no one is pinged', async () => {
+  it('says its own lines escaped, and an answer as Markdown in which no one is pinged, as a new message in a direct message', async () => {
     const sent = []
     const adapter = adapterWith(sent)
     expect(await adapter.post(ALICE, 'idle · 2 turns\n<b> & co')).toBe('DU0ALICE 9.9')
     await adapter.post(ALICE, '| a |\n|---|\n| <!channel> @here <@U0CAROL> `<!DOCTYPE html>` |', { markdown: true, answering: '1.1' })
     expect(sent).toEqual([
       { channel: 'DU0ALICE', text: 'idle · 2 turns\n&lt;b&gt; &amp; co' },
-      { channel: 'DU0ALICE', markdown_text: '| a |\n|---|\n| <\u200b!channel> @\u200bhere <\u200b@U0CAROL> `<!DOCTYPE html>` |', thread_ts: '1.1', reply_broadcast: true }
+      { channel: 'DU0ALICE', markdown_text: '| a |\n|---|\n| <\u200b!channel> @\u200bhere <\u200b@U0CAROL> `<!DOCTYPE html>` |' }
     ])
   })
 

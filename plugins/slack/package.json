@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-slack",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Slack for spores: a bot of yours in direct messages and channels, each reaching its spore, run as a service",
   "author": {
     "name": "Christophe Le Bars",

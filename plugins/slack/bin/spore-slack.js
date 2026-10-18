@@ -18,7 +18,7 @@ await runService({
     const slack = createSlack({ token: credentials.token, app: credentials.app })
     const me = await slack.whoami()
     if (me.team_id !== team) {
-      throw new SporeError(`the bot token is for workspace ${me.team_id}, and ${file} names ${team}`, { type: 'SLACK_REFUSED', detail: `team is the workspace the bot serves: ${me.team_id} for this token (${me.team})` })
+      throw new SporeError(`the bot token is for workspace ${me.team_id}, and ${file} names ${team}`, { type: 'SLACK_BOT_INVALID', detail: `team is the workspace the bot serves: "team": "${me.team_id}" for this token (${me.team})` })
     }
     await slack.connection()
     const trace = () => readBot(SLACK, file).trace === true

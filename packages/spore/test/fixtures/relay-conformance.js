@@ -17,6 +17,8 @@
  *   adapter(platform, bot, botFile)        the live adapter over it
  *   words(text)                            the person's words in what the spore was given for them
  *   formats                                whether the platform has a formatted mode beside a plain one
+ *   replyInPrivate                         false where, in a conversation with one person, an answer is
+ *                                          a plain new message rather than a reply to the question
  *   say(platform, { conversation, text, files, id, shared, person })
  *                                          a person writes there, to the spore, `files` sent with
  *                                          it as [{ name, mime, data }], `id` repeating an
@@ -68,6 +70,7 @@ export function conformance (harness, platformTests = () => {}) {
   const { spec } = harness
   const namesStrangers = spec.refusal({ conversation: '99', person: { id: '99', name: 'U99', username: 'u99', groups: [] } }, 'bot.json') !== null
   const otherVariable = Object.keys(harness.credentials)[1]
+  const replyOf = (asked) => harness.replyInPrivate === false ? null : asked.message
   let root
   let ws
   let configFile
@@ -198,7 +201,7 @@ export function conformance (harness, platformTests = () => {}) {
 
         await until(() => posted('1', 'hello back'))
         const [note] = notes('1')
-        expect(posts('1').find(one => one.text === 'hello back').answering).toBe(asked.message)
+        expect(posts('1').find(one => one.text === 'hello back').answering).toBe(replyOf(asked))
         await until(() => seen('1').some(one => one.op === 'remove' && one.note === note.note))
         expect(environ).toContain('SPORE_MODEL_SOCKET=')
         for (const variable of Object.keys(harness.credentials).filter(name => !spec.sourceVariables.includes(name))) expect(environ).not.toContain(variable)
@@ -208,8 +211,9 @@ export function conformance (harness, platformTests = () => {}) {
         reply = async () => answers('**done**, see `report.md`')
         start()
         say({ conversation: '1', text: 'hello' })
-        await until(() => posts('1').some(one => one.answering !== null && !WORKING.test(one.text)))
-        expect(posts('1').find(one => one.answering !== null && !WORKING.test(one.text)).formatted).toBe(true)
+        const answer = (one) => !WORKING.test(one.text) && (harness.replyInPrivate === false || one.answering !== null)
+        await until(() => posts('1').some(answer))
+        expect(posts('1').find(answer).formatted).toBe(true)
         expect(notes('1')[0].formatted).toBe(false)
       })
 
@@ -245,6 +249,11 @@ export function conformance (harness, platformTests = () => {}) {
 
         const second = say({ conversation: '1', text: 'two' })
         await idle(2)
+        if (harness.replyInPrivate === false) {
+          await until(() => posts('1').some(one => /^no answer · /.test(one.text)))
+          expect(posts('1').filter(one => one.text === 'first')).toHaveLength(1)
+          return
+        }
         await until(() => posts('1').some(one => one.answering === second.message))
         expect(posts('1').find(one => one.answering === second.message).text).toMatch(/^no answer · /)
       })
@@ -359,7 +368,7 @@ export function conformance (harness, platformTests = () => {}) {
         release()
         await until(() => reactions('1').length === 2)
         expect(reactions('1')).toEqual([{ op: 'react', message: asked.message, emoji: '👨‍💻' }, { op: 'react', message: asked.message, emoji: null }])
-        expect(posts('1').find(one => one.text === 'hello back').answering).toBe(asked.message)
+        expect(posts('1').find(one => one.text === 'hello back').answering).toBe(replyOf(asked))
         expect(notes('1')).toEqual([])
       })
 
@@ -589,7 +598,7 @@ export function conformance (harness, platformTests = () => {}) {
         start()
         release()
         await until(() => posted('1', 'late answer'))
-        expect(posts('1').find(one => one.text === 'late answer').answering).toBe(asked.message)
+        expect(posts('1').find(one => one.text === 'late answer').answering).toBe(replyOf(asked))
         await until(() => Object.keys(savedState().pending).length === 0)
       })
 
