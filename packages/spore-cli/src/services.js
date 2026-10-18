@@ -21,7 +21,11 @@ import { dirname, join } from 'node:path'
 
 import { CONFIG_DIR, pluginRoots, pluginServices, SERVICE_STATE_DIR, SporeError, versionAt } from '@rhizogrip/spore'
 
-const ROOT = dirname(createRequire(import.meta.url).resolve('@rhizogrip/spore/package.json'))
+const SPORE_PACKAGE = '@rhizogrip/spore'
+const ROOT = dirname(createRequire(import.meta.url).resolve(`${SPORE_PACKAGE}/package.json`))
+
+/** The spore a plugin in `dir` loads, found as node finds it from there: its own copy on a global install. */
+const sporeOf = (dir) => dirname(createRequire(join(dir, 'package.json')).resolve(`${SPORE_PACKAGE}/package.json`))
 
 export const UNIT_DIR = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'systemd', 'user')
 
@@ -207,6 +211,7 @@ function fromPlugin (found) {
     plugin: found.plugin,
     package: found.package,
     version: found.version,
+    dir: found.dir,
     instances: found.instances,
     records: true,
     primary: named,
@@ -411,14 +416,18 @@ export function createServices ({ unitDir = UNIT_DIR, run = systemRun, cmdlineOf
   }
 
   // The version a running service recorded, when it is the process running now and not the
-  // one installed — of spore, or of the plugin that offers it. A service that recorded nothing,
-  // or a record left by an earlier process, says nothing either way.
+  // one installed — of spore, of the plugin that offers it, or of the spore that plugin loads.
+  // A service that recorded nothing, or a record left by an earlier process, says nothing either way.
   const outdated = (name, { service }, pid) => {
     const record = join(stateDir, `${name}.json`)
     if (!service.records || !pid || !existsSync(record)) return null
     const started = JSON.parse(readFileSync(record, 'utf8'))
+    if (started.pid !== pid) return null
     const installed = service.plugin ? service.version : versionAt(root)
-    return started.pid === pid && started.version !== installed ? { from: service.package ?? 'spore', running: started.version, installed } : null
+    if (started.version !== installed) return { from: service.package ?? 'spore', running: started.version, installed }
+    if (!service.plugin || started.spore === undefined) return null
+    const loads = versionAt(sporeOf(service.dir))
+    return started.spore !== loads ? { from: SPORE_PACKAGE, running: started.spore, installed: loads } : null
   }
 
   const row = (name) => {

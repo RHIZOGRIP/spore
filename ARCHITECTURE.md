@@ -528,8 +528,9 @@ plugin, allowed or not: allowing is what spores may use, and defining a service 
 consent to run a program outside every sandbox. Spore writes the unit — the manifest names a
 file, never a unit line — so a plugin's service has the shape of spore's own: restarted on
 failure and not after a refusal (exit 2), `KillMode=process`. A name spore ships, or one two
-plugins claim, goes to neither plugin. A service records the plugin's version when it starts
-(`recordStarted(name, { root })`), which is how an outdated one is found. A service that imports
+plugins claim, goes to neither plugin. A service records the plugin's version and the spore's when it starts
+(`recordStarted(name, { root })`), which is how an outdated one is found: either moving makes it
+outdated, the spore found from the plugin's directory as node finds it. A service that imports
 the library is the one place a plugin declares `@rhizogrip/spore` as a peer, and the copy it gets
 in a global install is the cost: it may be another version within the range, and a workspace
 another version made is refused at open. Telegram and Discord are such plugins (`plugins/telegram/`, `plugins/discord/`).

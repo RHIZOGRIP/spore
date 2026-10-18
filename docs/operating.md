@@ -175,7 +175,7 @@ What the user's spores share while they run, under `$XDG_STATE_HOME/spore/`, els
 | `paused` | `{ at, why? }`, present while `spore pause` is in force; a file made by hand pauses as well |
 | `tick.lock` | held by the pass that fires schedules |
 | `jobs/<run>.lock` | held by a job's supervisor while the job runs |
-| `services/<name>.json` | the plugin version each service started with, read by `spore service restart --outdated` |
+| `services/<name>.json` | the plugin and spore versions each service started with, read by `spore service restart --outdated` |
 | `cells/` | the workspaces of cells run outside any turn, such as a router's, and of dreams |
 | `telegram/<bot>/`, `discord/<bot>/` | each chat bot's position |
 
@@ -457,8 +457,10 @@ exit code 2 (`RestartPreventExitStatus=2`), with `KillMode=process`. A plugin se
 instances keeps one file per instance in a folder beside `config.json`, as
 `telegram/<bot>.json`.
 
-A running service records the plugin version it started with; `spore service restart --outdated`
-restarts each one whose installed version has moved on.
+A running service records the plugin version it started with, and the spore version it loaded;
+`spore service restart --outdated` restarts each one whose installed version has moved on — the
+plugin's, or the spore the plugin loads, which a global install keeps inside the plugin and which
+an upgrade moves while the plugin's own version stays.
 
 ## Plugins on the host
 

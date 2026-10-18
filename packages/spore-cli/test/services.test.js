@@ -30,13 +30,19 @@ const bot = (name) => {
 
 const RELAY = { what: 'a relay of yours, each bot reaching its spore', program: './bin/relay.js', instances: { dir: 'relay', ext: '.json', called: 'bot' }, check: ['--check'] }
 
-/** A plugin offering services, installed in the test's own node_modules. */
+/** A plugin offering services, installed in the test's own node_modules with its own spore, as a global install lays one out. */
 const plugin = (name, services, version = '0.1.0') => {
   const dir = join(roots[0], `spore-plugin-${name}`)
   mkdirSync(join(dir, 'bin'), { recursive: true })
   writeFileSync(join(dir, 'bin', 'relay.js'), '')
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: `spore-plugin-${name}`, version, spore: { works: SPORE_VERSION, services } }))
+  carries(dir, SPORE_VERSION)
   return dir
+}
+
+const carries = (dir, version) => {
+  mkdirSync(join(dir, 'node_modules', '@rhizogrip', 'spore'), { recursive: true })
+  writeFileSync(join(dir, 'node_modules', '@rhizogrip', 'spore', 'package.json'), JSON.stringify({ name: '@rhizogrip/spore', version }))
 }
 
 beforeEach(() => {
@@ -190,6 +196,24 @@ describe('spore service ls', () => {
       writeFileSync(join(stateDir, 'relay@triage.json'), JSON.stringify({ version: '0.0.1', pid: 4242 }))
       expect(row().outdated).toEqual({ from: 'spore-plugin-relay', running: '0.0.1', installed: '0.1.0' })
       writeFileSync(join(stateDir, 'relay@triage.json'), JSON.stringify({ version: '0.0.1', pid: 1 }))
+      expect(row().outdated).toBe(null)
+    } finally {
+      rmSync(stateDir, { recursive: true, force: true })
+    }
+  })
+
+  it('flags a service whose plugin is unchanged when the spore that plugin loads has moved under it', () => {
+    const fake = standIn()
+    const stateDir = mkdtempSync(join(tmpdir(), 'spore-services-state-'))
+    try {
+      services(fake).define('relay@triage')
+      const row = () => services(fake, { stateDir }).list().services.find(r => r.name === 'relay@triage')
+
+      recordStarted('relay@triage', { dir: stateDir, root: relay, pid: 4242 })
+      expect(row().outdated).toBe(null)
+      carries(relay, '99.0.0')
+      expect(row().outdated).toEqual({ from: '@rhizogrip/spore', running: SPORE_VERSION, installed: '99.0.0' })
+      writeFileSync(join(stateDir, 'relay@triage.json'), JSON.stringify({ version: '0.1.0', pid: 4242 }))
       expect(row().outdated).toBe(null)
     } finally {
       rmSync(stateDir, { recursive: true, force: true })
