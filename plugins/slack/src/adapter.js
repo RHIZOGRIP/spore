@@ -128,13 +128,14 @@ const harmless = (text) => text
  * Slack's markup made plain: the bot's own mentions that open the message gone, since they only
  * address it; every other person as `@name`, a channel as `#name`, a link as its text and address.
  */
-async function plain (text, me, nameOf) {
+async function plain (text, me, nameOf, channelOf) {
   let rest = text.replace(new RegExp(`^(?:\\s*<@${me}(?:\\|[^>]*)?>)+\\s*`), '')
-  const mentioned = [...new Set([...rest.matchAll(/<@([A-Z0-9]+)(?:\|[^>]*)?>/g)].map(found => found[1]))]
-  const names = new Map(await Promise.all(mentioned.map(async id => [id, await nameOf(id)])))
+  const lookup = async (pattern, of) => new Map(await Promise.all([...new Set([...rest.matchAll(pattern)].map(found => found[1]))].map(async id => [id, await of(id)])))
+  const names = await lookup(/<@([A-Z0-9]+)(?:\|[^>]*)?>/g, nameOf)
+  const channels = await lookup(/<#([A-Z0-9]+)(?:\|)?>/g, channelOf)
   rest = rest
     .replace(/<@([A-Z0-9]+)(?:\|([^>]*))?>/g, (_, id) => `@${names.get(id)}`)
-    .replace(/<#([A-Z0-9]+)(?:\|([^>]*))?>/g, (_, id, name) => `#${name || id}`)
+    .replace(/<#([A-Z0-9]+)(?:\|([^>]*))?>/g, (_, id, name) => `#${name || channels.get(id)}`)
     .replace(/<!subteam\^[A-Z0-9]+(?:\|([^>]*))?>/g, (_, name) => name ?? '@group')
     .replace(/<!date\^[^|>]*\|([^>]*)>/g, (_, shown) => shown)
     .replace(/<!([a-z]+)(?:\|[^>]*)?>/g, (_, name) => `@${name}`)
@@ -142,6 +143,8 @@ async function plain (text, me, nameOf) {
     .replace(/<([^>]+)>/g, (_, url) => url)
   return rest.replace(/&(amp|lt|gt);/g, (entity) => ENTITIES[entity]).trim()
 }
+
+const whereOf = async (channel, channelOf) => channel.startsWith('D') ? 'a direct message on Slack' : `the Slack channel #${await channelOf(channel)}`
 
 /**
  * What a message brought, as the relay lists files: each by the private URL Slack serves the bot,
@@ -159,9 +162,9 @@ const filesOf = (event) => (event.files ?? []).map((file, i) => {
  * A direct message or a mention of the bot in a channel, as the relay takes it: one in a direct
  * message reaches the person's spore; one in a channel is its thread's, answered there.
  */
-export async function normalize (event, { team, me, nameOf }) {
+export async function normalize (event, { team, me, nameOf, channelOf }) {
   const direct = event.type === 'message'
-  const text = (await plain(event.text ?? '', me, nameOf)) || null
+  const text = (await plain(event.text ?? '', me, nameOf, channelOf)) || null
   const command = text?.match(COMMAND)
   return {
     id: `${team}/${event.channel}/${event.ts}`,
@@ -169,7 +172,7 @@ export async function normalize (event, { team, me, nameOf }) {
     message: event.ts,
     person: { id: event.user, name: await nameOf(event.user), groups: [] },
     spore: null,
-    where: direct ? 'a direct message on Slack' : 'a Slack channel',
+    where: await whereOf(event.channel, channelOf),
     shared: !direct,
     text,
     command: command ? { verb: command[1].toLowerCase(), args: command[2] ?? '' } : null,
@@ -179,7 +182,7 @@ export async function normalize (event, { team, me, nameOf }) {
 }
 
 /** `/spore <verb> [args]`, as a message from the person who typed it, where they typed it. */
-export async function commandOf (payload, { team, nameOf }) {
+export async function commandOf (payload, { team, nameOf, channelOf }) {
   const direct = payload.channel_id.startsWith('D')
   const text = payload.text.trim()
   const [verb = 'help', ...args] = text ? text.split(/\s+/) : []
@@ -189,7 +192,7 @@ export async function commandOf (payload, { team, nameOf }) {
     message: null,
     person: { id: payload.user_id, name: await nameOf(payload.user_id), groups: [] },
     spore: null,
-    where: direct ? 'a direct message on Slack' : 'a Slack channel',
+    where: await whereOf(payload.channel_id, channelOf),
     shared: !direct,
     text: `/${text || 'help'}`,
     command: { verb: verb.toLowerCase(), args: args.join(' ') },
@@ -199,7 +202,7 @@ export async function commandOf (payload, { team, nameOf }) {
 }
 
 /** A press on one of the relay's buttons, as the relay takes it, keyed as a message there would be. */
-export async function choiceOf (payload, { nameOf }) {
+export async function choiceOf (payload, { nameOf, channelOf }) {
   const channel = payload.channel.id
   const direct = channel.startsWith('D')
   const thread = payload.message?.thread_ts
@@ -208,7 +211,7 @@ export async function choiceOf (payload, { nameOf }) {
     data: payload.actions.find(action => action.block_id === PRESSED)?.value ?? null,
     inputs: null,
     person: { id: payload.user.id, name: await nameOf(payload.user.id), groups: [] },
-    where: direct ? 'a direct message on Slack' : 'a Slack channel'
+    where: await whereOf(channel, channelOf)
   }
 }
 
@@ -249,6 +252,7 @@ export function createAdapter ({ slack, receive, team, me }) {
   let kept = null
   let save = null
   const names = new Map()
+  const channels = new Map()
 
   const nameOf = async (id) => {
     if (!names.has(id)) {
@@ -257,6 +261,12 @@ export function createAdapter ({ slack, receive, team, me }) {
     }
     return names.get(id)
   }
+
+  const channelOf = async (id) => {
+    if (!channels.has(id)) channels.set(id, (await slack.channel(id)).name)
+    return channels.get(id)
+  }
+  const lookups = { team, me, nameOf, channelOf }
 
   const imOf = async (person) => {
     if (!kept.ims[person]) {
@@ -293,7 +303,7 @@ export function createAdapter ({ slack, receive, team, me }) {
 
   const press = async (payload, onChoice) => {
     if (!payload.actions?.some(action => action.block_id === PRESSED)) return
-    const choice = await choiceOf(payload, { nameOf })
+    const choice = await choiceOf(payload, lookups)
     const thread = payload.message?.thread_ts
     await onChoice({
       ...choice,
@@ -308,9 +318,9 @@ export function createAdapter ({ slack, receive, team, me }) {
     if (one.type === 'message') {
       if (one.channel_type !== 'im' || !TAKEN_SUBTYPES.has(one.subtype)) return
       remember(one.user, one.channel)
-      return onMessage(await normalize(one, { team, me, nameOf }))
+      return onMessage(await normalize(one, lookups))
     }
-    if (one.type === 'app_mention' && !one.channel.startsWith('D')) return onMessage(await normalize(one, { team, me, nameOf }))
+    if (one.type === 'app_mention' && !one.channel.startsWith('D')) return onMessage(await normalize(one, lookups))
   }
 
   return {
@@ -330,7 +340,7 @@ export function createAdapter ({ slack, receive, team, me }) {
           ack()
           if (payload.team_id !== team) return log(`dropped a command from team ${payload.team_id}: this bot serves ${team}`)
           if (payload.command !== SLASH) return log(`dropped ${payload.command}: this bot answers ${SLASH}`)
-          return onMessage(await commandOf(payload, { team, nameOf }))
+          return onMessage(await commandOf(payload, lookups))
         }
         if (type === 'interactive') {
           if (payload.team?.id !== team) {

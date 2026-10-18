@@ -86,6 +86,7 @@ const standIn = () => {
         return `D${user}`
       },
       user: async (id) => ({ id, name: `u${id}`, real_name: `U${id} Smith`, profile: { display_name: '', real_name: `U${id} Smith` } }),
+      channel: async (id) => ({ id, name: `chan-${numberOf(id)}` }),
       file: async (id) => {
         infos.push(id)
         return files.get(id)
@@ -155,7 +156,7 @@ const harness = {
       slack.push(again.envelope)
       return again.said
     }
-    const from = { name: `U${person} Smith`, id: `slack:${person}`, where: shared ? 'a Slack channel' : 'a direct message on Slack' }
+    const from = { name: `U${person} Smith`, id: `slack:${person}`, where: shared ? `the Slack channel #chan-${numberOf(conversation)}` : 'a direct message on Slack' }
     if (!shared && text?.startsWith('/')) {
       const one = envelope(slack, 'slash_commands', { team_id: TEAM, command: '/spore', text: text.slice(1), channel_id: `D${person}`, user_id: person, trigger_id: `tr${slack.lastMessage}` })
       slack.push(one)

@@ -74,9 +74,10 @@ describe('a bot\'s people and channels', () => {
 describe('a message', () => {
   const names = { [ALICE]: 'alice', U0CAROL: 'carol', [ME]: 'triage' }
   const nameOf = async (id) => names[id]
+  const channelOf = async (id) => ({ [CHANNEL]: 'general', C0OPS: 'ops' })[id]
   const direct = (fields = {}) => ({ type: 'message', channel_type: 'im', channel: 'D0ALICE', user: ALICE, text: 'hello', ts: '1729000001.000100', ...fields })
   const mention = (text, fields = {}) => ({ type: 'app_mention', channel: CHANNEL, user: ALICE, text, ts: '1729000002.000200', ...fields })
-  const read = (event) => normalize(event, { team: TEAM, me: ME, nameOf })
+  const read = (event) => normalize(event, { team: TEAM, me: ME, nameOf, channelOf })
 
   it('in a direct message is the person\'s', async () => {
     expect(await read(direct())).toEqual({
@@ -95,13 +96,13 @@ describe('a message', () => {
   })
 
   it('mentioning the bot in a channel is its thread\'s, the mention that opens it not part of what was said', async () => {
-    expect(await read(mention(`<@${ME}> what failed?`))).toMatchObject({ conversation: `${CHANNEL}/1729000002.000200`, message: '1729000002.000200', shared: true, where: 'a Slack channel', text: 'what failed?', addresses: null })
+    expect(await read(mention(`<@${ME}> what failed?`))).toMatchObject({ conversation: `${CHANNEL}/1729000002.000200`, message: '1729000002.000200', shared: true, where: 'the Slack channel #general', text: 'what failed?', addresses: null })
     expect((await read(mention(`<@${ME}> again`, { thread_ts: '1729000000.000100' }))).conversation).toBe(`${CHANNEL}/1729000000.000100`)
   })
 
   it('reads Slack\'s markup as plain text: people and channels by name, links with their address, a command once the mention is gone', async () => {
-    expect((await read(mention(`<@${ME}> ask <@U0CAROL> and <@${ME}> in <#C0OPS|ops> about <https://example.com/a|the report> &amp; <https://example.com/b> <!here>`))).text)
-      .toBe('ask @carol and @triage in #ops about the report (https://example.com/a) & https://example.com/b @here')
+    expect((await read(mention(`<@${ME}> ask <@U0CAROL> and <@${ME}> in <#C0OPS|ops> and <#${CHANNEL}> about <https://example.com/a|the report> &amp; <https://example.com/b> <!here>`))).text)
+      .toBe('ask @carol and @triage in #ops and #general about the report (https://example.com/a) & https://example.com/b @here')
     expect((await read(mention(`<@${ME}> /extend wall 30m`))).command).toEqual({ verb: 'extend', args: 'wall 30m' })
   })
 
@@ -123,15 +124,15 @@ describe('a message', () => {
   })
 
   it('typed as /spore is a command where it was typed', async () => {
-    const typed = (fields) => commandOf({ team_id: TEAM, command: '/spore', text: 'wrap 10m', channel_id: 'D0ALICE', user_id: ALICE, trigger_id: 't1', ...fields }, { team: TEAM, nameOf })
+    const typed = (fields) => commandOf({ team_id: TEAM, command: '/spore', text: 'wrap 10m', channel_id: 'D0ALICE', user_id: ALICE, trigger_id: 't1', ...fields }, { team: TEAM, nameOf, channelOf })
     expect(await typed()).toMatchObject({ conversation: ALICE, message: null, shared: false, text: '/wrap 10m', command: { verb: 'wrap', args: '10m' } })
-    expect(await typed({ channel_id: CHANNEL, text: '' })).toMatchObject({ conversation: CHANNEL, shared: true, command: { verb: 'help', args: '' } })
+    expect(await typed({ channel_id: CHANNEL, text: '' })).toMatchObject({ conversation: CHANNEL, shared: true, where: 'the Slack channel #general', command: { verb: 'help', args: '' } })
   })
 
   it('is refused with the line that would let it in — a person under people, a channel under channels', async () => {
     expect(SLACK.refusal(await read(direct()), 'ops.json')).toBe(`refused alice (${ALICE}) — to allow them, add "${ALICE}": "<a spore>" to the people of ops.json`)
     expect(SLACK.refusal(await read(mention(`<@${ME}> hi`)), 'ops.json'))
-      .toBe(`refused a Slack channel, ${CHANNEL} — to allow it, add "${CHANNEL}": { "spores": ["<a spore>"], "people": ["${ALICE}"] } to the channels of ops.json`)
+      .toBe(`refused the Slack channel #general, ${CHANNEL} — to allow it, add "${CHANNEL}": { "spores": ["<a spore>"], "people": ["${ALICE}"] } to the channels of ops.json`)
   })
 })
 
@@ -162,6 +163,7 @@ describe('the Web API', () => {
     await expect(post(answering(200, { ok: false, error: 'internal_error' }))).rejects.toMatchObject({ retryable: true, context: { code: 'internal_error' } })
     await expect(post(answering(200, { ok: false, error: 'not_in_channel' }))).rejects.toMatchObject({ type: 'SLACK_FAILED', retryable: false, detail: 'not_in_channel — invite the bot to the channel with /invite @<the bot>' })
     await expect(post(answering(200, { ok: false, error: 'invalid_auth' }))).rejects.toMatchObject({ type: 'SLACK_REFUSED', retryable: false })
+    await expect(post(answering(200, { ok: false, error: 'missing_scope', needed: 'channels:read' }))).rejects.toMatchObject({ retryable: false, detail: expect.stringMatching(/^missing_scope channels:read — add it to the app's bot token scopes/) })
     await expect(post(answering(503, {}))).rejects.toMatchObject({ retryable: true, detail: 'HTTP 503' })
     await expect(post(async () => { throw new Error('ECONNRESET') })).rejects.toMatchObject({ retryable: true, detail: 'ECONNRESET' })
   })

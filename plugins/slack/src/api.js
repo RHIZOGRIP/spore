@@ -15,7 +15,8 @@ const REFUSED = new Set(['invalid_auth', 'not_authed', 'account_inactive', 'toke
 const HINTS = {
   not_in_channel: 'invite the bot to the channel with /invite @<the bot>',
   channel_not_found: 'the channel is gone, or private and without the bot in it',
-  is_archived: 'the channel is archived'
+  is_archived: 'the channel is archived',
+  missing_scope: 'add it to the app\'s bot token scopes at api.slack.com/apps, then reinstall the app — the manifest in the plugin\'s README lists every scope'
 }
 
 const failed = (method, { detail, retryable, status = null, code = null, retryAfter = null }) =>
@@ -50,7 +51,7 @@ export function createSlack ({ token, app, fetchImpl = fetch, base = BASE }) {
     }
     const answer = await response.json().catch(() => null)
     if (!response.ok || answer === null) throw failed(method, { detail: `HTTP ${response.status}`, retryable: response.status >= 500, status: response.status })
-    if (!answer.ok) throw failed(method, { detail: answer.error, retryable: RETRYABLE.has(answer.error), status: response.status, code: answer.error })
+    if (!answer.ok) throw failed(method, { detail: answer.needed ? `${answer.error} ${answer.needed}` : answer.error, retryable: RETRYABLE.has(answer.error), status: response.status, code: answer.error })
     return answer
   }
 
@@ -74,6 +75,8 @@ export function createSlack ({ token, app, fetchImpl = fetch, base = BASE }) {
     im: async (user) => (await call('conversations.open', { users: user })).channel.id,
 
     user: async (id) => (await call('users.info', { user: id })).user,
+
+    channel: async (id) => (await call('conversations.info', { channel: id })).channel,
 
     file: async (id) => (await call('files.info', { file: id })).file,
 

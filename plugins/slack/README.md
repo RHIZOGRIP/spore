@@ -33,7 +33,7 @@ name and the bot's display name are yours:
     "slash_commands": [{ "command": "/spore", "description": "What the spore is doing, and stopping or wrapping its turn", "usage_hint": "status | stop | wrap [10m] | extend wall 30m", "should_escape": false }]
   },
   "oauth_config": {
-    "scopes": { "bot": ["app_mentions:read", "chat:write", "commands", "files:read", "im:history", "im:write", "users:read"] }
+    "scopes": { "bot": ["app_mentions:read", "channels:read", "chat:write", "commands", "files:read", "groups:read", "im:history", "im:write", "users:read"] }
   },
   "settings": {
     "event_subscriptions": { "bot_events": ["app_mention", "message.im"] },
@@ -48,6 +48,10 @@ app to the workspace; *OAuth & Permissions* then shows the bot token, `xoxb-…`
 Information*, *App-Level Tokens*, make one with the `connections:write` scope: the app token,
 `xapp-…`. Both go in `environment`, under the variables `token` and `app` name; neither reaches a
 spore. `team` is the workspace's id, `T…`.
+
+A scope added to the manifest later — as a new version of the plugin may ask — takes a reinstall
+of the app, under *Install App*; until then each call that needs it is refused with
+`missing_scope` and the scope's name in the service's log.
 
 `spore service define` first runs the service's checks (`--check`): Slack is asked who the bot
 token is and for a Socket Mode connection under the app token. A refused token, or a bot token for
