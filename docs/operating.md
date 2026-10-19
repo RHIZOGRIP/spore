@@ -140,7 +140,11 @@ Maps a spore's name to the place its answers go when what a turn read carries no
 own — a schedule's firing, a webhook, a job, or a message sent without one. A place is `terminal`
 or `<kind>:<place>`: `<kind>` lowercase letters, digits and `-`, `<place>` non-empty with no
 whitespace. Unset, such an answer is not delivered anywhere. A `quiet` turn is addressed nowhere
-either way. Whoever serves the kind — the Telegram or Discord service — delivers it.
+either way. Whoever serves the kind — the Telegram, Discord, Teams or Slack service — delivers it.
+
+`spore send` gives its message the reply-to `terminal`, so its answer never goes here. To see a
+spore's answer reach this place, have the clock say something: a schedule `when: at <instant>` a
+minute ahead ([definition §A schedule](definition.md#a-schedule)).
 
 ### `approvals`
 

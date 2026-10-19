@@ -18,6 +18,13 @@ spore service define teams@ops && spore service start teams@ops
 
 ## The bot
 
+All of it is done as a member of your Microsoft 365 tenant, with a Teams licence — Business Basic
+serves — and the people who talk to the bot are members too. A personal Microsoft account, even
+one invited into the tenant as its administrator, signs in to personal Teams (teams.live.com) and
+cannot reach the Teams admin center. The sites: the Azure portal, portal.azure.com; the Teams
+Developer Portal, dev.teams.microsoft.com; the Teams admin center, admin.teams.microsoft.com; and
+Teams itself, teams.cloud.microsoft.
+
 Teams reaches a bot through Azure: an **Azure Bot**, made in the Azure portal with *Single Tenant*
 as its type and a new Microsoft App ID — Microsoft no longer makes multi-tenant bots, and the
 service asks your tenant for its token. Its app registration in Entra ID gives the bot file its
@@ -30,9 +37,13 @@ never faces the internet itself. With nginx, a path per bot:
 location = /ops/api/messages { proxy_pass http://127.0.0.1:3978/api/messages; }
 ```
 
-Turn on the Azure Bot's Microsoft Teams channel. Then a Teams app for the bot, in the Teams
-Developer Portal: under App features, a bot with the Microsoft App ID, in the personal and team
-scopes. A manifest of version 1.25 or later with the team scope must say
+Once the service runs, `curl -i -X POST https://<your host>/ops/api/messages` is answered `401`
+and the service logs `refused an activity: it carries no bearer token`: the proxy reaches it.
+
+Turn on the Azure Bot's Microsoft Teams channel; until it is on, Teams shows the app as
+`Invalid Bot: Please make sure the bot is registered and Teams channel is enabled`. Then a Teams
+app for the bot, in the Teams Developer Portal: under App features, a bot with the Microsoft App
+ID, in the personal and team scopes. A manifest of version 1.25 or later with the team scope must say
 `"supportsChannelFeatures": "tier1"`, or Teams refuses the package; it lets the app into private
 and shared channels too, which the service does not serve yet, so leave it out of those. Publish
 it to your organization and approve it in the Teams admin center, under Manage apps: an app
