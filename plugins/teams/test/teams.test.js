@@ -116,7 +116,7 @@ describe('an activity', () => {
       id: 'a:1xyz:1:abc',
       conversation: ALICE,
       message: '1:abc',
-      person: { id: ALICE, name: 'Alice Martin', groups: [] },
+      person: { id: ALICE, name: 'Alice Martin', groups: [], zone: null },
       spore: null,
       where: 'a personal chat in Teams',
       shared: false,
@@ -125,6 +125,10 @@ describe('an activity', () => {
       addresses: null,
       files: []
     })
+  })
+
+  it('carries the clock the person\'s Teams says they are on, where it says one', () => {
+    expect(normalize(personal({ localTimezone: 'Asia/Dubai', localTimestamp: '2026-10-20T12:07:30.000+04:00' })).person.zone).toBe('Asia/Dubai')
   })
 
   it('in a channel is its thread\'s, reaching the spore when it mentions the bot, the mention not part of what was said', () => {

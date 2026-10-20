@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
-import { OVERHEARD_KEPT, appendInbox, appendTurn, outbox, readInbox, readInboxFrom, setAside, settleOutbox } from '../src/core/spore-dir.js'
+import { OVERHEARD_KEPT, appendInbox, appendTurn, outbox, readInbox, readInboxFrom, saidOf, setAside, settleOutbox } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 
 const WS = resolve(tmpdir(), 'spore-inbox-test')
@@ -44,8 +44,19 @@ describe('the inbox', () => {
     })
   })
 
+  it('keeps the clock of whoever said a message, and the turn reads when they said it in their time', () => {
+    const from = { name: 'Alice', id: 'teams:1fbe', where: 'a personal chat in Teams', zone: 'Asia/Dubai' }
+    send(WS, 'check again', { start: false, from })
+    expect(readInbox(WS)[0]).toMatchObject({ fromName: 'Alice', fromZone: 'Asia/Dubai' })
+    const entry = { at: '2026-10-20T08:07:30.000Z', text: 'hello', fromName: 'Alice', fromId: 'teams:1fbe', fromWhere: 'a personal chat in Teams', fromZone: 'Asia/Dubai' }
+    expect(saidOf(entry)).toBe('[Said by "Alice" (teams:1fbe) in "a personal chat in Teams", at 2026-10-20 12:07 their time (Tuesday, Asia/Dubai, UTC+04:00).]\n\nhello')
+    expect(saidOf({ ...entry, at: '2026-10-20T23:30:00.000Z', fromZone: 'America/Los_Angeles' })).toMatch(/at 2026-10-20 16:30 their time \(Tuesday, America\/Los_Angeles, UTC-07:00\)\.\]/)
+    expect(saidOf({ ...entry, fromZone: null })).toBe('[Said by "Alice" (teams:1fbe) in "a personal chat in Teams".]\n\nhello')
+  })
+
   it('refuses a from that is not who and where, or that a schedule, webhook or job would also claim', () => {
-    for (const from of [{ name: 'Alice' }, { name: 'Alice', id: '148392011', where: 'a chat' }, { name: ' ', id: 'telegram:1', where: 'a chat' }, { name: 'A', id: 'telegram:1', where: 'a chat', role: 'admin' }]) {
+    for (const from of [{ name: 'Alice' }, { name: 'Alice', id: '148392011', where: 'a chat' }, { name: ' ', id: 'telegram:1', where: 'a chat' }, { name: 'A', id: 'telegram:1', where: 'a chat', role: 'admin' },
+      { name: 'A', id: 'teams:1', where: 'a chat', zone: 'Mars/Olympus' }, { name: 'A', id: 'teams:1', where: 'a chat', zone: '+04:00' }, { name: 'A', id: 'teams:1', where: 'a chat', zone: '' }]) {
       expect(() => appendInbox(WS, 'x', { from })).toThrow(expect.objectContaining({ type: 'FROM_INVALID' }))
     }
     expect(() => appendInbox(WS, 'x', { from: { name: 'A', id: 'telegram:1', where: 'a chat' }, hook: { name: 'forge', delivery: 'd-1' } })).toThrow(expect.objectContaining({ type: 'FROM_INVALID' }))

@@ -69,9 +69,11 @@ position, `started` says whether this call started a turn, `pid` is the runner's
   ([INTEGRATION §Idempotency](../INTEGRATION.md#idempotency)).
 - `replyTo`: where the answer goes
   ([§Delivering answers elsewhere](../INTEGRATION.md#delivering-answers-elsewhere)).
-- `from`: `{ name, id, where }`, the person who said it — how they show, `<kind>:<their id>`
-  (`telegram:148392011`), and the conversation as a person would name it. The turn reads it in a
-  line above the text. Not with `schedule` or `hook`, which say what spoke when no person did.
+- `from`: `{ name, id, where, zone? }`, the person who said it — how they show, `<kind>:<their id>`
+  (`telegram:148392011`), the conversation as a person would name it, and the IANA zone of their
+  clock where the platform says it (`Asia/Dubai`; a name Node does not know is `FROM_INVALID`). The
+  turn reads it in a line above the text, with when they said it in their time. Not with
+  `schedule` or `hook`, which say what spoke when no person did.
 - `traceparent`: a W3C trace context the turn is traced under.
 - `start: false`: says the message and starts nothing.
 - `overheard: true`: a message said where the spore is and not to it — in a group, around what is
@@ -122,7 +124,7 @@ The inbox entries with `inboxNo` in `(after, upto]`, every one past `after` when
 in order. An entry carries `inboxNo`, `at`, `text` or a `bodyPath` with `bodyBytes`, `bodyHead`
 and `bodyTail`, `files`, `schedule`, `due`, `hook`, `hookEvent`, `hookDelivery`, `job`,
 `jobEvent`, `jobRun`, `traceparent`, `requestId`, `replyTo`, `fromName`, `fromId`, `fromWhere`,
-`overheard` (said around the spore, not to it), `approval` (the approval it tells of), `consumed`
+`fromZone`, `overheard` (said around the spore, not to it), `approval` (the approval it tells of), `consumed`
 (a finished turn has read it) and `setAside` (no turn will).
 
 ### `setAside`

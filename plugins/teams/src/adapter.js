@@ -197,7 +197,7 @@ export function normalize (activity) {
     id: `${activity.conversation.id}:${activity.id}`,
     conversation: personal ? activity.from.aadObjectId : activity.conversation.id,
     message: activity.id,
-    person: { id: activity.from.aadObjectId, name: activity.from.name, groups: [] },
+    person: { id: activity.from.aadObjectId, name: activity.from.name, groups: [], zone: activity.localTimezone ?? null },
     spore: null,
     where: personal ? 'a personal chat in Teams' : channel?.name ? `the Teams channel "${channel.name}"` : 'a Teams channel',
     shared: !personal,

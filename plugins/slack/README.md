@@ -76,7 +76,8 @@ a line.
 
 A bot that serves people who should see their answers and not the machinery takes `"brief": true`
 beside `people` and `channels`: each conversation is then told its spore's state and its answers,
-and nothing of how it runs — no model, spend, turns or limits, and no `extend`. A person or a
+and nothing of how it runs — no model, spend, turns or limits, no schedule, webhook or job that
+started a turn, and no `extend`. A person or a
 channel takes `"brief"` as well, `false` to be told everything in a brief bot; `details` is
 refused beside it.
 
@@ -92,8 +93,9 @@ which is also how you learn member ids: start with `"people": {}` and write to t
 
 In a direct message, anything written reaches the spore. In a channel, a message reaches it when
 it mentions the bot. A mention that opens the message is not part of what the spore is told; the
-spore is told who wrote and where. The bot posts `working…` and edits it as the turn goes — at most
-every 5 s, since Slack allows an app about 50 edits a minute in a workspace — and the answer comes
+spore is told who wrote and where, and when on their clock, by the time zone their Slack profile
+sets. The bot posts `working…` and edits it as the turn goes — at most every 5 s, since Slack
+allows an app about 50 edits a minute in a workspace — and the answer comes
 as a new message: in a direct message, after the conversation as it stands; in a channel, in the
 thread of the mention. `working…` is then removed.
 The answer is sent as Markdown, so tables and fenced code render, with Slack's mentions in it
@@ -123,6 +125,7 @@ A schedule, a job or a webhook starts a turn no one in Slack asked for. Its answ
 spore's `replyTo` in `config.json`: `slack:<bot>/<member id>` for a person — the bot opens a direct
 message with them if they never wrote to it — or `slack:<bot>/<channel id>`, a new post in the
 channel. A place this bot's file does not route to the spore is refused, and the log says why.
+The answer opens with what started the turn — `schedule "digest"` — except in a brief conversation.
 
 ## Approvals
 

@@ -42,7 +42,8 @@ export const CHATGPT_HELPER = createRequire(import.meta.url).resolve('mohdel/cha
  * consumer for the reason the lock race does — one naming rule, and one decision about
  * when a body stops being inline. `schedule` is the clock's `{ name, due }` and `hook` a
  * webhook's `{ name, event, delivery }`, each recorded on the entry; `from` is a person's `{ name,
- * id, where }`, which the turn reads above what they said; `traceparent` is the sender's trace
+ * id, where, zone? }`, which the turn reads above what they said — `zone` the IANA zone of their
+ * clock, where the platform says it, so the turn reads when they said it in their time; `traceparent` is the sender's trace
  * context, which the turn answering it is traced under.
  *
  * `inbox` is the message's `inboxNo`: the turn whose record's `inboxTo` first reaches it is

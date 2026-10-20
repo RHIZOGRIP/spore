@@ -84,8 +84,10 @@ and nothing of how it runs. `/status` says `working`, `idle`, `paused` or how ma
 never the model, the spend, the turns or the limits; an answer comes without how the turn ended, a
 turn with none says `no answer this time` and the log says why; a working turn shows the model's
 note, the kind of the call it runs, how many and for how long, never how a call ended; a limit
-reached shows as `wrapping up`; and `/extend` is not offered, since what a turn may spend is yours. A person or a channel takes
-`"brief"` as well, `false` to be told everything in a brief bot; `details` is refused beside it.
+reached shows as `wrapping up`; an answer to a turn nobody there started comes without the
+schedule, webhook or job that started it, which the log names; and `/extend` is not offered, since
+what a turn may spend is yours. A person or a channel takes `"brief"` as well, `false` to be told
+everything in a brief bot; `details` is refused beside it.
 
 Someone not in the file gets silence, and the log gets the line to add:
 
@@ -99,7 +101,8 @@ which is also how you learn object ids: start with `"people": {}` and write to t
 
 In a personal chat, anything written reaches the spore. In a channel, a message reaches it when
 it mentions the bot. A mention that opens the message is not part of what the spore is told, while
-one inside the sentence stays as `@<bot>`; the spore is told who wrote and where. The bot posts
+one inside the sentence stays as `@<bot>`; the spore is told who wrote and where, and when on their
+clock, where their Teams says its time zone. The bot posts
 `working…` and edits it as the turn goes: how many calls it has made and, once a minute has passed,
 for how long; what the model last wrote before a call; and the kind of the call running. The answer
 is a new message — in a channel, in the thread of the message it answers — and `working…` is then
@@ -132,6 +135,7 @@ A schedule, a job or a webhook starts a turn no one in Teams asked for. Its answ
 spore's `replyTo` in `config.json`: `teams:<bot>/<object id>` for a person — the bot opens a
 personal chat with them if they never wrote to it — or `teams:<bot>/<channel id>`, a new post in
 the channel. A place this bot's file does not route to the spore is refused, and the log says why.
+The answer opens with what started the turn — `schedule "digest"` — except in a brief conversation.
 
 ## Approvals
 

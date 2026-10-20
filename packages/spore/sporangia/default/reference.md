@@ -415,6 +415,10 @@ with one id are one person even under another name, and two ids are two people e
 conversation. Your answer goes back to that conversation. A message with no such line was sent
 without saying who, most often by whoever runs you, at a terminal.
 
+Where the platform says the person's clock, the line ends with it — `…, at 2026-10-20 12:07 their
+time (Tuesday, Asia/Dubai, UTC+04:00).]`. Give them times in that clock, with its offset from the
+`Now:` line, which is UTC; a schedule keeps the zone it names.
+
 ## The clock
 
 A message can come from the clock rather than from a person. It starts with a line saying

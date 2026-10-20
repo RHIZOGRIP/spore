@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 10;
+pub const SCHEMA_VERSION: i64 = 11;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -73,6 +73,7 @@ CREATE TABLE t_inbox (
                            AND (fromName IS NULL OR (schedule IS NULL AND hook IS NULL AND job IS NULL))),
   overheard    INTEGER NOT NULL DEFAULT 0 CHECK (overheard IN (0, 1) AND (overheard = 0 OR (fromName IS NOT NULL AND replyTo IS NULL))),
   approval     TEXT CHECK (approval IS NULL OR (schedule IS NULL AND hook IS NULL AND job IS NULL AND overheard = 0 AND replyTo IS NOT NULL)),
+  fromZone     TEXT CHECK (fromZone IS NULL OR (fromName IS NOT NULL AND fromZone <> '')),
   UNIQUE (schedule, due),
   CHECK ((schedule IS NULL) = (due IS NULL)),
   CHECK ((hook IS NULL) = (hookDelivery IS NULL)),
@@ -194,7 +195,7 @@ CREATE VIEW inbox AS
   SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
          i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
          i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
-         i.fromName, i.fromId, i.fromWhere, i.overheard, i.approval,
+         i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval,
          i.inboxNo <= w.inboxConsumed AS consumed,
          EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
     FROM t_inbox i, t_workspace w;
@@ -336,7 +337,7 @@ CREATE VIEW approvals AS
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 9] = [
+const MIGRATIONS: [(i64, &str); 10] = [
     (
         1,
         r#"
@@ -564,6 +565,22 @@ CREATE VIEW approvals AS
     FROM t_approvals;
 "#,
     ),
+    (
+        10,
+        r#"
+ALTER TABLE t_inbox ADD COLUMN fromZone TEXT CHECK (fromZone IS NULL OR (fromName IS NOT NULL AND fromZone <> ''));
+
+DROP VIEW inbox;
+CREATE VIEW inbox AS
+  SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
+         i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
+         i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
+         i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval,
+         i.inboxNo <= w.inboxConsumed AS consumed,
+         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
+    FROM t_inbox i, t_workspace w;
+"#,
+    ),
 ];
 
 /// Opens the workspace's database for writing — creating it and its schema the first time —
@@ -774,7 +791,7 @@ enum Kind {
 }
 
 /// What an inbox entry may say, by column. `inboxNo` is the database's to give.
-const INBOX_COLUMNS: [(&str, Kind); 23] = [
+const INBOX_COLUMNS: [(&str, Kind); 24] = [
     ("at", Kind::Text),
     ("text", Kind::Text),
     ("bodyPath", Kind::Text),
@@ -798,6 +815,7 @@ const INBOX_COLUMNS: [(&str, Kind); 23] = [
     ("fromWhere", Kind::Text),
     ("overheard", Kind::Flag),
     ("approval", Kind::Text),
+    ("fromZone", Kind::Text),
 ];
 
 /// What a turn record carries into its row. `turnNo` and `inboxFrom` are finalization's to
@@ -964,7 +982,8 @@ pub fn check_reply_to(reply_to: &str) -> Result<(), String> {
 
 /// Who said an inbox entry, when no person did: `schedule:<name>`, `hook:<name>` or `job:<name>`,
 /// from the field naming it. None for a person's message, which may say who the person is with
-/// `fromName`, `fromId` and `fromWhere`, all three. Refused when it names two speakers.
+/// `fromName`, `fromId` and `fromWhere`, all three, and their clock with `fromZone`. Refused when
+/// it names two speakers.
 pub fn origin_of(entry: &Record) -> Result<Option<String>, String> {
     let named: Vec<String> = ["schedule", "hook", "job"]
         .iter()
@@ -991,6 +1010,14 @@ pub fn origin_of(entry: &Record) -> Result<Option<String>, String> {
             "an entry says who said it with fromName, fromId and fromWhere, all three and none empty"
                 .into(),
         );
+    }
+    if given("fromZone")
+        && !(given("fromName")
+            && entry
+                .get::<String>("fromZone")
+                .is_some_and(|zone| !zone.is_empty()))
+    {
+        return Err("an entry gives fromZone only beside who said it, and not empty".into());
     }
     match named.as_slice() {
         [] => Ok(None),
@@ -2932,6 +2959,12 @@ mod tests {
         )
         .is_err());
         assert!(append_inbox(&ws, r#"{"at":"t","text":"x","hook":"forge","hookDelivery":"d","fromName":"Alice","fromId":"telegram:1","fromWhere":"a chat"}"#).is_err());
+        assert!(append_inbox(&ws, r#"{"at":"t","text":"x","fromZone":"Asia/Dubai"}"#).is_err());
+        assert!(append_inbox(
+            &ws,
+            r#"{"at":"t","text":"x","fromName":"Alice","fromId":"teams:1","fromWhere":"a chat","fromZone":""}"#
+        )
+        .is_err());
         assert_eq!(
             append_inbox(&ws, r#"{"at":"t","files":[{"path":"a"}]}"#)
                 .unwrap()
@@ -2962,8 +2995,20 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            row(&ws, "SELECT text, fromName, fromId, fromWhere FROM inbox"),
-            json!({ "text": "hello", "fromName": "Alice", "fromId": "telegram:1", "fromWhere": "a private chat on Telegram" })
+            row(
+                &ws,
+                "SELECT text, fromName, fromId, fromWhere, fromZone FROM inbox"
+            ),
+            json!({ "text": "hello", "fromName": "Alice", "fromId": "telegram:1", "fromWhere": "a private chat on Telegram", "fromZone": null })
+        );
+        append_inbox(
+            &ws,
+            r#"{"at":"t","text":"later","fromName":"Alice","fromId":"teams:1","fromWhere":"a personal chat in Teams","fromZone":"Asia/Dubai"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            row(&ws, "SELECT fromZone FROM inbox WHERE text = 'later'"),
+            json!({ "fromZone": "Asia/Dubai" })
         );
     }
 

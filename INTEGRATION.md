@@ -163,8 +163,9 @@ its record.
 `send` options: `requestId` (taken once, see [Rules](#rules-an-integrator-keeps)); `attach`, a
 list of `{ name, mime, data }` with `data` a Buffer; `replyTo`, where the answer goes
 ([Delivering answers](#delivering-answers-elsewhere)); `from`, who said it and where, as `{ name,
-id, where }` — how the person shows, `<kind>:<their id>`, and the conversation as a person would
-name it — which the turn reads in a line above the text; `traceparent`; `env`, the environment the
+id, where, zone? }` — how the person shows, `<kind>:<their id>`, the conversation as a person would
+name it, and the IANA zone of their clock where the platform says it (`Asia/Dubai`) — which the
+turn reads in a line above the text, with when they said it in their time; `traceparent`; `env`, the environment the
 turn's runner starts with; `start: false`, which says the message and starts nothing — a turn
 running reads it at its next round, and with none running it waits for the next turn something
 else starts; `overheard: true`, a message said where the spore is and not to it, which starts

@@ -305,6 +305,17 @@ conformance(harness, (ctx) => {
       expect(ctx.platform.created).toEqual([{ bot: { id: `28:${APP}` }, members: [{ id: '1' }], channelData: { tenant: { id: TENANT } }, isGroup: false }])
     })
 
+    it('tells the spore the clock the person\'s Teams says they are on, and leaves out one no zone names', async () => {
+      ctx.routes({ 1: { spore: 'triage' } })
+      ctx.start()
+      const activity = (id, localTimezone) => ({ type: 'message', id, channelId: 'msteams', serviceUrl: SERVICE, conversation: { id: 'a:1', conversationType: 'personal', tenantId: TENANT }, from: { id: '29:1', aadObjectId: '1', name: 'U1' }, recipient: { id: `28:${APP}` }, text: 'hello', localTimezone })
+      ctx.platform.push(activity('z1', 'Asia/Dubai'))
+      ctx.platform.push(activity('z2', 'Nowhere/Land'))
+      await ctx.until(() => readInbox(ctx.ws).length === 2)
+      expect(readInbox(ctx.ws).map(entry => entry.fromZone)).toEqual(['Asia/Dubai', null])
+      expect(ctx.logs.some(line => line.endsWith('U1\'s clock, "Nowhere/Land", is no time zone this Node knows — their message goes without it'))).toBe(true)
+    })
+
     it('drops an activity from another tenant, and a group chat, saying why', async () => {
       ctx.start()
       const activity = (fields) => ({ type: 'message', id: 'x1', channelId: 'msteams', serviceUrl: SERVICE, from: { aadObjectId: '1', name: 'U1' }, recipient: { id: `28:${APP}` }, text: 'hello', ...fields })

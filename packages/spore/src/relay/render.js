@@ -28,15 +28,24 @@ export function reply ({ record }, { brief = false } = {}) {
   return brief ? 'no answer this time' : `no answer · ${ending(record)}`
 }
 
-/** What a conversation is told of a turn that answered `asked`, none of it said there: who said it, then the answer. */
-export function announce ({ record, asked }, { brief = false } = {}) {
+/** What said the messages `asked` when nobody in the conversation did: `schedule "digest"`, `webhook "forge"`… */
+export function originOf (asked) {
   const named = (field) => [...new Set(asked.filter(entry => entry[field]).map(entry => `"${entry[field]}"`))]
   const origins = [
     named('schedule').length ? `schedule ${named('schedule').join(', ')}` : null,
     named('hook').length ? `webhook ${named('hook').join(', ')}` : null,
     named('job').length ? `job ${named('job').join(', ')}` : null
   ].filter(Boolean)
-  return `${origins.length ? origins.join(' · ') : 'sent from elsewhere'}\n\n${reply({ record }, { brief })}`
+  return origins.length ? origins.join(' · ') : 'sent from elsewhere'
+}
+
+/**
+ * What a conversation is told of a turn that answered `asked`, none of it said there: what said
+ * it, then the answer — and the answer alone in a brief conversation, where what said it is how
+ * the spore runs.
+ */
+export function announce ({ record, asked }, { brief = false } = {}) {
+  return brief ? reply({ record }, { brief }) : `${originOf(asked)}\n\n${reply({ record })}`
 }
 
 /** A turn ended without reading this conversation's message, and nothing is running to read it. */

@@ -571,6 +571,19 @@ export function conformance (harness, platformTests = () => {}) {
         expect(outbox(ws).map(entry => [entry.recipient, entry.state])).toEqual([[`${spec.kind}:triage/1`, 'delivered']])
       })
 
+      it('reach a brief conversation as the answer alone, and the log with what said it', async () => {
+        routes({ 1: { spore: 'triage' } }, {}, { brief: true })
+        defaultReplyTo('1')
+        reply = async () => answers('tried once more')
+        start()
+        await until(() => savedState().cursors[ws])
+
+        send(ws, 'Retry.', { schedule: { name: 'retry', due: '2026-09-28T07:00:00Z' }, env })
+        await until(() => posted('1', 'tried once more'))
+        expect(posts('1').some(one => /retry/.test(one.text ?? ''))).toBe(false)
+        expect(logs.some(line => /^turn 1 answered schedule "retry" — not said in .*, which is brief$/.test(line))).toBe(true)
+      })
+
       it('reach no conversation when a terminal asked, since the terminal follows the turn itself', async () => {
         defaultReplyTo('1')
         start()

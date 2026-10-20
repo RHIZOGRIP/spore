@@ -17,9 +17,9 @@ import { approvalHookVariables, attemptOutbox, changeText, extendTurn, isWorkspa
 import { createApprovals } from './approvals.js'
 import { credentialVariables, filesOf, reactionsOf, routesOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
-import { announce, endingOf, leftOut, notCome, pieces, reply, sizeOf, statusText, waiting } from './render.js'
+import { announce, endingOf, leftOut, notCome, originOf, pieces, reply, sizeOf, statusText, waiting } from './render.js'
 import { applyEvent, createLive, renderLive } from '../library/live.js'
-import { runningLimits } from '../core/spore-dir.js'
+import { isZone, runningLimits } from '../core/spore-dir.js'
 import { loadState, saveState } from './state.js'
 
 const TAKES_ARGUMENTS = new Set(['extend', 'wrap'])
@@ -224,7 +224,20 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   }
 
   const requestOf = (message, name) => `${kind}:${message.id}${message.addresses ? `:${name}` : ''}`
-  const fromOf = (message) => ({ name: message.person.name, id: `${kind}:${message.person.id}`, where: adapter.can.upload ? message.where : `${message.where}, which gets no files` })
+  /** The person's clock, where the platform says it; one this Node does not know goes unsaid, and logged. */
+  const zoneOf = ({ person, conversation }) => {
+    if (person.zone === undefined || person.zone === null) return {}
+    if (isZone(person.zone)) return { zone: person.zone }
+    log(`${where(conversation)}: ${person.name}'s clock, ${JSON.stringify(person.zone)}, is no time zone this Node knows — their message goes without it`)
+    return {}
+  }
+
+  const fromOf = (message) => ({
+    name: message.person.name,
+    id: `${kind}:${message.person.id}`,
+    where: adapter.can.upload ? message.where : `${message.where}, which gets no files`,
+    ...zoneOf(message)
+  })
 
   /**
    * `show` is the conversation's, or, where the bot file leaves it, the platform's own for a
@@ -605,7 +618,9 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     const turn = turnsSince(ws, entry.turnNo - 1).ended[0]
     const heard = turn.asked.filter(message => entry.answers.includes(message.inboxNo))
     const brief = briefed.has(keyOf(conversation))
-    const answer = heard.some(message => message.replyTo) ? reply(turn, { brief }) : announce({ record: turn.record, asked: heard }, { brief })
+    const askedHere = heard.some(message => message.replyTo)
+    const answer = askedHere ? reply(turn, { brief }) : announce({ record: turn.record, asked: heard }, { brief })
+    if (brief && !askedHere) log(`turn ${entry.turnNo} answered ${originOf(heard)} — not said in ${where(conversation)}, which is brief`)
     if (brief) unsaid(turn, conversation)
     const answered = Boolean(turn.record.output) || turn.record.stopReason === 'quiet'
     const text = entry.attemptedAt === null ? answer : `${MAY_REPEAT}\n\n${answer}`

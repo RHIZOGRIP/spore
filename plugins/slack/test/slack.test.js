@@ -74,17 +74,18 @@ describe('a bot\'s people and channels', () => {
 describe('a message', () => {
   const names = { [ALICE]: 'alice', U0CAROL: 'carol', [ME]: 'triage' }
   const nameOf = async (id) => names[id]
+  const zoneOf = async (id) => id === ALICE ? 'Asia/Dubai' : null
   const channelOf = async (id) => ({ [CHANNEL]: 'general', C0OPS: 'ops' })[id]
   const direct = (fields = {}) => ({ type: 'message', channel_type: 'im', channel: 'D0ALICE', user: ALICE, text: 'hello', ts: '1729000001.000100', ...fields })
   const mention = (text, fields = {}) => ({ type: 'app_mention', channel: CHANNEL, user: ALICE, text, ts: '1729000002.000200', ...fields })
-  const read = (event) => normalize(event, { team: TEAM, me: ME, nameOf, channelOf })
+  const read = (event) => normalize(event, { team: TEAM, me: ME, nameOf, zoneOf, channelOf })
 
   it('in a direct message is the person\'s', async () => {
     expect(await read(direct())).toEqual({
       id: `${TEAM}/D0ALICE/1729000001.000100`,
       conversation: ALICE,
       message: '1729000001.000100',
-      person: { id: ALICE, name: 'alice', groups: [] },
+      person: { id: ALICE, name: 'alice', groups: [], zone: 'Asia/Dubai' },
       spore: null,
       where: 'a direct message on Slack',
       shared: false,
@@ -124,7 +125,7 @@ describe('a message', () => {
   })
 
   it('typed as /spore is a command where it was typed', async () => {
-    const typed = (fields) => commandOf({ team_id: TEAM, command: '/spore', text: 'wrap 10m', channel_id: 'D0ALICE', user_id: ALICE, trigger_id: 't1', ...fields }, { team: TEAM, nameOf, channelOf })
+    const typed = (fields) => commandOf({ team_id: TEAM, command: '/spore', text: 'wrap 10m', channel_id: 'D0ALICE', user_id: ALICE, trigger_id: 't1', ...fields }, { team: TEAM, nameOf, zoneOf, channelOf })
     expect(await typed()).toMatchObject({ conversation: ALICE, message: null, shared: false, text: '/wrap 10m', command: { verb: 'wrap', args: '10m' } })
     expect(await typed({ channel_id: CHANNEL, text: '' })).toMatchObject({ conversation: CHANNEL, shared: true, where: 'the Slack channel #general', command: { verb: 'help', args: '' } })
   })

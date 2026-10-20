@@ -32,9 +32,9 @@ import { runService } from '@rhizogrip/spore/relay'
   name as `name-2` — through `send`'s `attach`. One that does not come is told to the person and
   kept on the entry with why, so the turn knows of it. A file said around a spore, overheard, is
   named and not fetched. A message that is only files reaches the spore with no text.
-- **The spore is told who wrote and where** (`send`'s `from`), never as words in the text — and,
-  where the platform gets no file from the bot (`can.upload` false), that the place gets none, so
-  the answer is all its reader has.
+- **The spore is told who wrote and where** (`send`'s `from`), never as words in the text — the
+  person's clock too, where the platform says it; and, where the platform gets no file from the
+  bot (`can.upload` false), that the place gets none, so the answer is all its reader has.
 - **Only whom the routing lets in reaches a spore.** Where a conversation lists its `people` — ids,
   `role:<id>`, `"*"` — anyone else is refused, and the log says the line to add; a spore's own post
   (`spore`) is never refused. What a message is to the spores is one decision: said to them,
@@ -74,7 +74,9 @@ import { runService } from '@rhizogrip/spore/relay'
   a limit's wrap shows as `wrapping up`; `wrap` says when it wraps and not when it stops; `extend` is
   not offered, since what a turn may spend is the operator's; a refused message is `busy` or `not
   delivered`, its reason logged; the owner's hint for an unnamed conversation is not posted there;
-  and a file the turn handed back that is not uploaded is not named there, its path going to the log.
+  an answer to a turn nobody there started comes without what started it — a schedule, a webhook,
+  a job — which goes to the log; and a file the turn handed back that is not uploaded is not named
+  there, its path going to the log.
 - **An approval counts only as a press of the relay's own button,** by someone it names
   ([ARCHITECTURE §Approvals](../ARCHITECTURE.md#approvals)). Each one the host asked in a
   conversation of this bot is posted with a button per option, carrying `ap:<id>:<option>`; a
@@ -149,7 +151,7 @@ What `onMessage` gets, the platform normalised:
 |---|---|
 | `id` | the message's identity, unique across every bot that can reach the spore: with the bot's name where the platform's id is per bot |
 | `conversation`, `message` | where it was said, and the platform's id for it (what the answer replies to) |
-| `person` | `{ id, name, groups }`: the platform's id, how the person shows, and the ids of the groups (Discord roles) a `role:<id>` in `people` matches |
+| `person` | `{ id, name, groups, zone }`: the platform's id, how the person shows, the ids of the groups (Discord roles) a `role:<id>` in `people` matches, and the IANA zone of their clock where the platform says it — null or absent where it does not, and one Node does not know is logged and left out |
 | `spore` | the spore that wrote it, where the platform lets spores' posts reach each other; null for a person |
 | `where` | the conversation as a person would name it (`a private chat on Telegram`) |
 | `shared` | whether many people share the conversation |

@@ -640,12 +640,15 @@ the rest stay in the inbox, marked, where `$SPORE_SQL` reads them. A flag on the
 beside it as set-aside is, since it is what the message was when it was said.
 
 **Who said a message is data on its entry, never words in its text.** A relay that hears a
-person passes `send`'s `from`, `{ name, id, where }`, and the entry keeps it as `fromName`,
+person passes `send`'s `from`, `{ name, id, where, zone? }`, and the entry keeps it as `fromName`,
 `fromId` and `fromWhere`: all three or none, and never beside a `schedule`, `hook` or `job`, which
 name what spoke when no person did — an entry has one speaker, and the schema's check and
-`origin_of` both refuse two. `saidOf` renders it as a line ahead of the text, in the runtime's
-voice as it renders the clock's, with the name and the conversation quoted: both are the
-person's to choose, and nothing in them may pass for the runtime speaking. The TUI and `spore log`
+`origin_of` both refuse two. `zone`, kept as `fromZone` and only beside them, is the IANA zone of
+the person's clock where the platform says it (Teams on a message, Slack in a profile), since the
+`Now:` line is UTC and a person reads times in their own. `saidOf` renders it as a line ahead of
+the text, in the runtime's voice as it renders the clock's, with the name and the conversation
+quoted — both are the person's to choose, and nothing in them may pass for the runtime speaking —
+and, with a zone, the entry's `at` in that clock and its offset from UTC. The TUI and `spore log`
 read the same fields and show a name.
 
 **A file sent with a message, and a message too long to inline, land in `<ws>/inbox.d/`.** A
@@ -1887,7 +1890,8 @@ logged with the line to add. In a conversation many people share, stopping, wrap
 a turn is for those its `people` name, not everyone `"*"` lets talk. A conversation the routing
 makes `brief` — each one a bot's `"brief": true` covers unless it says otherwise — is told its
 spore's state and its answers and nothing of how it runs: no model, spend, limits or stop reason,
-which go to the service's log, and no `extend`, since what a turn may spend is the operator's. A
+no schedule, webhook or job that started a turn, and no path in the workspace — which go to the
+service's log — and no `extend`, since what a turn may spend is the operator's. A
 connector is its adapter —
 the transport, the platform's API, what it calls a conversation and a person, and whether a
 message addresses a spore — and passes the conformance suite (`test/fixtures/relay-conformance.js`)

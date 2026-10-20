@@ -129,7 +129,8 @@ describe('what of a turn reaches a conversation', () => {
     expect(reply({ record: { stopReason: 'soft:cost', output: 'partial' } }, brief)).toBe('partial')
     expect(reply({ record: { stopReason: 'error', error: 'KILLED', output: null } }, brief)).toBe('no answer this time')
     expect(reply({ record: { stopReason: 'quiet', output: null } }, brief)).toBe('nothing to say')
-    expect(announce({ record: { stopReason: 'hard:wall', output: null }, asked: [{ schedule: 'digest' }] }, brief)).toBe('schedule "digest"\n\nno answer this time')
+    expect(announce({ record: { stopReason: 'hard:wall', output: null }, asked: [{ schedule: 'digest' }] }, brief)).toBe('no answer this time')
+    expect(announce({ record: { stopReason: 'answer', output: 'tried again' }, asked: [{ schedule: 'digest' }] }, brief)).toBe('tried again')
     expect(waiting({ record: { stopReason: 'error', error: 'START_FAILED' } }, brief)).toBe('no answer yet — your message waits for the next turn')
   })
 

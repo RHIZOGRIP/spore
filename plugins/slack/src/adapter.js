@@ -162,7 +162,7 @@ const filesOf = (event) => (event.files ?? []).map((file, i) => {
  * A direct message or a mention of the bot in a channel, as the relay takes it: one in a direct
  * message reaches the person's spore; one in a channel is its thread's, answered there.
  */
-export async function normalize (event, { team, me, nameOf, channelOf }) {
+export async function normalize (event, { team, me, nameOf, zoneOf, channelOf }) {
   const direct = event.type === 'message'
   const text = (await plain(event.text ?? '', me, nameOf, channelOf)) || null
   const command = text?.match(COMMAND)
@@ -170,7 +170,7 @@ export async function normalize (event, { team, me, nameOf, channelOf }) {
     id: `${team}/${event.channel}/${event.ts}`,
     conversation: direct ? event.user : `${event.channel}${THREAD}${event.thread_ts ?? event.ts}`,
     message: event.ts,
-    person: { id: event.user, name: await nameOf(event.user), groups: [] },
+    person: { id: event.user, name: await nameOf(event.user), groups: [], zone: await zoneOf(event.user) },
     spore: null,
     where: await whereOf(event.channel, channelOf),
     shared: !direct,
@@ -182,7 +182,7 @@ export async function normalize (event, { team, me, nameOf, channelOf }) {
 }
 
 /** `/spore <verb> [args]`, as a message from the person who typed it, where they typed it. */
-export async function commandOf (payload, { team, nameOf, channelOf }) {
+export async function commandOf (payload, { team, nameOf, zoneOf, channelOf }) {
   const direct = payload.channel_id.startsWith('D')
   const text = payload.text.trim()
   const [verb = 'help', ...args] = text ? text.split(/\s+/) : []
@@ -190,7 +190,7 @@ export async function commandOf (payload, { team, nameOf, channelOf }) {
     id: `${team}/${payload.channel_id}/${payload.trigger_id}`,
     conversation: direct ? payload.user_id : payload.channel_id,
     message: null,
-    person: { id: payload.user_id, name: await nameOf(payload.user_id), groups: [] },
+    person: { id: payload.user_id, name: await nameOf(payload.user_id), groups: [], zone: await zoneOf(payload.user_id) },
     spore: null,
     where: await whereOf(payload.channel_id, channelOf),
     shared: !direct,
@@ -251,22 +251,25 @@ const blocksOf = ({ native, fallback }) => {
 export function createAdapter ({ slack, receive, team, me }) {
   let kept = null
   let save = null
-  const names = new Map()
+  const people = new Map()
   const channels = new Map()
 
-  const nameOf = async (id) => {
-    if (!names.has(id)) {
+  /** How a person shows, and the zone of the clock their profile sets — null where it sets none. */
+  const personOf = async (id) => {
+    if (!people.has(id)) {
       const user = await slack.user(id)
-      names.set(id, user.profile?.display_name || user.profile?.real_name || user.real_name || user.name)
+      people.set(id, { name: user.profile?.display_name || user.profile?.real_name || user.real_name || user.name, zone: user.tz ?? null })
     }
-    return names.get(id)
+    return people.get(id)
   }
+  const nameOf = async (id) => (await personOf(id)).name
+  const zoneOf = async (id) => (await personOf(id)).zone
 
   const channelOf = async (id) => {
     if (!channels.has(id)) channels.set(id, (await slack.channel(id)).name)
     return channels.get(id)
   }
-  const lookups = { team, me, nameOf, channelOf }
+  const lookups = { team, me, nameOf, zoneOf, channelOf }
 
   const imOf = async (person) => {
     if (!kept.ims[person]) {

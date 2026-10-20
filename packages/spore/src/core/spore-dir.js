@@ -358,15 +358,26 @@ export function turnOfMessage (ws, { inboxNo, at }) {
 const FROM_FIELDS = ['name', 'id', 'where']
 const FROM_ID = /^[a-z][a-z0-9-]*:\S+$/
 
+/** Whether `zone` is a time zone this Node knows by its IANA name, as `Asia/Dubai`. */
+export const isZone = (zone) => {
+  if (typeof zone !== 'string' || !/^[A-Za-z_]+(\/[A-Za-z0-9_+-]+)*$/.test(zone)) return false
+  try {
+    return Boolean(new Intl.DateTimeFormat('en-US', { timeZone: zone }))
+  } catch {
+    return false
+  }
+}
+
 function checkFrom (from, { schedule, hook, job }) {
   const shaped = typeof from === 'object' && from !== null && !Array.isArray(from) &&
-    Object.keys(from).every(key => FROM_FIELDS.includes(key)) &&
+    Object.keys(from).every(key => FROM_FIELDS.includes(key) || key === 'zone') &&
     FROM_FIELDS.every(key => typeof from[key] === 'string' && from[key].trim() !== '') &&
-    FROM_ID.test(from.id)
+    FROM_ID.test(from.id) &&
+    (from.zone === undefined || isZone(from.zone))
   if (!shaped) {
     throw new SporeError('a message\'s from says who said it and where', {
       type: 'FROM_INVALID',
-      detail: `got ${JSON.stringify(from)}, expected { name, id, where }: how the person shows, <kind>:<their id> (as telegram:148392011), and the conversation as a person would name it`
+      detail: `got ${JSON.stringify(from)}, expected { name, id, where, zone? }: how the person shows, <kind>:<their id> (as telegram:148392011), the conversation as a person would name it, and the IANA zone of their clock where the platform says it (as Asia/Dubai)`
     })
   }
   if (schedule || hook || job) {
@@ -416,7 +427,7 @@ function entryFor (ws, said, { attach = [], schedule, hook, job, from, tracepare
     ...(schedule ? { schedule: schedule.name, due: schedule.due } : {}),
     ...(hook ? { hook: hook.name, hookDelivery: hook.delivery, ...(hook.event ? { hookEvent: hook.event } : {}) } : {}),
     ...(job ? { job: job.name, jobEvent: job.event, jobRun: job.run } : {}),
-    ...(from ? { fromName: storable(from.name), fromId: from.id, fromWhere: storable(from.where) } : {}),
+    ...(from ? { fromName: storable(from.name), fromId: from.id, fromWhere: storable(from.where), ...(from.zone ? { fromZone: from.zone } : {}) } : {}),
     ...(traceparent ? { traceparent } : {}),
     ...(requestId !== undefined ? { requestId: storable(requestId) } : {}),
     ...(replyTo !== undefined ? { replyTo } : {}),
@@ -703,6 +714,23 @@ export function cellsOf (ws, origin, { limit }) {
   return reading(ws, [], db => db.prepare('SELECT at, ref, answer, error, costUsd FROM cells WHERE origin = ? ORDER BY cellNo DESC LIMIT ?').all(origin, limit))
 }
 
+/** `at` on the speaker's clock: `2026-10-20 12:07 their time (Tuesday, Asia/Dubai, UTC+04:00)`. */
+function theirTime (at, zone) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: zone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    weekday: 'long',
+    timeZoneName: 'longOffset'
+  }).formatToParts(new Date(at)).map(part => [part.type, part.value]))
+  const offset = parts.timeZoneName === 'GMT' ? 'UTC' : parts.timeZoneName.replace('GMT', 'UTC')
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} their time (${parts.weekday}, ${zone}, ${offset})`
+}
+
 /**
  * What a turn reads when this entry comes up.
  *
@@ -723,7 +751,8 @@ export function saidOf (entry) {
   } else if (entry.fromName) {
     // The person's name and the conversation's are theirs to choose, so both are quoted: nothing
     // in them can pass for the runtime speaking.
-    parts.push(`[Said by ${JSON.stringify(entry.fromName)} (${entry.fromId}) in ${JSON.stringify(entry.fromWhere)}.]`)
+    const clock = entry.fromZone ? `, at ${theirTime(entry.at, entry.fromZone)}` : ''
+    parts.push(`[Said by ${JSON.stringify(entry.fromName)} (${entry.fromId}) in ${JSON.stringify(entry.fromWhere)}${clock}.]`)
   }
 
   // The clock is not a person: what it says is a task set in advance, and no one is there
