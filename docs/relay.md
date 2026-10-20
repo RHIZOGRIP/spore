@@ -32,7 +32,9 @@ import { runService } from '@rhizogrip/spore/relay'
   name as `name-2` — through `send`'s `attach`. One that does not come is told to the person and
   kept on the entry with why, so the turn knows of it. A file said around a spore, overheard, is
   named and not fetched. A message that is only files reaches the spore with no text.
-- **The spore is told who wrote and where** (`send`'s `from`), never as words in the text.
+- **The spore is told who wrote and where** (`send`'s `from`), never as words in the text — and,
+  where the platform gets no file from the bot (`can.upload` false), that the place gets none, so
+  the answer is all its reader has.
 - **Only whom the routing lets in reaches a spore.** Where a conversation lists its `people` — ids,
   `role:<id>`, `"*"` — anyone else is refused, and the log says the line to add; a spore's own post
   (`spore`) is never refused. What a message is to the spores is one decision: said to them,
@@ -54,6 +56,9 @@ import { runService } from '@rhizogrip/spore/relay'
   and `taken` comes off — replaced by the bot's `failed` reaction when the turn ended without an
   answer, as it is on a message the spore refused. A turn nobody in the conversation started goes to
   the spore's `replyTo` default, labelled with where it came from; a `quiet` turn tells no one.
+- **What the turn left in `data/out/` follows the answer,** uploaded where `can.upload`, up to
+  `limits.file`; a file that is not is named by its path in the workspace, which only the operator
+  can reach.
 - **The answer is formatted.** It goes to the adapter as Markdown, cut at a line under the platform's
   limit, a code block a piece ends inside closed and opened again in the next; what the relay says
   itself — status, notices — is plain.
@@ -68,7 +73,8 @@ import { runService } from '@rhizogrip/spore/relay'
   turn ended, and a turn without one says `no answer this time`, the stop reason going to the log;
   a limit's wrap shows as `wrapping up`; `wrap` says when it wraps and not when it stops; `extend` is
   not offered, since what a turn may spend is the operator's; a refused message is `busy` or `not
-  delivered`, its reason logged; and the owner's hint for an unnamed conversation is not posted there.
+  delivered`, its reason logged; the owner's hint for an unnamed conversation is not posted there;
+  and a file the turn handed back that is not uploaded is not named there, its path going to the log.
 - **An approval counts only as a press of the relay's own button,** by someone it names
   ([ARCHITECTURE §Approvals](../ARCHITECTURE.md#approvals)). Each one the host asked in a
   conversation of this bot is posted with a button per option, carrying `ap:<id>:<option>`; a

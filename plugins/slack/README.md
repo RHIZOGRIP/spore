@@ -98,7 +98,8 @@ as a new message: in a direct message, after the conversation as it stands; in a
 thread of the mention. `working…` is then removed.
 The answer is sent as Markdown, so tables and fenced code render, with Slack's mentions in it
 broken so it pings no one; what the bot says itself — status, notices — is plain text. What the
-turn left in `data/out/` is named, one line a file.
+turn left in `data/out/` is named, one line a file — except in a brief conversation, where the log
+names it; the spore is told that files do not reach Slack.
 
 A file sent to the bot reaches the spore, fetched with the bot's token — up to 25 MB each, or the
 bot file's `"files": "10MB"` (`false` takes none). A file shared in a Slack Connect channel comes

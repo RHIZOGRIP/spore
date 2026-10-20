@@ -230,7 +230,8 @@ is working space and is not listed; it stays in the workspace for whoever looks.
 answer is not assumed to be one who looks: whatever the identity, the runtime's rules
 (`domainRules`) tell the agent that its reader — in a chat, at a terminal or through the API —
 gets the answer and `data/out/`, never the workspace, so a path into it is no answer; an identity
-whose person works in the workspace says so.
+whose person works in the workspace says so. Where a chat gets no file from its bot, the relay's
+`from` says so, and the answer is all the reader gets.
 
 **Observed by walking `data/out/`, not reported by the agent**. `deliverablesIn()`
 (`src/core/deliverables.js`) takes every file there whose mtime is at or after the turn's start

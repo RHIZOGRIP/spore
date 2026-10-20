@@ -37,8 +37,10 @@ never faces the internet itself. With nginx, a path per bot:
 location = /ops/api/messages { proxy_pass http://127.0.0.1:3978/api/messages; }
 ```
 
-Once the service runs, `curl -i -X POST https://<your host>/ops/api/messages` is answered `401`
-and the service logs `refused an activity: it carries no bearer token`: the proxy reaches it.
+Once the service runs, `curl -i -X POST -H 'content-type: application/json' -d '{}'
+https://<your host>/ops/api/messages` is answered `401` and the service logs `refused an activity:
+it carries no bearer token`: the proxy reaches it. Without a JSON body it is answered `400`, and
+nothing is logged.
 
 Turn on the Azure Bot's Microsoft Teams channel; until it is on, Teams shows the app as
 `Invalid Bot: Please make sure the bot is registered and Teams channel is enabled`. Then a Teams
@@ -104,7 +106,8 @@ is a new message — in a channel, in the thread of the message it answers — a
 removed, or marked `answered below` where Teams will not remove it; in a channel thread, Teams shows
 `This message has been deleted.` where it was. The answer is sent in Teams' extended Markdown,
 so tables and fenced code render; what the bot says itself — status, notices — is plain text,
-line for line. What the turn left in `data/out/` is named, one line a file.
+line for line. What the turn left in `data/out/` is named, one line a file — except in a brief
+conversation, where the log names it; the spore is told that files do not reach Teams.
 
 A file sent in a personal chat reaches the spore, fetched from the sender's OneDrive by the link
 Teams gives the bot, as does an image pasted there, which Teams serves the bot alone — up to 25 MB

@@ -137,7 +137,7 @@ export function readRules (reads, home = accountHome()) {
 const ANSWER_RULES = 'Whoever reads your answer sees the answer and the files you hand back in data/out/, never your ' +
   'workspace: data/, state.sqlite, calls/ and the rest are yours alone, unless your instructions say the person ' +
   'works in them with you. Never send them to a path there — say what they need in the answer, and put a file ' +
-  'they should have in data/out/.'
+  'they should have in data/out/. Where the place they wrote from gets no files, the answer is all they get.'
 
 /**
  * Only the plugins the definition names, whatever else is in `plugins/`: a file left from one it

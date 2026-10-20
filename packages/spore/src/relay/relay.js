@@ -224,7 +224,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   }
 
   const requestOf = (message, name) => `${kind}:${message.id}${message.addresses ? `:${name}` : ''}`
-  const fromOf = (message) => ({ name: message.person.name, id: `${kind}:${message.person.id}`, where: message.where })
+  const fromOf = (message) => ({ name: message.person.name, id: `${kind}:${message.person.id}`, where: adapter.can.upload ? message.where : `${message.where}, which gets no files` })
 
   /**
    * `show` is the conversation's, or, where the bot file leaves it, the platform's own for a
@@ -536,25 +536,33 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     save()
   }
 
-  const hand = async (attempt, conversation, ws, as, { files, more }) => {
+  /**
+   * The files a turn handed back, uploaded where the platform takes them. One that is not names
+   * its place in the workspace, which only the operator can reach, so a brief conversation is not
+   * told it and the log is.
+   */
+  const hand = async (attempt, conversation, ws, as, { files, more }, { brief, turnNo }) => {
+    const mention = (text) => brief
+      ? log(`turn ${turnNo}: ${text} — not said in ${where(conversation)}, which is brief`)
+      : attempt(() => adapter.post(conversation, text, { as }))
     for (const file of files) {
       const path = resolve(ws, file.path)
       if (!existsSync(path)) {
-        await attempt(() => adapter.post(conversation, `${file.path} is no longer there`, { as }))
+        await mention(`${file.path} is no longer there`)
         continue
       }
       const bytes = statSync(path).size
       if (!adapter.can.upload) {
-        await attempt(() => adapter.post(conversation, `${file.path} is in the spore's workspace`, { as }))
+        await mention(`${file.path} is in the spore's workspace`)
         continue
       }
       if (bytes > adapter.limits.file) {
-        await attempt(() => adapter.post(conversation, `${file.path} is ${(bytes / 1024 / 1024).toFixed(0)} MB, more than ${adapter.label} takes; it is in the spore's workspace`, { as }))
+        await mention(`${file.path} is ${(bytes / 1024 / 1024).toFixed(0)} MB, more than ${adapter.label} takes; it is in the spore's workspace`)
         continue
       }
       await attempt(() => adapter.upload(conversation, { path, mime: file.mime }, file.path, { as }))
     }
-    if (more) await attempt(() => adapter.post(conversation, leftOut(more), { as }))
+    if (more) await mention(leftOut(more))
   }
 
   /**
@@ -619,7 +627,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         const [first, ...rest] = pieces(text, adapter.limits.message)
         await attempt(() => formatted(first, { answering, for: forOf(mine), as: name }))
         for (const part of rest) await attempt(() => formatted(part, { as: name }))
-        await hand(attempt, conversation, ws, name, handed)
+        await hand(attempt, conversation, ws, name, handed, { brief, turnNo: entry.turnNo })
         for (const note of mine) {
           await retire(attempt, conversation, await noteOf(note), ANSWERED, forOf([note]))
           if (note.taken) await mark(attempt, conversation, note.asked, () => [answered ? null : reactionsOf(adapter, botFile).failed, note.taken])

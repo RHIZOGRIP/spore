@@ -221,7 +221,8 @@ export function conformance (harness, platformTests = () => {}) {
         start()
         const asked = say({ conversation: '1', text: 'hello' })
         await until(() => posted('1', 'hello back'))
-        expect(readInbox(ws)[0]).toMatchObject({ fromName: asked.from.name, fromId: asked.from.id, fromWhere: asked.from.where })
+        const where = spec.can.upload ? asked.from.where : `${asked.from.where}, which gets no files`
+        expect(readInbox(ws)[0]).toMatchObject({ fromName: asked.from.name, fromId: asked.from.id, fromWhere: where })
         expect(harness.words(readInbox(ws)[0].text)).toBe('hello')
       })
 
@@ -495,6 +496,20 @@ export function conformance (harness, platformTests = () => {}) {
         await until(() => posted('1', 'no answer this time'))
         expect(posts('1').some(one => /cancelled/.test(one.text))).toBe(false)
         expect(logs.some(line => /^turn 1 ended cancelled.* — not said in .*, which is brief$/.test(line))).toBe(true)
+      })
+
+      it('is never told where in the workspace a file it was not sent is, and the log is', async () => {
+        routes({ 1: { spore: 'triage' } }, {}, { brief: true })
+        reply = async (input, round) => round === 0
+          ? calls('wsexec', { command: 'mkdir -p data/out && echo report > data/out/report.md', out: 'data/log.txt' })
+          : answers('wrote it')
+        start()
+        say({ conversation: '1', text: 'write me a report' })
+        const handed = spec.can.upload
+          ? () => seen('1').some(one => one.op === 'upload')
+          : () => logs.some(line => /^turn 1: data\/out\/report\.md is in the spore's workspace — not said in .*, which is brief$/.test(line))
+        await until(() => posted('1', 'wrote it') && handed())
+        expect(posts('1').some(one => /data\//.test(one.text ?? ''))).toBe(false)
       })
     })
 
