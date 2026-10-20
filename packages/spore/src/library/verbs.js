@@ -518,22 +518,33 @@ function historyOf (turn) {
   }
 }
 
+function placesOf (config, live) {
+  const seen = new Set()
+  const places = (from, paths) => paths.flatMap(ws => {
+    if (seen.has(ws)) return []
+    seen.add(ws)
+    return [{ ws, from }]
+  })
+  const home = config.home && existsSync(config.home) ? places(config.home, sporesInHome(config.home, config.homeSplit)) : []
+  return [...home, ...live.flatMap(path => places(path, isWorkspace(path) ? [path] : []))]
+}
+
+/** The workspaces `list` reports, in its order, without reading any of them: what a follower needs on every wake. */
+export function sporePaths ({ configFile = CONFIG_FILE } = {}) {
+  const config = readConfig(configFile)
+  return placesOf(config, existing(config.workspaces).live).map(place => place.ws)
+}
+
 export function list ({ where, disk = false, configFile = CONFIG_FILE } = {}) {
   const config = where
     ? { home: resolve(where), workspaces: [], file: CONFIG_FILE, exists: true }
     : readConfig(configFile)
   const { live, missing } = existing(config.workspaces)
 
-  const seen = new Set()
-  const rows = (from, paths) => paths.flatMap(ws => {
-    if (seen.has(ws)) return []
-    seen.add(ws)
+  const workspaces = placesOf(config, live).map(({ ws, from }) => {
     const state = stateOf(ws)
-    return [{ ws, from, ...state, historyOver: historyOver(state.last?.historySent, state.last?.historyBound), ...worksIn(ws), ...(disk ? { bytes: diskUsage(ws).total } : {}) }]
+    return { ws, from, ...state, historyOver: historyOver(state.last?.historySent, state.last?.historyBound), ...worksIn(ws), ...(disk ? { bytes: diskUsage(ws).total } : {}) }
   })
-
-  const home = config.home && existsSync(config.home) ? rows(config.home, sporesInHome(config.home, config.homeSplit)) : []
-  const outside = live.flatMap(path => rows(path, isWorkspace(path) ? [path] : []))
 
   return {
     configured: config.exists,
@@ -547,7 +558,7 @@ export function list ({ where, disk = false, configFile = CONFIG_FILE } = {}) {
       ...missing.map(path => ({ path, why: 'gone' })),
       ...live.filter(path => !isWorkspace(path)).map(path => ({ path, why: 'no spore.cmk, so not a workspace' }))
     ],
-    workspaces: [...home, ...outside]
+    workspaces
   }
 }
 

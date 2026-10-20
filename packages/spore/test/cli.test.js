@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, spendLimits, workspaceFor, containing, followingDocs, hereSnapshots } from '../src/library/config.js'
 import { workspacesIn, isWorkspace } from '../src/library/discover.js'
-import { define, defaultModel, defaultSporangiumPath, switchModel, edit, grantOf, list, log, pause, show, precursors, schedules, setDefaultModel, setSchedule, removeSchedule, sql, unpause, usage } from '../src/library/verbs.js'
+import { define, defaultModel, defaultSporangiumPath, switchModel, edit, grantOf, list, log, pause, show, sporePaths, precursors, schedules, setDefaultModel, setSchedule, removeSchedule, sql, unpause, usage } from '../src/library/verbs.js'
 import { billingOf } from 'mohdel/providers'
 import { definitionWith } from '../src/core/identity-defaults.js'
 import { takeSlot } from '../src/core/admission.js'
@@ -705,6 +705,15 @@ describe('the read verbs', () => {
     const result = list({ configFile: CONFIG })
 
     expect(result.workspaces.map(row => row.ws)).toEqual([outside])
+  })
+
+  it('names the same spores as the list, in its order', () => {
+    workspace(resolve(DIR, 'home', 'made'))
+    const outside = workspace(resolve(DIR, 'elsewhere', 'agent'))
+    writeFileSync(CONFIG, JSON.stringify({ home: resolve(DIR, 'home'), workspaces: [outside, resolve(DIR, 'home', 'made'), resolve(DIR, 'vanished')] }))
+
+    expect(sporePaths({ configFile: CONFIG })).toEqual(list({ configFile: CONFIG }).workspaces.map(row => row.ws))
+    expect(sporePaths({ configFile: CONFIG })).toEqual([resolve(DIR, 'home', 'made'), outside])
   })
 
   it('says which listed path is gone and which is simply not a workspace', () => {

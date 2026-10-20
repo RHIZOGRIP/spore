@@ -471,6 +471,15 @@ more history than its bound, by more than a tenth. `missing` is `[{ path, why }]
 not a spore. `paused` is `paused()`, `spend` is `spendSoFar()`. Throws the `CONFIG_*` refusals of
 `readConfig`.
 
+### `sporePaths`
+
+```
+sporePaths({ configFile }) → string[]
+```
+
+The `ws` of every row `list` gives, in its order, with none of the spores read: what a follower
+hands `watchAll`, which asks for the list again on every wake.
+
 ### `show`
 
 ```

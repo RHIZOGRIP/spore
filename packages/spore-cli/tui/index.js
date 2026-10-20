@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
 import { CombinedAutocompleteProvider, Input, isKeyRelease, Markdown, matchesKey, ProcessTerminal, ScrollView, SelectList, truncateToWidth, TuiAltScreen, visibleWidth, VStack, wrapTextWithAnsi } from '@earendil-works/pi-tui'
-import { applyEvent, changeText, createLive, curate, durationText, extendTurn, grantOf, list, liveIn, loadMohdelEnvironment, outbox, pause, paused, readInbox, readTurns, RUNNING, send, SERVICE_STATE_DIR, show, stateOf, stop, switchModel, unpause, upstream, watchAll, wrapTurn } from '@rhizogrip/spore'
+import { applyEvent, changeText, createLive, curate, durationText, extendTurn, grantOf, list, liveIn, loadMohdelEnvironment, outbox, pause, paused, readInbox, readTurns, RUNNING, send, SERVICE_STATE_DIR, show, sporePaths, stateOf, stop, switchModel, unpause, upstream, watchAll, wrapTurn } from '@rhizogrip/spore'
 import chalk from 'chalk'
 
 import { runningJob, scheduleLine } from '../src/dispatch.js'
@@ -597,7 +597,7 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
   })
 
   const follow = async () => {
-    for await (const item of watchAll(() => list().workspaces.map(row => row.ws), { signal: following.signal })) {
+    for await (const item of watchAll(sporePaths, { signal: following.signal })) {
       if (item.ws === state.ws) {
         if (item.event) {
           if (item.event.seq <= state.lastSeq) continue
