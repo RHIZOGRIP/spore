@@ -13,6 +13,7 @@ alt+enter      a new line
 ctrl+p         open another spore
 ctrl+o         tool calls in full — an edit or a write as its diff
 alt+c          copy the last code block of the last answer, exactly as written
+click          the `· /copy <n>` on a code block's opening fence copies that block
 ctrl+g         write the message in $EDITOR
 esc esc        stop the running turn; when none runs, clear the line
 ctrl+c         clear the line

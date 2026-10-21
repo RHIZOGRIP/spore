@@ -11,6 +11,7 @@ import { runningJob, scheduleLine } from '../src/dispatch.js'
 import { COMMANDS, parseCommand } from './commands.js'
 import { history, markOf } from './conversation.js'
 import { changeOf, counts, hunks } from './diff.js'
+import { copyNumber, fenceLabel } from './links.js'
 import { printable } from './printable.js'
 import { PromptEditor } from './prompt.js'
 import { Answer } from './answer.js'
@@ -38,7 +39,7 @@ const markdownTheme = {
   linkUrl: dim,
   code: chalk.yellow,
   codeBlock: (s) => s,
-  codeBlockBorder: dim,
+  codeBlockBorder: (label) => fenceLabel(label, dim),
   quote: chalk.italic,
   quoteBorder: dim,
   hr: dim,
@@ -279,7 +280,7 @@ const ago = (iso, now) => (iso ? `${durationText(now - Date.parse(iso))} ago` : 
  * null for the default; `greeting` is a line shown as the screen opens.
  */
 export async function runTui ({ ws, commands = [], renderTool = null, greeting = null, terminal = new ProcessTerminal() }) {
-  const tui = new TuiAltScreen(terminal)
+  const tui = new TuiAltScreen(terminal, undefined, undefined, { openUrl: copiedByLink })
   const conversation = new Conversation({ renderTool })
   const status = new StatusLine()
   const editor = new PromptEditor(tui, editorTheme)
@@ -401,6 +402,18 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
 
   const copy = async (text, what) => {
     if (await tui.copyTextToClipboard(text)) notice(`copied ${what}`)
+  }
+
+  /**
+   * A click on a code block's `· /copy <n>` label, which is drawn as a link carrying
+   * `spore-copy:<n>`: the same as typing `/copy <n>`.
+   */
+  function copiedByLink (url) {
+    const n = copyNumber(url)
+    if (n === null) return
+    const block = conversation.lastBlocks()[n - 1]
+    if (!block) return notice(`the last answer has no code block ${n}`)
+    return copy(block.text, `code block ${n}`)
   }
 
   const say = (text) => {
