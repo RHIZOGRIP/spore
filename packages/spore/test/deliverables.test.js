@@ -96,6 +96,31 @@ describe('what a file is', () => {
     expect(deliverablesIn(WS, since()).deliverables[0].mime).toBe('application/octet-stream')
   })
 
+  it('names the Office formats a person is handed, whatever case the name is in', () => {
+    const zip = Buffer.concat([Buffer.from('PK\x03\x04'), Buffer.alloc(40)])
+    write(`${OUT_DIR}/report.docx`, zip)
+    write(`${OUT_DIR}/figures.xlsx`, zip)
+    write(`${OUT_DIR}/Deck.PPTX`, zip)
+    const mimes = Object.fromEntries(deliverablesIn(WS, since()).deliverables.map(d => [d.path.split('/').at(-1), d.mime]))
+    expect(mimes).toEqual({
+      'report.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'figures.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Deck.PPTX': 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    })
+  })
+
+  it('names source files as source, where the registry has them as something else or not at all', () => {
+    for (const [name, mime] of [['main.ts', 'text/x-typescript'], ['lib.rs', 'text/x-rust'], ['run.py', 'text/x-python'], ['parse.ml', 'text/x-ocaml'], ['notes.yaml', 'text/yaml']]) {
+      write(`data/${name}`, 'x')
+      expect(mimeOf(resolve(WS, 'data', name))).toBe(mime)
+    }
+  })
+
+  it('names a picture by its bytes, whatever it was saved as', () => {
+    write('data/chart.jpg', PNG)
+    expect(mimeOf(resolve(WS, 'data/chart.jpg'))).toBe('image/png')
+  })
+
   it('does not throw on a path that is gone', () => {
     expect(mimeOf(resolve(WS, 'data/never-existed'))).toBe('application/octet-stream')
   })

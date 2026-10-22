@@ -1504,8 +1504,9 @@ to its file, and its attachments.
 mimeOf(absPath) → string
 ```
 
-A file's media type, by extension, else by its first bytes for images, else
-`application/octet-stream`.
+A file's media type: an image's by its first bytes, whatever its name; anything else's by its
+extension in any case — every one mime-db registers, with `.ts`, `.rs`, `.py` and `.ml` as
+source; else `application/octet-stream`.
 
 ### `cloneCapability`
 

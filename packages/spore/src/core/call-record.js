@@ -9,6 +9,8 @@ import { closeSync, createReadStream, existsSync, mkdirSync, openSync, readFileS
 import { extname, relative, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 
+import { lookup } from 'mime-types'
+
 import { RECORD, REFUSED, mark, marked } from './marks.js'
 import { SNIFF_BYTES, sniffImage } from './media.js'
 import { textOf } from './message.js'
@@ -25,38 +27,37 @@ const CARRIAGE_RETURN = 13
 const SPACE = 32
 const DEL = 127
 
-const MIME_BY_EXT = {
-  '.json': 'application/json',
-  '.md': 'text/markdown',
-  '.csv': 'text/csv',
-  '.html': 'text/html',
-  '.js': 'text/javascript',
+// Source files mime-db does not know, or names as something else: `.ts` as an MPEG transport
+// stream, `.rs` as an XML format.
+const SOURCE_MIME = {
   '.ml': 'text/x-ocaml',
   '.py': 'text/x-python',
-  '.txt': 'text/plain',
-  '.pdf': 'application/pdf'
+  '.ts': 'text/x-typescript',
+  '.rs': 'text/x-rust'
 }
 
 /**
- * The one naming of what a file is. The extension answers for the formats a workspace
- * mostly holds, and the bytes answer when it does not — a chart the agent just rendered
- * has whatever name it was given, and a consumer deciding whether to show it or attach it
- * has only this to go on.
+ * The one naming of what a file is. An image is named by its bytes — a chart the agent just
+ * rendered, or a picture downloaded under whatever its URL ended in, has whatever name it was
+ * given — and everything else by its extension, in any case, for every format mime-db
+ * registers. A consumer deciding whether to show a file or attach it has only this to go on.
  */
 export function mimeOf (absPath) {
-  const byExt = MIME_BY_EXT[extname(absPath)]
-  if (byExt) return byExt
+  return imageIn(absPath) || SOURCE_MIME[extname(absPath).toLowerCase()] || lookup(absPath) || 'application/octet-stream'
+}
+
+function imageIn (absPath) {
+  let fd
   try {
-    const fd = openSync(absPath, 'r')
-    try {
-      const head = Buffer.alloc(SNIFF_BYTES)
-      const read = readSync(fd, head, 0, SNIFF_BYTES, 0)
-      return sniffImage(head.subarray(0, read)) || 'application/octet-stream'
-    } finally {
-      closeSync(fd)
-    }
+    fd = openSync(absPath, 'r')
   } catch {
-    return 'application/octet-stream'
+    return null
+  }
+  try {
+    const head = Buffer.alloc(SNIFF_BYTES)
+    return sniffImage(head.subarray(0, readSync(fd, head, 0, SNIFF_BYTES, 0)))
+  } finally {
+    closeSync(fd)
   }
 }
 
