@@ -1,0 +1,69 @@
+{
+  "name": "@rhizogrip/spore-plugin-console",
+  "version": "0.1.0",
+  "description": "A console for spores: a chat whose other end is a program — test benches, scripted checks, automation, demos — over loopback HTTP, run as a service",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/console"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "NOTICE"
+  ],
+  "peerDependencies": {
+    "@rhizogrip/spore": "^1.33.0"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "spore": {
+    "works": "^1.33.0",
+    "services": {
+      "console": {
+        "what": "a console of yours, each person it maps reaching their spore through loopback HTTP",
+        "program": "./bin/spore-console.js",
+        "instances": {
+          "dir": "console",
+          "ext": ".json",
+          "called": "console"
+        },
+        "check": [
+          "--check"
+        ]
+      }
+    }
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-console v${version}",
+      "tagName": "plugin-console-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}
