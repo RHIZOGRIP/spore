@@ -12,7 +12,8 @@
  *                                          share, whose `people`, left out, are everyone and, by id,
  *                                          whoever `say` writes as there unless told — with the bot's
  *                                          other `fields` (`react`, `brief`)
- *   shared(n)                              the id of the nth conversation many people share
+ *   shared(n)                              the id of the nth conversation many people share — left out
+ *                                          where the platform has none
  *   platform()                             a fresh fake platform
  *   adapter(platform, bot, botFile)        the live adapter over it
  *   words(text)                            the person's words in what the spore was given for them
@@ -231,6 +232,15 @@ export function conformance (harness, platformTests = () => {}) {
         expect(harness.words(readInbox(ws)[0].text)).toBe('hello')
       })
 
+      it('reaches the spore under the trace the platform carried it with', async () => {
+        const traceparent = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01'
+        shaping = (adapter) => ({ ...adapter, listen: (given) => adapter.listen({ ...given, onMessage: (message) => given.onMessage({ ...message, traceparent }) }) })
+        start()
+        say({ conversation: '1', text: 'hello' })
+        await until(() => posted('1', 'hello back'))
+        expect(readInbox(ws)[0].traceparent).toBe(traceparent)
+      })
+
       it('reaches its turn with a key added to the environment file after the service started, and never a credential', async () => {
         let environ = null
         reply = async () => {
@@ -389,7 +399,7 @@ export function conformance (harness, platformTests = () => {}) {
         expect(notes('1')).toHaveLength(1)
       })
 
-      it('is how a conversation many people share shows a turn by default, or as its entry says', async () => {
+      it.runIf(harness.shared)('is how a conversation many people share shows a turn by default, or as its entry says', async () => {
         const other = spec.showShared === 'react' ? 'working' : 'react'
         const [seven, eight] = [harness.shared(7), harness.shared(8)]
         routes({ [seven]: { spore: 'triage', shared: true }, [eight]: { spore: 'triage', shared: true, show: other } })
@@ -862,7 +872,38 @@ export function conformance (harness, platformTests = () => {}) {
         expect(environ).not.toContain('KPI_HOOK_SECRET')
       })
 
-      it.runIf(spec.can.choose)('takes no press from someone it does not name, none once it is answered, and each on its own approval', async () => {
+      it.runIf(spec.can.choose)('hands the platform who may answer and until when, which press was taken, and how it ended', async () => {
+        const asked = []
+        const settled = []
+        const acks = []
+        shaping = (adapter) => ({
+          ...adapter,
+          ask: (conversation, shown, choices, options) => {
+            asked.push(options)
+            return adapter.ask(conversation, shown, choices, options)
+          },
+          settle: (conversation, note, replacement, options) => {
+            settled.push(options)
+            return adapter.settle(conversation, note, replacement, options)
+          },
+          listen: (given) => adapter.listen({
+            ...given,
+            onChoice: (choice) => given.onChoice({ ...choice, acknowledge: (text, how) => { acks.push([text, how]); return choice.acknowledge(text, how) } })
+          })
+        })
+        start({ approveEveryMs: 50 })
+        const id = ask()
+        await until(() => questions().length === 1)
+        expect(asked).toEqual([{ as: 'triage', fields: [], approval: { id, by: ['1'], until: approval(id).until } }])
+
+        await acknowledged(press(questions()[0], 'Apply', '1'))
+        await until(() => approval(id).told)
+        await acknowledged(press(questions()[0], 'Cancel', '1'))
+        expect(acks).toEqual([['Apply — recorded', { taken: true }], ['this was answered already', undefined]])
+        expect(settled).toEqual([{ ended: { approval: id, state: 'answered', choice: 'apply', by: { id: '1', name: approval(id).answererName }, outcome: 'confirmed', reason: null } }])
+      })
+
+      it.runIf(spec.can.choose && harness.shared)('takes no press from someone it does not name, none once it is answered, and each on its own approval', async () => {
         const group = harness.shared(5)
         routes({ [group]: { spore: 'triage', shared: true, people: ['41', '42'] } })
         start({ approveEveryMs: 50 })
@@ -1003,7 +1044,7 @@ export function conformance (harness, platformTests = () => {}) {
         expect(readInbox(ws)).toEqual([])
       })
 
-      it('stop, wrap or extend a turn in a conversation many people share only for someone its people name, not everyone "*" lets talk', async () => {
+      it.runIf(harness.shared)('stop, wrap or extend a turn in a conversation many people share only for someone its people name, not everyone "*" lets talk', async () => {
         const group = harness.shared(5)
         routes({ [group]: { spore: 'triage', shared: true, people: ['41', '*'] } })
         start()

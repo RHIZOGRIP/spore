@@ -258,6 +258,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         requestId: requestOf(message, name),
         replyTo: `${prefix}${conversation}`,
         from: fromOf(message),
+        ...(message.traceparent ? { traceparent: message.traceparent } : {}),
         env: sendEnv()
       })
     } catch (err) {

@@ -116,8 +116,16 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     if (approval.state !== 'refused') {
       const conversation = conversationOf(approval)
       const replacement = (answer.body && shownOf(answer.body)) ?? { shown: approval.shown, outcome: closing(approval, outcome, reason) }
+      const ended = {
+        approval: approval.id,
+        state: approval.state,
+        choice: approval.choice,
+        by: approval.state === 'answered' ? { id: approval.answererId, name: approval.answererName } : null,
+        outcome,
+        reason
+      }
       try {
-        replaced = await delivery.to(conversation, attempt => attempt(() => adapter.settle(conversation, approval.note, replacement)))
+        replaced = await delivery.to(conversation, attempt => attempt(() => adapter.settle(conversation, approval.note, replacement, { ended })))
       } catch (err) {
         if (signal.aborted) return
         logged(approval, name, `the question in ${where(conversation)} was not closed — ${said(err)}`)
@@ -147,7 +155,7 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     const choices = approval.options.map(option => ({ ...option, data: `ap:${approval.id}:${option.id}` }))
     let posted
     try {
-      posted = await delivery.to(conversation, attempt => attempt(() => adapter.ask(conversation, shown, choices, { as: name, fields: adapter.can.fields ? fields : [] })))
+      posted = await delivery.to(conversation, attempt => attempt(() => adapter.ask(conversation, shown, choices, { as: name, fields: adapter.can.fields ? fields : [], approval: { id: approval.id, by: approval.approvers, until: approval.until } })))
     } catch (err) {
       if (err.retryable || signal.aborted) return logged(approval, name, `not posted yet — ${said(err)}`)
       return refuse(name, ws, approval, `${adapter.label} refused it — ${said(err)}`)
@@ -222,7 +230,7 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     if (busy.has(id) || !answerApproval(ws, id, { choice, inputs, person })) return acknowledge('this was answered already')
     busy.add(id)
     try {
-      await acknowledge(`${option.label} — recorded`)
+      await acknowledge(`${option.label} — recorded`, { taken: true })
     } catch (err) {
       logged(approval, name, `the press was not acknowledged — ${said(err)}`)
     }

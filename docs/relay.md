@@ -5,7 +5,7 @@ reaches a spore, and the answers come back where they were asked. `@rhizogrip/sp
 half every connector shares, so what a connector promises is kept once. A connector is a plugin
 with a service ([plugins.md §Services](plugins.md#services)) whose program hands the relay an
 **adapter**: the platform's transport, its API, and what it calls a conversation and a person.
-`plugins/telegram/`, `plugins/discord/`, `plugins/teams/` and `plugins/slack/` are four.
+`plugins/telegram/`, `plugins/discord/`, `plugins/teams/`, `plugins/slack/` and `plugins/console/` are five.
 
 ```js
 import { runService } from '@rhizogrip/spore/relay'
@@ -138,8 +138,8 @@ The live part, made once the credentials are proved:
 | `typing(conversation)` | where `can.typing`: the platform's typing indicator, which lasts a few seconds |
 | `fetch(ref, { most })` | a file a person sent, by the `ref` its message listed: the Buffer, or `FILE_TOO_LARGE` past `most` bytes, reading no further. `download(url, { most, headers, fetchImpl })` from `@rhizogrip/spore/relay` is the capped fetch, and never names the URL in an error |
 | `checkBody(native)` | where `can.choose`: why an approval's body for this platform cannot be shown — one not the platform's shape, or one that would answer the bot by itself or ask for input of its own — or null |
-| `ask(conversation, { native, fallback }, choices, { as, fields })` | where `can.choose`: the question posted — `native`, the body for this platform, or `fallback`, the default `{ text, facts }` drawn the platform's way — with a button per choice, `{ id, label, style, data }`, `data` what the press must carry back, and, where `can.fields`, a place to fill in each of `fields`, `{ id, label, value, required }`, whose text the press brings back under its `id` (`[]` where there are none); answers `{ note, shown }`, its id and the payload exactly as sent |
-| `settle(conversation, note, replacement)` | where `can.choose`: the question closed, its buttons and fields gone — replaced by `{ native, fallback }`, or kept as `{ shown, outcome }`, the payload posted with how it ended below; answers the payload sent |
+| `ask(conversation, { native, fallback }, choices, { as, fields, approval })` | where `can.choose`: the question posted — `native`, the body for this platform, or `fallback`, the default `{ text, facts }` drawn the platform's way — with a button per choice, `{ id, label, style, data }`, `data` what the press must carry back, and, where `can.fields`, a place to fill in each of `fields`, `{ id, label, value, required }`, whose text the press brings back under its `id` (`[]` where there are none); `approval` is `{ id, by, until }`, the approval, who may answer it and until when, for a platform that shows them; answers `{ note, shown }`, its id and the payload exactly as sent |
+| `settle(conversation, note, replacement, { ended })` | where `can.choose`: the question closed, its buttons and fields gone — replaced by `{ native, fallback }`, or kept as `{ shown, outcome }`, the payload posted with how it ended below; `ended` is how it ended as data, `{ approval, state, choice, by, outcome, reason }` — `state` `answered` or `expired`, `by` `{ id, name }` or null, `outcome` the hook's (`confirmed`, `failed`) or null; answers the payload sent |
 | `quiet(conversation, { turnNo, origin })` | optional: a turn nobody in a conversation asked — a schedule, a webhook, a job, `origin` saying which — that ended quiet, shown in the spore's default conversation (`replyTo` in `config.json`) where that is this bot's. The core owes no conversation anything for it, so without this member nothing reaches one; for a platform whose reader is a program |
 
 Every failure is a `SporeError` with `retryable` (a refusal is not) and `context.retryAfter` in
@@ -159,6 +159,7 @@ What `onMessage` gets, the platform normalised:
 | `text` | what was written, the platform's markup made plain; null when nothing was |
 | `command` | `{ verb, args }` when the text is a command, else null |
 | `addresses` | the spores the message names; `[]` for one that names none — in a conversation many people share, what was not said to a spore, which the relay drops or, where the routing says `overhear`, gives the spores as overheard; or null where it reaches the conversation's spores without naming them |
+| `traceparent` | optional: the W3C trace context the platform carried the message under, which the turn answering it is parented on |
 | `files` | what came with it, `[{ name, mime, bytes, ref, why }]`: `mime` and `bytes` null where the platform does not say, `ref` the adapter's own handle for `fetch` — or null, with `why`, for one the platform will not hand the bot |
 
 What `onChoice` gets for a press on one of the relay's buttons:
@@ -170,7 +171,7 @@ What `onChoice` gets for a press on one of the relay's buttons:
 | `inputs` | what the person filled in of the approval's fields, `{ <field id>: <text> }`, where `can.fields`; else null. The relay checks it against the fields and answers a press that does not fit with why |
 | `person` | `{ id, name, groups }`, as the platform vouches for them |
 | `where` | the conversation as a person would name it |
-| `acknowledge(text)` | answers the press on the platform at once — Telegram's notice, Teams' invoke response — with `text`, or nothing for null |
+| `acknowledge(text, how)` | answers the press on the platform at once — Telegram's notice, Teams' invoke response — with `text`, or nothing for null; `how` is `{ taken: true }` when the press was recorded as the approval's answer, and absent when it was not taken |
 
 ## The service
 
