@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 12;
+pub const SCHEMA_VERSION: i64 = 13;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -74,6 +74,7 @@ CREATE TABLE t_inbox (
   overheard    INTEGER NOT NULL DEFAULT 0 CHECK (overheard IN (0, 1) AND (overheard = 0 OR (fromName IS NOT NULL AND replyTo IS NULL))),
   approval     TEXT CHECK (approval IS NULL OR (schedule IS NULL AND hook IS NULL AND job IS NULL AND overheard = 0 AND replyTo IS NOT NULL)),
   fromZone     TEXT CHECK (fromZone IS NULL OR (fromName IS NOT NULL AND fromZone <> '')),
+  api          TEXT CHECK (api IS NULL OR (api <> '' AND schedule IS NULL AND hook IS NULL AND job IS NULL AND fromName IS NULL AND overheard = 0 AND approval IS NULL AND replyTo IS NULL)),
   UNIQUE (schedule, due),
   CHECK ((schedule IS NULL) = (due IS NULL)),
   CHECK ((hook IS NULL) = (hookDelivery IS NULL)),
@@ -195,7 +196,7 @@ CREATE VIEW inbox AS
   SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
          i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
          i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
-         i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval,
+         i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval, i.api,
          i.inboxNo <= w.inboxConsumed AS consumed,
          EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
     FROM t_inbox i, t_workspace w;
@@ -338,7 +339,7 @@ CREATE VIEW approvals AS
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 11] = [
+const MIGRATIONS: [(i64, &str); 12] = [
     (
         1,
         r#"
@@ -595,6 +596,22 @@ CREATE VIEW approvals AS
     FROM t_approvals;
 "#,
     ),
+    (
+        12,
+        r#"
+ALTER TABLE t_inbox ADD COLUMN api TEXT CHECK (api IS NULL OR (api <> '' AND schedule IS NULL AND hook IS NULL AND job IS NULL AND fromName IS NULL AND overheard = 0 AND approval IS NULL AND replyTo IS NULL));
+
+DROP VIEW inbox;
+CREATE VIEW inbox AS
+  SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
+         i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
+         i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
+         i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval, i.api,
+         i.inboxNo <= w.inboxConsumed AS consumed,
+         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
+    FROM t_inbox i, t_workspace w;
+"#,
+    ),
 ];
 
 /// Opens the workspace's database for writing — creating it and its schema the first time —
@@ -805,7 +822,7 @@ enum Kind {
 }
 
 /// What an inbox entry may say, by column. `inboxNo` is the database's to give.
-const INBOX_COLUMNS: [(&str, Kind); 24] = [
+const INBOX_COLUMNS: [(&str, Kind); 25] = [
     ("at", Kind::Text),
     ("text", Kind::Text),
     ("bodyPath", Kind::Text),
@@ -830,6 +847,7 @@ const INBOX_COLUMNS: [(&str, Kind); 24] = [
     ("overheard", Kind::Flag),
     ("approval", Kind::Text),
     ("fromZone", Kind::Text),
+    ("api", Kind::Text),
 ];
 
 /// What a turn record carries into its row. `turnNo` and `inboxFrom` are finalization's to
@@ -994,12 +1012,12 @@ pub fn check_reply_to(reply_to: &str) -> Result<(), String> {
     }
 }
 
-/// Who said an inbox entry, when no person did: `schedule:<name>`, `hook:<name>` or `job:<name>`,
-/// from the field naming it. None for a person's message, which may say who the person is with
+/// Who said an inbox entry, when no person did: `schedule:<name>`, `hook:<name>`, `job:<name>` or
+/// `api:<caller>`, from the field naming it. None for a person's message, which may say who the person is with
 /// `fromName`, `fromId` and `fromWhere`, all three, and their clock with `fromZone`. Refused when
 /// it names two speakers.
 pub fn origin_of(entry: &Record) -> Result<Option<String>, String> {
-    let named: Vec<String> = ["schedule", "hook", "job"]
+    let named: Vec<String> = ["schedule", "hook", "job", "api"]
         .iter()
         .filter_map(|kind| {
             entry
@@ -3294,6 +3312,47 @@ mod tests {
         assert!(of(json!({ "hook": "forge", "job": "scan" }))
             .unwrap_err()
             .contains("one at most"));
+        assert_eq!(
+            of(json!({ "api": "engine" })).unwrap().as_deref(),
+            Some("api:engine")
+        );
+        assert!(of(json!({ "api": "engine", "hook": "forge" }))
+            .unwrap_err()
+            .contains("one at most"));
+        assert!(
+            of(json!({ "api": "engine", "fromName": "A", "fromId": "x:1", "fromWhere": "w" }))
+                .unwrap_err()
+                .contains("does not also come from api:engine")
+        );
+    }
+
+    #[test]
+    fn holds_and_keeps_a_delivery_from_a_caller_of_the_api() {
+        let ws = scratch("api-origin");
+        let held = hold_delivery(
+            &ws,
+            &json!({ "at": "t", "text": "analyse it", "api": "engine", "requestId": "api:engine:doc-1" })
+                .to_string(),
+            "2026-10-03T12:00:00.000Z",
+            "2026-10-03T12:00:00.000Z",
+        )
+        .unwrap();
+        assert!(held["held"].as_i64().is_some());
+        assert_eq!(row(&ws, "SELECT origin FROM held")["origin"], "api:engine");
+        assert_eq!(
+            release_held(&ws, "2026-10-03T12:00:00.000Z", true).unwrap(),
+            vec![1]
+        );
+        assert_eq!(
+            row(&ws, "SELECT api, text, requestId FROM inbox"),
+            json!({ "api": "engine", "text": "analyse it", "requestId": "api:engine:doc-1" })
+        );
+        assert!(append_inbox(&ws, r#"{"at":"t","text":"x","api":""}"#).is_err());
+        assert!(append_inbox(
+            &ws,
+            r#"{"at":"t","text":"x","api":"engine","replyTo":"terminal"}"#
+        )
+        .is_err());
     }
 
     #[test]

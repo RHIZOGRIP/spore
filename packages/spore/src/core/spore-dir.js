@@ -368,7 +368,7 @@ export const isZone = (zone) => {
   }
 }
 
-function checkFrom (from, { schedule, hook, job }) {
+function checkFrom (from, { schedule, hook, job, api }) {
   const shaped = typeof from === 'object' && from !== null && !Array.isArray(from) &&
     Object.keys(from).every(key => FROM_FIELDS.includes(key) || key === 'zone') &&
     FROM_FIELDS.every(key => typeof from[key] === 'string' && from[key].trim() !== '') &&
@@ -380,20 +380,20 @@ function checkFrom (from, { schedule, hook, job }) {
       detail: `got ${JSON.stringify(from)}, expected { name, id, where, zone? }: how the person shows, <kind>:<their id> (as telegram:148392011), the conversation as a person would name it, and the IANA zone of their clock where the platform says it (as Asia/Dubai)`
     })
   }
-  if (schedule || hook || job) {
-    throw new SporeError('a message from a person comes from no schedule, webhook or job', {
+  if (schedule || hook || job || api) {
+    throw new SporeError('a message from a person comes from no schedule, webhook, job or caller of the API', {
       type: 'FROM_INVALID',
-      detail: 'from names a person; schedule, hook and job name what said it when no person did — one or the other'
+      detail: 'from names a person; schedule, hook, job and api name what said it when no person did — one or the other'
     })
   }
 }
 
-function entryFor (ws, said, { attach = [], schedule, hook, job, from, traceparent, requestId, replyTo, overheard, approval } = {}) {
-  if (from !== undefined) checkFrom(from, { schedule, hook, job })
-  if (approval !== undefined && !(typeof approval === 'string' && approval && replyTo !== undefined && replyTo !== 'terminal' && !schedule && !hook && !job && !overheard)) {
+function entryFor (ws, said, { attach = [], schedule, hook, job, api, from, traceparent, requestId, replyTo, overheard, approval } = {}) {
+  if (from !== undefined) checkFrom(from, { schedule, hook, job, api })
+  if (approval !== undefined && !(typeof approval === 'string' && approval && replyTo !== undefined && replyTo !== 'terminal' && !schedule && !hook && !job && !api && !overheard)) {
     throw new SporeError('a message telling of an approval names it, and the conversation it was asked in', {
       type: 'APPROVAL_INVALID',
-      detail: `got approval ${JSON.stringify(approval)} with replyTo ${JSON.stringify(replyTo)} — it comes from no schedule, webhook or job, and is not overheard`
+      detail: `got approval ${JSON.stringify(approval)} with replyTo ${JSON.stringify(replyTo)} — it comes from no schedule, webhook, job or caller of the API, and is not overheard`
     })
   }
   if (traceparent !== undefined && !parseTraceparent(traceparent)) {
@@ -407,6 +407,12 @@ function entryFor (ws, said, { attach = [], schedule, hook, job, from, tracepare
     throw new SporeError('a webhook origin names its hook and its delivery', {
       type: 'HOOK_INVALID',
       detail: `got ${JSON.stringify(hook)}, expected { name, delivery, event? }`
+    })
+  }
+  if (api !== undefined && !(typeof api === 'string' && api)) {
+    throw new SporeError('a delivery through the API names its caller', {
+      type: 'API_ORIGIN_INVALID',
+      detail: `got ${JSON.stringify(api)}, expected the caller's name in api.json`
     })
   }
   if (job !== undefined && !(typeof job.name === 'string' && job.name && typeof job.event === 'string' && job.event && typeof job.run === 'string' && job.run)) {
@@ -427,6 +433,7 @@ function entryFor (ws, said, { attach = [], schedule, hook, job, from, tracepare
     ...(schedule ? { schedule: schedule.name, due: schedule.due } : {}),
     ...(hook ? { hook: hook.name, hookDelivery: hook.delivery, ...(hook.event ? { hookEvent: hook.event } : {}) } : {}),
     ...(job ? { job: job.name, jobEvent: job.event, jobRun: job.run } : {}),
+    ...(api !== undefined ? { api } : {}),
     ...(from ? { fromName: storable(from.name), fromId: from.id, fromWhere: storable(from.where), ...(from.zone ? { fromZone: from.zone } : {}) } : {}),
     ...(traceparent ? { traceparent } : {}),
     ...(requestId !== undefined ? { requestId: storable(requestId) } : {}),
@@ -814,11 +821,11 @@ export function readInbox (ws, { after = 0, upto = null } = {}) {
   ).map(inboxEntry))
 }
 
-/** Who said an entry when no person did — `schedule:<name>`, `hook:<name>`, `job:<name>` — else null. */
+/** Who said an entry when no person did — `schedule:<name>`, `hook:<name>`, `job:<name>`, `api:<caller>` — else null. */
 export const originOf = (entry) => native.originOf(JSON.stringify(entry))
 
 /** The origin of what `send`-shaped `options` would say, before an entry is made of them. */
-export const originOfOptions = ({ schedule, hook, job }) => originOf({ schedule: schedule?.name, hook: hook?.name, job: job?.name })
+export const originOfOptions = ({ schedule, hook, job, api }) => originOf({ schedule: schedule?.name, hook: hook?.name, job: job?.name, api })
 
 /** Whether a person said this to the spore: a turn holding it owes them an answer. */
 export const fromPerson = (entry) => !entry.overheard && originOf(entry) === null

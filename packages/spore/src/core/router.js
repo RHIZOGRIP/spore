@@ -10,14 +10,16 @@
 
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 
 import { mimeOf } from './call-record.js'
 import { runShell } from './command.js'
 import { slugOf } from './cell.js'
 import { containOf } from './plugins.js'
-import { durationMs } from '../delegation/definition.js'
+import { durationMs, parseDefinition, sizeBytes } from '../delegation/definition.js'
 import { containing, readConfig } from '../library/config.js'
+import { definitionPath } from './spore-dir.js'
+import { TOOL_NAMES } from './tool-names.js'
 
 export const ROUTE_TIMEOUT_MS = 10_000
 export const OWNER_ROUTE_MOST_MS = 60_000
@@ -93,6 +95,36 @@ export async function runRouter ({ router, ws, payload, headers, origin, event, 
   }
 }
 
+export const ROUTER_SHAPE = `router is { "plugin", "name", "timeout": "45s", "attach": { "files": 20, "bytes": "200MB" }, "reads": ["<a directory>"] or "spore" } — at most ${OWNER_ROUTE_MOST_MS / 1000} s, ${ATTACH_MOST.files} files and ${ATTACH_MOST.bytes / 1024 / 1024} MB; "spore" reads what the spore's reads: grant`
+
+/**
+ * The owner's router as `hooks.json` or `api.json` binds it, its bounds checked against the
+ * runtime's ceilings: `{ router }`, or `{ problem }` saying what is wrong with it.
+ */
+export function parseRouter (raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { problem: 'has a router spore cannot read' }
+  const unknown = Object.keys(raw).filter(key => !['plugin', 'name', 'timeout', 'attach', 'reads'].includes(key))
+  if (unknown.length) return { problem: `has a router field spore does not know — ${unknown.join(', ')}` }
+  if (typeof raw.plugin !== 'string' || !raw.plugin || typeof raw.name !== 'string' || !raw.name) return { problem: 'has a router that names no plugin and router' }
+  const timeoutMs = typeof raw.timeout === 'string' ? durationMs(raw.timeout) : null
+  if (!(timeoutMs > 0 && timeoutMs <= OWNER_ROUTE_MOST_MS)) return { problem: `has a router timeout spore cannot take — ${raw.timeout}` }
+  const files = raw.attach?.files
+  const bytes = typeof raw.attach?.bytes === 'string' ? sizeBytes(raw.attach.bytes) : null
+  if (!(Number.isInteger(files) && files >= 1 && files <= ATTACH_MOST.files && bytes > 0 && bytes <= ATTACH_MOST.bytes)) {
+    return { problem: `has a router attach spore cannot take — ${JSON.stringify(raw.attach)}` }
+  }
+  const reads = raw.reads ?? []
+  if (reads !== 'spore' && !(Array.isArray(reads) && reads.every(dir => typeof dir === 'string' && isAbsolute(dir) && resolve(dir) !== '/'))) {
+    return { problem: `has router reads that are neither directories nor "spore" — ${JSON.stringify(raw.reads)}` }
+  }
+  return { router: { plugin: raw.plugin, name: raw.name, timeoutMs, attach: { files, bytes }, reads: reads === 'spore' ? reads : reads.map(dir => resolve(dir)) } }
+}
+
+/** The directories a binding's router reads in `ws`: its own list, or for `"spore"` the read-only grants of the spore's definition. */
+export const readsOf = (ws, reads) => reads === 'spore'
+  ? parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES }).reads.map(grant => grant.path)
+  : reads
+
 const sizeText = (bytes) => bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${Math.round(bytes / 1024 / 1024 * 10) / 10} MB`
 
 /** What `out/` holds, checked against `attach`: `{ found: [{ name, path, bytes }] }` or `{ failed }`. */
@@ -126,7 +158,7 @@ export async function runOwnerRouter ({ program, programReads, ws, delivery, pay
     return { failed: `could not start — ${err.message}` }
   }
   const missing = reads.find(dir => !existsSync(dir))
-  if (missing) return { failed: `could not start — ${missing}, which its owner lets it read, is not there` }
+  if (missing) return { failed: `could not start — ${missing}, which it is let read, is not there` }
   const scratch = mkdtempSync(join(tmpdir(), 'spore-route-'))
   try {
     mkdirSync(join(scratch, 'out'))

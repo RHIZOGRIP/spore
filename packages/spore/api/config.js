@@ -10,6 +10,7 @@ import { dirname, isAbsolute, resolve } from 'node:path'
 
 import { CONFIG_FILE } from '../src/library/config.js'
 import { SporeError } from '../src/observability/errors.js'
+import { ROUTER_SHAPE, parseRouter } from '../src/core/router.js'
 
 export const API_FILE = 'api.json'
 export const apiPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), API_FILE)
@@ -26,7 +27,8 @@ const matcher = (pattern) => new RegExp(`^${pattern.replace(/[.]/g, '\\.').repla
 
 /**
  * `{ socket, listen, callers, secrets }`: `listen` as `{ host, port }`, each caller `{ name,
- * spores }` with its token kept only as a digest, and `secrets` the variables the tokens came from,
+ * spores, router }` with its token kept only as a digest and `router` the owner's router its
+ * deliveries are held for, or null, and `secrets` the variables the tokens came from,
  * which nothing the API starts is given.
  */
 export function loadApi (path = apiPath(), env = process.env) {
@@ -65,8 +67,10 @@ export function loadApi (path = apiPath(), env = process.env) {
     if (!(Array.isArray(patterns) && patterns.length && patterns.every(p => typeof p === 'string' && PATTERN.test(p)))) {
       throw refuse(path, `has spores for ${name} that are not a list of names or patterns`, 'as ["*"], ["support-*", "ops"]')
     }
+    const bound = caller.router === undefined ? { router: null } : parseRouter(caller.router)
+    if (bound.problem) throw refuse(path, `${bound.problem} for ${name}`, ROUTER_SHAPE)
     secrets.add(variable)
-    return { name, digest: digest(token), spores: patterns.map(matcher) }
+    return { name, digest: digest(token), spores: patterns.map(matcher), router: bound.router }
   })
   return { socket: raw.socket ?? null, listen, callers, secrets }
 }

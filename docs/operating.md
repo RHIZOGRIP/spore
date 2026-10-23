@@ -375,7 +375,9 @@ A hook name is letters, digits, `.`, `-` and `_`.
 
 Each delivery is held while the router runs on it, then released at once with the files it wrote
 attached. `timeout` is at most `60s`, `attach` at most 100 files and `256MB`; `reads` are
-directories it may read besides the plugin and the delivery, and none of the spore's. The spore's
+directories it may read besides the plugin and the delivery, and none of the spore's, or
+`"spore"`: the read-only grants (`reads:`) of the spore the delivery is for, read at each delivery;
+one missing then attaches nothing and says so. The spore's
 own router and triage cell for the hook are not asked, and `maxWait` is not needed. A router that
 fails, or a service that stops before it answers, releases the delivery without attachments by its
 timeout, with a line saying why. A delivery past `perHour` is still routed, and said without
@@ -392,9 +394,6 @@ there.
   — an HMAC of the raw body; `encoding` defaults to `hex`, `prefix` to none.
 - `{ "header": "<header>", "token": "${VAR}" }` — the header must equal the token.
 - `{ "token": "${VAR}" }` — the token is the last path segment: `POST /hook/<name>/<token>`.
-- `"api"` — the hook is reached through the HTTP API only, `POST /v1/hooks/<name>/deliveries`, by a
-  caller whose token reaches every spore it names ([§The HTTP API service](#the-http-api-service)). The
-  webhook service answers `404` for it, and its `accept` filters by payload only.
 
 A secret is always `${VAR}`, filled from the environment; a variable that is not set refuses the
 hook. No variable a hook names is passed to a turn or a triage cell.
@@ -418,7 +417,10 @@ node bin/spore-api.js --check     # read api.json and the environment, print whe
 {
   "socket": "/run/spore/api.sock",
   "listen": "127.0.0.1:8787",
-  "callers": { "app": { "token": "${SPORE_API_APP}", "spores": ["support-*"] } }
+  "callers": {
+    "app": { "token": "${SPORE_API_APP}", "spores": ["support-*"] },
+    "engine": { "token": "${SPORE_API_ENGINE}", "spores": ["doc-*"], "router": { "plugin": "da", "name": "mine", "timeout": "45s", "attach": { "files": 20, "bytes": "200MB" }, "reads": "spore" } }
+  }
 }
 ```
 
@@ -429,6 +431,9 @@ node bin/spore-api.js --check     # read api.json and the environment, print whe
   `~/.config/spore/environment` (`openssl rand -hex 32`), never in the file. `spores` lists names
   and patterns of letters, digits, `.`, `_`, `-` and `*`, where `*` matches within one name; a
   caller reaches only the spores under `home` that its patterns name.
+- `router` binds an owner's router to the caller, as a hook's is bound
+  ([§Webhooks](#webhooks)): `POST /v1/spores/<name>/deliveries` from that caller is held while it
+  runs, then released with what it attached. Its stdin is the delivery's `payload`, if any.
 - `--tick` runs the schedule pass (`spore tick`) every minute, for a container without a timer.
 - Exit code 2 means the configuration was refused; the unit does not restart after it.
 

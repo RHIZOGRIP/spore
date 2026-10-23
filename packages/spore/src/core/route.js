@@ -1,5 +1,5 @@
 /**
- * A delivery nobody typed — a webhook's, a job's — held and judged before it reaches its spore: the
+ * A delivery nobody typed — a webhook's, a job's, a program's through the API — held and judged before it reaches its spore: the
  * spore's router for its origin, then its triage cell, decide how long it may wait, never past the
  * owner's `maxWait`, never dropping it — or, where the owner binds a router to the origin, that
  * router attaches to it and nothing delays it. Held first, until the router's timeout, so a router
@@ -16,7 +16,7 @@ import { launchStandalone } from './cell.js'
 import { release as releaseHeld } from './send.js'
 import { ownerRouter } from './plugins.js'
 import { INBOX_DIR, attachHeld, holdDelivery, originOfOptions, releaseHeld as releaseDue, rescheduleHeld } from './spore-dir.js'
-import { ROUTE_TIMEOUT_MS, routerFor, runOwnerRouter, runRouter } from './router.js'
+import { ROUTE_TIMEOUT_MS, readsOf, routerFor, runOwnerRouter, runRouter } from './router.js'
 import { precursorFor, triage, triageIn } from './triage.js'
 
 const iso = (ms) => new Date(ms).toISOString()
@@ -46,18 +46,19 @@ export function judgesOf (ws, origin) {
 
 /**
  * Says `said` with `options` (as `holdDelivery` takes them) to the spore at `ws`, from the origin
- * they name (`hook:forge`, `job:scan`) —
+ * they name (`hook:forge`, `job:scan`, `api:engine`) —
  * the one way a message nobody typed arrives. It is held first. When the owner bounds how long
  * that origin may wait (`maxWait`) and the spore keeps a router or a triage cell for it, they
  * judge how long in the background; otherwise it is released now, starting a turn or joining the
  * one running, and no free slot, or a pause, leaves it held for the pass. `briefing({ payload,
  * headers })` is what a triage cell is told; `envOf()` the environment a cell and a release start
- * with. Answers `{ outcome, judged, started }`: a line for the caller's log, the judgment under
+ * with; `stdin` and `headers` the names of the attached files the owner's router is given as the
+ * payload and the headers, either null. Answers `{ outcome, judged, started }`: a line for the caller's log, the judgment under
  * way, and whether a turn started now.
  */
 export function deliver ({ ws, said, options, maxWait = null, owner = null, envOf, now = Date.now, release = releaseHeld, ...judging }) {
   const origin = originOfOptions(options)
-  if (origin === null) throw new SporeError('a message a person typed is said, never delivered', { type: 'DELIVERY_INVALID', detail: 'deliver takes a webhook\'s or a job\'s message; send takes a person\'s' })
+  if (origin === null) throw new SporeError('a message a person typed is said, never delivered', { type: 'DELIVERY_INVALID', detail: 'deliver takes a webhook\'s, a job\'s or an API caller\'s message; send takes a person\'s' })
   if (owner) return holdAndAttach({ ws, origin, said, options, owner, envOf, now, release, ...judging })
   const judges = maxWait ? judgesOf(ws, origin) : {}
   if (judges.router || judges.precursor) {
@@ -112,15 +113,15 @@ function holdAndJudge ({ ws, origin, said, options, event, ref, maxWait, judges:
  * and that line is what the turn reads; the router replaces it with what it attached, or with why
  * it attached nothing. `start: false` releases it without starting a turn.
  */
-function holdAndAttach ({ ws, origin, said, options, owner, event, ref, envOf, log, heading, now, release, start = true, attachBy = runOwnerRouter, routerOf = ownerRouter }) {
+function holdAndAttach ({ ws, origin, said, options, owner, stdin = null, headers: headersName = null, event, ref, envOf, log, heading, now, release, start = true, attachBy = runOwnerRouter, routerOf = ownerRouter }) {
   const label = `what router "${owner.name}" attaches`
   const untold = { path: null, name: label, mime: null, bytes: null, missing: 'it did not answer: what ran it stopped first' }
   const until = iso(now() + owner.timeoutMs + OWNER_GRACE_MS)
   const kept = holdDelivery(ws, said, { ...options, attach: [...(options.attach ?? []), untold], releaseAt: until, deadline: until })
   if (kept.repeated) return { outcome: `already ${kept.repeated === true ? 'received' : kept.repeated}`, judged: Promise.resolve(), started: false }
   const files = kept.files.slice(0, -1)
-  const payload = files.find(file => file.path && file.name !== 'headers.json')
-  const headers = files.find(file => file.path && file.name === 'headers.json')
+  const payload = stdin === null ? null : files.find(file => file.path && file.name === stdin)
+  const headers = headersName === null ? null : files.find(file => file.path && file.name === headersName)
   const delivery = files.find(file => file.path) ? dirname(files.find(file => file.path).path) : `${INBOX_DIR}/${iso(now()).replace(/[-:.]/g, '')}-${randomBytes(3).toString('hex')}`
   const into = `${delivery}/${owner.name}`
   const judged = (async () => {
@@ -140,7 +141,7 @@ function holdAndAttach ({ ws, origin, said, options, owner, event, ref, envOf, l
         into,
         timeoutMs: owner.timeoutMs,
         attach: owner.attach,
-        reads: owner.reads
+        reads: readsOf(ws, owner.reads)
       })
     } catch (err) {
       attached = { failed: `could not start — ${err.message}${err.detail ? ` — ${err.detail}` : ''}` }

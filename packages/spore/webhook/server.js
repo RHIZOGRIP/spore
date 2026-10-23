@@ -80,10 +80,6 @@ export function createWebhookServer ({ env, log, configFile = CONFIG_FILE, pause
       log(`hook ${name} · refused — no such hook; ${hooks.size ? `the hooks are ${[...hooks.keys()].join(', ')}` : 'hooks.json names none'}`)
       return answer(response, 404)
     }
-    if (hook.check.method === 'api') {
-      log(`hook ${name} · refused — it is reached through the HTTP API only`)
-      return answer(response, 404)
-    }
     if (token !== undefined && hook.check.method !== 'path') {
       log(`hook ${name} · refused — a token in the path, and the hook checks its sender another way`)
       return answer(response, 404)
@@ -126,6 +122,7 @@ export function createWebhookServer ({ env, log, configFile = CONFIG_FILE, pause
     const outcomes = hooksDelivery.deliverAll({
       hook,
       options,
+      stdin: body.length ? payloadName(mime) : null,
       unwanted: (accept) => acceptRefusal(accept, request.headers, body),
       envOf: () => without(freshEnv(), hidden)
     })

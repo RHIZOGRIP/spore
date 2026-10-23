@@ -13,7 +13,7 @@ import { answers, scriptedMo } from './fixtures/scripted-model.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
-import { heldIn, readInbox } from '../src/core/spore-dir.js'
+import { heldIn, readInbox, saidOf } from '../src/core/spore-dir.js'
 import { callerOf, loadApi, reaches } from '../api/config.js'
 import { createApiServer } from '../api/server.js'
 
@@ -145,98 +145,117 @@ describe('a line of the caller\'s own', () => {
   })
 })
 
-describe('a hook\'s delivery through the API', () => {
+describe('a program\'s delivery through the API', () => {
   let released
-  let configFile
+  const alpha = () => join(root, 'home', 'alpha')
+  const held = () => heldIn(alpha()).map(row => JSON.parse(row.entry))
+  const sent = { delivery: 'doc-1', text: 'Analyse it.', payload: { doc: 'q3.pdf' } }
+  const mine = { plugin: 'da', name: 'mine', timeout: '30s', attach: { files: 4, bytes: '1MB' } }
 
-  const restart = async (hooks, delivering = {}) => {
-    configFile = join(root, 'config', 'config.json')
-    writeFileSync(join(root, 'config', 'hooks.json'), JSON.stringify(hooks))
+  const restart = async (callers = {}, delivering = {}, extra = {}) => {
+    const secrets = { API_APP: APP, API_NARROW: NARROW }
+    writeFileSync(join(root, 'config', 'api.json'), JSON.stringify({
+      socket,
+      callers: {
+        app: { token: '${API_APP}', spores: ['*'], ...callers.app }, // eslint-disable-line no-template-curly-in-string
+        narrow: { token: '${API_NARROW}', spores: ['beta*'] } // eslint-disable-line no-template-curly-in-string
+      }
+    }))
     await new Promise(resolve => server.close(resolve))
     released = []
-    const secrets = { API_APP: APP, API_NARROW: NARROW }
     server = createApiServer({
       api: loadApi(join(root, 'config', 'api.json'), secrets),
       env: { PATH: process.env.PATH, ...secrets },
-      configFile,
-      delivering: { releaseHeld: (ws) => { released.push(ws); return { released: [1], started: true } }, ...delivering }
+      configFile: join(root, 'config', 'config.json'),
+      delivering: { release: (ws) => { released.push(ws); return { released: [1], started: true } }, ...delivering },
+      ...extra
     })
     await new Promise(resolve => server.listen(socket, resolve))
   }
-  const alpha = () => join(root, 'home', 'alpha')
-  const held = () => heldIn(alpha()).map(row => JSON.parse(row.entry))
-  const lake = { lake: { spore: 'alpha', verify: 'api' } }
-  const sent = { delivery: 'doc-1', event: 'uploaded', payload: { doc: 'q3.pdf' } }
 
-  it('holds the payload for each spore of the hook as the hook\'s delivery, under the caller\'s trace, once per id', async () => {
-    await restart(lake)
-    const first = await call('POST', '/v1/hooks/lake/deliveries', { body: sent, headers: { traceparent: `00-${TRACE}-b7ad6b7169203331-01` } })
-    expect(first.status).toBe(202)
-    expect(first.json()).toEqual({ delivery: 'doc-1', spores: [{ spore: 'alpha', outcome: 'started' }] })
+  it('holds it from the caller, with its text, its payload first and its files, under the caller\'s trace, once per id, and releases it at once', async () => {
+    await restart()
+    const body = { ...sent, attach: [{ name: 'note.txt', mime: 'text/plain', data: Buffer.from('n').toString('base64') }] }
+    const first = await call('POST', '/v1/spores/alpha/deliveries', { body, headers: { traceparent: `00-${TRACE}-b7ad6b7169203331-01` } })
+    expect([first.status, first.json()]).toEqual([202, { delivery: 'doc-1', outcome: 'started', started: true }])
     expect(released).toEqual([alpha()])
     const [entry] = held()
-    expect(entry).toMatchObject({ hook: 'lake', hookEvent: 'uploaded', hookDelivery: 'doc-1', requestId: 'webhook:lake:doc-1' })
+    expect(entry).toMatchObject({ api: 'app', text: 'Analyse it.', requestId: 'api:app:doc-1' })
+    expect(entry).not.toHaveProperty('from')
+    expect(entry).not.toHaveProperty('hook')
+    expect(saidOf(entry)).toMatch(/^Analyse it\.\n/)
     expect(entry.traceparent).toMatch(new RegExp(`^00-${TRACE}-`))
-    expect(entry.files.map(file => file.name)).toEqual(['payload.json'])
+    expect(entry.files.map(file => file.name)).toEqual(['payload.json', 'note.txt'])
     expect(JSON.parse(readFileSync(join(alpha(), entry.files[0].path), 'utf8'))).toEqual({ doc: 'q3.pdf' })
 
-    const again = await call('POST', '/v1/hooks/lake/deliveries', { body: { ...sent, payload: { doc: 'other' } } })
-    expect(again.json().spores).toEqual([{ spore: 'alpha', outcome: 'already received' }])
+    const again = await call('POST', '/v1/spores/alpha/deliveries', { body: { ...sent, payload: { doc: 'other' } } })
+    expect(again.json()).toMatchObject({ delivery: 'doc-1', outcome: 'already received' })
     expect(held()).toHaveLength(1)
     expect(readInbox(alpha())).toEqual([])
   })
 
-  it('runs the owner\'s router bound to the hook, and the delivery carries what it attached', async () => {
-    await restart({ lake: { ...lake.lake, router: { plugin: 'da', name: 'mine', timeout: '30s', attach: { files: 4, bytes: '1MB' } } } }, {
+  it('runs the owner\'s router bound to the caller on its payload, reading what the spore\'s reads: grant, and the delivery carries what it attached', async () => {
+    const docs = join(root, 'docs')
+    mkdirSync(docs)
+    writeFileSync(join(alpha(), 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5').replace('\nretain:', `\nreads: [docs=${docs}]\nretain:`))
+    const ran = []
+    await restart({ app: { router: { ...mine, reads: 'spore' } } }, {
       routerOf: () => ({ program: '/plugins/da/bin/mine', reads: [] }),
-      attachBy: async ({ ws, into, payload }) => {
-        mkdirSync(join(ws, into), { recursive: true })
-        writeFileSync(join(ws, into, 'pages.json'), readFileSync(payload))
-        return { files: [{ path: `${into}/pages.json`, name: 'pages.json', mime: 'application/json', bytes: 16 }] }
+      attachBy: async (asked) => {
+        ran.push(asked)
+        mkdirSync(join(asked.ws, asked.into), { recursive: true })
+        writeFileSync(join(asked.ws, asked.into, 'pages.json'), readFileSync(asked.payload))
+        return { files: [{ path: `${asked.into}/pages.json`, name: 'pages.json', mime: 'application/json', bytes: 16 }] }
       }
     })
-    expect((await call('POST', '/v1/hooks/lake/deliveries', { body: sent })).json().spores).toEqual([{ spore: 'alpha', outcome: 'held for router da/mine' }])
+    const body = { ...sent, attach: [{ name: 'note.txt', mime: 'text/plain', data: '' }] }
+    expect((await call('POST', '/v1/spores/alpha/deliveries', { body })).json()).toMatchObject({ outcome: 'held for router da/mine', started: false })
     await server.routed()
-    expect(held()[0].files.map(file => file.name)).toEqual(['payload.json', 'pages.json'])
+    expect(ran[0]).toMatchObject({ origin: 'api:app', ref: 'doc-1', headers: null, reads: [docs], timeoutMs: 30_000 })
+    expect(ran[0].payload).toMatch(/payload\.json$/)
+    expect(held()[0].files.map(file => file.name)).toEqual(['payload.json', 'note.txt', 'pages.json'])
     expect(released).toEqual([alpha()])
   })
 
-  it('answers a hook it may not deliver to as one that does not exist, and refuses a delivery it cannot read', async () => {
-    await restart({ ...lake, forge: { spore: 'alpha', verify: { token: '${API_APP}' } }, beta: { spore: ['alpha', 'beta'], verify: 'api' } }) // eslint-disable-line no-template-curly-in-string
-    for (const [path, token] of [['/v1/hooks/gone/deliveries', APP], ['/v1/hooks/forge/deliveries', APP], ['/v1/hooks/lake/deliveries', NARROW], ['/v1/hooks/beta/deliveries', NARROW]]) {
-      const refused = await call('POST', path, { token, body: sent })
-      expect(refused.status).toBe(404)
-      expect(refused.json().error.type).toBe('API_NOT_FOUND')
-    }
-    expect((await call('GET', '/v1/hooks/lake/deliveries')).status).toBe(405)
+  it('gives the router an empty stdin when the delivery has no payload, and is released at once without a router bound', async () => {
+    const ran = []
+    await restart({ app: { router: mine } }, {
+      routerOf: () => ({ program: '/plugins/da/bin/mine', reads: [] }),
+      attachBy: async (asked) => { ran.push(asked); return { files: [] } }
+    })
+    await call('POST', '/v1/spores/alpha/deliveries', { body: { delivery: 'doc-2', attach: [{ name: 'payload.txt', mime: 'text/plain', data: '' }] } })
+    await server.routed()
+    expect(ran[0]).toMatchObject({ payload: null, reads: [] })
+  })
+
+  it('answers a spore the caller may not reach as one that does not exist, and refuses a delivery it cannot read', async () => {
+    await restart()
+    const narrow = await call('POST', '/v1/spores/alpha/deliveries', { token: NARROW, body: sent })
+    expect([narrow.status, narrow.json().error.type]).toEqual([404, 'NOT_A_WORKSPACE'])
+    expect((await call('GET', '/v1/spores/alpha/deliveries')).status).toBe(405)
     for (const [body, why] of [
       [{ ...sent, delivery: undefined }, /delivery is your id/],
       [{ ...sent, delivery: 'a b' }, /delivery is your id/],
-      [{ ...sent, payload: undefined }, /carries a payload/],
-      [{ ...sent, files: [] }, /not files/]
+      [{ delivery: 'doc-1', text: ' ' }, /carries a text, a payload or a file/],
+      [{ ...sent, text: 3 }, /text is a string/],
+      [{ ...sent, attach: [{ name: 'payload.json', mime: 'application/json', data: '' }] }, /payload\.json is the payload's name/],
+      [{ ...sent, event: 'uploaded' }, /not event/]
     ]) {
-      const refused = await call('POST', '/v1/hooks/lake/deliveries', { body })
+      const refused = await call('POST', '/v1/spores/alpha/deliveries', { body })
       expect(refused.status).toBe(400)
       expect(refused.json().error.message).toMatch(why)
     }
     expect(held()).toEqual([])
   })
 
-  it('refuses a payload past the hook\'s maxBytes', async () => {
-    await restart({ lake: { ...lake.lake, maxBytes: '1KB' } })
-    const refused = await call('POST', '/v1/hooks/lake/deliveries', { body: { ...sent, payload: 'x'.repeat(2048) } })
-    expect(refused.status).toBe(413)
-    expect(refused.json().error.type).toBe('HOOK_TOO_LARGE')
+  it('takes no delivery while spores are paused', async () => {
+    await restart({}, {}, { pausedNow: () => ({ at: 'now' }) })
+    expect((await call('POST', '/v1/spores/alpha/deliveries', { body: sent })).status).toBe(503)
     expect(held()).toEqual([])
   })
 
-  it('takes no delivery while spores are paused', async () => {
-    await restart(lake)
-    await new Promise(resolve => server.close(resolve))
-    server = createApiServer({ api: loadApi(join(root, 'config', 'api.json'), { API_APP: APP, API_NARROW: NARROW }), env: { API_APP: APP, API_NARROW: NARROW }, configFile, pausedNow: () => ({ at: 'now' }) })
-    await new Promise(resolve => server.listen(socket, resolve))
-    expect((await call('POST', '/v1/hooks/lake/deliveries', { body: sent })).status).toBe(503)
-    expect(held()).toEqual([])
+  it('has no route for a hook', async () => {
+    expect((await call('POST', '/v1/hooks/lake/deliveries', { body: sent })).status).toBe(404)
   })
 })
 
@@ -265,5 +284,13 @@ describe('api.json', () => {
     expect(() => loadApi(write({ callers: { a: { token, spores: ['*'] } } }), env)).toThrow(/neither a socket nor an address/)
     expect(() => loadApi(write({ listen: '0.0.0.0:8787', callers: { a: { token, spores: ['*'] } } }), env)).toThrow(/not this machine's loopback/)
     expect(loadApi(write({ listen: '127.0.0.1:8787', callers: { a: { token, spores: ['*'] } } }), env).listen).toEqual({ host: '127.0.0.1', port: 8787 })
+  })
+
+  it('binds an owner\'s router to a caller, its reads a list of directories or the spore\'s own grants', () => {
+    const router = { plugin: 'da', name: 'mine', timeout: '45s', attach: { files: 20, bytes: '200MB' }, reads: 'spore' }
+    const [caller] = loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], router } } }), env).callers
+    expect(caller.router).toEqual({ plugin: 'da', name: 'mine', timeoutMs: 45_000, attach: { files: 20, bytes: 200 * 1024 * 1024 }, reads: 'spore' })
+    expect(loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'] } } }), env).callers[0].router).toBe(null)
+    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], router: { ...router, timeout: '2m' } } } }), env)).toThrow(/router timeout spore cannot take — 2m for a/)
   })
 })

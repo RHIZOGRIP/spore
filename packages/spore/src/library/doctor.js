@@ -21,7 +21,7 @@ import { DEFAULT_SPORANGIUM } from '../core/sporangia.js'
 import { outbox } from '../core/spore-dir.js'
 import { landlockAbi } from '../isolation/sandbox.js'
 import { hooksPath, loadHooks } from '../../webhook/hooks.js'
-import { apiPath } from '../../api/config.js'
+import { apiPath, loadApi } from '../../api/config.js'
 
 const ASSIGNMENT = /[A-Z][A-Z0-9]*_[A-Z0-9_]+=/
 
@@ -190,6 +190,16 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
   described(SOURCES_FILE, raw => Object.entries(raw).map(([source, spec]) => ({ what: `source ${source}`, spec, uses: spore => spore.sources.includes(source), wrong: misplaced(spec) })))
   described(MEMORY_FILE, raw => [{ what: 'the vector store', spec: raw, uses: spore => spore.memory?.backend === 'vectors' }])
 
+  const boundRouter = (file, whose, { plugin, name, reads }) => {
+    try {
+      ownerRouter(plugin, name)
+    } catch (err) {
+      problem('operator', file, `${whose}'s router ${plugin}/${name}: ${err.message} — its deliveries reach their spores without its attachments`, err.detail)
+    }
+    if (reads !== 'spore') for (const dir of reads.filter(dir => !existsSync(dir))) problem('operator', file, `${whose}'s router reads ${dir}, which is not there — it attaches nothing`, 'make it, or drop it from the router\'s reads')
+    needsTick.push(`${whose} holds deliveries for its router`)
+  }
+
   const hooks = hooksPath(configFile)
   if (existsSync(hooks)) {
     try {
@@ -199,20 +209,19 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
           else startsUnasked(spore, `hook ${hook.name}`)
         }
         if (hook.maxWait) needsTick.push(`hook ${hook.name} holds deliveries`)
-        if (hook.check.method === 'api' && !existsSync(apiPath(configFile))) problem('operator', hooks, `hook ${hook.name} is reached through the HTTP API, and there is no ${apiPath(configFile)}`, 'docs/operating.md, "The HTTP API service" — or give the hook a verify of its own')
-        if (hook.router) {
-          const { plugin, name, reads } = hook.router
-          try {
-            ownerRouter(plugin, name)
-          } catch (err) {
-            problem('operator', hooks, `hook ${hook.name}'s router ${plugin}/${name}: ${err.message} — its deliveries reach their spores without its attachments`, err.detail)
-          }
-          for (const dir of reads.filter(dir => !existsSync(dir))) problem('operator', hooks, `hook ${hook.name}'s router reads ${dir}, which is not there — it attaches nothing`, 'make it, or drop it from the router\'s reads')
-          needsTick.push(`hook ${hook.name} holds deliveries for its router`)
-        }
+        if (hook.router) boundRouter(hooks, `hook ${hook.name}`, hook.router)
       }
     } catch (err) {
       problem('operator', hooks, err.message, err.detail)
+    }
+  }
+
+  const api = apiPath(configFile)
+  if (existsSync(api)) {
+    try {
+      for (const caller of loadApi(api, env).callers.filter(each => each.router)) boundRouter(api, `caller ${caller.name}`, caller.router)
+    } catch (err) {
+      problem('operator', api, err.message, err.detail)
     }
   }
 

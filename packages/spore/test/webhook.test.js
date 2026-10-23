@@ -117,6 +117,8 @@ describe('hooks.json', () => {
     const router = { plugin: 'da', name: 'mine', timeout: '45s', attach: { files: 20, bytes: '200MB' }, reads: ['/export/lakes/l1/'] }
     writeHooks({ lake: { spore: 'main', verify, router } })
     expect(loadHooks(join(dir, 'hooks.json')).get('lake').router).toEqual({ plugin: 'da', name: 'mine', timeoutMs: 45_000, attach: { files: 20, bytes: 200 * 1024 * 1024 }, reads: ['/export/lakes/l1'] })
+    writeHooks({ lake: { spore: 'main', verify, router: { ...router, reads: 'spore' } } })
+    expect(loadHooks(join(dir, 'hooks.json')).get('lake').router.reads).toBe('spore')
     writeHooks({ lake: { spore: 'main', verify } })
     expect(loadHooks(join(dir, 'hooks.json')).get('lake').router).toBeNull()
     for (const [wrong, why] of [
@@ -125,8 +127,9 @@ describe('hooks.json', () => {
       [{ ...router, attach: { files: 101, bytes: '1MB' } }, /router attach spore cannot take/],
       [{ ...router, attach: { files: 1, bytes: '1GB' } }, /router attach spore cannot take/],
       [{ ...router, attach: undefined }, /router attach/],
-      [{ ...router, reads: ['lakes'] }, /router reads that are not directories/],
-      [{ ...router, reads: ['/'] }, /router reads that are not directories/],
+      [{ ...router, reads: ['lakes'] }, /router reads that are neither directories nor "spore"/],
+      [{ ...router, reads: ['/'] }, /router reads that are neither directories nor "spore"/],
+      [{ ...router, reads: 'all' }, /router reads that are neither directories nor "spore"/],
       [{ ...router, plugin: '' }, /names no plugin and router/],
       [{ ...router, wait: '0' }, /router field spore does not know — wait/],
       ['da/mine', /router spore cannot read/]
@@ -136,16 +139,8 @@ describe('hooks.json', () => {
     }
   })
 
-  it('takes "api" as the check of a hook reached through the HTTP API only, which accepts by its payload alone', () => {
-    writeHooks({ lake: { spore: 'main', verify: 'api', accept: { payload: { required: ['doc'] } } } })
-    const lake = loadHooks(join(dir, 'hooks.json')).get('lake')
-    expect(lake.check).toEqual({ method: 'api', event: null, delivery: null })
-    expect(lake.secrets).toEqual([])
-    writeHooks({ lake: { spore: 'main', verify: 'api', accept: { header: 'x-event', values: ['push'] } } })
-    expect(refusal(() => loadHooks(join(dir, 'hooks.json'))).message).toMatch(/reached through the HTTP API and accepts by a header/)
-    writeHooks({ lake: { spore: [{ name: 'main', accept: { header: 'x-event', values: ['push'] } }], verify: 'api' } })
-    expect(refusal(() => loadHooks(join(dir, 'hooks.json'))).message).toMatch(/accepts by a header/)
-    writeHooks({ lake: { spore: 'main', verify: 'apis' } })
+  it('refuses "api" as a check, since a program delivers through the API as itself', () => {
+    writeHooks({ lake: { spore: 'main', verify: 'api' } })
     expect(refusal(() => loadHooks(join(dir, 'hooks.json'))).message).toMatch(/says nothing about checking its sender/)
   })
 
@@ -369,13 +364,6 @@ describe('the service', () => {
       [wsOf('review'), 'comment']
     ])
     expect(logs.join('\n')).toMatch(/hook forge → main · pr · issues · ignored — the payload does not match — \/ must have required property 'comment'/)
-  })
-
-  it('answers a hook reached through the HTTP API only as one it does not have', async () => {
-    await start({ ...forge, lake: { spore: 'main', verify: 'api' } })
-    expect((await fetch(`${base}/hook/lake`, signed('{}'))).status).toBe(404)
-    expect(delivered()).toEqual([])
-    expect(logs.join('\n')).toMatch(/hook lake · refused — it is reached through the HTTP API only/)
   })
 
   it('says so when a request names a hook that does not exist', async () => {
@@ -788,7 +776,7 @@ describe('an owner\'s router, run confined', () => {
     expect(await failed("require('node:fs').mkdirSync('out/pages')")).toBe('wrote out/pages, which is not a plain file')
     expect(await failed("console.error('no pdf'); process.exit(2)")).toBe('exited 2 — no pdf')
     expect(await failed('setTimeout(() => {}, 5000)', { timeoutMs: 300 })).toMatch(/^was stopped after 0.3 s$/)
-    expect(await failed('', { reads: [join(dir, 'nowhere')] })).toMatch(/nowhere, which its owner lets it read, is not there/)
+    expect(await failed('', { reads: [join(dir, 'nowhere')] })).toMatch(/nowhere, which it is let read, is not there/)
     expect(existsSync(join(dir, 'spore', 'inbox.d', 'd1', 'mine'))).toBe(false)
   })
 

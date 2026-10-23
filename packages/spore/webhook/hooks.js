@@ -5,14 +5,14 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, isAbsolute, resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 
 import Ajv from 'ajv'
 
 import { CONFIG_FILE, SporeError } from '../src/index.js'
 import { durationMs, sizeBytes } from '../src/delegation/definition.js'
 import { TRIAGE_PER_DAY } from '../src/core/triage.js'
-import { ATTACH_MOST, OWNER_ROUTE_MOST_MS } from '../src/core/router.js'
+import { ROUTER_SHAPE, parseRouter } from '../src/core/router.js'
 
 export const HOOKS_FILE = 'hooks.json'
 export const hooksPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), HOOKS_FILE)
@@ -85,7 +85,6 @@ function fill (path, name, value, env, used) {
 }
 
 function verifier (path, name, verify, env, used) {
-  if (verify === 'api') return { method: 'api', event: null, delivery: null }
   if (!verify || typeof verify !== 'object') {
     throw refuse(path, name, 'says nothing about checking its sender', 'an unchecked URL starts a paid turn for anyone who finds it — give it verify: { token } at least')
   }
@@ -114,7 +113,7 @@ function verifier (path, name, verify, env, used) {
   if (verify.token !== undefined) {
     return { method: 'path', secret: secret('token'), event: null, delivery: null }
   }
-  throw refuse(path, name, 'has a verify spore cannot read', 'verify is { preset, secret }, { hmac, header, secret }, { header, token }, { token }, or "api" for a hook reached through the HTTP API only')
+  throw refuse(path, name, 'has a verify spore cannot read', 'verify is { preset, secret }, { hmac, header, secret }, { header, token }, or { token }')
 }
 
 function parseAccept (path, name, raw) {
@@ -134,28 +133,6 @@ function parseAccept (path, name, raw) {
     ...(byHeader ? { header: header.toLowerCase(), values } : {}),
     ...(payload !== undefined ? { payload: payloadCheck(path, name, payload) } : {})
   }
-}
-
-const ROUTER_SHAPE = `router is { "plugin", "name", "timeout": "45s", "attach": { "files": 20, "bytes": "200MB" }, "reads": ["<a directory>"] } — at most ${OWNER_ROUTE_MOST_MS / 1000} s, ${ATTACH_MOST.files} files and ${ATTACH_MOST.bytes / 1024 / 1024} MB`
-
-/** The owner's router bound to a hook, its bounds checked against the runtime's ceilings. */
-function parseRouter (path, name, raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw refuse(path, name, 'has a router spore cannot read', ROUTER_SHAPE)
-  const unknown = Object.keys(raw).filter(key => !['plugin', 'name', 'timeout', 'attach', 'reads'].includes(key))
-  if (unknown.length) throw refuse(path, name, `has a router field spore does not know — ${unknown.join(', ')}`, ROUTER_SHAPE)
-  if (typeof raw.plugin !== 'string' || !raw.plugin || typeof raw.name !== 'string' || !raw.name) throw refuse(path, name, 'has a router that names no plugin and router', ROUTER_SHAPE)
-  const timeoutMs = typeof raw.timeout === 'string' ? durationMs(raw.timeout) : null
-  if (!(timeoutMs > 0 && timeoutMs <= OWNER_ROUTE_MOST_MS)) throw refuse(path, name, `has a router timeout spore cannot take — ${raw.timeout}`, ROUTER_SHAPE)
-  const files = raw.attach?.files
-  const bytes = typeof raw.attach?.bytes === 'string' ? sizeBytes(raw.attach.bytes) : null
-  if (!(Number.isInteger(files) && files >= 1 && files <= ATTACH_MOST.files && bytes > 0 && bytes <= ATTACH_MOST.bytes)) {
-    throw refuse(path, name, `has a router attach spore cannot take — ${JSON.stringify(raw.attach)}`, ROUTER_SHAPE)
-  }
-  const reads = raw.reads ?? []
-  if (!Array.isArray(reads) || !reads.every(dir => typeof dir === 'string' && isAbsolute(dir) && resolve(dir) !== '/')) {
-    throw refuse(path, name, `has router reads that are not directories — ${JSON.stringify(raw.reads)}`, ROUTER_SHAPE)
-  }
-  return { plugin: raw.plugin, name: raw.name, timeoutMs, attach: { files, bytes }, reads: reads.map(dir => resolve(dir)) }
 }
 
 export function loadHooks (path = hooksPath(), env = process.env) {
@@ -204,10 +181,9 @@ export function loadHooks (path = hooksPath(), env = process.env) {
     }
     const perDay = hook.perDay ?? TRIAGE_PER_DAY
     if (!Number.isInteger(perDay) || perDay < 1) throw refuse(path, name, `has a perDay that is not a count — ${hook.perDay}`, 'how many triage cells it may start in a spore a day, a whole number from 1')
-    if (check.method === 'api' && [accept, ...accepts.values()].some(one => one?.header)) {
-      throw refuse(path, name, 'is reached through the HTTP API and accepts by a header', 'a delivery through the API has no headers — accept by its payload')
-    }
-    const router = hook.router === undefined ? null : parseRouter(path, name, hook.router)
+    const bound = hook.router === undefined ? { router: null } : parseRouter(hook.router)
+    if (bound.problem) throw refuse(path, name, bound.problem, ROUTER_SHAPE)
+    const { router } = bound
     hooks.set(name, { name, spores, accepts, check, accept, maxBytes, perHour, maxWait, perDay, router, secrets })
   }
   return hooks

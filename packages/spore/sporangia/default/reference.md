@@ -469,8 +469,8 @@ operator set up. It starts with a line saying so — `[Sent by webhook "forge": 
 delivery 8c1f…. No one typed this; …]` — and the request's body and headers are files sent with
 it. Read the part you need; a payload can be large.
 
-Your operator may run a program of their own on a hook's deliveries before they reach you — a
-document's pages extracted, say. What it made is sent with the message too, under
+Your operator may run a program of their own on a hook's deliveries, or on what their own
+programs deliver to you, before they reach you — a document's pages extracted, say. What it made is sent with the message too, under
 `inbox.d/<delivery>/<router>/`, and is as much data as the payload. When it made nothing, the
 message says why (`what router "<name>" attaches did not come: …`): work from the payload, or
 say what is missing. A router of your own for that hook is then not run.

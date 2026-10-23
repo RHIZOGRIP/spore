@@ -23,7 +23,7 @@ function summary (hook, config, { since, limit }) {
   const origin = `hook:${hook.name}`
   return {
     name: hook.name,
-    path: hook.check.method === 'api' ? `/v1/hooks/${hook.name}/deliveries` : `/hook/${hook.name}`,
+    path: `/hook/${hook.name}`,
     verify: { method: hook.check.method, header: hook.check.header ?? null },
     accept: acceptOf(hook.accept),
     maxBytes: hook.maxBytes,

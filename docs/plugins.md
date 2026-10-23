@@ -61,7 +61,7 @@ runs none of the plugin's code.
 | `works` | a semver range | required | the `@rhizogrip/spore` versions the plugin works with |
 | `settings` | `{ "<key>": "port" \| "text" }` | optional | values the operator gives at `allow` |
 | `programs` | `{ "<VARIABLE>": "<program>" }` | optional | `./<path>` in the plugin, or `<package>/<path>` in a dependency |
-| `routes` | `{ "<router>": "<program>" }` | optional | as `programs`; routers an owner binds to a hook (`hooks.json`) |
+| `routes` | `{ "<router>": "<program>" }` | optional | as `programs`; routers an owner binds to a hook (`hooks.json`) or a caller of the API (`api.json`) |
 | `describe` | `[{ "program", "title", "category", "detail"? }, …]` | optional | how a call of one of its `programs` is shown: `program` a regexp naming one of them |
 | `env` | `{ "<VARIABLE>": "<text>" }` | optional | text with `{placeholders}` |
 | `contain` | `{ "hide", "keep"?, "missing"? }` | optional | text with `{placeholders}`: a directory of the host a contained spore sees nothing of, or only one directory of |
@@ -256,13 +256,14 @@ call](../ARCHITECTURE.md#describing-a-call)).
 
 Each key is a router's name, lowercase letters, digits and `-`; each value a program, located and
 checked as one of `programs` is. A router is not given to any spore: the owner binds it to a hook
-in `hooks.json` ([operating §Webhooks](operating.md)), and the service the delivery arrives at —
-the webhook service, or the HTTP API for a hook reached through it — runs it on each of that hook's
-deliveries before any turn reads it. Its contract:
+in `hooks.json` ([operating §Webhooks](operating.md)) or to a caller in `api.json`, and the service
+the delivery arrives at — the webhook service, or the HTTP API — runs it on each delivery before
+any turn reads it. Its contract:
 
-- **It is called** as `<program> <origin> <event> <ref> <headers>`: the origin (`hook:lake`), the
-  sender's event and delivery id, either empty when the sender names none, and the path of the
-  delivery's `headers.json`. The payload is on its stdin.
+- **It is called** as `<program> <origin> <event> <ref> <headers>`: the origin (`hook:lake`,
+  `api:engine`), the sender's event and delivery id, either empty when the sender names none, and
+  the path of the delivery's `headers.json`, empty through the API. The payload is on its stdin,
+  which is empty for a delivery through the API without one.
 - **It writes what it attaches to `out/`**, in its working directory: plain files, each named by
   letters, digits, `.`, `_` and `-`. They are attached to the delivery under
   `inbox.d/<delivery>/<router>/`, within the bounds the owner gave, and the turn reads them as files
@@ -271,8 +272,9 @@ deliveries before any turn reads it. Its contract:
   directory in `out/`, or a router the plugin no longer offers attaches nothing, and the delivery
   carries one line saying why instead.
 - **It runs confined**, as a spore's router does: it reads the plugin and what it depends on, the
-  delivery's own files, and the directories the owner lets it read; it writes nothing but its
-  working directory; its environment is `PATH`, `HOME` and `TMPDIR`.
+  delivery's own files, and the directories the owner lets it read, or the delivered spore's
+  `reads:` grants; it writes nothing but its working directory; its environment is `PATH`, `HOME`
+  and `TMPDIR`.
 
 A name that is not one, and a program as `programs` refuses one, are each `PLUGIN_INVALID`;
 `spore plugin show` lists the routers.
