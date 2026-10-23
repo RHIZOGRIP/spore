@@ -30,13 +30,16 @@
  *                                          answering, formatted }, { op: 'edit', note, text },
  *                                          { op: 'remove', note }, { op: 'upload', path, caption },
  *                                          { op: 'react', message, emoji }, { op: 'typing' },
- *                                          { op: 'ask', note, text, choices: [{ label, data, style }] },
+ *                                          { op: 'ask', note, text, choices: [{ label, data, style }], fields },
  *                                          { op: 'close', note, text }; `formatted` says the platform
- *                                          was asked to render Markdown, and an approval's `text` is
- *                                          what the platform was given to show, as text
+ *                                          was asked to render Markdown, an approval's `text` is
+ *                                          what the platform was given to show, as text, and its
+ *                                          `fields`, where `spec.can.fields`, what it shows to fill
+ *                                          in: [{ id, label, value, required }]
  *   press(platform, { conversation, note, data, person, inputs })
  *                                          where `spec.can.choose`: `person` presses the button
- *                                          carrying `data` on the question `note`; answers
+ *                                          carrying `data` on the question `note`, having filled in
+ *                                          `inputs`, { <field id>: <text> }; answers
  *                                          { acknowledged() }, what the platform showed them once
  *                                          the press was answered — { text } — or undefined before
  *   fail(platform, op, error, times)       make `post`, `edit`, `remove`, `upload` or `fetch` fail
@@ -81,6 +84,7 @@ export function conformance (harness, platformTests = () => {}) {
   let logs
   let env
   let release
+  let shaping
   let tests = 0
   const running = []
 
@@ -96,7 +100,7 @@ export function conformance (harness, platformTests = () => {}) {
   const start = (opts = {}) => {
     const controller = new AbortController()
     const relay = createRelay({
-      adapter: harness.adapter(platform, 'triage', join(root, spec.kind, 'triage.json')),
+      adapter: shaping(harness.adapter(platform, 'triage', join(root, spec.kind, 'triage.json'))),
       botFile: join(root, spec.kind, 'triage.json'),
       statePath: saved,
       env,
@@ -163,6 +167,7 @@ export function conformance (harness, platformTests = () => {}) {
       routes({ 1: { spore: 'triage' } })
       logs = []
       release = null
+      shaping = (adapter) => adapter
       platform = harness.platform()
       reply = async () => answers('hello back')
       tests += 1
@@ -571,6 +576,38 @@ export function conformance (harness, platformTests = () => {}) {
         expect(outbox(ws).map(entry => [entry.recipient, entry.state])).toEqual([[`${spec.kind}:triage/1`, 'delivered']])
       })
 
+      it('hand the platform each answer\'s turn and what said it, and an adapter that shows a quiet end the turn nobody asked', async () => {
+        const options = []
+        const quiets = []
+        shaping = (adapter) => ({
+          ...adapter,
+          post: (conversation, text, given) => {
+            options.push(given)
+            return adapter.post(conversation, text, given)
+          },
+          quiet: async (conversation, what) => { quiets.push({ conversation, ...what }) }
+        })
+        defaultReplyTo('1')
+        writeFileSync(configFile, JSON.stringify({ ...JSON.parse(readFileSync(configFile, 'utf8')), replyTo: { triage: `${spec.kind}:triage/1` } }))
+        reply = async (input, round) => (round === 1 ? calls('quiet', { because: 'no change' }) : answers(round === 0 ? 'two new papers' : 'nothing new'))
+        start()
+        await until(() => savedState().cursors[ws])
+
+        send(ws, 'Check.', { schedule: { name: 'digest', due: '2026-09-28T07:00:00Z' }, env })
+        await until(() => posted('1', 'schedule "digest"\n\ntwo new papers'))
+        send(ws, 'Check again.', { schedule: { name: 'digest', due: '2026-09-28T08:00:00Z' }, env })
+        await until(() => quiets.length === 1)
+        expect(quiets).toEqual([{ conversation: '1', turnNo: 2, origin: 'schedule "digest"' }])
+
+        say({ conversation: '1', text: 'anything new?' })
+        await until(() => posted('1', 'nothing new'))
+        expect(options.filter(one => one.turn).map(({ turn, origin }) => ({ turn, origin }))).toEqual([
+          { turn: { turnNo: 1, stopReason: 'answer' }, origin: 'schedule "digest"' },
+          { turn: { turnNo: 3, stopReason: 'answer' }, origin: null }
+        ])
+        expect(quiets).toHaveLength(1)
+      })
+
       it('reach a brief conversation as the answer alone, and the log with what said it', async () => {
         routes({ 1: { spore: 'triage' } }, {}, { brief: true })
         defaultReplyTo('1')
@@ -767,8 +804,8 @@ export function conformance (harness, platformTests = () => {}) {
       const approval = (id) => approvalOf(ws, id)
       const questions = (conversation = '1') => seen(conversation).filter(one => one.op === 'ask')
       const closing = (conversation = '1') => seen(conversation).find(one => one.op === 'close')
-      const press = (question, label, person, conversation = '1') =>
-        harness.press(platform, { conversation, note: question.note, data: question.choices.find(one => one.label === label).data, person })
+      const press = (question, label, person, conversation = '1', inputs) =>
+        harness.press(platform, { conversation, note: question.note, data: question.choices.find(one => one.label === label).data, person, inputs })
       const acknowledged = async (pressed) => {
         await until(() => pressed.acknowledged() !== undefined)
         return pressed.acknowledged().text
@@ -895,6 +932,50 @@ export function conformance (harness, platformTests = () => {}) {
         expect(heard).toHaveLength(1)
         expect(readInbox(ws).filter(entry => entry.approval === id)).toHaveLength(1)
         expect(closing().text).toMatch(/Apply — U1/)
+      })
+
+      it.runIf(spec.can.fields)('shows its fields, takes no press without one it requires, and hands on what was filled in', async () => {
+        start({ approveEveryMs: 50 })
+        const id = ask({ fields: [{ id: 'value', label: 'Value', value: '82 %', required: true }, { id: 'reason', label: 'Why?' }] })
+        await until(() => questions().length === 1)
+        const [question] = questions()
+        expect(question.fields).toEqual([{ id: 'value', label: 'Value', value: '82 %', required: true }, { id: 'reason', label: 'Why?', value: null, required: false }])
+
+        expect(await acknowledged(press(question, 'Apply', '1', '1', { value: ' ', reason: 'checked' }))).toBe('fill in "Value" first')
+        expect(approval(id).state).toBe('posted')
+        expect(await acknowledged(press(question, 'Apply', '1', '1', { value: '84 %', reason: 'checked' }))).toBe('Apply — recorded')
+        await until(() => approval(id).told)
+        expect(approval(id).inputs).toEqual({ value: '84 %', reason: 'checked' })
+        expect(heard.map(one => one.payload.inputs)).toEqual([{ value: '84 %', reason: 'checked' }])
+      })
+
+      it.runIf(spec.can.choose && !spec.can.fields)('is refused where it needs a field this platform cannot show, and posted without those it can go without', async () => {
+        start({ approveEveryMs: 50 })
+        const needs = ask({ fields: [{ id: 'value', label: 'Value', required: true }, { id: 'reason', label: 'Why?' }] })
+        const optional = ask({ fields: [{ id: 'reason', label: 'Why?' }] })
+        await until(() => approval(needs).settledAt && questions().length === 1)
+        expect(approval(needs)).toMatchObject({ state: 'refused', reason: `a ${spec.label} bot cannot show fields to fill in, and it needs "Value"` })
+
+        expect(await acknowledged(press(questions()[0], 'Apply', '1'))).toBe('Apply — recorded')
+        await until(() => approval(optional).told)
+        expect(heard.map(one => [one.payload.approval, one.payload.outcome])).toEqual([[needs, 'refused'], [optional, 'answered']])
+        expect(heard[1].payload).not.toHaveProperty('inputs')
+      })
+
+      it.runIf(spec.can.choose)('leaves the conversation going while it is open: what is said meanwhile is answered, and a press after it still counts', async () => {
+        let replies = 0
+        reply = async () => answers(++replies === 1 ? 'hello back' : 'noted')
+        start({ approveEveryMs: 50 })
+        const id = ask()
+        await until(() => questions().length === 1)
+        say({ conversation: '1', text: 'meanwhile' })
+        await until(() => posted('1', 'hello back'))
+
+        expect(await acknowledged(press(questions()[0], 'Apply', '1'))).toBe('Apply — recorded')
+        await until(() => posted('1', 'noted'))
+        expect(approval(id)).toMatchObject({ state: 'answered', choice: 'apply', told: true })
+        const shown = seen('1').filter(one => one.op === 'ask' || one.op === 'close' || (one.op === 'post' && !WORKING.test(one.text)))
+        expect(shown.map(one => one.op === 'post' ? one.text : one.op)).toEqual(['ask', 'hello back', 'close', 'noted'])
       })
 
       it.runIf(spec.can.choose)('is closed with the body the hook answers', async () => {

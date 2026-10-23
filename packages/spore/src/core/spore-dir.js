@@ -167,7 +167,7 @@ const decoder = ({ json = [], flags = [] }) => (row) => {
 
 const turnRecord = decoder({ json: ['deliverables', 'recall', 'byPrecursor'], flags: ['concluded', 'settled'] })
 const inboxEntry = decoder({ json: ['files'], flags: ['consumed', 'setAside', 'overheard'] })
-const approvalRecord = decoder({ json: ['approvers', 'options', 'body', 'calendar', 'shown', 'inputs', 'replaced'], flags: ['told'] })
+const approvalRecord = decoder({ json: ['approvers', 'options', 'body', 'calendar', 'shown', 'inputs', 'replaced', 'fields'], flags: ['told'] })
 const transcriptEntry = decoder({ json: ['message', 'marks'] })
 const eventRecord = ({ payload, ...envelope }) => ({ ...envelope, ...JSON.parse(payload) })
 

@@ -287,6 +287,7 @@ const { approval, until } = requestApproval({
     by: ['<their object id>'],
     options: [{ id: 'apply', label: 'Apply', style: 'positive' }, { id: 'cancel', label: 'Cancel' }],
     body: { default: { text: 'Apply the new **monthly churn** value?', facts: [['Was', '79 %'], ['Now', '82 %']] } },
+    fields: [{ id: 'reason', label: 'Why?' }],
     within: '2wd',
     calendar: { tz: 'Europe/Paris' },
     hook: 'kpi'
@@ -298,8 +299,15 @@ The same request is `spore approval ask <spore> request.json` and `POST
 /v1/spores/<name>/approvals`. What is shown is yours: `body` takes one entry per platform — an
 Adaptive Card for `teams`, `{ html }` for `telegram` — or `default`, text and facts each
 platform draws its own way, and the service adds the buttons. A body of your own may carry no
-button that answers back by itself (in Teams no `Action.Submit`, `Action.Execute` or `refresh`).
-A Teams card may carry inputs; what the person fills in comes with the press.
+button that answers back by itself (in Teams no `Action.Submit`, `Action.Execute` or `refresh`),
+nor a field of its own (in Teams no `Input.*`).
+
+What the person fills in is `fields`, beside the options: at most five, each `{ id, label, value?,
+required? }`, `value` what it starts with — a reason for a rejection, or a value to correct before
+approving. The service draws them with the buttons and takes a press only with every `required`
+one filled in; what was filled in comes with the press as `inputs`. A platform that cannot show
+fields (Slack and Telegram for now) refuses an approval with a required one, saying so, and posts
+one whose fields are all optional without them.
 
 The service of the place `to` names posts it. A press by someone `by` names is written down —
 the first one; any other is answered "this is not yours to answer" or "this was answered

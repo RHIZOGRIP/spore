@@ -21,6 +21,7 @@ const DOWNLOAD_INFO = 'application/vnd.microsoft.teams.file.download.info'
 const IMAGE = /^image\/(png|jpeg|gif|webp)$/
 const PRESSED = 'spore'
 const ANSWERING = new Set(['Action.Submit', 'Action.Execute'])
+const FIELD = 'field:'
 const SHAPE = '{ "app": "<app id>", "tenant": "<tenant id>", "secret": "${OPS_TEAMS_SECRET}", "listen": "127.0.0.1:3978", "people": { "<object id>": "<spore>" }, "channels": { "<channel id>": { "spores": ["<spore>"], "people": ["<object id>"] } } }' // eslint-disable-line no-template-curly-in-string
 
 const invalid = (path, problem, detail = `a bot is ${SHAPE}`) => new SporeError(`${path} ${problem}`, { type: 'TEAMS_BOT_INVALID', detail })
@@ -114,7 +115,7 @@ export const TEAMS = {
   routeOf: (conversation) => conversation.split(THREAD)[0],
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 40000, file: 0, fetch: 25 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 4000 },
-  can: { upload: false, remove: true, react: false, typing: false, reply: true, choose: true },
+  can: { upload: false, remove: true, react: false, typing: false, reply: true, choose: true, fields: true },
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {
@@ -217,6 +218,21 @@ const answersBack = (value) => Array.isArray(value)
   ? value.some(answersBack)
   : record(value) && (ANSWERING.has(value.type) || Object.values(value).some(answersBack))
 
+/** Whether anything in a card, however deep, is a field to fill in. */
+const asksInput = (value) => Array.isArray(value)
+  ? value.some(asksInput)
+  : record(value) && ((typeof value.type === 'string' && value.type.startsWith('Input.')) || Object.values(value).some(asksInput))
+
+/** An approval's field as the card's own input, under an id the press brings back. */
+const inputOf = (field) => ({
+  type: 'Input.Text',
+  id: `${FIELD}${field.id}`,
+  label: field.label,
+  isMultiline: true,
+  ...(field.value ? { value: field.value } : {}),
+  ...(field.required ? { isRequired: true, errorMessage: `${field.label} is required` } : {})
+})
+
 /** What an approval shows, as an Adaptive Card: the host's own, or the default body — its text, then its facts. */
 const cardOf = ({ native, fallback }) => native
   ? structuredClone(native)
@@ -230,21 +246,22 @@ const cardOf = ({ native, fallback }) => native
       ]
     }
 
-/** The card as it was shown, the relay's buttons gone and how it ended below. */
+/** The card as it was shown, the relay's buttons and fields gone and how it ended below. */
 const closed = (card, outcome) => ({
   ...card,
-  body: [...(card.body ?? []), { type: 'TextBlock', text: `**${outcome}**`, wrap: true }],
+  body: [...(card.body ?? []).filter(element => !element.type.startsWith('Input.')), { type: 'TextBlock', text: `**${outcome}**`, wrap: true }],
   actions: (card.actions ?? []).filter(action => !(record(action.data) && Object.hasOwn(action.data, PRESSED)))
 })
 
 /**
  * A press on one of the relay's buttons, as the relay takes it, from an `adaptiveCard/action`
  * invoke: what Teams merged into the action's data besides the relay's own is what the person
- * filled in.
+ * filled in, each field under its own id.
  */
 export function choiceOf (activity) {
   const personal = activity.conversation.conversationType === 'personal'
-  const { [PRESSED]: data = null, ...inputs } = record(activity.value?.action?.data) ? activity.value.action.data : {}
+  const { [PRESSED]: data = null, ...filled } = record(activity.value?.action?.data) ? activity.value.action.data : {}
+  const inputs = Object.fromEntries(Object.entries(filled).map(([id, value]) => [id.startsWith(FIELD) ? id.slice(FIELD.length) : id, value]))
   return {
     conversation: personal ? activity.from.aadObjectId : activity.conversation.id,
     data,
@@ -378,12 +395,14 @@ export function createAdapter ({ connector, receive, app, tenant }) {
         return 'a Teams body is an Adaptive Card of version 1.4 or later, as { "type": "AdaptiveCard", "version": "1.5", "body": [ … ] }'
       }
       if (answersBack(native)) return 'a Teams body carries no Action.Submit or Action.Execute, nor a refresh — the buttons that answer are the ones spore adds'
+      if (asksInput(native)) return 'a Teams body carries no Input — what a person fills in is the approval\'s fields, which spore adds'
       return null
     },
 
-    /** The question as a card, each choice an `Action.Execute` under it. */
-    ask: async (conversation, shown, choices) => {
+    /** The question as a card, its fields under its body and each choice an `Action.Execute` under them. */
+    ask: async (conversation, shown, choices, { fields }) => {
       const card = cardOf(shown)
+      card.body = [...(card.body ?? []), ...fields.map(inputOf)]
       card.actions = [
         ...(card.actions ?? []),
         ...choices.map(choice => ({ type: 'Action.Execute', title: choice.label, verb: 'answer', data: { [PRESSED]: choice.data }, ...(choice.style ? { style: choice.style } : {}) }))

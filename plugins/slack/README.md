@@ -138,7 +138,8 @@ in an actions block the bot adds. Blocks of your own are shown ones only — `se
 image: nothing in them may answer the bot by itself. A press is taken only from someone the
 approval names, and answered at once with a line only they see — `Apply — recorded`, or why it was
 not taken. The message is then updated: replaced by the body your hook answered, or kept with its
-buttons gone and who chose what below.
+buttons gone and who chose what below. Slack shows no fields to fill in yet: an approval with a
+required one is refused, saying so, and one whose fields are all optional is posted without them.
 
 ## What it guarantees
 

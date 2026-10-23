@@ -13,10 +13,11 @@ import { native } from '../native.js'
 import { SporeError } from '../observability/errors.js'
 import { recordApproval } from '../core/spore-dir.js'
 
-export const APPROVAL_LIMITS = Object.freeze({ options: 5, label: 40, facts: 20, approvers: 50, body: 100_000 })
+export const APPROVAL_LIMITS = Object.freeze({ options: 5, label: 40, facts: 20, approvers: 50, body: 100_000, fields: 5, input: 2000 })
 
-const FIELDS = ['to', 'by', 'options', 'body', 'within', 'calendar', 'hook']
+const FIELDS = ['to', 'by', 'options', 'body', 'within', 'calendar', 'hook', 'fields']
 const OPTION_FIELDS = ['id', 'label', 'style']
+const FIELD_FIELDS = ['id', 'label', 'value', 'required']
 const DEFAULT_FIELDS = ['text', 'facts']
 const CALENDAR_FIELDS = ['tz', 'days', 'holidays']
 const OPTION_ID = /^[A-Za-z0-9_-]{1,32}$/
@@ -45,6 +46,35 @@ function checkOptions (options) {
     if (!fits) throw invalid(`has a choice it cannot show — ${JSON.stringify(option)}`, detail)
   }
   if (new Set(options.map(option => option.id)).size !== options.length) throw invalid('offers two choices under one id', detail)
+}
+
+function checkFields (fields) {
+  const detail = `fields are 1 to ${APPROVAL_LIMITS.fields} things to fill in, each { "id": "reason", "label": "Why?", "value": "<what it starts with>", "required": true } — an id of letters, digits, - and _, a label of at most ${APPROVAL_LIMITS.label} characters on one line, value and required optional`
+  if (!Array.isArray(fields) || !fields.length || fields.length > APPROVAL_LIMITS.fields) throw invalid('has fields it cannot show', detail)
+  for (const field of fields) {
+    const fits = isRecord(field) && !strays(field, FIELD_FIELDS).length && OPTION_ID.test(field.id ?? '') &&
+      isText(field.label) && field.label.length <= APPROVAL_LIMITS.label && !field.label.includes('\n') &&
+      (field.value === undefined || (typeof field.value === 'string' && field.value.length <= APPROVAL_LIMITS.input)) &&
+      (field.required === undefined || typeof field.required === 'boolean')
+    if (!fits) throw invalid(`has a field it cannot show — ${JSON.stringify(field)}`, detail)
+  }
+  if (new Set(fields.map(field => field.id)).size !== fields.length) throw invalid('has two fields under one id', detail)
+}
+
+/**
+ * Why what a press filled in does not fit the approval's fields, or null: only fields it declares,
+ * each text no longer than the limit, every required one filled in.
+ */
+export function inputsProblem (fields, inputs) {
+  const declared = fields ?? []
+  const given = inputs ?? {}
+  for (const [id, value] of Object.entries(given)) {
+    const field = declared.find(one => one.id === id)
+    if (!field) return `"${id}" is not one of its fields`
+    if (typeof value !== 'string' || value.length > APPROVAL_LIMITS.input) return `"${field.label}" takes text of at most ${APPROVAL_LIMITS.input} characters`
+  }
+  const missing = declared.filter(field => field.required && !given[field.id]?.trim())
+  return missing.length ? `fill in ${missing.map(field => `"${field.label}"`).join(' and ')} first` : null
 }
 
 /** A body checked as far as the core reads it: keyed by platform kind or `default`, which the core renders. */
@@ -76,7 +106,7 @@ function checked (request, config) {
   if (!isRecord(request)) throw invalid('is not a JSON object', `an approval is ${SHAPE}`)
   const extra = strays(request, FIELDS)
   if (extra.length) throw invalid(`has ${extra.join(', ')}, which an approval does not take`, `it takes ${FIELDS.join(', ')}`)
-  const { to, by, options, body, within, calendar, hook } = request
+  const { to, by, options, body, within, calendar, hook, fields } = request
   const problem = typeof to === 'string' ? native.replyToProblem(to) : `got ${JSON.stringify(to)}`
   if (problem || to === 'terminal') throw invalid('is asked nowhere it can be answered', `to is the conversation it is asked in, as telegram:main/42 — ${problem ?? 'a terminal has no button to press'}`)
   if (!Array.isArray(by) || !by.length || by.length > APPROVAL_LIMITS.approvers || !by.every(id => typeof id === 'string' && PERSON.test(id)) || new Set(by).size !== by.length) {
@@ -86,6 +116,7 @@ function checked (request, config) {
   checkBody(body)
   if (within !== undefined && typeof within !== 'string') throw invalid('has a within that is not text', 'within is a duration, as 2h, or working days, as 2wd')
   if (calendar !== undefined) checkCalendar(calendar)
+  if (fields !== undefined) checkFields(fields)
   if (hook !== undefined && !(typeof hook === 'string' && isRecord(config.approvals) && Object.hasOwn(config.approvals, hook))) {
     throw invalid(`calls a hook ${config.file} does not name — ${JSON.stringify(hook)}`, 'approvals in config.json names each hook, as "approvals": { "kpi": { "url": "https://…", "secret": "${KPI_HOOK_SECRET}" } }') // eslint-disable-line no-template-curly-in-string
   }
@@ -99,7 +130,7 @@ function checked (request, config) {
  * @returns {{ approval: string, until: string }}
  */
 export function askApproval (ws, request, { configFile = CONFIG_FILE, now = Date.now() } = {}) {
-  const { to, by, options, body, within = WITHIN, calendar, hook } = checked(request, readConfig(configFile))
+  const { to, by, options, body, within = WITHIN, calendar, hook, fields } = checked(request, readConfig(configFile))
   const deadline = JSON.parse(native.approvalDeadline(now, within, calendar?.tz, calendar?.days, calendar?.holidays))
   if (deadline.error) throw invalid(deadline.error, 'within is a duration, as 2h, or working days with a calendar, as "within": "2wd", "calendar": { "tz": "Europe/Paris" }')
   const id = randomBytes(6).toString('hex')
@@ -114,7 +145,8 @@ export function askApproval (ws, request, { configFile = CONFIG_FILE, now = Date
     within,
     ...(calendar ? { calendar } : {}),
     until,
-    ...(hook ? { hook } : {})
+    ...(hook ? { hook } : {}),
+    ...(fields ? { fields } : {})
   })
   return { approval: id, until }
 }

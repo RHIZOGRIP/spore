@@ -105,7 +105,8 @@ posted as a message — the request's `telegram` body, `{ "html": "…" }` in Te
 `positive` and red for `destructive` where the Telegram app shows colours. A press is taken only
 from someone the approval names, and Telegram shows them `Apply — recorded`, or why it was not
 taken. The message is then edited: replaced by the body your hook answered, or kept with its
-buttons gone and who chose what below.
+buttons gone and who chose what below. Telegram shows no fields to fill in: an approval with a
+required one is refused, saying so, and one whose fields are all optional is posted without them.
 
 ## The allow-list is the routing
 

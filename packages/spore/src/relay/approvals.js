@@ -7,7 +7,7 @@
  * last run stopped.
  */
 
-import { answerApproval, approvalOf, approvalsIn, callApprovalHook, expireApproval, postApproval, refuseApproval, send, settleApproval } from '../index.js'
+import { answerApproval, approvalOf, approvalsIn, callApprovalHook, expireApproval, inputsProblem, postApproval, refuseApproval, send, settleApproval, SporeError } from '../index.js'
 
 const PRESS = /^ap:([0-9a-f]{12}):([A-Za-z0-9_-]{1,32})$/
 const TELL_AGAIN_MS = 30_000
@@ -16,6 +16,9 @@ const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
 export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, where, followed, delivery, environment, sendEnv, log, sleep, signal }) {
   const { kind } = adapter
+  if (adapter.can.choose && typeof adapter.can.fields !== 'boolean') {
+    throw new SporeError(`the ${adapter.label} adapter carries approvals without saying whether it shows fields`, { type: 'ADAPTER_INVALID', detail: 'can.fields is true or false beside can.choose' })
+  }
   const busy = new Set()
   const untold = new Map()
 
@@ -138,10 +141,13 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     if (!shown) return refuse(name, ws, approval, `it has no body for ${adapter.label} and no default`)
     const problem = shown.native === null ? null : adapter.checkBody(shown.native)
     if (problem) return refuse(name, ws, approval, problem)
+    const fields = approval.fields ?? []
+    const unshown = adapter.can.fields ? [] : fields.filter(field => field.required)
+    if (unshown.length) return refuse(name, ws, approval, `a ${adapter.label} bot cannot show fields to fill in, and it needs ${unshown.map(field => `"${field.label}"`).join(' and ')}`)
     const choices = approval.options.map(option => ({ ...option, data: `ap:${approval.id}:${option.id}` }))
     let posted
     try {
-      posted = await delivery.to(conversation, attempt => attempt(() => adapter.ask(conversation, shown, choices, { as: name })))
+      posted = await delivery.to(conversation, attempt => attempt(() => adapter.ask(conversation, shown, choices, { as: name, fields: adapter.can.fields ? fields : [] })))
     } catch (err) {
       if (err.retryable || signal.aborted) return logged(approval, name, `not posted yet — ${said(err)}`)
       return refuse(name, ws, approval, `${adapter.label} refused it — ${said(err)}`)
@@ -177,9 +183,9 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
 
   /**
    * A press, as the adapter heard it: `data` from one of the relay's buttons, `person` as the
-   * platform vouches for them, `inputs` what they filled in where the platform has fields. Taken
-   * only on its own approval, open, in the conversation it was asked in, by someone it names;
-   * acknowledged to the platform at once, and seen through after.
+   * platform vouches for them, `inputs` what they filled in of the approval's fields. Taken only
+   * on its own approval, open, in the conversation it was asked in, by someone it names, with its
+   * fields filled in as they must be; acknowledged to the platform at once, and seen through after.
    */
   const choose = async ({ conversation, data, inputs = null, person, acknowledge }) => {
     const pressed = PRESS.exec(data ?? '')
@@ -211,6 +217,8 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
       logged(approval, name, `refused a press on "${choice}", which is none of its choices`)
       return acknowledge('that is not one of its choices')
     }
+    const unfit = inputsProblem(approval.fields, inputs)
+    if (unfit) return acknowledge(unfit)
     if (busy.has(id) || !answerApproval(ws, id, { choice, inputs, person })) return acknowledge('this was answered already')
     busy.add(id)
     try {

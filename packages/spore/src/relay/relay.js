@@ -640,7 +640,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     try {
       await delivery.to(conversation, async (attempt) => {
         const [first, ...rest] = pieces(text, adapter.limits.message)
-        await attempt(() => formatted(first, { answering, for: forOf(mine), as: name }))
+        await attempt(() => formatted(first, { answering, for: forOf(mine), as: name, turn: { turnNo: entry.turnNo, stopReason: turn.record.stopReason }, origin: askedHere ? null : originOf(heard) }))
         for (const part of rest) await attempt(() => formatted(part, { as: name }))
         await hand(attempt, conversation, ws, name, handed, { brief, turnNo: entry.turnNo })
         for (const note of mine) {
@@ -721,6 +721,24 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
 
     const owed = await drain(ws)
     if (owed) forget(ws, (state.pending[ws] ?? []).filter(note => read.has(note.inbox) && !owed.has(note.inbox)))
+    if (turn.record.stopReason === 'quiet' && adapter.quiet) await tellQuiet(ws, turn)
+  }
+
+  /**
+   * A quiet turn that read what nobody in a conversation said — a schedule, a webhook, a job — told
+   * to an adapter that shows one, in the spore's `replyTo` default where that is this bot's: the
+   * core owes no conversation an answer for it, so nothing else reaches one.
+   */
+  const tellQuiet = async (ws, turn) => {
+    const unprompted = turn.asked.filter(message => !message.replyTo)
+    if (!unprompted.length) return
+    const { name, conversations } = followed.get(ws)
+    const place = readConfig(configFile).replyTo?.[name]
+    if (!place?.startsWith(prefix)) return
+    const conversation = place.slice(prefix.length)
+    if (!conversations.has(keyOf(conversation))) return
+    await delivery.to(conversation, attempt => attempt(() => adapter.quiet(conversation, { turnNo: turn.record.turnNo, origin: originOf(unprompted) })))
+      .catch(err => log(`turn ${turn.record.turnNo} of ${ws}: its quiet end not shown in ${where(conversation)} — ${said(err)}`))
   }
 
   const follow = async () => {

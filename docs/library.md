@@ -329,7 +329,8 @@ below are the relay's.
 requestApproval({ ws, request, configFile }) → { ws, approval, until }
 ```
 
-Asks an approval in the spore: `request` is `{ to, by, options, body, within, calendar, hook }`.
+Asks an approval in the spore: `request` is `{ to, by, options, body, fields, within, calendar,
+hook }`.
 
 - `to`: the conversation, as a reply-to place (`telegram:main/42`), never `terminal`.
 - `by`: who may answer, by the id their bot file knows them by, 1 to 50 of them.
@@ -338,7 +339,12 @@ Asks an approval in the spore: `request` is `{ to, by, options, body, within, ca
 - `body`: what is shown, keyed by platform kind (`teams`: an Adaptive Card of version 1.4 or
   later; `telegram`: `{ html }`) or `default`: `{ text, facts }`, markdown limited to bold, italic,
   links and lists, and at most 20 `[label, value]` pairs. The relay uses its platform's entry, else
-  `default`, and adds the buttons itself.
+  `default`, and adds the buttons itself. A platform's own body asks for no input either (in Teams
+  no `Input.*`): what is filled in is `fields`.
+- `fields`: 1 to 5 things to fill in, `{ id, label, value, required }` — an `id` as an option's, a
+  `label` as an option's, `value` the text it starts with (at most 2000 characters) and `required`
+  true or false, both optional. A platform that shows no fields refuses an approval with a
+  required one, and posts one without its optional ones.
 - `within`: how long it stays open — a duration (`2h`) or working days (`2wd`), `24h` when left
   out. Working days need `calendar`: `{ tz, days, holidays }`, `days` Monday to Friday when left
   out.
@@ -362,10 +368,10 @@ approvalsIn(ws, { open = false }) → record[]
 ```
 
 The approvals of the spore at `ws`, oldest first. A record carries the request — `id`, `at`,
-`place`, `approvers`, `options`, `body`, `within`, `calendar`, `until`, `hook` — and how far it
+`place`, `approvers`, `options`, `body`, `fields`, `within`, `calendar`, `until`, `hook` — and how far it
 went: `state` (`asked`, `posted`, `answered`, `expired` or `refused`), `shown` (what the platform
 was given, buttons included) and `note` (its id there), `postedAt`, `choice`, `inputs` (what was
-filled in, where the platform has fields), `answererId`, `answererName`, `answeredAt`, `outcome`
+filled in of its `fields`, `{ <id>: <text> }`, where the platform shows them), `answererId`, `answererName`, `answeredAt`, `outcome`
 (the hook's: `confirmed` or `failed`), `reason`, `replaced` (what the question was replaced
 with), `tell` (what the hook said the spore should know), `settledAt`, and `told`, whether the
 spore was told. `open` keeps those a relay still has work on: not settled, or answered or expired
@@ -396,7 +402,7 @@ answerApproval(ws, id, { choice, inputs, person: { id, name } }) → boolean
 
 Records the first press on a posted approval before its deadline. `false` for any later press, or
 a late one: they change nothing. The caller has checked that `person` is among its `approvers` and
-`choice` among its options.
+`choice` among its options, and `inputs` against its fields with `inputsProblem`.
 
 ### `expireApproval`
 
@@ -436,6 +442,16 @@ POSTs `payload` to the hook `name` of `config.json`'s `approvals`, signed:
 `<x-spore-timestamp>.<body>`. A network failure or a 5xx is tried again after each of
 `retriesMs` (about a minute in all); anything else, or the last failure, throws
 `APPROVAL_HOOK_FAILED`. Answers what the hook said.
+
+### `inputsProblem`
+
+```
+inputsProblem(fields, inputs) → string | null
+```
+
+Why what a press filled in does not fit an approval's `fields`, as the person is told it — an id
+it does not declare, anything but text of at most 2000 characters, a required field left empty —
+or null.
 
 ### `approvalHookVariables`
 

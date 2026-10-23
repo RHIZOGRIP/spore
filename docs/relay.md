@@ -114,7 +114,7 @@ The static part, which the relay reads before the service starts:
 | `sourceVariables` | credential variables a source of the plugin needs in a turn's environment |
 | `usage` | `{ help, briefHelp, extend }`: the commands as this platform types them — `briefHelp` without `extend`, for a brief conversation |
 | `limits` | `{ message, file, fetch, editEveryMs, typingEveryMs }`: the longest message, the largest upload, the largest file the platform lets a bot fetch, how often `working…` is edited, how often typing is renewed |
-| `can` | `{ upload, remove, react, typing, reply, choose }`: `reply` false where a post cannot reply to a message, and opens with whom it answers instead; `choose` where it carries approvals |
+| `can` | `{ upload, remove, react, typing, reply, choose, fields }`: `reply` false where a post cannot reply to a message, and opens with whom it answers instead; `choose` where it carries approvals, and beside it `fields`, true or false, whether it shows an approval's fields to fill in — where false, the relay refuses an approval with a required field and posts one without its optional ones |
 | `showShared` | how a turn shows itself in a conversation many people share when the routing says nothing: `react` or `working` |
 | `reactions` | the emoji the platform lets a bot react with, or null for any |
 | `refusals` | error types that mean the platform will not have this bot at all: the service exits 2 and is not restarted |
@@ -130,16 +130,17 @@ The live part, made once the credentials are proved:
 | `prepare(table, log)` | optional: what the platform readies, or checks, before anyone writes, for every conversation the routing names — Discord's roles and webhooks, Telegram's word that a group overhears while the bot hears only what is said to it |
 | `listen({ onMessage, onChoice, signal, log, sleep })` | the transport, until `signal` aborts; awaits `onMessage` before confirming a message to the platform, and `onChoice` before confirming a press; throws an error the platform gave for good |
 | `aside(message, spore)` | optional: a line the spore is given after the text — Discord's pointer to the history it has not heard |
-| `post(conversation, text, { answering, for, markdown, as })` | posts, as a reply to the platform's message `answering` when it is not null — or as a plain new message where a conversation with one person reads in order without one (Slack's direct messages) — and with `markdown` rendered in the platform's own formatting; answers the new message's id. `as` is the spore speaking, or null for the bot itself; `for` is `[{ person, said }]`, whom the post is about, which a platform that cannot reply shows instead — and pings when it is the answer |
+| `post(conversation, text, { answering, for, markdown, as, turn, origin })` | posts, as a reply to the platform's message `answering` when it is not null — or as a plain new message where a conversation with one person reads in order without one (Slack's direct messages) — and with `markdown` rendered in the platform's own formatting; answers the new message's id. `as` is the spore speaking, or null for the bot itself; `for` is `[{ person, said }]`, whom the post is about, which a platform that cannot reply shows instead — and pings when it is the answer. The first post of a turn's answer also carries `turn`, `{ turnNo, stopReason }`, and `origin`, what said it when nobody in the conversation did (`schedule "digest"`), else null — for a platform whose reader is a program; in a brief conversation too, where the text leaves them out |
 | `edit(conversation, note, text, { for })` | edits a message the bot posted; an edit that changes nothing is not a failure |
 | `remove(conversation, note)` | where `can.remove` |
 | `upload(conversation, { path, mime }, caption, { as })` | where `can.upload` |
 | `react(conversation, message, emoji, was)` | where `can.react`: the bot's reaction on a person's message moved from `was` to `emoji`, either of them null for none |
 | `typing(conversation)` | where `can.typing`: the platform's typing indicator, which lasts a few seconds |
 | `fetch(ref, { most })` | a file a person sent, by the `ref` its message listed: the Buffer, or `FILE_TOO_LARGE` past `most` bytes, reading no further. `download(url, { most, headers, fetchImpl })` from `@rhizogrip/spore/relay` is the capped fetch, and never names the URL in an error |
-| `checkBody(native)` | where `can.choose`: why an approval's body for this platform cannot be shown — one not the platform's shape, or one that would answer the bot by itself — or null |
-| `ask(conversation, { native, fallback }, choices, { as })` | where `can.choose`: the question posted — `native`, the body for this platform, or `fallback`, the default `{ text, facts }` drawn the platform's way — with a button per choice, `{ id, label, style, data }`, `data` what the press must carry back; answers `{ note, shown }`, its id and the payload exactly as sent |
-| `settle(conversation, note, replacement)` | where `can.choose`: the question closed, its buttons gone — replaced by `{ native, fallback }`, or kept as `{ shown, outcome }`, the payload posted with how it ended below; answers the payload sent |
+| `checkBody(native)` | where `can.choose`: why an approval's body for this platform cannot be shown — one not the platform's shape, or one that would answer the bot by itself or ask for input of its own — or null |
+| `ask(conversation, { native, fallback }, choices, { as, fields })` | where `can.choose`: the question posted — `native`, the body for this platform, or `fallback`, the default `{ text, facts }` drawn the platform's way — with a button per choice, `{ id, label, style, data }`, `data` what the press must carry back, and, where `can.fields`, a place to fill in each of `fields`, `{ id, label, value, required }`, whose text the press brings back under its `id` (`[]` where there are none); answers `{ note, shown }`, its id and the payload exactly as sent |
+| `settle(conversation, note, replacement)` | where `can.choose`: the question closed, its buttons and fields gone — replaced by `{ native, fallback }`, or kept as `{ shown, outcome }`, the payload posted with how it ended below; answers the payload sent |
+| `quiet(conversation, { turnNo, origin })` | optional: a turn nobody in a conversation asked — a schedule, a webhook, a job, `origin` saying which — that ended quiet, shown in the spore's default conversation (`replyTo` in `config.json`) where that is this bot's. The core owes no conversation anything for it, so without this member nothing reaches one; for a platform whose reader is a program |
 
 Every failure is a `SporeError` with `retryable` (a refusal is not) and `context.retryAfter` in
 seconds when the platform said how long to wait. A platform that refuses the formatting of a
@@ -166,7 +167,7 @@ What `onChoice` gets for a press on one of the relay's buttons:
 |---|---|
 | `conversation` | where it was pressed, keyed as a message there would be |
 | `data` | what the button carried, or null |
-| `inputs` | what the person filled in on the question, where the platform has fields; else null |
+| `inputs` | what the person filled in of the approval's fields, `{ <field id>: <text> }`, where `can.fields`; else null. The relay checks it against the fields and answers a press that does not fit with why |
 | `person` | `{ id, name, groups }`, as the platform vouches for them |
 | `where` | the conversation as a person would name it |
 | `acknowledge(text)` | answers the press on the platform at once — Telegram's notice, Teams' invoke response — with `text`, or nothing for null |

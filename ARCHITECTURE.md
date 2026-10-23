@@ -1735,13 +1735,21 @@ an Adaptive Card for `teams`, `{ html }` for `telegram` — or `default`, text a
 facts each adapter draws in its platform's own way. The relay owns the buttons whatever the body,
 so a body may carry nothing that answers back to the bot (`checkBody`; in Teams no
 `Action.Submit`, `Action.Execute` or `refresh`, wherever it sits): a button of the host's would
-bypass `by` and the first press. What a Teams card's inputs held comes with the press, as
-`inputs`, to the hook — the spore learns what the hook's `tell` says.
+bypass `by` and the first press. **What a person fills in is the flow's too**: the request's
+`fields`, `{ id, label, value?, required? }` beside the options, which the relay draws with the
+buttons where the adapter shows fields (`can.fields`; Teams as `Input.Text`, so a host's own
+`Input.*` is refused like its own button). A press is taken only with what it fills in fitting
+the declaration — declared ids, text within the limit, every required one filled in
+(`inputsProblem`) — and answered with why otherwise; what it held goes with it, as `inputs`, to
+the hook — the spore learns what the hook's `tell` says. Where an adapter shows no fields, the
+relay decides once for every platform: a required field refuses the approval there, an optional
+one is left out and the hook gets no `inputs`.
 
 **`t_approvals` is the record, and the relay works from it.** `state` goes `asked` → `posted` →
 `answered` or `expired`, or `asked` → `refused` when the relay will not post it: the conversation
 does not reach that spore through the bot, the platform carries no approvals (`can.choose`),
-there is nothing to show there, or the platform refuses it. Every second the relay reads each
+there is nothing to show there, a required field cannot be shown there, or the platform refuses
+it. Every second the relay reads each
 followed spore's open approvals and starts what each still needs, one at a time per approval, so
 a restart carries on from the database and never from memory: the host's hook told how it ended;
 the question closed — replaced by the body the hook answered, or kept with its buttons gone and how

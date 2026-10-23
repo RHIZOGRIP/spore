@@ -5,7 +5,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-import { askApproval, callApprovalHook } from '../src/library/approvals.js'
+import { askApproval, callApprovalHook, inputsProblem } from '../src/library/approvals.js'
 import { readConfig } from '../src/library/config.js'
 import { answerApproval, approvalOf, approvalsIn, expireApproval, postApproval, readInbox, refuseApproval, saidOf, settleApproval } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
@@ -80,6 +80,14 @@ describe('asking an approval', () => {
       [{ body: { teams: 'card' } }, /is not an object/],
       [{ body: { default: { text: 'x', image: 'y' } } }, /default body it cannot show/],
       [{ body: { default: { facts: [['Now']] } } }, /default body it cannot show/],
+      [{ fields: [] }, /has fields it cannot show/],
+      [{ fields: Array.from({ length: 6 }, (_, i) => ({ id: `f${i}`, label: `F${i}` })) }, /has fields it cannot show/],
+      [{ fields: [{ id: 'a b', label: 'A' }] }, /has a field it cannot show/],
+      [{ fields: [{ id: 'a', label: 'Why\nnot?' }] }, /has a field it cannot show/],
+      [{ fields: [{ id: 'a', label: 'A', value: 82 }] }, /has a field it cannot show/],
+      [{ fields: [{ id: 'a', label: 'A', required: 'yes' }] }, /has a field it cannot show/],
+      [{ fields: [{ id: 'a', label: 'A', kind: 'number' }] }, /has a field it cannot show/],
+      [{ fields: [{ id: 'a', label: 'A' }, { id: 'a', label: 'B' }] }, /two fields under one id/],
       [{ hook: 'billing' }, /calls a hook .* does not name/],
       [{ secret: 'x' }, /has secret, which an approval does not take/]
     ]
@@ -87,6 +95,27 @@ describe('asking an approval', () => {
       expect(() => ask(change), JSON.stringify(change)).toThrow(problem)
     }
     expect(approvalsIn(WS)).toEqual([])
+  })
+})
+
+describe('the fields an approval asks to be filled in', () => {
+  const FIELDS = [{ id: 'value', label: 'Value', value: '82 %', required: true }, { id: 'reason', label: 'Why?' }]
+
+  it('are kept with it, and none is null', () => {
+    expect(approvalOf(WS, ask({ fields: FIELDS }).approval).fields).toEqual(FIELDS)
+    expect(approvalOf(WS, ask({}).approval).fields).toBe(null)
+  })
+
+  it('take a press filling in those it declares, as text within the limit, each it requires filled in', () => {
+    expect(inputsProblem(FIELDS, { value: '84 %' })).toBe(null)
+    expect(inputsProblem(FIELDS, { value: '84 %', reason: '' })).toBe(null)
+    expect(inputsProblem(null, null)).toBe(null)
+    expect(inputsProblem(FIELDS, null)).toBe('fill in "Value" first')
+    expect(inputsProblem(FIELDS, { value: '  ', reason: 'checked' })).toBe('fill in "Value" first')
+    expect(inputsProblem(FIELDS, { value: '84 %', comment: 'x' })).toBe('"comment" is not one of its fields')
+    expect(inputsProblem(null, { comment: 'x' })).toBe('"comment" is not one of its fields')
+    expect(inputsProblem(FIELDS, { value: 84 })).toBe('"Value" takes text of at most 2000 characters')
+    expect(inputsProblem(FIELDS, { value: 'x'.repeat(2001) })).toBe('"Value" takes text of at most 2000 characters')
   })
 })
 

@@ -115,7 +115,15 @@ const said = (one) => {
   const note = `${one.conversation} ${one.id}`
   if (one.op === 'post') return { op: 'post', note, text: one.text, answering: one.answering, formatted: one.formatted }
   if (one.op === 'edit') return { op: 'edit', note, text: one.text }
-  if (one.op === 'ask') return { op: 'ask', note, text: JSON.stringify(one.card), choices: one.card.actions.filter(action => action.data?.spore).map(action => ({ label: action.title, data: action.data.spore, style: action.style ?? null })) }
+  if (one.op === 'ask') {
+    return {
+      op: 'ask',
+      note,
+      text: JSON.stringify(one.card),
+      choices: one.card.actions.filter(action => action.data?.spore).map(action => ({ label: action.title, data: action.data.spore, style: action.style ?? null })),
+      fields: one.card.body.filter(element => element.type === 'Input.Text').map(input => ({ id: input.id.slice('field:'.length), label: input.label, value: input.value ?? null, required: input.isRequired ?? false }))
+    }
+  }
   if (one.op === 'close') return { op: 'close', note, text: JSON.stringify(one.card) }
   return { op: 'remove', note }
 }
@@ -188,7 +196,7 @@ const harness = {
       conversation: { id: conversation, conversationType: shared ? 'channel' : 'personal', tenantId: TENANT },
       from: { id: `29:${person}`, aadObjectId: person, name: `U${person} Smith` },
       recipient: { id: `28:${APP}`, name: 'Triage' },
-      value: { action: { type: 'Action.Execute', verb: 'answer', data: { ...inputs, spore: data } }, trigger: 'manual' }
+      value: { action: { type: 'Action.Execute', verb: 'answer', data: { ...Object.fromEntries(Object.entries(inputs).map(([id, text]) => [`field:${id}`, text])), spore: data } }, trigger: 'manual' }
     })
     return { acknowledged: () => teams.replies.has(id) ? { text: teams.replies.get(id).value } : undefined }
   },
@@ -201,20 +209,20 @@ const harness = {
 conformance(harness, (ctx) => {
   describe('on Teams', () => {
     const CHANNEL = harness.shared(5)
-    const CARD = { type: 'AdaptiveCard', version: '1.5', body: [{ type: 'TextBlock', text: 'Apply the change?' }, { type: 'Input.Text', id: 'comment' }], actions: [{ type: 'Action.OpenUrl', title: 'Preview', url: 'https://example.com/preview' }] }
-    const asking = (body) => requestApproval({
+    const CARD = { type: 'AdaptiveCard', version: '1.5', body: [{ type: 'TextBlock', text: 'Apply the change?' }], actions: [{ type: 'Action.OpenUrl', title: 'Preview', url: 'https://example.com/preview' }] }
+    const asking = (body, fields) => requestApproval({
       ws: ctx.ws,
       configFile: join(ctx.root, 'config.json'),
-      request: { to: 'teams:triage/1', by: ['1'], options: [{ id: 'apply', label: 'Apply', style: 'positive' }], body }
+      request: { to: 'teams:triage/1', by: ['1'], options: [{ id: 'apply', label: 'Apply', style: 'positive' }], body, ...(fields ? { fields } : {}) }
     }).approval
 
-    it('asks an approval on its own card, its buttons after the card\'s, and hands on what was filled in with the press', async () => {
+    it('asks an approval on its own card, its fields under the card\'s body and its buttons after the card\'s, and hands on what was filled in with the press', async () => {
       ctx.start({ approveEveryMs: 50 })
-      const id = asking({ teams: CARD })
+      const id = asking({ teams: CARD }, [{ id: 'comment', label: 'Comment', required: true }])
       await ctx.until(() => ctx.seen('1').some(one => one.op === 'ask'))
       const question = ctx.seen('1').find(one => one.op === 'ask')
       const card = ctx.platform.sent.find(one => one.op === 'ask').card
-      expect(card.body).toEqual(CARD.body)
+      expect(card.body).toEqual([...CARD.body, { type: 'Input.Text', id: 'field:comment', label: 'Comment', isMultiline: true, isRequired: true, errorMessage: 'Comment is required' }])
       expect(card.actions).toEqual([CARD.actions[0], { type: 'Action.Execute', title: 'Apply', verb: 'answer', data: { spore: `ap:${id}:apply` }, style: 'positive' }])
 
       const pressed = harness.press(ctx.platform, { note: question.note, data: question.choices[0].data, person: '1', inputs: { comment: 'looks right' } })
@@ -224,7 +232,7 @@ conformance(harness, (ctx) => {
       expect(approvalOf(ctx.ws, id)).toMatchObject({ state: 'answered', inputs: { comment: 'looks right' } })
       const closed = ctx.platform.sent.find(one => one.op === 'close').card
       expect(closed.actions).toEqual([CARD.actions[0]])
-      expect(closed.body.at(-1)).toEqual({ type: 'TextBlock', text: '**Apply — U1 Smith**', wrap: true })
+      expect(closed.body).toEqual([...CARD.body, { type: 'TextBlock', text: '**Apply — U1 Smith**', wrap: true }])
     })
 
     it('fetches a file sent in a personal chat by its link, and an image pasted there with the bot\'s token', async () => {
@@ -261,17 +269,19 @@ conformance(harness, (ctx) => {
       expect(ctx.platform.downloads).toEqual([])
     })
 
-    it('refuses a card that answers by itself, wherever its action sits, and one older than 1.4', async () => {
+    it('refuses a card that answers by itself, wherever its action sits, one with an input of its own, and one older than 1.4', async () => {
       ctx.start({ approveEveryMs: 50 })
       const refused = [
         { ...CARD, body: [{ type: 'ActionSet', actions: [{ type: 'Action.Submit', title: 'Go' }] }] },
         { ...CARD, body: [{ type: 'Container', items: [], selectAction: { type: 'Action.Execute', verb: 'go' } }] },
         { ...CARD, refresh: { action: { type: 'Action.Execute', verb: 'go' }, userIds: [] } },
+        { ...CARD, body: [{ type: 'Container', items: [{ type: 'Input.Text', id: 'comment' }] }] },
         { ...CARD, version: '1.2' }
       ].map(card => asking({ teams: card }))
       await ctx.until(() => refused.every(id => approvalOf(ctx.ws, id).settledAt))
       expect(refused.map(id => approvalOf(ctx.ws, id).reason)).toEqual([
         ...Array(3).fill('a Teams body carries no Action.Submit or Action.Execute, nor a refresh — the buttons that answer are the ones spore adds'),
+        'a Teams body carries no Input — what a person fills in is the approval\'s fields, which spore adds',
         'a Teams body is an Adaptive Card of version 1.4 or later, as { "type": "AdaptiveCard", "version": "1.5", "body": [ … ] }'
       ])
       expect(ctx.seen('1').some(one => one.op === 'ask')).toBe(false)

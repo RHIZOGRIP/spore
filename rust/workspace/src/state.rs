@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 11;
+pub const SCHEMA_VERSION: i64 = 12;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -315,6 +315,7 @@ CREATE TABLE t_approvals (
   tell          TEXT,
   reason        TEXT,
   settledAt     TEXT,
+  fields        TEXT,
   CHECK ((postedAt IS NULL) = (state IN ('asked', 'refused'))),
   CHECK ((shown IS NULL) = (postedAt IS NULL)),
   CHECK ((answeredAt IS NULL) = (state <> 'answered')),
@@ -331,13 +332,13 @@ CREATE INDEX t_approvals_open ON t_approvals (settledAt, state);
 CREATE VIEW approvals AS
   SELECT approvalNo, id, at, place, approvers, options, body, within, calendar, until, hook, state,
          shown, note, postedAt, choice, inputs, answererId, answererName, answeredAt, outcome,
-         replaced, tell, reason, settledAt
+         replaced, tell, reason, settledAt, fields
     FROM t_approvals;
 "#;
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 10] = [
+const MIGRATIONS: [(i64, &str); 11] = [
     (
         1,
         r#"
@@ -579,6 +580,19 @@ CREATE VIEW inbox AS
          i.inboxNo <= w.inboxConsumed AS consumed,
          EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
     FROM t_inbox i, t_workspace w;
+"#,
+    ),
+    (
+        11,
+        r#"
+ALTER TABLE t_approvals ADD COLUMN fields TEXT;
+
+DROP VIEW approvals;
+CREATE VIEW approvals AS
+  SELECT approvalNo, id, at, place, approvers, options, body, within, calendar, until, hook, state,
+         shown, note, postedAt, choice, inputs, answererId, answererName, answeredAt, outcome,
+         replaced, tell, reason, settledAt, fields
+    FROM t_approvals;
 "#,
     ),
 ];
@@ -2208,7 +2222,7 @@ pub fn settle_outbox(ws: &Path, outbox_no: i64, refused: Option<&str>) -> Result
 }
 
 /// What an approval asks, as columns. The library checks the request and computes `until`.
-const APPROVAL_COLUMNS: [(&str, Kind); 10] = [
+const APPROVAL_COLUMNS: [(&str, Kind); 11] = [
     ("id", Kind::Text),
     ("at", Kind::Text),
     ("place", Kind::Text),
@@ -2219,6 +2233,7 @@ const APPROVAL_COLUMNS: [(&str, Kind); 10] = [
     ("calendar", Kind::Json),
     ("until", Kind::Text),
     ("hook", Kind::Text),
+    ("fields", Kind::Json),
 ];
 
 /// An approval asked of the people it names, in the conversation `place` names — never a
@@ -4417,6 +4432,35 @@ mod tests {
         let mut extra = Record::parse(&request(json!("telegram:main/42"), "a2")).unwrap();
         extra.set("secret", json!("x"));
         assert!(ask_approval(&ws, &extra.to_json()).is_err());
+    }
+
+    #[test]
+    fn keeps_the_fields_an_approval_asks_to_be_filled_in() {
+        let ws = scratch("approval-fields");
+        let fields = json!([{ "id": "reason", "label": "Why?", "required": true }]);
+        ask_approval(
+            &ws,
+            &json!({
+                "id": "a1", "at": "a", "place": "telegram:main/42", "approvers": ["42"],
+                "options": [{ "id": "apply", "label": "Apply" }], "body": { "default": { "text": "x" } },
+                "within": "2h", "until": "b", "fields": fields
+            })
+            .to_string(),
+        )
+        .unwrap();
+        asked(&ws, "a2", "b");
+        let conn = Connection::open(ws.join(STATE_FILE)).unwrap();
+        let kept = |id: &str| -> Option<String> {
+            conn.query_row("SELECT fields FROM approvals WHERE id = ?1", [id], |row| {
+                row.get(0)
+            })
+            .unwrap()
+        };
+        assert_eq!(
+            kept("a1").map(|text| serde_json::from_str::<Value>(&text).unwrap()),
+            Some(fields)
+        );
+        assert_eq!(kept("a2"), None);
     }
 
     #[test]
