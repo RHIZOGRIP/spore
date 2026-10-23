@@ -15,12 +15,13 @@ import { CONFIG_FILE, containing, ENVIRONMENT_FILE, MEMORY_FILE, SOURCES_FILE, r
 import { isWorkspace } from './discover.js'
 import { list, show, sporangia } from './verbs.js'
 import { containCheck, keptRefusal } from '../core/command.js'
-import { containOf, listPlugins, misplaced, secretsIn, showPlugin } from '../core/plugins.js'
+import { containOf, listPlugins, misplaced, ownerRouter, secretsIn, showPlugin } from '../core/plugins.js'
 import { paused, SLOT_DIR, spendStop } from '../core/admission.js'
 import { DEFAULT_SPORANGIUM } from '../core/sporangia.js'
 import { outbox } from '../core/spore-dir.js'
 import { landlockAbi } from '../isolation/sandbox.js'
 import { hooksPath, loadHooks } from '../../webhook/hooks.js'
+import { apiPath } from '../../api/config.js'
 
 const ASSIGNMENT = /[A-Z][A-Z0-9]*_[A-Z0-9_]+=/
 
@@ -198,6 +199,17 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
           else startsUnasked(spore, `hook ${hook.name}`)
         }
         if (hook.maxWait) needsTick.push(`hook ${hook.name} holds deliveries`)
+        if (hook.check.method === 'api' && !existsSync(apiPath(configFile))) problem('operator', hooks, `hook ${hook.name} is reached through the HTTP API, and there is no ${apiPath(configFile)}`, 'docs/operating.md, "The HTTP API service" — or give the hook a verify of its own')
+        if (hook.router) {
+          const { plugin, name, reads } = hook.router
+          try {
+            ownerRouter(plugin, name)
+          } catch (err) {
+            problem('operator', hooks, `hook ${hook.name}'s router ${plugin}/${name}: ${err.message} — its deliveries reach their spores without its attachments`, err.detail)
+          }
+          for (const dir of reads.filter(dir => !existsSync(dir))) problem('operator', hooks, `hook ${hook.name}'s router reads ${dir}, which is not there — it attaches nothing`, 'make it, or drop it from the router\'s reads')
+          needsTick.push(`hook ${hook.name} holds deliveries for its router`)
+        }
       }
     } catch (err) {
       problem('operator', hooks, err.message, err.detail)

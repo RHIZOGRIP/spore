@@ -477,6 +477,7 @@ function renderPlugin (result) {
     line(i ? '' : 'settings', `${key} (${kind})${result.configured?.[key] === undefined ? '' : ` = ${result.configured[key]}`}`)
   }
   for (const [i, [name, path]] of Object.entries(result.programs).entries()) line(i ? '' : 'programs', `${name} → ${path}`)
+  for (const [i, [name, path]] of Object.entries(result.routes).entries()) line(i ? '' : 'routes', `${name} → ${path}, an owner's router (hooks.json)`)
   for (const [i, [name, value]] of Object.entries(result.env).entries()) line(i ? '' : 'env', `${name}=${value}`)
   if (result.contain) line('contain', result.contain.keep ? `${result.contain.keep}, and nothing else of ${result.contain.hide}` : `nothing of ${result.contain.hide}`)
   if (result.modules.length) line('modules', `${result.modules.join(', ')} → node_modules/, for the agent's programs`)

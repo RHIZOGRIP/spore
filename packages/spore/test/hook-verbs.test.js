@@ -77,12 +77,19 @@ describe('spore hook show', () => {
 
     const shown = showHook('gh', { configFile, env: ENV })
     expect(shown.maxWait).toBe(1_800_000)
+    expect(shown.owner).toBeNull()
     const [one] = shown.spores
     expect(one.deliveries).toEqual([
       expect.objectContaining({ delivery: 'd-2', event: 'push', consumed: false, turnNo: null }),
       expect.objectContaining({ delivery: 'd-1', consumed: true, turnNo: 1, stopReason: 'answer' })
     ])
     expect(one.held).toEqual([expect.objectContaining({ deadline: new Date(now + 1_800_000).toISOString() })])
+  })
+
+  it('names the owner\'s router bound to it, with its bounds', () => {
+    spore('main')
+    hooks({ lake: { spore: 'main', verify: { token: '${HOOK_TOKEN}' }, router: { plugin: 'da', name: 'mine', timeout: '45s', attach: { files: 20, bytes: '200MB' }, reads: ['/export/lakes'] } } }) // eslint-disable-line no-template-curly-in-string
+    expect(showHook('lake', { configFile, env: ENV }).owner).toEqual({ plugin: 'da', name: 'mine', timeoutMs: 45_000, attach: { files: 20, bytes: 200 * 1024 * 1024 }, reads: ['/export/lakes'] })
   })
 
   it('refuses a hook hooks.json does not name, saying which it does', () => {

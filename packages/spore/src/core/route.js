@@ -1,21 +1,26 @@
 /**
  * A delivery nobody typed — a webhook's, a job's — held and judged before it reaches its spore: the
  * spore's router for its origin, then its triage cell, decide how long it may wait, never past the
- * owner's `maxWait`, never dropping it. Held first, until the router's timeout, so a router that
- * hangs, a cell that fails or a host that dies still lets it go then. Contract: ARCHITECTURE.md,
- * "Deliveries nobody typed".
+ * owner's `maxWait`, never dropping it — or, where the owner binds a router to the origin, that
+ * router attaches to it and nothing delays it. Held first, until the router's timeout, so a router
+ * that hangs, a cell that fails or a host that dies still lets it go then. Contract:
+ * ARCHITECTURE.md, "Deliveries nobody typed".
  */
 
-import { join } from 'node:path'
+import { randomBytes } from 'node:crypto'
+import { rmSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 import { SporeError } from '../observability/errors.js'
 import { launchStandalone } from './cell.js'
 import { release as releaseHeld } from './send.js'
-import { holdDelivery, originOfOptions, rescheduleHeld } from './spore-dir.js'
-import { ROUTE_TIMEOUT_MS, routerFor, runRouter } from './router.js'
+import { ownerRouter } from './plugins.js'
+import { INBOX_DIR, attachHeld, holdDelivery, originOfOptions, releaseHeld as releaseDue, rescheduleHeld } from './spore-dir.js'
+import { ROUTE_TIMEOUT_MS, routerFor, runOwnerRouter, runRouter } from './router.js'
 import { precursorFor, triage, triageIn } from './triage.js'
 
 const iso = (ms) => new Date(ms).toISOString()
+const OWNER_GRACE_MS = 5_000
 
 const KEPT_HELD = {
   ADMISSION_FULL: 'held — every turn slot is taken, the pass releases it once one frees',
@@ -50,9 +55,10 @@ export function judgesOf (ws, origin) {
  * with. Answers `{ outcome, judged, started }`: a line for the caller's log, the judgment under
  * way, and whether a turn started now.
  */
-export function deliver ({ ws, said, options, maxWait = null, envOf, now = Date.now, release = releaseHeld, ...judging }) {
+export function deliver ({ ws, said, options, maxWait = null, owner = null, envOf, now = Date.now, release = releaseHeld, ...judging }) {
   const origin = originOfOptions(options)
   if (origin === null) throw new SporeError('a message a person typed is said, never delivered', { type: 'DELIVERY_INVALID', detail: 'deliver takes a webhook\'s or a job\'s message; send takes a person\'s' })
+  if (owner) return holdAndAttach({ ws, origin, said, options, owner, envOf, now, release, ...judging })
   const judges = maxWait ? judgesOf(ws, origin) : {}
   if (judges.router || judges.precursor) {
     return { ...holdAndJudge({ ws, origin, said, options, maxWait, judges, envOf, now, release, ...judging }), started: false }
@@ -97,4 +103,60 @@ function holdAndJudge ({ ws, origin, said, options, event, ref, maxWait, judges:
     if (wait === 0) log(`${heading} · ${releaseNow(release, ws, { env: envOf() }).outcome}`)
   })().catch(err => log(`${heading} · routing failed — ${err.type ?? err.name} ${err.message}${err.detail ? ` — ${err.detail}` : ''}; it is released at its timeout`))
   return { outcome: `held for ${router ? router.split('/').pop() : `precursors/${precursorFor(origin)}.cmk`}`, judged }
+}
+
+/**
+ * A delivery held while the owner's router for its origin attaches to it, then released at once:
+ * the spore's own router and triage cell are not asked. It is held with a line saying the router
+ * did not answer, so a service that stops before it does still lets it go at the router's timeout,
+ * and that line is what the turn reads; the router replaces it with what it attached, or with why
+ * it attached nothing. `start: false` releases it without starting a turn.
+ */
+function holdAndAttach ({ ws, origin, said, options, owner, event, ref, envOf, log, heading, now, release, start = true, attachBy = runOwnerRouter, routerOf = ownerRouter }) {
+  const label = `what router "${owner.name}" attaches`
+  const untold = { path: null, name: label, mime: null, bytes: null, missing: 'it did not answer: what ran it stopped first' }
+  const until = iso(now() + owner.timeoutMs + OWNER_GRACE_MS)
+  const kept = holdDelivery(ws, said, { ...options, attach: [...(options.attach ?? []), untold], releaseAt: until, deadline: until })
+  if (kept.repeated) return { outcome: `already ${kept.repeated === true ? 'received' : kept.repeated}`, judged: Promise.resolve(), started: false }
+  const files = kept.files.slice(0, -1)
+  const payload = files.find(file => file.path && file.name !== 'headers.json')
+  const headers = files.find(file => file.path && file.name === 'headers.json')
+  const delivery = files.find(file => file.path) ? dirname(files.find(file => file.path).path) : `${INBOX_DIR}/${iso(now()).replace(/[-:.]/g, '')}-${randomBytes(3).toString('hex')}`
+  const into = `${delivery}/${owner.name}`
+  const judged = (async () => {
+    let attached
+    try {
+      const { program, reads } = routerOf(owner.plugin, owner.name)
+      attached = await attachBy({
+        program,
+        programReads: reads,
+        ws,
+        delivery: files.length ? join(ws, delivery) : null,
+        payload: payload ? join(ws, payload.path) : null,
+        headers: headers ? join(ws, headers.path) : null,
+        origin,
+        event,
+        ref,
+        into,
+        timeoutMs: owner.timeoutMs,
+        attach: owner.attach,
+        reads: owner.reads
+      })
+    } catch (err) {
+      attached = { failed: `could not start — ${err.message}${err.detail ? ` — ${err.detail}` : ''}` }
+    }
+    const told = attached.failed ? [{ ...untold, missing: `the router ${attached.failed}` }] : attached.files
+    if (!attachHeld(ws, kept.held, [...files, ...told])) {
+      rmSync(join(ws, into), { recursive: true, force: true })
+      return log(`${heading} · router ${owner.plugin}/${owner.name} answered after the delivery was released without it`)
+    }
+    rescheduleHeld(ws, kept.held, iso(now()), { urgent: true })
+    log(`${heading} · ${attached.failed ? `router ${owner.plugin}/${owner.name} ${attached.failed}; delivered without its attachments` : `router ${owner.plugin}/${owner.name} attached ${attached.files.length} file${attached.files.length === 1 ? '' : 's'}`}`)
+    if (!start) {
+      releaseDue(ws, iso(now()), { due: true })
+      return log(`${heading} · said, not started`)
+    }
+    log(`${heading} · ${releaseNow(release, ws, { env: envOf() }).outcome}`)
+  })().catch(err => log(`${heading} · attaching failed — ${err.type ?? err.name} ${err.message}${err.detail ? ` — ${err.detail}` : ''}; it is released at its timeout`))
+  return { outcome: `held for router ${owner.plugin}/${owner.name}`, judged, started: false }
 }

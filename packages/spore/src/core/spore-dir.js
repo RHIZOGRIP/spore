@@ -539,6 +539,14 @@ export function rescheduleHeld (ws, heldNo, releaseAt, { urgent = false, summary
   return native.rescheduleHeld(ws, heldNo, releaseAt, urgent, summary, replaces)
 }
 
+/**
+ * A held delivery's files replaced: `files` are the entry's file records, those with a path already
+ * written in `inbox.d/`. False once released.
+ */
+export function attachHeld (ws, heldNo, files) {
+  return native.attachHeld(ws, heldNo, JSON.stringify(files))
+}
+
 /** A job begun, unless `most` are running or one by its name is: `{ jobNo }` or `{ refused, running }`. */
 export function beginJob (ws, job, most) {
   return JSON.parse(native.beginJob(ws, JSON.stringify(job), most))

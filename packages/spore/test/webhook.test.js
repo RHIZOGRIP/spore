@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHash, createHmac } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { SporeError } from '../src/index.js'
 import { loadHooks } from '../webhook/hooks.js'
-import { cellsSince, heldIn, saidOf } from '../src/core/spore-dir.js'
+import { cellsSince, heldIn, readInbox, saidOf } from '../src/core/spore-dir.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
-import { runRouter } from '../src/core/router.js'
+import { runOwnerRouter, runRouter } from '../src/core/router.js'
 import { createWebhookServer, keptHeaders } from '../webhook/server.js'
 import { verify } from '../webhook/verify.js'
 
@@ -110,6 +110,43 @@ describe('hooks.json', () => {
     expect(refusal(() => loadHooks(join(dir, 'hooks.json'), {})).message).toMatch(/spore "main" with a field spore does not know — only/)
     writeHooks({ x: { verify: { token: 'a' }, spore: [{ accept: {} }] } })
     expect(refusal(() => loadHooks(join(dir, 'hooks.json'), {})).message).toMatch(/names no spore/)
+  })
+
+  it('takes an owner\'s router with its timeout, attachment bounds and reads, within the runtime\'s ceilings', () => {
+    const verify = { method: 'header', header: 'x-token', token: 't' }
+    const router = { plugin: 'da', name: 'mine', timeout: '45s', attach: { files: 20, bytes: '200MB' }, reads: ['/export/lakes/l1/'] }
+    writeHooks({ lake: { spore: 'main', verify, router } })
+    expect(loadHooks(join(dir, 'hooks.json')).get('lake').router).toEqual({ plugin: 'da', name: 'mine', timeoutMs: 45_000, attach: { files: 20, bytes: 200 * 1024 * 1024 }, reads: ['/export/lakes/l1'] })
+    writeHooks({ lake: { spore: 'main', verify } })
+    expect(loadHooks(join(dir, 'hooks.json')).get('lake').router).toBeNull()
+    for (const [wrong, why] of [
+      [{ ...router, timeout: '2m' }, /router timeout spore cannot take — 2m/],
+      [{ ...router, timeout: undefined }, /router timeout/],
+      [{ ...router, attach: { files: 101, bytes: '1MB' } }, /router attach spore cannot take/],
+      [{ ...router, attach: { files: 1, bytes: '1GB' } }, /router attach spore cannot take/],
+      [{ ...router, attach: undefined }, /router attach/],
+      [{ ...router, reads: ['lakes'] }, /router reads that are not directories/],
+      [{ ...router, reads: ['/'] }, /router reads that are not directories/],
+      [{ ...router, plugin: '' }, /names no plugin and router/],
+      [{ ...router, wait: '0' }, /router field spore does not know — wait/],
+      ['da/mine', /router spore cannot read/]
+    ]) {
+      writeHooks({ lake: { spore: 'main', verify, router: wrong } })
+      expect(refusal(() => loadHooks(join(dir, 'hooks.json'))).message).toMatch(why)
+    }
+  })
+
+  it('takes "api" as the check of a hook reached through the HTTP API only, which accepts by its payload alone', () => {
+    writeHooks({ lake: { spore: 'main', verify: 'api', accept: { payload: { required: ['doc'] } } } })
+    const lake = loadHooks(join(dir, 'hooks.json')).get('lake')
+    expect(lake.check).toEqual({ method: 'api', event: null, delivery: null })
+    expect(lake.secrets).toEqual([])
+    writeHooks({ lake: { spore: 'main', verify: 'api', accept: { header: 'x-event', values: ['push'] } } })
+    expect(refusal(() => loadHooks(join(dir, 'hooks.json'))).message).toMatch(/reached through the HTTP API and accepts by a header/)
+    writeHooks({ lake: { spore: [{ name: 'main', accept: { header: 'x-event', values: ['push'] } }], verify: 'api' } })
+    expect(refusal(() => loadHooks(join(dir, 'hooks.json'))).message).toMatch(/accepts by a header/)
+    writeHooks({ lake: { spore: 'main', verify: 'apis' } })
+    expect(refusal(() => loadHooks(join(dir, 'hooks.json'))).message).toMatch(/says nothing about checking its sender/)
   })
 
   it('takes maxBytes as a size and perHour as a count', () => {
@@ -334,6 +371,13 @@ describe('the service', () => {
     expect(logs.join('\n')).toMatch(/hook forge → main · pr · issues · ignored — the payload does not match — \/ must have required property 'comment'/)
   })
 
+  it('answers a hook reached through the HTTP API only as one it does not have', async () => {
+    await start({ ...forge, lake: { spore: 'main', verify: 'api' } })
+    expect((await fetch(`${base}/hook/lake`, signed('{}'))).status).toBe(404)
+    expect(delivered()).toEqual([])
+    expect(logs.join('\n')).toMatch(/hook lake · refused — it is reached through the HTTP API only/)
+  })
+
   it('says so when a request names a hook that does not exist', async () => {
     await start(forge)
     expect((await fetch(`${base}/hook/forgee`, signed('{}'))).status).toBe(404)
@@ -478,6 +522,106 @@ describe('the service', () => {
     })
   })
 
+  describe('with an owner\'s router', () => {
+    const owner = { plugin: 'da', name: 'mine', timeout: '30s', attach: { files: 2, bytes: '1MB' } }
+    let ran
+    let answer
+
+    const withOwner = async (hookFields = {}) => {
+      ran = []
+      mkdirSync(join(wsOf('main'), 'data', 'routes'), { recursive: true })
+      writeFileSync(join(wsOf('main'), 'data', 'routes', 'hook-forge.route'), '#!/bin/sh\n')
+      await start({ forge: { ...forge.forge, maxWait: '2h', router: owner, ...hookFields } }, {
+        routerOf: (plugin, name) => {
+          if (plugin !== 'da') throw new SporeError(`no plugin "${plugin}" is installed beside spore`, { type: 'PLUGIN_NOT_INSTALLED' })
+          return { program: `/plugins/${plugin}/bin/${name}`, reads: ['/plugins/da'] }
+        },
+        attachBy: async (asked) => {
+          ran.push(asked)
+          return answer(asked)
+        },
+        route: async () => { throw new Error('the spore\'s own router is asked') }
+      })
+    }
+    const writes = (name, text) => (asked) => {
+      mkdirSync(join(asked.ws, asked.into), { recursive: true })
+      writeFileSync(join(asked.ws, asked.into, name), text)
+      return { files: [{ path: `${asked.into}/${name}`, name, mime: 'application/json', bytes: text.length }] }
+    }
+
+    it('runs it on the payload, attaches what it wrote and releases the delivery at once, without the spore\'s own router', async () => {
+      answer = writes('pages.json', '[{"page":1}]')
+      await withOwner()
+      expect((await fetch(`${base}/hook/forge`, signed('{"doc":"q3.pdf"}'))).status).toBe(202)
+      await server.routed()
+      expect(ran[0]).toMatchObject({ program: '/plugins/da/bin/mine', programReads: ['/plugins/da'], origin: 'hook:forge', event: 'issues', ref: 'd-1', timeoutMs: 30_000, attach: { files: 2, bytes: 1024 * 1024 }, reads: [] })
+      expect(readFileSync(ran[0].payload, 'utf8')).toBe('{"doc":"q3.pdf"}')
+      expect(ran[0].into).toMatch(/^inbox\.d\/[^/]+\/mine$/)
+      expect(join(wsOf('main'), ran[0].into)).toBe(join(ran[0].delivery, 'mine'))
+      const [one] = delivered()
+      expect(one.files.map(file => file.name)).toEqual(['payload.json', 'headers.json', 'pages.json'])
+      expect(readFileSync(join(one.ws, one.files[2].path), 'utf8')).toBe('[{"page":1}]')
+      expect(saidOf(one)).toMatch(/inbox\.d\/[^/]+\/mine\/pages\.json — pages\.json, application\/json, 12 bytes/)
+      const [row] = heldIn(wsOf('main'))
+      expect(row.releaseAt).toBe(row.deadline)
+      expect(Date.parse(row.releaseAt)).toBeLessThanOrEqual(Date.now())
+      expect(released.map(one => one.ws)).toEqual([wsOf('main')])
+      expect(logs.join('\n')).toMatch(/router da\/mine attached 1 file/)
+    })
+
+    it('holds the delivery saying the router has not answered, until it answers or its timeout', async () => {
+      let answered
+      answer = () => new Promise(resolve => { answered = resolve })
+      await withOwner({ maxWait: undefined })
+      await fetch(`${base}/hook/forge`, signed('{}'))
+      const [one] = delivered()
+      expect(one.files.at(-1)).toEqual({ path: null, name: 'what router "mine" attaches', mime: null, bytes: null, missing: 'it did not answer: what ran it stopped first' })
+      const [row] = heldIn(wsOf('main'))
+      expect(Date.parse(row.deadline) - Date.parse(row.at)).toBeGreaterThanOrEqual(35_000 - 1000)
+      expect(row.releaseAt).toBe(row.deadline)
+      expect(released).toEqual([])
+      answered({ files: [] })
+      await server.routed()
+      expect(delivered()[0].files.map(file => file.name)).toEqual(['payload.json', 'headers.json'])
+      expect(released.map(one => one.ws)).toEqual([wsOf('main')])
+    })
+
+    it('tells the turn why nothing was attached when the router fails or cannot be found', async () => {
+      answer = () => ({ failed: 'exited 2 — not a PDF' })
+      await withOwner()
+      await fetch(`${base}/hook/forge`, signed('{}'))
+      await server.routed()
+      const [one] = delivered()
+      expect(one.files.at(-1).missing).toBe('the router exited 2 — not a PDF')
+      expect(saidOf(one)).toMatch(/what router "mine" attaches did not come: the router exited 2 — not a PDF/)
+      expect(released).toHaveLength(1)
+      expect(logs.join('\n')).toMatch(/router da\/mine exited 2 — not a PDF; delivered without its attachments/)
+
+      await new Promise(resolve => server.close(resolve))
+      await withOwner({ router: { ...owner, plugin: 'gone' } })
+      await fetch(`${base}/hook/forge`, signed('{"n":2}', { 'x-forgejo-delivery': 'd-2' }))
+      await server.routed()
+      const gone = delivered().find(row => row.hookDelivery === 'd-2')
+      expect(gone.files.at(-1).missing).toMatch(/^the router could not start — no plugin "gone" is installed/)
+      expect(ran).toEqual([])
+    })
+
+    it('still attaches past the hourly limit, saying the delivery without starting a turn', async () => {
+      answer = writes('pages.json', '[]')
+      await withOwner({ perHour: 1 })
+      await fetch(`${base}/hook/forge`, signed('{}'))
+      await server.routed()
+      await fetch(`${base}/hook/forge`, signed('{"n":2}', { 'x-forgejo-delivery': 'd-2' }))
+      await server.routed()
+      expect(said).toEqual([])
+      expect(released).toHaveLength(1)
+      const entry = readInbox(wsOf('main')).find(one => one.hookDelivery === 'd-2')
+      expect(entry.hook).toBe('forge')
+      expect(entry.files.map(file => file.name)).toEqual(['payload.json', 'headers.json', 'pages.json'])
+      expect(logs.join('\n')).toMatch(/said, not started/)
+    })
+  })
+
   describe('with a triage cell', () => {
     const PRECURSOR = '---\nname: route-hook-forge\ntools: [read]\nrounds: [3, 4]\ncost: [0.05, 0.10]\nwall: [1m, 2m]\non-wrap: discard\n---\n\nYou decide how long a delivery may wait.\n'
     let spore
@@ -600,5 +744,64 @@ describe('a router, run confined', () => {
     } finally {
       delete process.env.SPORE_TEST_SECRET
     }
+  })
+})
+
+describe('an owner\'s router, run confined', () => {
+  const setup = (body) => {
+    const plugin = join(dir, 'plugin')
+    mkdirSync(join(plugin, 'bin'), { recursive: true })
+    const program = join(plugin, 'bin', 'mine')
+    writeFileSync(program, `#!${process.execPath}\n${body}`)
+    chmodSync(program, 0o755)
+    const ws = join(dir, 'spore')
+    const delivery = join(ws, 'inbox.d', 'd1')
+    mkdirSync(delivery, { recursive: true })
+    writeFileSync(join(delivery, 'payload.json'), JSON.stringify({ doc: 'q3' }))
+    writeFileSync(join(ws, 'notes.txt'), 'the spore\'s own')
+    const lake = join(dir, 'lake')
+    mkdirSync(lake, { recursive: true })
+    writeFileSync(join(lake, 'q3.txt'), 'page one')
+    return { program, programReads: [plugin], ws, delivery, payload: join(delivery, 'payload.json'), headers: null, origin: 'hook:lake', event: '', ref: 'sha256:00', into: 'inbox.d/d1/mine', timeoutMs: 10_000, attach: { files: 2, bytes: 1024 }, reads: [lake] }
+  }
+
+  it('attaches what it writes to out/ from its payload and the reads its owner declares', async () => {
+    const asked = setup(`
+      const fs = require('node:fs')
+      const { doc } = JSON.parse(fs.readFileSync(0, 'utf8'))
+      fs.writeFileSync('out/pages.json', JSON.stringify({ doc, text: fs.readFileSync(${JSON.stringify(join(dir, 'lake', 'q3.txt'))}, 'utf8') }))
+      fs.writeFileSync('out/notes.md', '# q3')`)
+    const answer = await runOwnerRouter(asked)
+    expect(answer).toEqual({
+      files: [
+        { path: 'inbox.d/d1/mine/notes.md', name: 'notes.md', mime: 'text/markdown', bytes: 4 },
+        { path: 'inbox.d/d1/mine/pages.json', name: 'pages.json', mime: 'application/json', bytes: 30 }
+      ]
+    })
+    expect(JSON.parse(readFileSync(join(asked.ws, 'inbox.d/d1/mine/pages.json'), 'utf8'))).toEqual({ doc: 'q3', text: 'page one' })
+  })
+
+  it('attaches nothing past its bounds, from a directory, or when it fails', async () => {
+    const failed = async (body, extra = {}) => (await runOwnerRouter({ ...setup(body), ...extra })).failed
+    expect(await failed("for (const n of [1, 2, 3]) require('node:fs').writeFileSync('out/' + n, 'x')")).toBe('wrote 3 files, more than the 2 its owner allows')
+    expect(await failed("require('node:fs').writeFileSync('out/big', 'x'.repeat(2048))")).toBe('wrote 2 KB, more than the 1 KB its owner allows')
+    expect(await failed("require('node:fs').mkdirSync('out/pages')")).toBe('wrote out/pages, which is not a plain file')
+    expect(await failed("console.error('no pdf'); process.exit(2)")).toBe('exited 2 — no pdf')
+    expect(await failed('setTimeout(() => {}, 5000)', { timeoutMs: 300 })).toMatch(/^was stopped after 0.3 s$/)
+    expect(await failed('', { reads: [join(dir, 'nowhere')] })).toMatch(/nowhere, which its owner lets it read, is not there/)
+    expect(existsSync(join(dir, 'spore', 'inbox.d', 'd1', 'mine'))).toBe(false)
+  })
+
+  it('cannot read the spore\'s workspace beyond its delivery, nor write it', async () => {
+    const asked = setup(`
+      const fs = require('node:fs')
+      const tried = (fn) => { try { fn(); return 'yes' } catch { return 'no' } }
+      fs.writeFileSync('out/tried', [
+        tried(() => fs.readFileSync(${JSON.stringify(join(dir, 'spore', 'notes.txt'))})),
+        tried(() => fs.writeFileSync(${JSON.stringify(join(dir, 'spore', 'inbox.d', 'd1', 'x'))}, 'x')),
+        tried(() => fs.readFileSync(${JSON.stringify(join(dir, 'spore', 'inbox.d', 'd1', 'payload.json'))}))
+      ].join(' '))`)
+    await runOwnerRouter(asked)
+    expect(readFileSync(join(asked.ws, 'inbox.d/d1/mine/tried'), 'utf8')).toBe('no no yes')
   })
 })

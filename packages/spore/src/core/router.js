@@ -8,10 +8,11 @@
  * service's secrets — and its answer can only delay, by no more than the hook's `maxWait`.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { mimeOf } from './call-record.js'
 import { runShell } from './command.js'
 import { slugOf } from './cell.js'
 import { containOf } from './plugins.js'
@@ -19,6 +20,9 @@ import { durationMs } from '../delegation/definition.js'
 import { containing, readConfig } from '../library/config.js'
 
 export const ROUTE_TIMEOUT_MS = 10_000
+export const OWNER_ROUTE_MOST_MS = 60_000
+export const ATTACH_MOST = Object.freeze({ files: 100, bytes: 256 * 1024 * 1024 })
+const ATTACHED_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const SUMMARY_CHARS = 300
 
 export function routerFor (ws, origin) {
@@ -84,6 +88,75 @@ export async function runRouter ({ router, ws, payload, headers, origin, event, 
       return { failed: `exited ${ran.exit ?? ran.signal}${said ? ` — ${said}` : ''}` }
     }
     return answerOf(readFileSync(outAbs, 'utf8'))
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+}
+
+const sizeText = (bytes) => bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${Math.round(bytes / 1024 / 1024 * 10) / 10} MB`
+
+/** What `out/` holds, checked against `attach`: `{ found: [{ name, path, bytes }] }` or `{ failed }`. */
+function attachedIn (out, attach) {
+  const found = []
+  for (const name of readdirSync(out).sort()) {
+    const path = join(out, name)
+    const stat = lstatSync(path)
+    if (!stat.isFile()) return { failed: `wrote out/${name}, which is not a plain file` }
+    if (!ATTACHED_NAME.test(name)) return { failed: `wrote out/${JSON.stringify(name).slice(1, -1)}, a name of letters, digits, ., _ and - it is not` }
+    found.push({ name, path, bytes: stat.size })
+  }
+  if (found.length > attach.files) return { failed: `wrote ${found.length} files, more than the ${attach.files} its owner allows` }
+  const bytes = found.reduce((total, file) => total + file.bytes, 0)
+  if (bytes > attach.bytes) return { failed: `wrote ${sizeText(bytes)}, more than the ${sizeText(attach.bytes)} its owner allows` }
+  return { found }
+}
+
+/**
+ * Runs the owner's router `program` on a delivery to the spore at `ws` and attaches what it writes
+ * to `out/`, its working directory's, under `into` — `inbox.d/<delivery>/<router>`, relative to
+ * `ws` — as file records of the delivery's entry; or `{ failed }`, saying why there is none: it
+ * could not start, ran past `timeoutMs`, exited non-zero, or wrote what `attach` does not allow.
+ * It reads the payload on its stdin, the delivery's own files and `reads`, and writes nothing else.
+ */
+export async function runOwnerRouter ({ program, programReads, ws, delivery, payload, headers, origin, event, ref, into, timeoutMs, attach, reads, contain = containing(readConfig()) }) {
+  let keep
+  try {
+    keep = containOf(ws)
+  } catch (err) {
+    return { failed: `could not start — ${err.message}` }
+  }
+  const missing = reads.find(dir => !existsSync(dir))
+  if (missing) return { failed: `could not start — ${missing}, which its owner lets it read, is not there` }
+  const scratch = mkdtempSync(join(tmpdir(), 'spore-route-'))
+  try {
+    mkdirSync(join(scratch, 'out'))
+    const errAbs = join(scratch, 'err')
+    const ran = await runShell({
+      command: [quote(program), quote(origin), quote(event ?? ''), quote(ref), quote(headers ?? '')].join(' '),
+      cwd: scratch,
+      inAbs: payload,
+      outAbs: '/dev/null',
+      errAbs,
+      confine: { writeRoot: scratch, reads: [...programReads, ...(delivery ? [delivery] : []), ...reads], scopeSignals: true, contain, keep },
+      env: { PATH: process.env.PATH, HOME: scratch, TMPDIR: scratch },
+      timeoutMs,
+      idleMs: timeoutMs
+    })
+    if (ran.spawnError) return { failed: `could not start — ${ran.spawnError}` }
+    if (ran.killed) return { failed: `was stopped after ${timeoutMs / 1000} s` }
+    if (ran.exit !== 0) {
+      const said = readFileSync(errAbs, 'utf8').trim().split('\n').at(-1)
+      return { failed: `exited ${ran.exit ?? ran.signal}${said ? ` — ${said}` : ''}` }
+    }
+    const checked = attachedIn(join(scratch, 'out'), attach)
+    if (checked.failed) return checked
+    mkdirSync(join(ws, into), { recursive: true })
+    return {
+      files: checked.found.map(file => {
+        copyFileSync(file.path, join(ws, into, file.name))
+        return { path: `${into}/${file.name}`, name: file.name, mime: mimeOf(join(ws, into, file.name)), bytes: file.bytes }
+      })
+    }
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }

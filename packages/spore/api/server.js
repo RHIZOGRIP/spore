@@ -2,7 +2,7 @@
  * The library's verbs over HTTP, for a caller that is not on this machine or not in this
  * container: send, watch, show, list, stop, wrap, extend, the running turn as a person is shown it and
  * a line of the caller's own in it, and
- * approvals asked and read. Every
+ * approvals asked and read, and a hook's delivery handed to its spores. Every
  * request names its caller by token and reaches only the spores that caller may; its
  * `traceparent` is the parent of the request's span, which a message carries on to its turn.
  * Contract: ARCHITECTURE.md, "The HTTP API".
@@ -21,12 +21,17 @@ import { stop } from '../src/core/state.js'
 import { extendTurn, wrapTurn } from '../src/core/limits.js'
 import { approvalOf, approvalsIn, readEvents } from '../src/core/spore-dir.js'
 import { askApproval } from '../src/library/approvals.js'
+import { paused } from '../src/core/admission.js'
 import { SporeError } from '../src/observability/errors.js'
 import { endSpanError, endSpanOk, formatTraceparent, parseTraceparent, startSpan } from '../src/observability/tracing.js'
 import { callerOf, reaches } from './config.js'
+import { createHookDelivery, without } from '../webhook/deliveries.js'
+import { acceptRefusal, hooksPath, loadHooks } from '../webhook/hooks.js'
 
 const MAX_BODY = 32 * 1024 * 1024
 const ROUTE = /^\/v1\/spores(?:\/([^/]+)(?:\/(messages|events|live|annotate|stop|wrap|extend|approvals)(?:\/([0-9a-f]{12}))?)?)?\/?$/
+const HOOK_ROUTE = /^\/v1\/hooks\/([^/]+)\/deliveries\/?$/
+const DELIVERY = /^[A-Za-z0-9._:-]{1,128}$/
 const LEVELS = ['brief', 'plain', 'details']
 
 const STATUS = {
@@ -35,6 +40,7 @@ const STATUS = {
   API_NOT_FOUND: 404,
   API_METHOD: 405,
   API_TOO_LARGE: 413,
+  HOOK_TOO_LARGE: 413,
   ADMISSION_FULL: 503,
   PAUSED: 503,
   SPEND_LIMIT: 503
@@ -81,10 +87,47 @@ const attachmentsOf = (attach) => {
 
 /**
  * `api` is what `loadApi` read; `env` the environment a turn starts with, the API's tokens taken
- * out of it.
+ * out of it. `delivering` is what `createHookDelivery` takes beside the log and the config.
  */
-export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () => {} }) {
+export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () => {}, pausedNow = paused, delivering = {} }) {
   const turnEnv = Object.fromEntries(Object.entries(env).filter(([key]) => !api.secrets.has(key)))
+  const hooksDelivery = createHookDelivery({ log, configFile, ...delivering })
+
+  const deliveries = async ({ request, caller, span, hookName }) => {
+    const asked = await jsonOf(request)
+    const pause = pausedNow()
+    if (pause) throw failure('PAUSED', 'spores are paused', `since ${pause.at ?? 'spore pause'} — spore unpause lets deliveries in again`)
+    const hooks = loadHooks(hooksPath(configFile), env)
+    const hook = hooks.get(hookName)
+    if (!hook || hook.check.method !== 'api' || !hook.spores.every(spore => reaches(caller, spore))) {
+      throw failure('API_NOT_FOUND', `no hook called "${hookName}" this caller may deliver to`, 'a hook reached through the API says "verify": "api" in hooks.json, and the caller reaches every spore it names')
+    }
+    const { delivery, event = null, payload, ...rest } = asked
+    const shape = '{ "delivery": "<your id for it>", "event": "<what happened>", "payload": <JSON> }'
+    if (Object.keys(rest).length) throw failure('API_BAD_REQUEST', `a delivery is ${shape} — not ${Object.keys(rest).join(', ')}`)
+    if (typeof delivery !== 'string' || !DELIVERY.test(delivery)) throw failure('API_BAD_REQUEST', 'delivery is your id for it, letters, digits, ., _, : and -, at most 128: the same id twice is delivered once', shape)
+    if (event !== null && (typeof event !== 'string' || !DELIVERY.test(event))) throw failure('API_BAD_REQUEST', 'event is letters, digits, ., _, : and -, at most 128', shape)
+    if (payload === undefined) throw failure('API_BAD_REQUEST', 'a delivery carries a payload', shape)
+    const body = Buffer.from(JSON.stringify(payload))
+    if (body.length > hook.maxBytes) throw failure('HOOK_TOO_LARGE', `the payload is ${body.length} bytes, more than hook ${hook.name} takes`, `at most ${hook.maxBytes} bytes — maxBytes in hooks.json`)
+    const unmatched = hook.accept ? acceptRefusal(hook.accept, {}, body) : null
+    if (unmatched) {
+      log(`hook ${hook.name} · ${delivery} · ignored — ${unmatched}`)
+      return { status: 202, body: { delivery, ignored: unmatched, spores: [] } }
+    }
+    const hidden = new Set([...hooks.values()].flatMap(each => each.secrets))
+    const options = {
+      attach: [{ name: 'payload.json', mime: 'application/json', data: body }],
+      hook: { name: hook.name, event, delivery },
+      requestId: `webhook:${hook.name}:${delivery}`,
+      traceparent: formatTraceparent(span) ?? undefined
+    }
+    const spores = hooksDelivery.deliverAll({ hook, options, unwanted: (accept) => acceptRefusal(accept, {}, body), envOf: () => without(turnEnv, hidden) })
+    if (spores.some(one => one.failed)) {
+      return { status: 500, body: { error: { type: 'HOOK_UNDELIVERED', message: `delivery ${delivery} did not reach every spore of hook ${hook.name}`, detail: 'send it again under the same id: the spores that have it take it once' }, delivery, spores } }
+    }
+    return { status: 202, body: { delivery, spores } }
+  }
 
   const sporeOf = (caller, name) => {
     if (!NAME.test(name) || !reaches(caller, name)) throw failure('NOT_A_WORKSPACE', `no spore called "${name}"`)
@@ -159,11 +202,12 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
     response.end(JSON.stringify(body))
   }
 
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://spore')
+    const hookFound = HOOK_ROUTE.exec(url.pathname)
     const found = ROUTE.exec(url.pathname)
     const [, name, action, id] = found ?? []
-    const route = !found || (id && action !== 'approvals') ? null : !name ? 'spores' : id ? 'approval' : action ?? 'spore'
+    const route = hookFound ? 'deliveries' : !found || (id && action !== 'approvals') ? null : !name ? 'spores' : id ? 'approval' : action ?? 'spore'
     const span = startSpan(`spore.api.${route ?? 'unknown'}`, { 'http.method': request.method, ...(name ? { 'spore.name': name } : {}) }, parseTraceparent(request.headers.traceparent))
     const traceparent = formatTraceparent(span)
     let caller = null
@@ -179,9 +223,9 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
         endSpanOk(span)
         return
       }
-      const handle = routes[`${request.method} ${route}`]
+      const handle = route === 'deliveries' ? request.method === 'POST' && deliveries : routes[`${request.method} ${route}`]
       if (!handle) throw failure('API_METHOD', `${request.method} is not how ${route} is asked`)
-      const { status, body } = await handle({ request, caller, ws, id, span, url })
+      const { status, body } = await handle({ request, caller, ws, id, span, url, hookName: hookFound && decodeURIComponent(hookFound[1]) })
       answer(response, status, body, traceparent)
       endSpanOk(span, { 'http.status_code': status })
       log(`${caller.name} · ${request.method} ${url.pathname} · ${status}`)
@@ -200,4 +244,5 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       answer(response, status, { error: { type: err.type ?? 'API_FAILED', message: err.message, ...(err.detail ? { detail: err.detail } : {}) } }, traceparent)
     }
   })
+  return Object.assign(server, { routed: hooksDelivery.routed })
 }

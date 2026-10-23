@@ -22,10 +22,10 @@ pub mod spend;
 pub mod state;
 
 pub use state::{
-    annotate, answer_approval, append_inbox, ask_approval, attempt_outbox, begin_job, begin_turn,
-    change_limits, check_reply_to, copy_inbox, end_channel, end_job, expire_approval, finalize,
-    finalize_pending, finalize_turn, hold_delivery, inbox_consumed, leave_wal, origin_of, outbox,
-    post_approval, prune_trail, record_cell, recover, refuse_approval, release_held,
+    annotate, answer_approval, append_inbox, ask_approval, attach_held, attempt_outbox, begin_job,
+    begin_turn, change_limits, check_reply_to, copy_inbox, end_channel, end_job, expire_approval,
+    finalize, finalize_pending, finalize_turn, hold_delivery, inbox_consumed, leave_wal, origin_of,
+    outbox, post_approval, prune_trail, record_cell, recover, refuse_approval, release_held,
     replace_transcript, replace_turns, request, reschedule_held, serve, set_aside, settle_approval,
     settle_outbox, start_limits, turn_limits, turn_state, unanswered_traceparents, unread,
     write_outcome, EVENT_SCHEMA, MAX_FRAME, STATE_FILE,

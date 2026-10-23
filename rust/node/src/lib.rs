@@ -445,6 +445,11 @@ pub fn reschedule_held(
     .map_err(failed)
 }
 
+#[napi]
+pub fn attach_held(ws: String, held_no: i64, files: String) -> napi::Result<bool> {
+    workspace::attach_held(Path::new(&ws), held_no, &files).map_err(failed)
+}
+
 /// `{ jobNo }` or `{ refused, running }`, as JSON.
 #[napi]
 pub fn begin_job(ws: String, job: String, most: i64) -> napi::Result<String> {

@@ -498,6 +498,7 @@ All under `/v1`, JSON in and out.
 | `POST /v1/spores/<name>/approvals` | an approval's request ([§Asking a person to approve](#asking-a-person-to-approve)) | `201 { "approval", "until" }` |
 | `GET /v1/spores/<name>/approvals` | — | `200 { "approvals": [record] }`, oldest first |
 | `GET /v1/spores/<name>/approvals/<id>` | — | `200`, the approval's record, as `approvalsIn` has it |
+| `POST /v1/hooks/<hook>/deliveries` | `{ "delivery", "event"?, "payload" }` ([below](#delivering-to-a-hook)) | `202 { "delivery", "spores": [{ "spore", "outcome" }] }` |
 
 `text` is required and must not be blank. `after` is a whole number; `0` replays what retention
 kept. A request body is at most 32 MiB.
@@ -528,6 +529,29 @@ curl --unix-socket /run/spore/api.sock -H "Authorization: Bearer $T" \
 If the connection drops, open `events` again from the last `seq`. Sending again under the same
 `requestId` answers the first message's `inbox` with `repeated: true`, and starts nothing if a
 turn has already read it.
+
+### Delivering to a hook
+
+A message is a person speaking through your program. When your program reports an event instead —
+a document uploaded, a job finished — deliver it to a hook, as a webhook would be:
+
+```bash
+curl --unix-socket /run/spore/api.sock -H "Authorization: Bearer $T" \
+  -d '{"delivery": "doc-8812", "event": "uploaded", "payload": {"lake": "l1", "doc": "q3.pdf"}}' \
+  http://spore/v1/hooks/lake/deliveries
+# {"delivery":"doc-8812","spores":[{"spore":"analyst","outcome":"started"}]}
+```
+
+The hook is the operator's, in `hooks.json` with `"verify": "api"`
+([docs/operating.md](docs/operating.md)): it names the spores the delivery reaches, its bounds, and
+any router the owner runs on it before a turn reads it. Each spore reads it as a webhook's
+delivery, data no one typed, with `payload` attached as `payload.json`; your `traceparent` is the
+parent of the turn it starts. `delivery` is your id for it, letters, digits, `.`, `_`, `:` and `-`:
+the same id twice is delivered once (`"outcome": "already received"`). A hook that is not
+reached through the API, or names a spore your token does not reach, is answered as one that does
+not exist, `404`; a payload past the hook's `maxBytes` is `413`, and while spores are paused `503`.
+When a spore could not be reached the answer is `500 HOOK_UNDELIVERED` with each spore's outcome:
+send it again under the same id.
 
 ### Errors
 

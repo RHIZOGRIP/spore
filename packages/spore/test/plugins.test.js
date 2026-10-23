@@ -3,7 +3,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSy
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { allowPlugin, checkPlugin, containOf, differingDocs, disallowPlugin, installedPlugins, listPlugins, pluginRoots, pluginServices, preparePlugins, showPlugin, upgradeDocs, PLUGIN_READS } from '../src/core/plugins.js'
+import { allowPlugin, checkPlugin, containOf, differingDocs, disallowPlugin, installedPlugins, listPlugins, ownerRouter, pluginRoots, pluginServices, preparePlugins, showPlugin, upgradeDocs, PLUGIN_READS } from '../src/core/plugins.js'
 import { PLUGIN_CALLS } from '../src/core/spore-dir.js'
 import { readConfig } from '../src/library/config.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
@@ -194,6 +194,18 @@ describe('checking a plugin', () => {
     rmSync(join(found.dir, 'bin', 'browse'))
     symlinkSync(join(elsewhere, 'browse'), join(found.dir, 'bin/browse'))
     expect(refusal(() => checkPlugin(found)).message).toMatch(/outside itself and what it depends on/)
+  })
+
+  it('offers routers an owner binds to an origin, each a program of its own', () => {
+    const da = (routes, programs = { 'bin/mine': 0o755 }) => plugin('spore-plugin-da', { routes }, { programs })
+    const found = da({ mine: './bin/mine' })
+    expect(checkPlugin(found).routes).toEqual({ mine: join(found.dir, 'bin/mine') })
+    expect(ownerRouter('da', 'mine', roots)).toEqual({ program: join(found.dir, 'bin/mine'), reads: [realpathSync(found.dir)] })
+    expect(refusal(() => ownerRouter('da', 'scan', roots))).toMatchObject({ type: 'ROUTER_UNKNOWN', detail: 'it offers mine' })
+    expect(refusal(() => ownerRouter('lake', 'mine', roots)).type).toBe('PLUGIN_NOT_INSTALLED')
+    expect(refusal(() => checkPlugin(da({ Mine: './bin/mine' }))).message).toMatch(/has a router named "Mine"/)
+    expect(refusal(() => checkPlugin(da({ mine: './bin/mine' }, { 'bin/mine': 0o644 }))).message).toMatch(/a router mine that is not executable/)
+    expect(refusal(() => checkPlugin(da(['./bin/mine']))).message).toMatch(/routes that are not a map/)
   })
 
   it('takes how calls of its own programs are described, and nothing else', () => {

@@ -364,6 +364,23 @@ A hook name is letters, digits, `.`, `-` and `_`.
 | `perHour` | turns the hook may start in each spore an hour; past it a delivery is said and starts nothing | `30` |
 | `maxWait` | the longest a delivery may be held for the spore's router or triage cell, as `30m` or `2h` | none: said at once |
 | `perDay` | triage cells the hook may start in each spore a day; past it a delivery is said at once | `100` |
+| `router` | an owner's router run on every delivery before a turn reads it (below) | none |
+
+**`router`** binds a router a plugin offers (`routes` in its manifest, [plugins
+§Routes](plugins.md#routes)) to the hook:
+
+```json
+"router": { "plugin": "da", "name": "mine", "timeout": "45s", "attach": { "files": 20, "bytes": "200MB" }, "reads": ["/export/lakes/l1"] }
+```
+
+Each delivery is held while the router runs on it, then released at once with the files it wrote
+attached. `timeout` is at most `60s`, `attach` at most 100 files and `256MB`; `reads` are
+directories it may read besides the plugin and the delivery, and none of the spore's. The spore's
+own router and triage cell for the hook are not asked, and `maxWait` is not needed. A router that
+fails, or a service that stops before it answers, releases the delivery without attachments by its
+timeout, with a line saying why. A delivery past `perHour` is still routed, and said without
+starting a turn. `spore doctor` checks that the plugin offers the router and that its reads are
+there.
 
 **`verify`** is one of:
 
@@ -375,6 +392,9 @@ A hook name is letters, digits, `.`, `-` and `_`.
   — an HMAC of the raw body; `encoding` defaults to `hex`, `prefix` to none.
 - `{ "header": "<header>", "token": "${VAR}" }` — the header must equal the token.
 - `{ "token": "${VAR}" }` — the token is the last path segment: `POST /hook/<name>/<token>`.
+- `"api"` — the hook is reached through the HTTP API only, `POST /v1/hooks/<name>/deliveries`, by a
+  caller whose token reaches every spore it names ([§The HTTP API service](#the-http-api-service)). The
+  webhook service answers `404` for it, and its `accept` filters by payload only.
 
 A secret is always `${VAR}`, filled from the environment; a variable that is not set refuses the
 hook. No variable a hook names is passed to a turn or a triage cell.

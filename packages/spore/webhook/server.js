@@ -1,22 +1,15 @@
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 
-import { CONFIG_FILE, isWorkspace, loadEnvironment, paused, readConfig, release, send, workspaceFor } from '../src/index.js'
-import { launchStandalone } from '../src/core/cell.js'
-import { deliver } from '../src/core/route.js'
-import { ROUTE_TIMEOUT_MS, runRouter } from '../src/core/router.js'
+import { CONFIG_FILE, loadEnvironment, paused } from '../src/index.js'
+import { createHookDelivery, without } from './deliveries.js'
 import { acceptRefusal, hooksPath, loadHooks } from './hooks.js'
 import { verify } from './verify.js'
 
-const HOUR = 60 * 60 * 1000
 const ROUTE = /^\/hook\/([^/]+)(?:\/([^/]+))?\/?$/
 const SECRET_HEADER = /authorization|cookie|token|signature|secret/i
 
 const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
-
-// What a spore is handed of the service's environment: everything but its hooks' secrets,
-// which only the service checks requests with.
-const without = (env, hidden) => Object.fromEntries(Object.entries(env).filter(([key]) => !hidden.has(key)))
 
 const PAYLOAD_NAMES = [
   [/json/, 'payload.json'],
@@ -26,12 +19,6 @@ const PAYLOAD_NAMES = [
 ]
 
 const payloadName = (mime) => PAYLOAD_NAMES.find(([pattern]) => pattern.test(mime))?.[1] ?? 'payload.bin'
-
-const briefingOf = ({ name, event, delivery }) => ({ payload, headers }) => [
-  `A delivery of the webhook "${name}"${event ? `, event ${event}` : ''}, delivery ${delivery}.`,
-  payload ? `Its body is ${payload} in your directory.` : 'It has no body.',
-  headers ? 'Its headers, without any that carry a secret, are headers.json.' : ''
-].filter(Boolean).join('\n') + '\n'
 
 function readBody (request, maxBytes) {
   return new Promise((resolve, reject) => {
@@ -60,67 +47,14 @@ export function keptHeaders (headers, check) {
  * `env` is the environment the service was started with: `environment` beside `config.json` is
  * read again for every request, so a secret added there takes effect without a restart.
  */
-export function createWebhookServer ({
-  env,
-  log,
-  configFile = CONFIG_FILE,
-  say = (ws, text, options) => send(ws, text, { ...options, start: false }),
-  sporeOf = (name) => {
-    const ws = workspaceFor(name, { config: readConfig(configFile) }).path
-    return isWorkspace(ws) ? ws : null
-  },
-  now = Date.now,
-  route = runRouter,
-  launchCell = launchStandalone,
-  routeTimeoutMs = ROUTE_TIMEOUT_MS,
-  releaseHeld = release,
-  pausedNow = paused
-}) {
-  const started = new Map()
-  const routing = new Set()
+export function createWebhookServer ({ env, log, configFile = CONFIG_FILE, pausedNow = paused, ...delivering }) {
+  const hooksDelivery = createHookDelivery({ log, configFile, ...delivering })
+  const now = delivering.now ?? Date.now
 
   const freshEnv = () => {
     const fresh = { ...env }
     loadEnvironment(configFile, fresh)
     return fresh
-  }
-
-  const underLimit = (hook, spore) => {
-    const key = `${hook.name}\0${spore}`
-    const recent = (started.get(key) ?? []).filter(at => now() - at < HOUR)
-    started.set(key, recent)
-    return recent.length < hook.perHour
-  }
-  const counted = (hook, spore) => started.get(`${hook.name}\0${spore}`).push(now())
-
-  const deliverTo = (hook, spore, ws, text, options, heading, hidden) => {
-    if (!underLimit(hook, spore)) {
-      say(ws, text, options)
-      return `said, not started — ${hook.perHour} turns started in the last hour`
-    }
-    const { event, delivery } = options.hook
-    const delivered = deliver({
-      ws,
-      said: text,
-      options,
-      event,
-      ref: delivery,
-      maxWait: hook.maxWait ?? null,
-      perDay: hook.perDay,
-      briefing: briefingOf(options.hook),
-      envOf: () => without(freshEnv(), hidden),
-      log,
-      heading,
-      now,
-      route,
-      launch: launchCell,
-      release: releaseHeld,
-      routeTimeoutMs
-    })
-    if (delivered.started) counted(hook, spore)
-    routing.add(delivered.judged)
-    delivered.judged.finally(() => routing.delete(delivered.judged))
-    return delivered.outcome
   }
 
   const answer = (response, status) => {
@@ -144,6 +78,10 @@ export function createWebhookServer ({
     const hook = hooks.get(name)
     if (!hook) {
       log(`hook ${name} · refused — no such hook; ${hooks.size ? `the hooks are ${[...hooks.keys()].join(', ')}` : 'hooks.json names none'}`)
+      return answer(response, 404)
+    }
+    if (hook.check.method === 'api') {
+      log(`hook ${name} · refused — it is reached through the HTTP API only`)
       return answer(response, 404)
     }
     if (token !== undefined && hook.check.method !== 'path') {
@@ -182,33 +120,16 @@ export function createWebhookServer ({
       ...(body.length ? [{ name: payloadName(mime), mime, data: body }] : []),
       { name: 'headers.json', mime: 'application/json', data: Buffer.from(JSON.stringify(keptHeaders(request.headers, hook.check), null, 2) + '\n') }
     ]
-    const text = ''
     // Keyed on the body rather than the sender's delivery header, which no signature covers: a
     // captured request sent again under a new delivery id is still the same message.
-    const options = { attach, hook: { name, event, delivery }, requestId: `webhook:${name}:${digest}`, env: without(fresh, hidden) }
-    let failed = false
-    for (const spore of hook.spores) {
-      const heading = `hook ${name} → ${spore} · ${delivery}${event ? ` · ${event}` : ''}`
-      const own = hook.accepts.get(spore)
-      const unwanted = own ? acceptRefusal(own, request.headers, body) : null
-      if (unwanted) {
-        log(`${heading} · ignored — ${unwanted}`)
-        continue
-      }
-      const ws = sporeOf(spore)
-      if (!ws) {
-        failed = true
-        log(`${heading} · not delivered — there is no spore "${spore}"`)
-        continue
-      }
-      try {
-        log(`${heading} · ${deliverTo(hook, spore, ws, text, options, heading, hidden)}`)
-      } catch (err) {
-        failed = true
-        log(`${heading} · not delivered — ${err.type ?? err.name} ${said(err)}`)
-      }
-    }
-    return answer(response, failed ? 500 : 202)
+    const options = { attach, hook: { name, event, delivery }, requestId: `webhook:${name}:${digest}` }
+    const outcomes = hooksDelivery.deliverAll({
+      hook,
+      options,
+      unwanted: (accept) => acceptRefusal(accept, request.headers, body),
+      envOf: () => without(freshEnv(), hidden)
+    })
+    return answer(response, outcomes.some(one => one.failed) ? 500 : 202)
   }
 
   const server = createServer((request, response) => {
@@ -217,5 +138,5 @@ export function createWebhookServer ({
       if (!response.headersSent) answer(response, 500)
     })
   })
-  return Object.assign(server, { routed: () => Promise.all([...routing]) })
+  return Object.assign(server, { routed: hooksDelivery.routed })
 }

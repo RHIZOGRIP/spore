@@ -1607,6 +1607,15 @@ so the runner's `spore.turn` is its child and the rest follows as it always does
 A JSON response carries the span's `traceparent` when one can be formatted — tracing is exported,
 or the request carried one; the NDJSON event stream carries none.
 
+**A program's event is a hook's delivery, not a message.** `POST /v1/spores/<name>/messages` is a
+person speaking through the caller, and nothing a person says is held. What a program reports goes
+to `POST /v1/hooks/<hook>/deliveries`, for a hook `hooks.json` marks `"verify": "api"`: the
+caller's token stands in for the sender's signature, it must reach every spore the hook names, and
+the delivery is the hook's — origin `hook:<name>`, its bounds, its router — through the same code
+the webhook service delivers with (`webhook/deliveries.js`). Such a hook has no URL on the webhook
+service, and a hook checked any other way is not reached through the API: each hook is reached one
+way.
+
 ## Webhooks
 
 **A webhook is a message a program says**, through `send()`, as a schedule's firing is the
@@ -1712,6 +1721,22 @@ over whatever the host can read, from a precursor the agent wrote. `perDay` boun
 origin starts in a spore a day — a hook's `perDay`, a job's `jobs.perDay`, 100 when unsaid —
 counted from the `cells` view; past it a delivery that would have asked one is delivered now, and
 the log says why.
+
+**What an owner's router attaches is data.** A hook may also be bound to a router a plugin
+offers (`routes` in its manifest), in `hooks.json` — the owner's, which the agent can neither write
+nor replace. It does work no turn should spend a round on, before any turn reads the delivery: it
+runs on the payload, and the files it writes to `out/` are attached to the delivery under
+`inbox.d/<delivery>/<router>/`, of the same standing as the payload, within the bounds the binding
+gives (at most 60 s, 100 files, 256 MB). It never delays: the delivery is released as soon as the
+router answers. For its origin it takes the place of the spore's own router and triage cell, which
+are not asked. It runs confined, reading the plugin, the delivery's files and the directories the
+binding declares, never the workspace, so what it reads beyond the payload is granted to it and
+not to the agent. The delivery is held carrying a line that the router did not answer, until its
+timeout, and the router's answer replaces that line with what it attached, or with why it attached
+nothing (`attachHeld`) — so a router that fails, or a service that stops while it runs, still
+releases the delivery, and the turn reads that it has no attachments rather than an empty set. A
+router that wrote past its bounds attaches nothing: a partial result is not handed on as a whole
+one. A spore's own router does not attach: it may have been written while reading attacker text.
 
 ## Approvals
 

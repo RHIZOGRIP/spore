@@ -61,6 +61,7 @@ runs none of the plugin's code.
 | `works` | a semver range | required | the `@rhizogrip/spore` versions the plugin works with |
 | `settings` | `{ "<key>": "port" \| "text" }` | optional | values the operator gives at `allow` |
 | `programs` | `{ "<VARIABLE>": "<program>" }` | optional | `./<path>` in the plugin, or `<package>/<path>` in a dependency |
+| `routes` | `{ "<router>": "<program>" }` | optional | as `programs`; routers an owner binds to a hook (`hooks.json`) |
 | `describe` | `[{ "program", "title", "category", "detail"? }, …]` | optional | how a call of one of its `programs` is shown: `program` a regexp naming one of them |
 | `env` | `{ "<VARIABLE>": "<text>" }` | optional | text with `{placeholders}` |
 | `contain` | `{ "hide", "keep"?, "missing"? }` | optional | text with `{placeholders}`: a directory of the host a contained spore sees nothing of, or only one directory of |
@@ -246,6 +247,35 @@ the plugin's programs, a regexp that does not compile, a `$N` the regexp does no
 not in the list and a key not among these are each `PLUGIN_INVALID`. A spore's own `:::call` blocks
 come before these, and the runtime's rows after ([ARCHITECTURE §Describing a
 call](../ARCHITECTURE.md#describing-a-call)).
+
+## Routes
+
+```json
+"routes": { "mine": "./bin/mine.js" }
+```
+
+Each key is a router's name, lowercase letters, digits and `-`; each value a program, located and
+checked as one of `programs` is. A router is not given to any spore: the owner binds it to a hook
+in `hooks.json` ([operating §Webhooks](operating.md)), and the service the delivery arrives at —
+the webhook service, or the HTTP API for a hook reached through it — runs it on each of that hook's
+deliveries before any turn reads it. Its contract:
+
+- **It is called** as `<program> <origin> <event> <ref> <headers>`: the origin (`hook:lake`), the
+  sender's event and delivery id, either empty when the sender names none, and the path of the
+  delivery's `headers.json`. The payload is on its stdin.
+- **It writes what it attaches to `out/`**, in its working directory: plain files, each named by
+  letters, digits, `.`, `_` and `-`. They are attached to the delivery under
+  `inbox.d/<delivery>/<router>/`, within the bounds the owner gave, and the turn reads them as files
+  sent with it. Its stdout is not read.
+- **Exit 0 is success.** A non-zero exit, a run past the owner's timeout, a file past the bounds, a
+  directory in `out/`, or a router the plugin no longer offers attaches nothing, and the delivery
+  carries one line saying why instead.
+- **It runs confined**, as a spore's router does: it reads the plugin and what it depends on, the
+  delivery's own files, and the directories the owner lets it read; it writes nothing but its
+  working directory; its environment is `PATH`, `HOME` and `TMPDIR`.
+
+A name that is not one, and a program as `programs` refuses one, are each `PLUGIN_INVALID`;
+`spore plugin show` lists the routers.
 
 ## `env`
 

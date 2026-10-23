@@ -23,13 +23,14 @@ function summary (hook, config, { since, limit }) {
   const origin = `hook:${hook.name}`
   return {
     name: hook.name,
-    path: `/hook/${hook.name}`,
+    path: hook.check.method === 'api' ? `/v1/hooks/${hook.name}/deliveries` : `/hook/${hook.name}`,
     verify: { method: hook.check.method, header: hook.check.header ?? null },
     accept: acceptOf(hook.accept),
     maxBytes: hook.maxBytes,
     perHour: hook.perHour,
     maxWait: hook.maxWait,
     perDay: hook.perDay,
+    owner: hook.router && { plugin: hook.router.plugin, name: hook.router.name, timeoutMs: hook.router.timeoutMs, attach: hook.router.attach, reads: hook.router.reads },
     spores: hook.spores.map(name => {
       const ws = workspaceFor(name, { config }).path
       if (!isWorkspace(ws)) return { name, ws: null }

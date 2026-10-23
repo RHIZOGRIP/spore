@@ -1131,6 +1131,26 @@ pub fn reschedule_held(
     })
 }
 
+/// A held delivery's files replaced by `files`, a JSON array of the entry's file records, already
+/// written in `inbox.d/`: what an owner's router attached, or the line saying why nothing was.
+/// False when it is no longer held.
+pub fn attach_held(ws: &Path, held_no: i64, files: &str) -> Result<bool, String> {
+    let files: Vec<Value> =
+        serde_json::from_str(files).map_err(|e| format!("files is a JSON array — {e}"))?;
+    if !files.iter().all(Value::is_object) {
+        return Err("each of files is a file record, a JSON object".into());
+    }
+    writing(ws, |conn| {
+        let changed = conn
+            .execute(
+                "UPDATE t_held SET entry = json_set(entry, '$.files', json(?2)) WHERE heldNo = ?1",
+                (held_no, json!(files).to_string()),
+            )
+            .map_err(failed_to("attach to the delivery"))?;
+        Ok(changed == 1)
+    })
+}
+
 /// A job begun: `{ name, run, command, wallMs, pid }` as JSON, recorded running — unless `most`
 /// are running already, or one by that name is. Answers `{ jobNo }` or `{ refused, running }`.
 pub fn begin_job(ws: &Path, job: &str, most: i64) -> Result<Value, String> {
@@ -3213,6 +3233,44 @@ mod tests {
             hold_delivery(&ws, &entry("b"), "x", "y").unwrap()["repeated"],
             "inbox"
         );
+    }
+
+    #[test]
+    fn replaces_a_held_deliverys_files_while_it_is_held() {
+        let ws = scratch("attach");
+        let held = hold_delivery(
+            &ws,
+            &json!({ "at": "t", "hook": "lake", "hookDelivery": "d1",
+                     "files": [{ "path": null, "name": "mine's output", "missing": "the router did not finish" }] })
+            .to_string(),
+            "2026-10-03T12:01:00.000Z",
+            "2026-10-03T12:01:00.000Z",
+        )
+        .unwrap()["held"]
+            .as_i64()
+            .unwrap();
+        let files = json!([{ "path": "inbox.d/x/pages.json", "name": "pages.json", "mime": "application/json", "bytes": 9 }]);
+        assert!(attach_held(&ws, held, &files.to_string()).unwrap());
+        assert!(attach_held(&ws, held, "{}")
+            .unwrap_err()
+            .contains("JSON array"));
+        assert!(attach_held(&ws, held, "[1]")
+            .unwrap_err()
+            .contains("file record"));
+        assert_eq!(
+            release_held(&ws, "2026-10-03T12:01:00.000Z", false).unwrap(),
+            vec![1]
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(
+                row(&ws, "SELECT files FROM inbox WHERE inboxNo = 1")["files"]
+                    .as_str()
+                    .unwrap()
+            )
+            .unwrap(),
+            files
+        );
+        assert!(!attach_held(&ws, held, "[]").unwrap());
     }
 
     #[test]

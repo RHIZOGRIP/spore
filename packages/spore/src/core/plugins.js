@@ -31,7 +31,7 @@ const SPORE_PACKAGE = JSON.parse(readFileSync(join(SPORE_ROOT, 'package.json'), 
 
 const PREFIX = 'spore-plugin-'
 export const PLUGIN_READS = 'SPORE_PLUGIN_READS'
-const MANIFEST_FIELDS = ['works', 'settings', 'programs', 'describe', 'env', 'contain', 'modules', 'sources', 'reference', 'precursors', 'services']
+const MANIFEST_FIELDS = ['works', 'settings', 'programs', 'routes', 'describe', 'env', 'contain', 'modules', 'sources', 'reference', 'precursors', 'services']
 const CONTAIN_FIELDS = ['hide', 'keep', 'missing']
 const SERVICE_FIELDS = ['what', 'program', 'instances', 'check']
 const SERVICE_NAME = /^[a-z][a-z0-9-]*$/
@@ -227,17 +227,14 @@ export function checkPlugin (found, settings = null) {
   if (!isRecord(manifest.programs ?? {})) throw refuse('has programs that are not a map', 'programs maps a variable to the program it names, as { "SPORE_X": "./bin/x" }')
   for (const [name, spec] of Object.entries(manifest.programs ?? {})) {
     checkEnvName(found, name, refuse)
-    const path = locate(found, spec, refuse)
-    if (!existsSync(path) || !statSync(path).isFile()) throw refuse(`names a program ${name} that is not there — ${path}`, 'reinstall it')
-    try {
-      accessSync(path, constants.X_OK)
-    } catch {
-      throw refuse(`names a program ${name} that is not executable — ${path}`, 'a program is run, so it needs its executable bit')
-    }
-    if (!reads.some(dir => within(realpathSync(path), dir))) {
-      throw refuse(`names a program ${name} outside itself and what it depends on — ${realpathSync(path)}`, 'an agent can run only what the sandbox reads: the plugin and its dependencies')
-    }
-    programs[name] = path
+    programs[name] = runnable(found, `a program ${name}`, spec, reads, refuse)
+  }
+
+  const routes = {}
+  if (!isRecord(manifest.routes ?? {})) throw refuse('has routes that are not a map', 'routes maps a router\'s name to its program, as { "mine": "./bin/mine.js" }')
+  for (const [name, spec] of Object.entries(manifest.routes ?? {})) {
+    if (!SERVICE_NAME.test(name)) throw refuse(`has a router named "${name}"`, 'a router\'s name is lowercase letters, digits and -')
+    routes[name] = runnable(found, `a router ${name}`, spec, reads, refuse)
   }
 
   const env = {}
@@ -272,7 +269,22 @@ export function checkPlugin (found, settings = null) {
   const services = checkServices(found, manifest.services ?? {}, refuse)
   const describe = checkDescribe(found, manifest.describe ?? [], Object.keys(programs), refuse)
 
-  return { name: found.name, package: found.package, version: pkg.version, dir: found.dir, range, kinds, settings, programs, describe, env, contain, modules, sources, reference, precursors, reads, services }
+  return { name: found.name, package: found.package, version: pkg.version, dir: found.dir, range, kinds, settings, programs, routes, describe, env, contain, modules, sources, reference, precursors, reads, services }
+}
+
+/** `spec` located and checked as something run: there, executable, inside the plugin's reads. */
+function runnable (found, what, spec, reads, refuse) {
+  const path = locate(found, spec, refuse)
+  if (!existsSync(path) || !statSync(path).isFile()) throw refuse(`names ${what} that is not there — ${path}`, 'reinstall it')
+  try {
+    accessSync(path, constants.X_OK)
+  } catch {
+    throw refuse(`names ${what} that is not executable — ${path}`, 'a program is run, so it needs its executable bit')
+  }
+  if (!reads.some(dir => within(realpathSync(path), dir))) {
+    throw refuse(`names ${what} outside itself and what it depends on — ${realpathSync(path)}`, 'only what the sandbox reads can run: the plugin and its dependencies')
+  }
+  return path
 }
 
 function checkDescribe (found, describe, programs, refuse) {
@@ -626,6 +638,7 @@ const describe = (plugin) => ({
   works: plugin.range,
   settings: plugin.kinds,
   programs: plugin.programs,
+  routes: plugin.routes,
   env: plugin.env,
   contain: plugin.contain,
   reference: plugin.reference,
@@ -636,6 +649,22 @@ const describe = (plugin) => ({
   reads: plugin.reads,
   services: Object.keys(plugin.services)
 })
+
+/**
+ * The owner's router `name` of the installed plugin `plugin`: `{ program, reads }`, the program and
+ * what it may read of the plugin and its dependencies.
+ */
+export function ownerRouter (plugin, name, roots = pluginRoots()) {
+  const checked = checkPlugin(findPlugin(plugin, roots))
+  const program = checked.routes[name]
+  if (!program) {
+    throw new SporeError(`plugin ${plugin} offers no router "${name}"`, {
+      type: 'ROUTER_UNKNOWN',
+      detail: Object.keys(checked.routes).length ? `it offers ${Object.keys(checked.routes).join(', ')}` : 'it offers none'
+    })
+  }
+  return { program, reads: checked.reads }
+}
 
 const declaresServices = (found) => {
   try {
