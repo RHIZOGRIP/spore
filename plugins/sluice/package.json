@@ -40,7 +40,7 @@
     "contain": {
       "hide": "{settings.dir}",
       "keep": "{settings.dir}/spores/{name}",
-      "missing": "nothing in ~/.config/spore/sluice/{name}.rules says what this spore may run, or the broker is not running — spore service status sluice"
+      "missing": "nothing in ~/.config/spore/sluice/{name}.rules says what this spore may run, or the broker is not running — spore service show sluice"
     },
     "reference": "reference.md"
   },

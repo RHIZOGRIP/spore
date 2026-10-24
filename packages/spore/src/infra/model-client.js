@@ -24,7 +24,7 @@ import { formatTraceparent } from '../observability/tracing.js'
 import { SporeError } from '../observability/errors.js'
 import { CALLER_HEADER, MODEL_CALL_HEADER, KEY_HEADER, PRECURSOR_CALLER, ROOT_CALLER, request, typedError } from './socket-request.js'
 
-const OPTIONS = new Set(['tools', 'signal', 'parentSpan', 'realtimeHandler', 'bufferOpts', 'reasoningSummaries', 'rawReasoning'])
+export const CALL_OPTIONS = new Set(['tools', 'signal', 'parentSpan', 'realtimeHandler', 'bufferOpts', 'reasoningSummaries', 'rawReasoning'])
 
 const ask = (socketPath, key, method, path, body) => request(socketPath, { key, method, path, body, what: 'model socket' })
 
@@ -64,11 +64,11 @@ export async function createModelClient ({ socketPath, modelIds = [], key, logge
         id: modelId,
         info: () => info.get(modelId) ?? null,
         async answer (prompt, options = {}) {
-          const unknown = Object.keys(options).filter(name => !OPTIONS.has(name))
+          const unknown = Object.keys(options).filter(name => !CALL_OPTIONS.has(name))
           if (unknown.length) {
             throw new SporeError(`a model call does not take ${unknown.join(', ')}`, {
               type: 'BROKER_BAD_OPTION',
-              detail: `the envelope carries ${[...OPTIONS].join(', ')}`
+              detail: `the envelope carries ${[...CALL_OPTIONS].join(', ')}`
             })
           }
           const { tools, signal, parentSpan, realtimeHandler, bufferOpts, reasoningSummaries, rawReasoning } = options

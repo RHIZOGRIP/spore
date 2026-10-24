@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { loop } from '../src/core/loop.js'
 import { WRAP, marked } from '../src/core/marks.js'
 import { SporeError } from '../src/observability/errors.js'
+import { CALL_OPTIONS } from '../src/infra/model-client.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.loop-workspace')
@@ -536,6 +537,13 @@ describe('tool loop', () => {
     expect(seen).toHaveLength(1)
     expect(seen[0]).toMatchObject({ round: 0, sent: 301_000 })
     expect(seen[0].estimated).toBeLessThan(2_000)
+  })
+
+  it('asks the model for nothing the call does not carry, whatever is listened for', async () => {
+    const m = mockModel([completed('done')])
+    const emitter = { emit () {}, on () {}, has: () => true }
+    await loop({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), emitter })
+    expect(Object.keys(m.calls[0].opts).filter(name => !CALL_OPTIONS.has(name))).toEqual([])
   })
 
   it('says nothing when the estimate holds', async () => {

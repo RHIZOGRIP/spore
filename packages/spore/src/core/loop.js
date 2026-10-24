@@ -223,11 +223,6 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, des
       answerOpts.realtimeHandler = streamHandler
       answerOpts.bufferOpts = { maxChars: 50, maxMs: 500 }
     }
-    // Pure diagnostic: mohdel's own idle heartbeats, fanned out to whoever is watching.
-    // Never a reason to abort a call.
-    if (emitter.has?.('mohdel_idle')) {
-      answerOpts.idleHandler = ({ sinceMs }) => emitter.emit('mohdel_idle', { sinceMs })
-    }
 
     const callStartAt = Date.now()
     const heartbeatTimer = setInterval(() => {
