@@ -18,6 +18,17 @@ export function nodeSqliteVersion () {
   }
 }
 
+let checked = false
+
+/** `path` opened to read, on a SQLite new enough to share the file with the writer, waiting out a write for up to 5 s. */
+export function openReader (path) {
+  if (!checked) {
+    checkSqlite()
+    checked = true
+  }
+  return new DatabaseSync(path, { readOnly: true, timeout: 5000 })
+}
+
 /** The version, or a refusal naming both it and the one required. */
 export function checkSqlite (version = nodeSqliteVersion()) {
   if (!native.sqliteSupported(version)) {

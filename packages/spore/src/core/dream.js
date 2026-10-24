@@ -6,17 +6,16 @@
  * "Dreams".
  */
 
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 
-import { parseDefinition } from '../delegation/definition.js'
 import { formatMessagesForSummary } from '../resilience/compaction.js'
 import { runCell } from './cell.js'
 import { DREAMT, mark } from './marks.js'
 import { walk } from './deliverables.js'
 import { FIRES_INTO, scheduleDir } from './schedule.js'
-import { CALLS_DIR, DATA_DIR, PRECURSOR_DIR, appendTranscript, definitionPath, dreamRecords, readTranscriptEntries, turnsAfter, writableDirs } from './spore-dir.js'
-import { TOOL_NAMES } from './tool-names.js'
+import { CALLS_DIR, DATA_DIR, PRECURSOR_DIR, appendTranscript, dreamRecords, readTranscriptEntries, turnsAfter, writableDirs } from './spore-dir.js'
+import { parsedDefinition } from '../delegation/definition.js'
 
 /** Below a quarter of its own, neither counts: too little to dream about, or too soon after a turn. */
 export const DREAM_FLOOR = 0.25
@@ -171,7 +170,7 @@ function noteOf ({ answer, failed }, changed) {
  * lock: nothing else writes it meanwhile.
  */
 export async function runDream (ws, { env, launch, now = Date.now, signal = null } = {}) {
-  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+  const definition = parsedDefinition(ws)
   if (definition.error) return { started: false, failed: `spore.cmk ${definition.error}` }
   if (!definition.dream) return { started: false, failed: 'this spore declares no dream' }
   const { precursor, wall } = definition.dream

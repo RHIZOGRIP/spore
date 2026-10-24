@@ -6,7 +6,7 @@
 
 import { SporeError } from '../observability/errors.js'
 import { billingFor, unmetered } from './billing.js'
-import { originOf, usageRecords } from './spore-dir.js'
+import { asked, originOf, usageRecords } from './spore-dir.js'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const DAY_MS = 86_400_000
@@ -34,7 +34,7 @@ const daysOf = (since, until) => {
  * answered no entry.
  */
 const originOfTurn = (turn, entries) => {
-  const first = entries.find(entry => entry.inboxNo > turn.inboxFrom && entry.inboxNo <= turn.inboxTo && !entry.setAside && !entry.overheard)
+  const [first] = asked(turn, entries)
   if (!first) return 'continued'
   const named = originOf(first)
   if (named !== null) return named

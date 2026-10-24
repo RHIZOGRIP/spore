@@ -15,14 +15,14 @@ import { fileURLToPath } from 'node:url'
 import semver from 'semver'
 
 import { readConfig, setPlugin, unsetPlugin, CONFIG_FILE } from '../library/config.js'
-import { parseDefinition, PRECURSOR_DIR, PRECURSOR_EXT } from '../delegation/definition.js'
+import { parsedDefinition, parseDefinition, PRECURSOR_DIR, PRECURSOR_EXT } from '../delegation/definition.js'
 import { PROVISIONED_MODULES } from '../delegation/agent-env.js'
 import { copyAbsent } from '../delegation/precursor-catalog.js'
 import { SporeError } from '../observability/errors.js'
 import { native } from '../native.js'
 import { systemReadPaths } from '../isolation/sandbox.js'
 import { sporangiumOf, sporangiumTree } from './sporangia.js'
-import { DATA_DIR, definitionPath, LIBRARIES_FILE, PASSED_THROUGH, PLUGIN_CALLS, PLUGINS_DIR, REFERENCE_FILE, RUNTIME_ENV } from './spore-dir.js'
+import { DATA_DIR, definitionPath, PASSED_THROUGH, PLUGIN_CALLS, PLUGINS_DIR, ROOT_DOCS, RUNTIME_ENV } from './spore-dir.js'
 import { TOOL_NAMES } from './tool-names.js'
 import { NAMES } from './names.js'
 import { variablesIn } from './variables.js'
@@ -438,7 +438,7 @@ export function containOf (ws, { config = readConfig(), roots = pluginRoots() } 
  */
 function usedPlugins (ws, config, roots) {
   if (!existsSync(definitionPath(ws))) return null
-  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+  const definition = parsedDefinition(ws)
   if (definition.error) return null
   const checked = (name, how, field) => {
     const allowed = config.plugins?.[name]
@@ -580,9 +580,9 @@ function linkModules (ws, modules) {
  */
 export function differingDocs (ws, { config = readConfig(), roots = pluginRoots() } = {}) {
   const tree = sporangiumTree(sporangiumOf(ws), { configFile: config.file })
-  const docs = [REFERENCE_FILE, LIBRARIES_FILE].map(file => ({ file, installed: tree.get(file) }))
+  const docs = ROOT_DOCS.map(file => ({ file, installed: tree.get(file) }))
   const definition = existsSync(definitionPath(ws))
-    ? parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+    ? parsedDefinition(ws)
     : { error: 'absent' }
   const installed = installedPlugins(roots)
   for (const name of definition.error ? [] : definition.plugins) {

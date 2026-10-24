@@ -13,15 +13,15 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 
 import { readConfig, existing, addTo, workspaceFor, CONFIG_FILE, containing, recordLayout } from './config.js'
 import { isWorkspace, sporesInHome } from './discover.js'
-import { acquireLock, approvalsIn, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
+import { acquireLock, approvalsIn, asked, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
 import { askApproval } from './approvals.js'
 import { sqlLines } from './sql.js'
 import { TOOL_NAMES } from '../core/tool-names.js'
 import { cloneCapability } from '../core/clone.js'
 import { openWorkspace } from '../core/workspace.js'
 import { grantedPathContaining, writesRefusal } from '../isolation/sandbox.js'
-import { parseDefinition, parseFrontmatter } from '../delegation/definition.js'
-import { RUNNING, stateOf, stop } from '../core/state.js'
+import { parsedDefinition, parseDefinition, parseFrontmatter, sporeDefinition } from '../delegation/definition.js'
+import { RUNNING, isRunning, stateOf, stop } from '../core/state.js'
 import { historyOver } from '../resilience/compaction.js'
 import { paused, pauseSpores, spendSoFar, unpauseSpores } from '../core/admission.js'
 import { dropSchedule, survey, writeSchedule } from '../core/schedule.js'
@@ -368,7 +368,7 @@ const REMADE_WITH = [DEFINITION_FILE, 'data', 'home', PRECURSOR_DIR, 'schedules'
 export function remake ({ ws, configFile = CONFIG_FILE, roots = pluginRoots() } = {}) {
   const config = readConfig(configFile)
   const path = here(ws, configFile)
-  if (stateOf(path).state === RUNNING) {
+  if (isRunning(path)) {
     throw new SporeError(`${path} is running`, { type: 'REMAKE_RUNNING', detail: 'spore stop it, or wait for its turn to end, then remake it' })
   }
   const aside = `${path}.before-remake`
@@ -497,7 +497,7 @@ const here = (ws, configFile = CONFIG_FILE) => {
  */
 /** The directories a spore works in, or why its definition could not say. */
 function worksIn (ws) {
-  const parsed = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+  const parsed = parsedDefinition(ws)
   return parsed.error ? { writes: [], definitionError: parsed.error } : { writes: parsed.writes.map(w => w.path), definitionError: null }
 }
 
@@ -566,10 +566,7 @@ export { billingFor }
 
 /** What `send` and `fork` print when a turn starts: the model, the tools, the limits. */
 export function grantOf (ws) {
-  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
-  if (definition.error) {
-    throw new SporeError(`${definitionPath(ws)} ${definition.error}`, { type: 'DEFINITION_INVALID' })
-  }
+  const definition = sporeDefinition(ws)
   return { model: definition.model, tools: definition.tools, limits: definition.limits, billing: billingFor(definition.model) }
 }
 
@@ -582,10 +579,7 @@ export function grantOf (ws) {
  */
 export function show ({ ws, configFile = CONFIG_FILE } = {}) {
   const path = here(ws, configFile)
-  const definition = parseDefinition(readFileSync(definitionPath(path), 'utf8'), { knownTools: TOOL_NAMES })
-  if (definition.error) {
-    throw new SporeError(`${definitionPath(path)} ${definition.error}`, { type: 'DEFINITION_INVALID' })
-  }
+  const definition = sporeDefinition(path)
   const turns = readTurns(path)
   const state = stateOf(path)
   const grant = definition.schedules ?? null
@@ -692,10 +686,7 @@ const boundOf = (grant, limits) => {
 const scheduleRows = (path, { spore, grant }) => survey(path, { spore, grant }).map(({ message, ...row }) => row)
 
 const parsedAt = (path) => {
-  const definition = parseDefinition(readFileSync(definitionPath(path), 'utf8'), { knownTools: TOOL_NAMES })
-  if (definition.error) {
-    throw new SporeError(`${definitionPath(path)} ${definition.error}`, { type: 'DEFINITION_INVALID' })
-  }
+  const definition = sporeDefinition(path)
   return definition
 }
 
@@ -802,7 +793,7 @@ const precursorNames = (ws) => {
 /** What no turn has read yet: a running turn has read up to its latest `inbox_read`, and consumes it only when it ends. */
 const waitingIn = (ws, running) => {
   const readTo = running ? runningReadTo(ws) : null
-  return readInbox(ws).filter(entry => !entry.consumed && !entry.setAside && !entry.overheard && (readTo === null || entry.inboxNo > readTo))
+  return readInbox(ws).filter(entry => !entry.consumed && entry.asks && (readTo === null || entry.inboxNo > readTo))
 }
 
 /**
@@ -821,10 +812,7 @@ export function sql ({ ws, query = '.tables', json = false, configFile = CONFIG_
 
 export function log ({ ws, configFile = CONFIG_FILE } = {}) {
   const path = here(ws, configFile)
-  const definition = parseDefinition(readFileSync(definitionPath(path), 'utf8'), { knownTools: TOOL_NAMES })
-  if (definition.error) {
-    throw new SporeError(`${definitionPath(path)} ${definition.error}`, { type: 'DEFINITION_INVALID' })
-  }
+  const definition = sporeDefinition(path)
   const said = readInbox(path)
   const turns = readTurns(path).map(turn => ({
     endedAt: turn.endedAt,
@@ -835,7 +823,7 @@ export function log ({ ws, configFile = CONFIG_FILE } = {}) {
     workUnits: turn.workUnits ?? 0,
     error: turn.error ?? null,
     detail: turn.detail ?? null,
-    asked: said.filter(entry => entry.inboxNo > turn.inboxFrom && entry.inboxNo <= turn.inboxTo && !entry.setAside && !entry.overheard)
+    asked: asked(turn, said)
   }))
   // A schedule the pass would fire and cannot, or will not fire at all, is work outstanding
   // the same way a message nobody answered is.

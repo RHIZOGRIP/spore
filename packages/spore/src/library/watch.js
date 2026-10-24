@@ -11,7 +11,7 @@
 
 import { watch as onChange } from 'node:fs'
 
-import { RECORD_FILES, databaseOf, lastEventSeq, readEvents, readInbox, turnSummary, turnsAfter } from '../core/spore-dir.js'
+import { RECORD_FILES, asked, databaseOf, lastEventSeq, readEvents, readInbox, turnSummary, turnsAfter } from '../core/spore-dir.js'
 import { RUNNING, stateOf } from '../core/state.js'
 
 // The longest a follower goes without looking. It wakes as soon as a file it follows changes,
@@ -153,7 +153,7 @@ export function turnsSince (ws, turn) {
   if (!turns.length) return { turn, ended: [] }
   const ended = turns.map(record => ({
     record,
-    asked: readInbox(ws, { after: record.inboxFrom, upto: record.inboxTo }).filter(entry => !entry.setAside && !entry.overheard)
+    asked: asked(record, readInbox(ws, { after: record.inboxFrom, upto: record.inboxTo }))
   }))
   return { turn: turns.at(-1).turnNo, ended }
 }

@@ -14,13 +14,13 @@ import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { parseDefinition } from '../delegation/definition.js'
+import { parsedDefinition, parseDefinition } from '../delegation/definition.js'
 import { CONFIG_FILE, readConfig } from '../library/config.js'
 import { paused, spendStop } from './admission.js'
 import { containOf } from './plugins.js'
 import { hostFlags } from './send.js'
 import { turnEnv } from './turn-env.js'
-import { PRECURSOR_DIR, definitionPath, readTurns, recordCell } from './spore-dir.js'
+import { PRECURSOR_DIR, readTurns, recordCell } from './spore-dir.js'
 import { TOOL_NAMES } from './tool-names.js'
 
 export const SPAWN_BIN = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'native', 'spore-spawn')
@@ -108,7 +108,7 @@ export async function runCell ({ ws, precursor, origin, ref = null, files = {}, 
   if (stopped) return unstarted(stopped.message)
   const cell = parseDefinition(readFileSync(join(ws, PRECURSOR_DIR, `${precursor}.cmk`), 'utf8'), { knownTools: TOOL_NAMES, cell: true })
   if (cell.error) return unstarted(`${PRECURSOR_DIR}/${precursor}.cmk ${cell.error}`)
-  const root = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+  const root = parsedDefinition(ws)
   if (root.error) return unstarted(`spore.cmk ${root.error}`)
 
   const named = Object.fromEntries((root.cellModels ?? []).map(entry => [entry.name, entry.model]))

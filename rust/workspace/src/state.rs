@@ -200,7 +200,8 @@ CREATE VIEW inbox AS
          i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
          i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval, i.api, i.startsTurn,
          i.inboxNo <= w.inboxConsumed AS consumed,
-         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
+         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside,
+         NOT i.overheard AND NOT EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS asks
     FROM t_inbox i, t_workspace w;
 
 CREATE VIEW transcript AS
@@ -627,7 +628,8 @@ CREATE VIEW inbox AS
          i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
          i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval, i.api, i.startsTurn,
          i.inboxNo <= w.inboxConsumed AS consumed,
-         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
+         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside,
+         NOT i.overheard AND NOT EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS asks
     FROM t_inbox i, t_workspace w;
 "#,
     ),
@@ -804,6 +806,42 @@ pub fn open_reader(path: &Path) -> Result<Option<Connection>, String> {
     conn.busy_timeout(BUSY_TIMEOUT)
         .map_err(|e| format!("cannot set a busy timeout on {} — {e}", path.display()))?;
     Ok(Some(conn))
+}
+
+/// The workspace's database at this runtime's schema, for a reader: one an older spore made is
+/// migrated by opening it as a writer would, and one a newer spore made is refused. Nothing to
+/// do when nothing has been written here yet.
+pub fn migrate_state(ws: &Path) -> Result<(), String> {
+    let path = ws.join(STATE_FILE);
+    let Some(reader) = open_reader(&path)? else {
+        return Ok(());
+    };
+    let failed =
+        |e: rusqlite::Error| format!("cannot read the schema version of {} — {e}", path.display());
+    let created: bool = reader
+        .query_row(
+            "SELECT count(*) > 0 FROM sqlite_schema WHERE name = 't_workspace'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(failed)?;
+    let found: Option<i64> = if created {
+        reader
+            .query_row(
+                "SELECT schemaVersion FROM t_workspace WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(failed)?
+    } else {
+        None
+    };
+    drop(reader);
+    if found == Some(SCHEMA_VERSION) {
+        return Ok(());
+    }
+    writing(ws, |_| Ok(()))
 }
 
 /// One short writer connection: opened, used, and let go whatever the work came to, the
@@ -1443,7 +1481,7 @@ pub fn inbox_consumed(ws: &Path) -> Result<i64, String> {
 pub fn unread(ws: &Path) -> Result<bool, String> {
     reading(ws, false, |conn| {
         conn.query_row(
-            "SELECT EXISTS (SELECT 1 FROM inbox WHERE NOT consumed AND NOT setAside AND NOT overheard AND startsTurn)",
+            "SELECT EXISTS (SELECT 1 FROM inbox WHERE NOT consumed AND asks AND startsTurn)",
             [],
             |row| row.get(0),
         )
@@ -1455,7 +1493,7 @@ pub fn unread(ws: &Path) -> Result<bool, String> {
 pub fn unanswered_traceparents(ws: &Path) -> Result<Vec<String>, String> {
     reading(ws, Vec::new(), |conn| {
         let mut statement = conn.prepare(
-            "SELECT traceparent FROM inbox WHERE NOT consumed AND NOT setAside AND NOT overheard AND traceparent IS NOT NULL ORDER BY inboxNo",
+            "SELECT traceparent FROM inbox WHERE NOT consumed AND asks AND traceparent IS NOT NULL ORDER BY inboxNo",
         )?;
         let rows = statement.query_map([], |row| row.get(0))?;
         rows.collect()
@@ -2136,10 +2174,7 @@ fn address(tx: &Connection, turn: &str, from: i64, to: i64) -> Result<(), String
     let read: Vec<(i64, Option<String>)> = {
         let mut statement = tx
             .prepare(
-                "SELECT inboxNo, replyTo FROM t_inbox
-                  WHERE inboxNo > ?1 AND inboxNo <= ?2 AND NOT overheard
-                    AND inboxNo NOT IN (SELECT inboxNo FROM t_set_aside)
-                  ORDER BY inboxNo",
+                "SELECT inboxNo, replyTo FROM inbox WHERE inboxNo > ?1 AND inboxNo <= ?2 AND asks ORDER BY inboxNo",
             )
             .map_err(&failed)?;
         let rows = statement
@@ -2855,6 +2890,34 @@ mod tests {
             .unwrap();
         close_state(conn).unwrap();
         assert!(open_state(&ws).unwrap_err().contains("has schema 99"));
+        assert!(migrate_state(&ws).unwrap_err().contains("has schema 99"));
+    }
+
+    #[test]
+    fn brings_an_older_workspace_to_this_schema_for_a_reader_and_leaves_none_made() {
+        let none = scratch("migrate-none");
+        migrate_state(&none).unwrap();
+        assert!(!none.join(STATE_FILE).exists());
+
+        let old = scratch("migrate-old");
+        let conn = Connection::open(old.join(STATE_FILE)).unwrap();
+        conn.execute_batch(include_str!("../tests/fixtures/schema-1.sql"))
+            .unwrap();
+        conn.execute(
+            "INSERT INTO t_workspace (id, schemaVersion, createdAt) VALUES (1, 1, 'a')",
+            [],
+        )
+        .unwrap();
+        conn.close().unwrap();
+        migrate_state(&old).unwrap();
+        let reader = open_reader(&old.join(STATE_FILE)).unwrap().unwrap();
+        let version: i64 = reader
+            .query_row("SELECT schemaVersion FROM t_workspace", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+        migrate_state(&old).unwrap();
     }
 
     #[test]

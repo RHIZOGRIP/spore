@@ -2016,11 +2016,13 @@ another process (`test/busy-database.test.js`).
 creates it whole. A database an older spore made moves forward the first time a writer opens it —
 one additive migration per version (`MIGRATIONS` in `rust/workspace`), under the write lock and
 looked at again there, so two writers migrate it once, leaving it as a fresh one at that version
-would be (`migrates_a_workspace_an_older_spore_made_into_what_a_fresh_one_is`). Readers never
-migrate; what reads a new column or table — the outbox, a fork's copy of an inbox — goes through
-a writer, except what a relay polls every second, which a writer opening the file would wake on
-its own: `approvalsIn` reads an older database as holding no approvals, which it cannot, since
-asking one goes through a writer. A database a newer spore made is refused, naming both versions.
+would be (`migrates_a_workspace_an_older_spore_made_into_what_a_fresh_one_is`). A reader in the
+library has it brought there too: the first read of a workspace in a process asks the addon
+(`migrateState`), which looks at the version with a read-only connection and opens a writer only
+when it is behind, so every read sees the views as this runtime defines them. An agent never
+migrates: its runner did before it started. A database a newer spore made is refused, naming both
+versions, by a reader as by a writer — `remake`, which exists for such a database, asks only the
+lock whether a turn runs.
 
 **A busy database is a failure, not a wait.** A writer still blocked after its 5 s timeout fails.
 `send` refuses with `INBOX_UNWRITABLE` and writes nothing. A turn that can record nothing says so

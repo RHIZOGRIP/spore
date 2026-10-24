@@ -4,7 +4,7 @@
  * events arrive. Pure: records and events in, items out.
  */
 
-import { originLabel } from '@rhizogrip/spore'
+import { asked, originLabel } from '@rhizogrip/spore'
 
 import { printable } from './printable.js'
 
@@ -32,7 +32,7 @@ const said = (entry) => ({ kind: 'said', inboxNo: entry.inboxNo, origin: originO
 export function history ({ turns, inbox }) {
   const items = []
   for (const turn of turns) {
-    for (const entry of inbox.filter(e => e.inboxNo > turn.inboxFrom && e.inboxNo <= turn.inboxTo && !e.setAside && !e.overheard)) items.push(said(entry))
+    for (const entry of asked(turn, inbox)) items.push(said(entry))
     if (turn.output) items.push({ kind: 'answer', text: printable(turn.output) })
     items.push({
       kind: 'end',
@@ -45,7 +45,7 @@ export function history ({ turns, inbox }) {
       durationMs: turn.startedAt && turn.endedAt ? Date.parse(turn.endedAt) - Date.parse(turn.startedAt) : null
     })
   }
-  for (const entry of inbox.filter(e => !e.consumed && !e.setAside && !e.overheard)) items.push({ ...said(entry), waiting: true })
+  for (const entry of inbox.filter(e => !e.consumed && e.asks)) items.push({ ...said(entry), waiting: true })
   return items
 }
 

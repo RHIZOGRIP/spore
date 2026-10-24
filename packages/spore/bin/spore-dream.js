@@ -4,14 +4,12 @@
  * something may have been said between the pass that found it due and the lock, then run as a
  * super cell. A stop reaches it as SIGTERM, as it reaches a turn's agent.
  */
-import { readFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 
-import { parseDefinition } from '../src/delegation/definition.js'
 import { dreamDue, runDream } from '../src/core/dream.js'
-import { definitionPath, turnSummary } from '../src/core/spore-dir.js'
+import { turnSummary } from '../src/core/spore-dir.js'
 import { endedIn } from '../src/core/state.js'
-import { TOOL_NAMES } from '../src/core/tool-names.js'
+import { parsedDefinition } from '../src/delegation/definition.js'
 
 const { values: { ws } } = parseArgs({ options: { ws: { type: 'string' } } })
 
@@ -19,7 +17,7 @@ const stopping = new AbortController()
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => stopping.abort())
 
 try {
-  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+  const definition = parsedDefinition(ws)
   if (definition.error) throw new Error(`spore.cmk ${definition.error}`)
   if (!definition.dream) throw new Error('this spore declares no dream')
   const due = dreamDue(ws, { dream: definition.dream, spore: { state: endedIn(turnSummary(ws).last) } })

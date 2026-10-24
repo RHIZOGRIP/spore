@@ -5,16 +5,15 @@
  * ARCHITECTURE.md, "Deliveries nobody typed".
  */
 
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { SporeError } from '../observability/errors.js'
 import { mimeOf } from './call-record.js'
 import { runStep } from './router.js'
 import { definitionPath } from './spore-dir.js'
-import { TOOL_NAMES } from './tool-names.js'
-import { parseDefinition } from '../delegation/definition.js'
 import { containing, readConfig } from '../library/config.js'
+import { parsedDefinition } from '../delegation/definition.js'
 
 const ATTACHED_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 
@@ -23,7 +22,7 @@ const ATTACHED_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
  * reads }`, `reads` its definition's read-only grants — or null when its definition binds nothing to it.
  */
 export function prepareFor (ws, origin) {
-  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+  const definition = parsedDefinition(ws)
   if (definition.error) throw new SporeError(`${definitionPath(ws)} does not parse, so what prepares its deliveries is unknown`, { type: 'DEFINITION_INVALID', detail: definition.error })
   const step = definition.prepare?.steps.find(one => one.origin === origin)
   if (!step) return null

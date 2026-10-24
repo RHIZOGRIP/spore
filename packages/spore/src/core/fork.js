@@ -20,7 +20,7 @@ import { callRuns, readCall, readCalls, writeCall } from './call-record.js'
 import { withSlot } from './admission.js'
 import { preparePlugins } from './plugins.js'
 import { startRunner } from './send.js'
-import { INBOX_DIR, LIBRARIES_FILE, PLUGINS_DIR, REFERENCE_FILE, copyInbox, definitionPath, readPending, readTranscriptEntries, readTurns, writableDirs, writeTranscriptEntries, writeTurnRecords } from './spore-dir.js'
+import { INBOX_DIR, PLUGINS_DIR, ROOT_DOCS, copyInbox, definitionPath, readPending, readTranscriptEntries, readTurns, writableDirs, writeTranscriptEntries, writeTurnRecords } from './spore-dir.js'
 import { openWorkspace } from './workspace.js'
 import { parseDefinition } from '../delegation/definition.js'
 import { RUNNING, stateOf } from './state.js'
@@ -169,7 +169,7 @@ export function forkWorkspace ({ run, at, into, definition, replay = false }) {
     copyInbox(from, ws, turn.inboxTo)
     const plugins = existsSync(join(from, PLUGINS_DIR)) ? readdirSync(join(from, PLUGINS_DIR)).map(file => join(PLUGINS_DIR, file)) : []
     if (plugins.length) mkdirSync(join(ws, PLUGINS_DIR))
-    for (const file of [REFERENCE_FILE, LIBRARIES_FILE, ...plugins]) {
+    for (const file of [...ROOT_DOCS, ...plugins]) {
       if (existsSync(join(from, file))) copyFileSync(join(from, file), join(ws, file))
     }
     for (const file of filesUnder(join(from, INBOX_DIR))) {

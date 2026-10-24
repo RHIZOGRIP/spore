@@ -126,7 +126,17 @@ and `bodyTail`, `files`, `schedule`, `due`, `hook`, `hookEvent`, `hookDelivery`,
 `jobEvent`, `jobRun`, `traceparent`, `requestId`, `replyTo`, `fromName`, `fromId`, `fromWhere`,
 `fromZone`, `overheard` (said around the spore, not to it), `approval` (the approval it tells of), `api`,
 `startsTurn` (false for a delivery said past its origin's `perHour`), `consumed`
-(a finished turn has read it) and `setAside` (no turn will).
+(a finished turn has read it), `setAside` (no turn will) and `asks` (neither set aside nor
+overheard: a turn that reads it answers it).
+
+### `asked`
+
+```
+asked(turn, inbox) → entry[]
+```
+
+The entries of `inbox` that `turn` answered: those with `inboxNo` in its `(inboxFrom, inboxTo]`
+that `asks`.
 
 ### `setAside`
 

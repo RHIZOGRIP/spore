@@ -6,7 +6,12 @@
  * addon (`src/native.js`): one implementation for this runtime and a Rust host alike.
  */
 
+import { readFileSync } from 'node:fs'
+
+import { definitionPath } from '../core/spore-dir.js'
+import { TOOL_NAMES } from '../core/tool-names.js'
 import { native } from '../native.js'
+import { SporeError } from '../observability/errors.js'
 
 const LAYOUT = JSON.parse(native.layout())
 export const PRECURSOR_DIR = LAYOUT.precursorDir
@@ -45,4 +50,14 @@ export function parseFrontmatter (head) {
  */
 export function parseDefinition (source, { knownTools = [], cell = false, seed = false } = {}) {
   return JSON.parse(native.parseDefinition(source, { knownTools: Array.from(knownTools), cell, seed }))
+}
+
+/** The `spore.cmk` of the spore at `ws`, parsed: the definition, or `{ error }`. */
+export const parsedDefinition = (ws) => parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+
+/** The `spore.cmk` of the spore at `ws`, parsed, or `DEFINITION_INVALID` naming the file and what is wrong with it. */
+export function sporeDefinition (ws) {
+  const definition = parsedDefinition(ws)
+  if (definition.error) throw new SporeError(`${definitionPath(ws)} ${definition.error}`, { type: 'DEFINITION_INVALID' })
+  return definition
 }

@@ -38,6 +38,9 @@ export function stateOf (ws) {
   return { ...base, state: endedIn(last) }
 }
 
+/** Whether a turn runs, from the lock alone — for a spore whose database this runtime may refuse to read. */
+export const isRunning = (ws) => native.lockHolder(ws) !== null
+
 /** A state as a person reads it: a spore dreaming is running, and says it is dreaming. */
 export const stateWord = (state) => (state.dreaming ? 'dreaming' : state.state)
 

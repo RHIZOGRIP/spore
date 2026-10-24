@@ -12,19 +12,18 @@
  * for as long as reading the directories takes.
  */
 
-import { closeSync, existsSync, readFileSync } from 'node:fs'
+import { closeSync, existsSync } from 'node:fs'
 
 import { list } from '../library/verbs.js'
-import { parseDefinition } from '../delegation/definition.js'
 import { native } from '../native.js'
 import { survey, scheduleDir } from './schedule.js'
 import { paused } from './admission.js'
 import { dreamDue } from './dream.js'
 import { reportInterrupted } from './job.js'
-import { definitionPath, heldIn } from './spore-dir.js'
+import { heldIn } from './spore-dir.js'
 import { release, send, startDream } from './send.js'
 import { stateOf } from './state.js'
-import { TOOL_NAMES } from './tool-names.js'
+import { parsedDefinition } from '../delegation/definition.js'
 
 export const TICK_LOCK = native.tickLockPath()
 
@@ -83,7 +82,7 @@ function releaseIn ({ ws }, { now, env, configFile }) {
 function fireIn (spore, { now, env, configFile }) {
   const { ws } = spore
   if (!existsSync(scheduleDir(ws))) return []
-  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+  const definition = parsedDefinition(ws)
   if (definition.error) return [{ ws, state: 'refused', why: `spore.cmk ${definition.error}` }]
 
   // One turn at a time: once a schedule has started one, the rest of this spore's due
@@ -107,7 +106,7 @@ function fireIn (spore, { now, env, configFile }) {
 // After the schedules and the releases, so a turn either started takes the spore first: the state
 // is read again, and a running spore is due no dream.
 function dreamIn ({ ws }, { now, env, configFile }) {
-  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+  const definition = parsedDefinition(ws)
   if (definition.error || !definition.dream) return []
   if (!dreamDue(ws, { dream: definition.dream, spore: stateOf(ws), now }).due) return []
   try {

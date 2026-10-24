@@ -4,8 +4,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { DatabaseSync } from 'node:sqlite'
-
+import { openReader } from '../core/sqlite.js'
 import { SporeError } from '../observability/errors.js'
 
 const VIEWS = "type = 'view'"
@@ -30,7 +29,7 @@ export function sqlLines (database, query, { json = false } = {}) {
   if (!existsSync(database)) {
     throw new SporeError(`${database} does not exist`, { type: 'SQL_NO_DATABASE', detail: 'nothing has been recorded in this workspace yet' })
   }
-  const db = new DatabaseSync(database, { readOnly: true })
+  const db = openReader(database)
   try {
     const [command, name] = query.trim().split(/\s+/)
     if (command === '.tables') {

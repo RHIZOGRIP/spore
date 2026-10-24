@@ -6,23 +6,21 @@
  * `job:<name>` — routed as a webhook's is. Contract: ARCHITECTURE.md, "Jobs".
  */
 
-import { closeSync, constants, fstatSync, ftruncateSync, mkdirSync, openSync, readFileSync, readSync, readlinkSync, realpathSync, renameSync, rmSync, unlinkSync, writeSync } from 'node:fs'
+import { closeSync, constants, fstatSync, ftruncateSync, mkdirSync, openSync, readSync, readlinkSync, realpathSync, renameSync, rmSync, unlinkSync, writeSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { parseDefinition } from '../delegation/definition.js'
 import { containing, readConfig } from '../library/config.js'
 import { native } from '../native.js'
-import { SporeError } from '../observability/errors.js'
 import { runShell } from './command.js'
 import { containOf } from './plugins.js'
 import { deliver } from './route.js'
 import { TRIAGE_PER_DAY } from './triage.js'
 import { release } from './send.js'
-import { beginJob, definitionPath, endJob, jobsIn, saidUnread } from './spore-dir.js'
-import { TOOL_NAMES } from './tool-names.js'
+import { beginJob, endJob, jobsIn, saidUnread } from './spore-dir.js'
 import { NAMES } from './names.js'
+import { parsedDefinition, sporeDefinition } from '../delegation/definition.js'
 
 const BIN = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin')
 export const JOB_BIN = join(BIN, 'job.js')
@@ -48,8 +46,7 @@ const briefingOf = ({ name, event, run }) => ({ payload }) => [
  * spore's `jobs.maxWait`. Held before it returns; answers the judgment still under way.
  */
 export function deliverJob (ws, { name, run, event, ref, text, report }, { env, configFile, log, now = Date.now, route, launch, releaseHeld = release }) {
-  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
-  if (definition.error) throw new SporeError(`spore.cmk ${definition.error}`, { type: 'DEFINITION_INVALID', detail: definitionPath(ws) })
+  const definition = sporeDefinition(ws)
   const heading = `job ${name} · ${run} · ${event}`
   const { outcome, judged } = deliver({
     ws,
@@ -199,7 +196,7 @@ export async function superviseJob ({ ws, name, count, wallMs, command, answer, 
   answer({ name, run, wallMs, dir: `${JOBS_DIR}/${name}` })
 
   try {
-    const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+    const definition = parsedDefinition(ws)
     const keep = containOf(ws)
     const token = randomBytes(16).toString('hex')
     const judging = new Set()

@@ -64,7 +64,8 @@ lists what there is to read and `.schema turns` shows one:
   `replyTo` (where the answer to it goes: `terminal`, or a place such as
   `telegram:main/42`), `fromName`, `fromId` and `fromWhere` when a person said it, `consumed` once
   a finished turn has read it, and `setAside` for one its sender stopped before any turn read it —
-  no turn reads or answers that one. `overheard` marks what was said where you are and not to you,
+  no turn reads or answers that one; `asks` is 1 for one neither set aside nor overheard, which a
+  turn that reads it answers. `overheard` marks what was said where you are and not to you,
   in a group: you are handed it as a block headed `[Overheard: …]`, the latest 100 at a time, and
   owe it no answer; the rest are here. `approval` marks a message telling you how an approval
   ended (see `approvals`).

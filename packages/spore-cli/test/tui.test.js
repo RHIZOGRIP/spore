@@ -22,7 +22,7 @@ const turn = (turnNo, inboxFrom, inboxTo, extra = {}) => ({
   output: `answer ${turnNo}`,
   ...extra
 })
-const said = (inboxNo, text, extra = {}) => ({ inboxNo, text, at: '2026-10-07T10:00:00.000Z', consumed: true, ...extra })
+const said = (inboxNo, text, extra = {}) => ({ inboxNo, text, at: '2026-10-07T10:00:00.000Z', consumed: true, asks: true, ...extra })
 
 describe('history', () => {
   it('puts what each turn read before its answer, then what no turn has read', () => {

@@ -6,7 +6,6 @@
 import { randomBytes } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from 'node:fs'
 import { basename, relative, resolve } from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
 
 import { headAndTail } from './preview.js'
 import { compactionSummaryMessage } from '../resilience/compaction.js'
@@ -14,7 +13,7 @@ import { mark, marksOf } from './marks.js'
 import { native } from '../native.js'
 import { parseTraceparent } from '../observability/tracing.js'
 import { SporeError } from '../observability/errors.js'
-import { checkSqlite } from './sqlite.js'
+import { openReader } from './sqlite.js'
 
 // The names the Rust runner also reads are `rust/workspace`'s.
 const LAYOUT = JSON.parse(native.layout())
@@ -27,6 +26,8 @@ export const SPAWN_FILE = LAYOUT.spawnFile
 export const MODEL_KEY_FILE = LAYOUT.modelKey
 export const REFERENCE_FILE = 'reference.md'
 export const LIBRARIES_FILE = 'libraries.md'
+/** The documents a sporangium seeds at a workspace's root for its agent, beside `spore.cmk`. */
+export const ROOT_DOCS = [REFERENCE_FILE, LIBRARIES_FILE]
 // One file per plugin the spore uses, `<name>.md`, its documentation as the host installed it.
 export const PLUGINS_DIR = 'plugins'
 export const PASSED_THROUGH = Object.freeze(LAYOUT.passedThrough)
@@ -125,21 +126,23 @@ export function statePath (ws) {
   return resolve(ws, STATE_FILE)
 }
 
-let sqliteChecked = false
+const current = new Set()
 
 /**
  * One short read-only connection to the workspace's database, or `empty` when nothing has
  * been written there yet — a spore defined and never sent to. Writes go through the addon,
- * which is the one writer; this side only reads, as the agent does.
+ * which is the one writer; this side only reads, as the agent does. The first read of a
+ * workspace in a process has the addon bring it to this runtime's schema, so every read sees
+ * the views as this runtime defines them, and a database a newer spore made is refused.
  */
 function reading (ws, empty, read) {
   const path = statePath(ws)
   if (!existsSync(path)) return empty
-  if (!sqliteChecked) {
-    checkSqlite()
-    sqliteChecked = true
+  if (!current.has(path)) {
+    native.migrateState(ws)
+    current.add(path)
   }
-  const db = new DatabaseSync(path, { readOnly: true, timeout: 5000 })
+  const db = openReader(path)
   try {
     return read(db)
   } finally {
@@ -166,7 +169,7 @@ const decoder = ({ json = [], flags = [] }) => (row) => {
 }
 
 const turnRecord = decoder({ json: ['deliverables', 'recall', 'byPrecursor'], flags: ['concluded', 'settled'] })
-const inboxEntry = decoder({ json: ['files'], flags: ['consumed', 'setAside', 'overheard', 'startsTurn'] })
+const inboxEntry = decoder({ json: ['files'], flags: ['consumed', 'setAside', 'overheard', 'asks', 'startsTurn'] })
 const approvalRecord = decoder({ json: ['approvers', 'options', 'body', 'calendar', 'shown', 'inputs', 'replaced', 'fields'], flags: ['told'] })
 const transcriptEntry = decoder({ json: ['message', 'marks'] })
 const eventRecord = ({ payload, ...envelope }) => ({ ...envelope, ...JSON.parse(payload) })
@@ -657,9 +660,6 @@ export function recordApproval (ws, row) {
 
 const APPROVAL_ROWS = "SELECT a.*, EXISTS (SELECT 1 FROM inbox i WHERE i.requestId = 'approval:' || a.id) AS told FROM approvals a"
 
-// Asking an approval migrates the database first, so one an older spore made has none.
-const holdsApprovals = (db) => Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'view' AND name = 'approvals'").get())
-
 /**
  * The approvals of the spore at `ws`, oldest first, each saying whether the spore was `told` how it
  * ended — with `open`, only those whose relay still has something to do: not seen through to
@@ -667,7 +667,6 @@ const holdsApprovals = (db) => Boolean(db.prepare("SELECT 1 FROM sqlite_schema W
  */
 export function approvalsIn (ws, { open = false } = {}) {
   return reading(ws, [], db => {
-    if (!holdsApprovals(db)) return []
     const unfinished = open ? "WHERE a.settledAt IS NULL OR (a.state IN ('answered', 'expired') AND NOT told)" : ''
     return db.prepare(`${APPROVAL_ROWS} ${unfinished} ORDER BY a.approvalNo`).all().map(approvalRecord)
   })
@@ -676,7 +675,6 @@ export function approvalsIn (ws, { open = false } = {}) {
 /** One approval by its id, or null. */
 export function approvalOf (ws, id) {
   return reading(ws, null, db => {
-    if (!holdsApprovals(db)) return null
     const row = db.prepare(`${APPROVAL_ROWS} WHERE a.id = ?`).get(id)
     return row ? approvalRecord(row) : null
   })
@@ -827,6 +825,9 @@ export function readInbox (ws, { after = 0, upto = null } = {}) {
     : db.prepare('SELECT * FROM inbox WHERE inboxNo > ? AND inboxNo <= ? ORDER BY inboxNo').all(after, upto)
   ).map(inboxEntry))
 }
+
+/** The entries of `inbox` that `turn` answered: those in its `(inboxFrom, inboxTo]` that ask something, neither set aside nor overheard. */
+export const asked = (turn, inbox) => inbox.filter(entry => entry.inboxNo > turn.inboxFrom && entry.inboxNo <= turn.inboxTo && entry.asks)
 
 /** Who said an entry when no person did — `schedule:<name>`, `hook:<name>`, `job:<name>`, `api:<caller>` — else null. */
 export const originOf = (entry) => native.originOf(JSON.stringify(entry))
@@ -1157,7 +1158,7 @@ export function dreamRecords (ws) {
     const afterTurn = dream?.afterTurn ?? 0
     const last = db.prepare('SELECT endedAt, dataBytes FROM turns ORDER BY turnNo DESC LIMIT 1').get()
     const { turnsSince } = db.prepare('SELECT count(*) AS turnsSince FROM turns WHERE turnNo > ?').get(afterTurn)
-    const { unread } = db.prepare('SELECT count(*) > 0 AS unread FROM inbox WHERE NOT consumed AND NOT setAside AND NOT overheard').get()
+    const { unread } = db.prepare('SELECT count(*) > 0 AS unread FROM inbox WHERE NOT consumed AND asks').get()
     const { heldDue } = db.prepare('SELECT min(releaseAt) AS heldDue FROM held').get()
     return {
       afterTurn,

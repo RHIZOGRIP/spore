@@ -9,11 +9,11 @@ import { basename, resolve, sep } from 'node:path'
 
 import { provisionModules } from '../delegation/agent-env.js'
 import { describePrecursors, cellModelRules, precursorRules, seedPrecursors } from '../delegation/precursor-catalog.js'
-import { parseDefinition } from '../delegation/definition.js'
+import { parsedDefinition, parseDefinition } from '../delegation/definition.js'
 import { grantedPathContaining } from '../isolation/sandbox.js'
 import { TOOL_NAMES } from './tool-names.js'
 import { shippedTree, sporangiumOf } from './sporangia.js'
-import { dataDir, definitionPath, DEFINITION_FILE, LIBRARIES_FILE, PLUGINS_DIR, REFERENCE_FILE } from './spore-dir.js'
+import { dataDir, definitionPath, DEFINITION_FILE, LIBRARIES_FILE, PLUGINS_DIR, REFERENCE_FILE, ROOT_DOCS } from './spore-dir.js'
 
 /**
  * The files the runtime put in the workspace, named to the agent that has to find them.
@@ -92,7 +92,7 @@ function unlinkUndeclared (ws, declared) {
 }
 
 function seededRules (ws) {
-  const seeded = [REFERENCE_FILE, LIBRARIES_FILE].filter(file => existsSync(resolve(ws, file)))
+  const seeded = ROOT_DOCS.filter(file => existsSync(resolve(ws, file)))
   if (!seeded.length) return ''
   return `At the workspace root: ${seeded.join(' and ')}. ` +
     `${REFERENCE_FILE} describes this runtime — what each command accepts and what it will refuse — ` +
@@ -178,7 +178,7 @@ export function openWorkspace (dir, { cwd = process.cwd(), definition: given, al
     return { error: `${ws} has no ${DEFINITION_FILE} — spore define makes a spore, and this directory is not one yet` }
   }
   mkdirSync(dataDir(ws), { recursive: true })
-  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
+  const definition = parsedDefinition(ws)
   if (definition.error) {
     return { error: `${definitionPath(ws)} ${definition.error} — edit it, or delete it to start again from the shipped default` }
   }
@@ -194,7 +194,7 @@ export function openWorkspace (dir, { cwd = process.cwd(), definition: given, al
     return { error: `${definitionPath(ws)} writes ${unstaged.name}=${unstaged.path}, which cannot be staged — ${unstaged.error ?? 'it is not there'}` }
   }
   const tree = shippedTree(sporangiumOf(ws))
-  for (const file of [REFERENCE_FILE, LIBRARIES_FILE]) {
+  for (const file of ROOT_DOCS) {
     if (existsSync(resolve(ws, file))) continue
     copyFileSync(tree.get(file), resolve(ws, file))
   }

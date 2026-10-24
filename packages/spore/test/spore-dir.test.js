@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { acquireLock, appendEvents, appendTranscript, dataDir, definitionPath, lastSent, lockPath, pruneTrail, readEvents, readLock, readTranscript, readTranscriptEntries, releaseLock, statePath, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
@@ -245,5 +246,22 @@ describe('trail retention', () => {
   it('says nothing has to go when a workspace has never run', () => {
     rmSync(resolve(WS, 'calls'), { recursive: true, force: true })
     expect(pruneTrail(WS, 3)).toEqual([])
+  })
+})
+
+describe('reading', () => {
+  it('refuses a database a newer spore made, as a writer does', () => {
+    const ws = resolve(__dirname, '.spore-dir-newer')
+    rmSync(ws, { recursive: true, force: true })
+    mkdirSync(ws, { recursive: true })
+    try {
+      writeTranscriptEntries(ws, [said({ role: 'user', content: 'hello' })])
+      const db = new DatabaseSync(statePath(ws))
+      db.exec('UPDATE t_workspace SET schemaVersion = 99')
+      db.close()
+      expect(() => readTranscript(ws)).toThrow(/has schema 99/)
+    } finally {
+      rmSync(ws, { recursive: true, force: true })
+    }
   })
 })

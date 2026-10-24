@@ -601,6 +601,12 @@ pub fn starting_since(ws: String, origin: String, since: String) -> napi::Result
     workspace::starting_since(Path::new(&ws), &origin, &since).map_err(failed)
 }
 
+/// The workspace's database at this runtime's schema, before a reader opens it.
+#[napi]
+pub fn migrate_state(ws: String) -> napi::Result<()> {
+    workspace::migrate_state(Path::new(&ws)).map_err(failed)
+}
+
 /// The outbox entries of `kind`, in `state`, as JSON.
 #[napi]
 pub fn outbox(ws: String, kind: Option<String>, state: Option<String>) -> napi::Result<String> {

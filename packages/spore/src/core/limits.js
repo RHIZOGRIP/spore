@@ -4,12 +4,9 @@
  * limits".
  */
 
-import { readFileSync } from 'node:fs'
-
 import { SporeError } from '../observability/errors.js'
-import { durationMs, limitAmount, parseDefinition } from '../delegation/definition.js'
-import { changeLimits, definitionPath } from './spore-dir.js'
-import { TOOL_NAMES } from './tool-names.js'
+import { durationMs, limitAmount, sporeDefinition } from '../delegation/definition.js'
+import { changeLimits } from './spore-dir.js'
 
 export const DIMENSIONS = ['rounds', 'cost', 'wall']
 
@@ -64,10 +61,7 @@ export function extendTurn (ws, dimension, amount) {
       detail: `as spore extend <name> ${dimension} ${SHAPE[dimension]}`
     })
   }
-  const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
-  if (definition.error) {
-    throw new SporeError(`${definitionPath(ws)} ${definition.error}`, { type: 'DEFINITION_INVALID' })
-  }
+  const definition = sporeDefinition(ws)
   return changeLimits(ws, { why: 'extend', dimension, by, ceiling: definition.extend?.[dimension] ?? null })
 }
 
