@@ -124,7 +124,8 @@ The inbox entries with `inboxNo` in `(after, upto]`, every one past `after` when
 in order. An entry carries `inboxNo`, `at`, `text` or a `bodyPath` with `bodyBytes`, `bodyHead`
 and `bodyTail`, `files`, `schedule`, `due`, `hook`, `hookEvent`, `hookDelivery`, `job`,
 `jobEvent`, `jobRun`, `traceparent`, `requestId`, `replyTo`, `fromName`, `fromId`, `fromWhere`,
-`fromZone`, `overheard` (said around the spore, not to it), `approval` (the approval it tells of), `consumed`
+`fromZone`, `overheard` (said around the spore, not to it), `approval` (the approval it tells of), `api`,
+`startsTurn` (false for a delivery said past its origin's `perHour`), `consumed`
 (a finished turn has read it) and `setAside` (no turn will).
 
 ### `setAside`
@@ -1513,6 +1514,16 @@ saidOf(entry) → string
 
 The text a turn reads for an inbox entry: who said it when no person did, the message or a pointer
 to its file, and its attachments.
+
+### `originLabel`
+
+```
+originLabel(entry) → string | null
+```
+
+Who said an inbox entry when no person did, as a person reads it — `schedule "daily"`,
+`webhook "forge"`, `job "scan"`, `API caller "pipeline"` — or null for a person's message. What
+the chat connectors and the terminal show for a turn nobody typed.
 
 ### `mimeOf`
 

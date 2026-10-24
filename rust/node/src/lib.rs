@@ -532,6 +532,12 @@ pub fn reply_to_problem(reply_to: String) -> Option<String> {
     workspace::check_reply_to(&reply_to).err()
 }
 
+/// How many deliveries from `origin` after `since` were let start a turn.
+#[napi]
+pub fn starting_since(ws: String, origin: String, since: String) -> napi::Result<i64> {
+    workspace::starting_since(Path::new(&ws), &origin, &since).map_err(failed)
+}
+
 /// The outbox entries of `kind`, in `state`, as JSON.
 #[napi]
 pub fn outbox(ws: String, kind: Option<String>, state: Option<String>) -> napi::Result<String> {

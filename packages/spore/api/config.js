@@ -10,7 +10,7 @@ import { dirname, isAbsolute, resolve } from 'node:path'
 
 import { CONFIG_FILE } from '../src/library/config.js'
 import { SporeError } from '../src/observability/errors.js'
-import { durationMs } from '../src/delegation/definition.js'
+import { deliveryBounds } from '../src/core/route.js'
 
 export const API_FILE = 'api.json'
 export const apiPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), API_FILE)
@@ -68,10 +68,9 @@ export function loadApi (path = apiPath(), env = process.env) {
       throw refuse(path, `has spores for ${name} that are not a list of names or patterns`, 'as ["*"], ["support-*", "ops"]')
     }
     if (caller.router !== undefined) throw refuse(path, `has a router for ${name}, which api.json no longer binds`, 'what prepares a delivery is the spore\'s: prepare: [api:<caller>=<plugin>/<program>] in its spore.cmk')
-    const maxWait = caller.maxWait === undefined ? null : durationMs(String(caller.maxWait))
-    if (caller.maxWait !== undefined && !(maxWait > 0)) throw refuse(path, `has a maxWait for ${name} it cannot read — ${JSON.stringify(caller.maxWait)}`, 'the longest a spore\'s router may hold its deliveries, as 30m')
+    const { maxWait, perDay, perHour } = deliveryBounds(caller, (problem, detail) => refuse(path, `caller ${JSON.stringify(name)} ${problem}`, detail))
     secrets.add(variable)
-    return { name, digest: digest(token), spores: patterns.map(matcher), maxWait }
+    return { name, digest: digest(token), spores: patterns.map(matcher), maxWait, perDay, perHour }
   })
   return { socket: raw.socket ?? null, listen, callers, secrets }
 }

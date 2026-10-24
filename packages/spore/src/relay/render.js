@@ -11,6 +11,7 @@
 
 import { durationText } from '../core/job.js'
 import { runningLines } from '../core/limits.js'
+import { originLabel } from '../core/spore-dir.js'
 import { RUNNING } from '../core/state.js'
 import { show } from '../library/verbs.js'
 
@@ -30,12 +31,7 @@ export function reply ({ record }, { brief = false } = {}) {
 
 /** What said the messages `asked` when nobody in the conversation did: `schedule "digest"`, `webhook "forge"`… */
 export function originOf (asked) {
-  const named = (field) => [...new Set(asked.filter(entry => entry[field]).map(entry => `"${entry[field]}"`))]
-  const origins = [
-    named('schedule').length ? `schedule ${named('schedule').join(', ')}` : null,
-    named('hook').length ? `webhook ${named('hook').join(', ')}` : null,
-    named('job').length ? `job ${named('job').join(', ')}` : null
-  ].filter(Boolean)
+  const origins = [...new Set(asked.map(originLabel).filter(Boolean))]
   return origins.length ? origins.join(' · ') : 'sent from elsewhere'
 }
 

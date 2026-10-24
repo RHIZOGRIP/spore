@@ -27,8 +27,8 @@ pub use state::{
     finalize, finalize_pending, finalize_turn, hold_delivery, inbox_consumed, leave_wal, origin_of,
     outbox, post_approval, prune_trail, record_cell, recover, refuse_approval, release_held,
     replace_transcript, replace_turns, request, reschedule_held, serve, set_aside, settle_approval,
-    settle_outbox, start_limits, turn_limits, turn_state, unanswered_traceparents, unread,
-    write_outcome, EVENT_SCHEMA, MAX_FRAME, STATE_FILE,
+    settle_outbox, start_limits, starting_since, turn_limits, turn_state, unanswered_traceparents,
+    unread, write_outcome, EVENT_SCHEMA, MAX_FRAME, STATE_FILE,
 };
 
 /// The descriptor a supervisor hands its agent the channel on, named to it in

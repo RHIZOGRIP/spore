@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 13;
+pub const SCHEMA_VERSION: i64 = 14;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -75,12 +75,14 @@ CREATE TABLE t_inbox (
   approval     TEXT CHECK (approval IS NULL OR (schedule IS NULL AND hook IS NULL AND job IS NULL AND overheard = 0 AND replyTo IS NOT NULL)),
   fromZone     TEXT CHECK (fromZone IS NULL OR (fromName IS NOT NULL AND fromZone <> '')),
   api          TEXT CHECK (api IS NULL OR (api <> '' AND schedule IS NULL AND hook IS NULL AND job IS NULL AND fromName IS NULL AND overheard = 0 AND approval IS NULL AND replyTo IS NULL)),
+  startsTurn   INTEGER NOT NULL DEFAULT 1 CHECK (startsTurn IN (0, 1) AND (startsTurn = 1 OR hook IS NOT NULL OR job IS NOT NULL OR api IS NOT NULL)),
   UNIQUE (schedule, due),
   CHECK ((schedule IS NULL) = (due IS NULL)),
   CHECK ((hook IS NULL) = (hookDelivery IS NULL)),
   CHECK (hookEvent IS NULL OR hook IS NOT NULL),
   CHECK (coalesce(text, '') <> '' OR bodyPath IS NOT NULL OR files IS NOT NULL)
 );
+CREATE INDEX t_inbox_at ON t_inbox (at);
 
 CREATE TABLE t_turns (
   turnId             TEXT    PRIMARY KEY,
@@ -196,7 +198,7 @@ CREATE VIEW inbox AS
   SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
          i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
          i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
-         i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval, i.api,
+         i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval, i.api, i.startsTurn,
          i.inboxNo <= w.inboxConsumed AS consumed,
          EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
     FROM t_inbox i, t_workspace w;
@@ -339,7 +341,7 @@ CREATE VIEW approvals AS
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 12] = [
+const MIGRATIONS: [(i64, &str); 13] = [
     (
         1,
         r#"
@@ -612,6 +614,23 @@ CREATE VIEW inbox AS
     FROM t_inbox i, t_workspace w;
 "#,
     ),
+    (
+        13,
+        r#"
+ALTER TABLE t_inbox ADD COLUMN startsTurn INTEGER NOT NULL DEFAULT 1 CHECK (startsTurn IN (0, 1) AND (startsTurn = 1 OR hook IS NOT NULL OR job IS NOT NULL OR api IS NOT NULL));
+CREATE INDEX t_inbox_at ON t_inbox (at);
+
+DROP VIEW inbox;
+CREATE VIEW inbox AS
+  SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
+         i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
+         i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
+         i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval, i.api, i.startsTurn,
+         i.inboxNo <= w.inboxConsumed AS consumed,
+         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside
+    FROM t_inbox i, t_workspace w;
+"#,
+    ),
 ];
 
 /// Opens the workspace's database for writing — creating it and its schema the first time —
@@ -822,7 +841,7 @@ enum Kind {
 }
 
 /// What an inbox entry may say, by column. `inboxNo` is the database's to give.
-const INBOX_COLUMNS: [(&str, Kind); 25] = [
+const INBOX_COLUMNS: [(&str, Kind); 26] = [
     ("at", Kind::Text),
     ("text", Kind::Text),
     ("bodyPath", Kind::Text),
@@ -848,6 +867,7 @@ const INBOX_COLUMNS: [(&str, Kind); 25] = [
     ("approval", Kind::Text),
     ("fromZone", Kind::Text),
     ("api", Kind::Text),
+    ("startsTurn", Kind::Flag),
 ];
 
 /// What a turn record carries into its row. `turnNo` and `inboxFrom` are finalization's to
@@ -1012,12 +1032,42 @@ pub fn check_reply_to(reply_to: &str) -> Result<(), String> {
     }
 }
 
+/// What says an entry when no person does, each kind named by its inbox column.
+const ORIGIN_KINDS: [&str; 4] = ["schedule", "hook", "job", "api"];
+
+/// How many deliveries from `origin` (`hook:forge`) the spore at `ws` was handed after `since`
+/// that were let start a turn — in its inbox, or still held — what the origin's `perHour` counts.
+/// Read through a writer, so a workspace an older spore made is migrated before it is counted.
+pub fn starting_since(ws: &Path, origin: &str, since: &str) -> Result<i64, String> {
+    let (kind, name) = origin
+        .split_once(':')
+        .filter(|(kind, name)| ORIGIN_KINDS.contains(kind) && !name.is_empty())
+        .ok_or_else(|| {
+            format!(
+                "\"{origin}\" is no origin — expected {}",
+                ORIGIN_KINDS.map(|kind| format!("{kind}:<name>")).join(", ")
+            )
+        })?;
+    writing(ws, |conn| {
+        conn.query_row(
+            &format!(
+                "SELECT (SELECT count(*) FROM t_inbox WHERE {kind} = ?1 AND at > ?2 AND startsTurn = 1)
+                      + (SELECT count(*) FROM t_held WHERE origin = ?3 AND at > ?2
+                           AND coalesce(json_extract(entry, '$.startsTurn'), 1) = 1)"
+            ),
+            (name, since, origin),
+            |row| row.get(0),
+        )
+        .map_err(failed_to("count what an origin started"))
+    })
+}
+
 /// Who said an inbox entry, when no person did: `schedule:<name>`, `hook:<name>`, `job:<name>` or
 /// `api:<caller>`, from the field naming it. None for a person's message, which may say who the person is with
 /// `fromName`, `fromId` and `fromWhere`, all three, and their clock with `fromZone`. Refused when
 /// it names two speakers.
 pub fn origin_of(entry: &Record) -> Result<Option<String>, String> {
-    let named: Vec<String> = ["schedule", "hook", "job", "api"]
+    let named: Vec<String> = ORIGIN_KINDS
         .iter()
         .filter_map(|kind| {
             entry
@@ -1389,11 +1439,11 @@ pub fn inbox_consumed(ws: &Path) -> Result<i64, String> {
 }
 
 /// Whether anything has been said past where the last turn stopped reading that a turn answers:
-/// what was overheard starts none.
+/// what was overheard, or delivered past its origin's `perHour`, starts none.
 pub fn unread(ws: &Path) -> Result<bool, String> {
     reading(ws, false, |conn| {
         conn.query_row(
-            "SELECT EXISTS (SELECT 1 FROM inbox WHERE NOT consumed AND NOT setAside AND NOT overheard)",
+            "SELECT EXISTS (SELECT 1 FROM inbox WHERE NOT consumed AND NOT setAside AND NOT overheard AND startsTurn)",
             [],
             |row| row.get(0),
         )
@@ -3356,6 +3406,74 @@ mod tests {
             r#"{"at":"t","text":"x","api":"pipeline","replyTo":"terminal"}"#
         )
         .is_err());
+    }
+
+    #[test]
+    fn counts_the_deliveries_of_an_origin_let_start_a_turn() {
+        let ws = scratch("starting-since");
+        let hook = |at: &str, delivery: &str, starts: Option<bool>| {
+            let mut entry =
+                json!({ "at": at, "text": "", "hook": "forge", "hookDelivery": delivery });
+            if let Some(starts) = starts {
+                entry["startsTurn"] = json!(starts);
+            }
+            entry.to_string()
+        };
+        append_inbox(&ws, &hook("2026-10-03T10:00:00.000Z", "old", None)).unwrap();
+        append_inbox(&ws, &hook("2026-10-03T12:00:00.000Z", "d1", None)).unwrap();
+        append_inbox(&ws, &hook("2026-10-03T12:01:00.000Z", "d2", Some(false))).unwrap();
+        append_inbox(
+            &ws,
+            r#"{"at":"2026-10-03T12:02:00.000Z","text":"","hook":"other","hookDelivery":"d3"}"#,
+        )
+        .unwrap();
+        hold_delivery(
+            &ws,
+            &hook("2026-10-03T12:03:00.000Z", "d4", None),
+            "2026-10-03T13:00:00.000Z",
+            "2026-10-03T13:00:00.000Z",
+        )
+        .unwrap();
+        hold_delivery(
+            &ws,
+            &hook("2026-10-03T12:04:00.000Z", "d5", Some(false)),
+            "2026-10-03T13:00:00.000Z",
+            "2026-10-03T13:00:00.000Z",
+        )
+        .unwrap();
+        let since = "2026-10-03T11:00:00.000Z";
+        assert_eq!(starting_since(&ws, "hook:forge", since), Ok(2));
+        assert_eq!(starting_since(&ws, "hook:other", since), Ok(1));
+        assert_eq!(starting_since(&ws, "job:forge", since), Ok(0));
+        assert!(starting_since(&ws, "forge", since)
+            .unwrap_err()
+            .contains("is no origin"));
+
+        assert_eq!(
+            release_held(&ws, "2026-10-03T13:00:00.000Z", true).unwrap(),
+            vec![5, 6]
+        );
+        assert_eq!(
+            row(
+                &ws,
+                "SELECT startsTurn FROM inbox WHERE hookDelivery = 'd5'"
+            )["startsTurn"],
+            0
+        );
+        assert_eq!(starting_since(&ws, "hook:forge", since), Ok(2));
+
+        assert!(append_inbox(&ws, r#"{"at":"t","text":"x","startsTurn":false}"#).is_err());
+        assert!(append_inbox(
+            &ws,
+            r#"{"at":"t","text":"x","schedule":"daily","due":"t","startsTurn":false}"#
+        )
+        .is_err());
+
+        let quiet = scratch("starts-none");
+        append_inbox(&quiet, &hook("2026-10-03T12:00:00.000Z", "d1", Some(false))).unwrap();
+        assert_eq!(unread(&quiet), Ok(false));
+        append_inbox(&quiet, &hook("2026-10-03T12:01:00.000Z", "d2", None)).unwrap();
+        assert_eq!(unread(&quiet), Ok(true));
     }
 
     #[test]

@@ -218,6 +218,16 @@ describe('a program\'s delivery through the API', () => {
     expect(released).toEqual([alpha()])
   })
 
+  it('says a delivery past the caller\'s perHour without starting a turn', async () => {
+    await restart({ app: { perHour: 1 } })
+    expect((await call('POST', '/v1/spores/alpha/deliveries', { body: sent })).json()).toMatchObject({ outcome: 'started', started: true })
+    released = []
+    expect((await call('POST', '/v1/spores/alpha/deliveries', { body: { ...sent, delivery: 'doc-2' } })).json())
+      .toEqual({ delivery: 'doc-2', outcome: 'said, not started — 1 turns started in the last hour', started: false })
+    expect(released).toEqual([])
+    expect(readInbox(alpha()).map(entry => [entry.requestId, entry.startsTurn])).toEqual([['api:app:doc-2', false]])
+  })
+
   it('gives the program an empty stdin when the delivery has no payload', async () => {
     preparing()
     const ran = []
@@ -240,8 +250,9 @@ describe('a program\'s delivery through the API', () => {
     expect(asked[0]).toMatchObject({ origin: 'api:app', ref: 'doc-1', prepared: null })
     const [row] = heldIn(alpha())
     expect(row.summary).toBe('report queued')
-    expect(row.releaseAt).toBe(row.deadline)
-    expect(Date.parse(row.deadline) - Date.parse(row.at)).toBeGreaterThan(59 * 60_000)
+    expect(Date.parse(row.releaseAt) - Date.parse(row.at)).toBeGreaterThanOrEqual(3_600_000)
+    expect(Date.parse(row.releaseAt) - Date.parse(row.at)).toBeLessThan(3_600_000 + 5_000)
+    expect(row.releaseAt <= row.deadline).toBe(true)
     expect(released).toEqual([])
   })
 
@@ -303,10 +314,12 @@ describe('api.json', () => {
     expect(loadApi(write({ listen: '127.0.0.1:8787', callers: { a: { token, spores: ['*'] } } }), env).listen).toEqual({ host: '127.0.0.1', port: 8787 })
   })
 
-  it('takes a caller\'s maxWait, and refuses a router, naming where what prepares a delivery is bound now', () => {
-    expect(loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], maxWait: '30m' } } }), env).callers[0].maxWait).toBe(30 * 60_000)
-    expect(loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'] } } }), env).callers[0].maxWait).toBe(null)
-    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], maxWait: 'soon' } } }), env)).toThrow(/maxWait for a it cannot read — "soon"/)
+  it('takes a caller\'s maxWait, perDay and perHour, and refuses a router, naming where what prepares a delivery is bound now', () => {
+    expect(loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], maxWait: '30m', perDay: 5, perHour: 2 } } }), env).callers[0]).toMatchObject({ maxWait: 30 * 60_000, perDay: 5, perHour: 2 })
+    expect(loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'] } } }), env).callers[0]).toMatchObject({ maxWait: null, perDay: 100, perHour: null })
+    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], perHour: 1.5 } } }), env)).toThrow(/caller "a" has a perHour that is not a count — 1.5/)
+    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], maxWait: 'soon' } } }), env)).toThrow(/caller "a" has a maxWait spore cannot read — "soon"/)
+    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], perDay: 0 } } }), env)).toThrow(/caller "a" has a perDay that is not a count — 0/)
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], router: { plugin: 'pdf', name: 'pages' } } } }), env)).toThrow(/router for a, which api.json no longer binds/)
   })
 })

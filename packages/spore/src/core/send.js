@@ -50,8 +50,7 @@ export const CHATGPT_HELPER = createRequire(import.meta.url).resolve('mohdel/cha
  * the one that answered it.
  *
  * `start: false` says the message and starts nothing: a turn running reads it at its next round,
- * and with none running it waits for the next turn something else starts. The webhook service
- * says a delivery so once a hook has started its hourly share of turns.
+ * and with none running it waits for the next turn something else starts.
  *
  * `approval` is the id of an approval this message tells of — a press of its buttons, or its
  * deadline passing — said by the relay of the conversation it was asked in, which `replyTo` names.
@@ -115,11 +114,14 @@ export function send (ws, message, { attach = [], schedule, hook, from, tracepar
   return holding(slot, () => start(slot, plugins, said))
 }
 
+const startsNone = (row) => JSON.parse(row.entry).startsTurn === false
+
 /**
  * What is held and due, moved into the inbox, and a turn started to read it — through the lock
  * race `send` uses, holding a slot before anything moves, so every slot taken leaves it held for the
  * next pass. While a turn runs, only what is past its deadline moves, and it joins that turn —
  * looked at again after, as `send` does, so a runner letting go in between leaves none unread.
+ * What is due and was delivered past its origin's `perHour` moves without starting one.
  *
  * @returns {{ ws: string, released: number[], started: boolean }}
  */
@@ -127,8 +129,9 @@ export function release (ws, { now = Date.now(), env = process.env } = {}) {
   const workspace = resolve(ws)
   const at = new Date(now).toISOString()
   if (stateOf(workspace).state === RUNNING) {
+    const late = heldIn(workspace).filter(row => row.deadline <= at)
     const released = releaseHeld(workspace, at, { due: false })
-    if (!released.length || stateOf(workspace).state === RUNNING) return { ws: workspace, released, started: false }
+    if (!released.length || stateOf(workspace).state === RUNNING || late.every(startsNone)) return { ws: workspace, released, started: false }
     const plugins = preparePlugins(workspace)
     const slot = takeSlot()
     try {
@@ -137,7 +140,9 @@ export function release (ws, { now = Date.now(), env = process.env } = {}) {
       closeSync(slot.fd)
     }
   }
-  if (!heldIn(workspace).some(row => row.releaseAt <= at || row.deadline <= at)) return { ws: workspace, released: [], started: false }
+  const due = heldIn(workspace).filter(row => row.releaseAt <= at || row.deadline <= at)
+  if (!due.length) return { ws: workspace, released: [], started: false }
+  if (due.every(startsNone)) return { ws: workspace, released: releaseHeld(workspace, at, { due: true }), started: false }
   const plugins = preparePlugins(workspace)
   const slot = takeSlot()
   try {

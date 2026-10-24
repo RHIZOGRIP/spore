@@ -117,6 +117,7 @@ describe('what of a turn reaches a conversation', () => {
     expect(announce(turn('answer', 'triaged', [{ hook: 'forge' }, { hook: 'forge' }]))).toBe('webhook "forge"\n\ntriaged')
     expect(announce(turn('answer', 'both', [{ schedule: 'digest' }, { hook: 'forge' }]))).toBe('schedule "digest" · webhook "forge"\n\nboth')
     expect(announce(turn('answer', 'scanned', [{ job: 'scan' }]))).toBe('job "scan"\n\nscanned')
+    expect(announce(turn('answer', 'filed', [{ api: 'pipeline' }]))).toBe('API caller "pipeline"\n\nfiled')
     expect(announce(turn('error', null, [{ schedule: 'digest' }]))).toBe('schedule "digest"\n\nno answer · error')
   })
 

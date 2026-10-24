@@ -166,7 +166,7 @@ const decoder = ({ json = [], flags = [] }) => (row) => {
 }
 
 const turnRecord = decoder({ json: ['deliverables', 'recall', 'byPrecursor'], flags: ['concluded', 'settled'] })
-const inboxEntry = decoder({ json: ['files'], flags: ['consumed', 'setAside', 'overheard'] })
+const inboxEntry = decoder({ json: ['files'], flags: ['consumed', 'setAside', 'overheard', 'startsTurn'] })
 const approvalRecord = decoder({ json: ['approvers', 'options', 'body', 'calendar', 'shown', 'inputs', 'replaced', 'fields'], flags: ['told'] })
 const transcriptEntry = decoder({ json: ['message', 'marks'] })
 const eventRecord = ({ payload, ...envelope }) => ({ ...envelope, ...JSON.parse(payload) })
@@ -380,7 +380,7 @@ function checkFrom (from, { schedule, hook, job, api }) {
       detail: `got ${JSON.stringify(from)}, expected { name, id, where, zone? }: how the person shows, <kind>:<their id> (as telegram:148392011), the conversation as a person would name it, and the IANA zone of their clock where the platform says it (as Asia/Dubai)`
     })
   }
-  if (schedule || hook || job || api) {
+  if (originOfOptions({ schedule, hook, job, api }) !== null) {
     throw new SporeError('a message from a person comes from no schedule, webhook, job or caller of the API', {
       type: 'FROM_INVALID',
       detail: 'from names a person; schedule, hook, job and api name what said it when no person did — one or the other'
@@ -388,12 +388,18 @@ function checkFrom (from, { schedule, hook, job, api }) {
   }
 }
 
-function entryFor (ws, said, { attach = [], schedule, hook, job, api, from, traceparent, requestId, replyTo, overheard, approval } = {}) {
+function entryFor (ws, said, { attach = [], schedule, hook, job, api, from, traceparent, requestId, replyTo, overheard, approval, startsTurn } = {}) {
   if (from !== undefined) checkFrom(from, { schedule, hook, job, api })
-  if (approval !== undefined && !(typeof approval === 'string' && approval && replyTo !== undefined && replyTo !== 'terminal' && !schedule && !hook && !job && !api && !overheard)) {
+  if (approval !== undefined && !(typeof approval === 'string' && approval && replyTo !== undefined && replyTo !== 'terminal' && originOfOptions({ schedule, hook, job, api }) === null && !overheard)) {
     throw new SporeError('a message telling of an approval names it, and the conversation it was asked in', {
       type: 'APPROVAL_INVALID',
       detail: `got approval ${JSON.stringify(approval)} with replyTo ${JSON.stringify(replyTo)} — it comes from no schedule, webhook, job or caller of the API, and is not overheard`
+    })
+  }
+  if (startsTurn !== undefined && !(startsTurn === false && originOfOptions({ hook, job, api }) !== null)) {
+    throw new SporeError('only a webhook\'s, a job\'s or an API caller\'s delivery is said without starting a turn', {
+      type: 'DELIVERY_INVALID',
+      detail: `got startsTurn ${JSON.stringify(startsTurn)}${schedule ? ` from schedule ${JSON.stringify(schedule)}` : ''} — it is false, past the perHour of the origin that said it, or absent`
     })
   }
   if (traceparent !== undefined && !parseTraceparent(traceparent)) {
@@ -434,6 +440,7 @@ function entryFor (ws, said, { attach = [], schedule, hook, job, api, from, trac
     ...(hook ? { hook: hook.name, hookDelivery: hook.delivery, ...(hook.event ? { hookEvent: hook.event } : {}) } : {}),
     ...(job ? { job: job.name, jobEvent: job.event, jobRun: job.run } : {}),
     ...(api !== undefined ? { api } : {}),
+    ...(startsTurn === false ? { startsTurn } : {}),
     ...(from ? { fromName: storable(from.name), fromId: from.id, fromWhere: storable(from.where), ...(from.zone ? { fromZone: from.zone } : {}) } : {}),
     ...(traceparent ? { traceparent } : {}),
     ...(requestId !== undefined ? { requestId: storable(requestId) } : {}),
@@ -823,6 +830,22 @@ export function readInbox (ws, { after = 0, upto = null } = {}) {
 
 /** Who said an entry when no person did — `schedule:<name>`, `hook:<name>`, `job:<name>`, `api:<caller>` — else null. */
 export const originOf = (entry) => native.originOf(JSON.stringify(entry))
+
+const ORIGIN_LABEL = { schedule: 'schedule', hook: 'webhook', job: 'job', api: 'API caller' }
+
+/**
+ * How many deliveries from `origin` the spore at `ws` was handed since `since` that were let start
+ * a turn — in its inbox, or still held — what an origin's `perHour` counts.
+ */
+export const startingSince = (ws, origin, since) => native.startingSince(ws, origin, since)
+
+/** Who said an entry when no person did, as a reader is shown it — `webhook "forge"`, `API caller "pipeline"` — else null. */
+export function originLabel (entry) {
+  const origin = originOf(entry)
+  if (origin === null) return null
+  const at = origin.indexOf(':')
+  return `${ORIGIN_LABEL[origin.slice(0, at)]} "${origin.slice(at + 1)}"`
+}
 
 /** The origin of what `send`-shaped `options` would say, before an entry is made of them. */
 export const originOfOptions = ({ schedule, hook, job, api }) => originOf({ schedule: schedule?.name, hook: hook?.name, job: job?.name, api })

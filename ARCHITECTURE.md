@@ -1617,8 +1617,9 @@ or the request carried one; the NDJSON event stream carries none.
 **A program delivers as itself.** `POST /v1/spores/<name>/messages` is a person speaking through
 the caller, and nothing a person says is held. Work a program hands a spore goes to
 `POST /v1/spores/<name>/deliveries`, from origin `api:<caller>` (the inbox's `api` column): held,
-prepared and timed as any delivery nobody typed, within the caller's `maxWait` in `api.json`. The
-turn reads it as the operator's own message, with no line naming the sender: the caller is the
+prepared and timed as any delivery nobody typed, within the caller's `maxWait`, `perDay` and
+`perHour` in `api.json` — a hook's bounds, read by the same code, with no `perHour` unless the file
+says one (§Webhooks). The turn reads it as the operator's own message, with no line naming the sender: the caller is the
 operator's program, not an outsider whose payload is data, which is what a hook is. It names no
 person, so its answer goes to the default reply-to. Hooks are outsiders' signed events, on the
 webhook service only.
@@ -1669,9 +1670,11 @@ signature covers, is kept only to show; so a retried delivery is taken once by e
 is a captured one sent again under a new delivery id. Nothing a spore is handed of the service's
 environment — a turn's runner, a triage cell — holds a hook's secrets: the service leaves out
 every variable a hook's `${VAR}` named. When one of a hook's spores could not be reached the
-answer is `500`, and the sender's retry reaches only that one. `perHour` bounds the turns a hook
-starts in each spore; past it a delivery is said and starts nothing (`send` with `start: false`), and the next turn
-reads it.
+answer is `500`, and the sender's retry reaches only that one. `perHour` bounds the deliveries of
+a hook let start a turn in each spore an hour, as an API caller's does (§The HTTP API), counted
+from the spore's inbox and held deliveries, so a restart of the service forgets none. Past it a
+delivery is said with `startsTurn` false on its entry: nothing starts a turn for it — not the
+pass releasing it, not a runner carrying on after a turn — and the next turn reads it.
 Otherwise a delivery goes the way every message nobody typed goes (§Deliveries nobody typed):
 prepared and timed as its spore says, within the hook's `maxWait`, and held for the pass when no
 slot is free. A body past `maxBytes` is `413`, a bad check `401`, an unknown hook `404`,
@@ -1732,7 +1735,8 @@ delivery is kept for as long as the cell's hard wall allows. Such a cell is refu
 confinement, so what those grant stays inside it too, but outside one the supervisor is a host
 process — an enzyme would run unconfined in its broker, and a read would be the cell's own grant
 over whatever the host can read, from a precursor the agent wrote. `perDay` bounds the cells an
-origin starts in a spore a day — a hook's `perDay`, a job's `jobs.perDay`, 100 when unsaid —
+origin starts in a spore a day — a hook's `perDay`, a caller's in `api.json`, a job's
+`jobs.perDay`, 100 when unsaid —
 counted from the `cells` view; past it a delivery that would have asked one is delivered now, and
 the log says why.
 

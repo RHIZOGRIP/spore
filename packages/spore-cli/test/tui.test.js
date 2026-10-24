@@ -60,6 +60,7 @@ describe('originOf', () => {
     expect(originOf({ schedule: 'daily' })).toBe('schedule "daily"')
     expect(originOf({ hook: 'gh' })).toBe('webhook "gh"')
     expect(originOf({ job: 'crawl' })).toBe('job "crawl"')
+    expect(originOf({ api: 'pipeline' })).toBe('API caller "pipeline"')
     expect(originOf({ replyTo: 'discord:ops/123' })).toBe('discord')
     expect(originOf({})).toBe('elsewhere')
   })

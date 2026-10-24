@@ -361,7 +361,7 @@ A hook name is letters, digits, `.`, `-` and `_`.
 | `verify` | how a request proves it is the sender's (below) | required: a hook without it is refused |
 | `accept` | which requests are kept: `{ "header", "values": [ … ] }` keeps a request whose header has one of the values; `{ "payload": <JSON Schema> }` keeps one whose JSON body matches; both may be given. One that keeps everything is refused | keep everything |
 | `maxBytes` | the largest body, as `1MB` or `512KB`; past it, `413` | `1MB` |
-| `perHour` | turns the hook may start in each spore an hour; past it a delivery is said and starts nothing | `30` |
+| `perHour` | deliveries the hook may let start a turn in each spore an hour, counted from the spore's own records; past it a delivery is said and starts nothing | `30` |
 | `maxWait` | the longest the spore's router or triage cell may keep a delivery waiting, as `30m` or `2h` | none: released as soon as it is timed |
 | `perDay` | triage cells the hook may start in each spore a day; past it a delivery is said at once | `100` |
 
@@ -423,6 +423,11 @@ node bin/spore-api.js --check     # read api.json and the environment, print whe
   delivery from the caller (`POST /v1/spores/<name>/deliveries`) waiting, as a hook's `maxWait`
   ([§Webhooks](#webhooks)); absent, it is released as soon as it is timed. What prepares it is
   the spore's `prepare:`, never `api.json`'s, and a caller with a `router` is refused.
+- `perDay` is how many triage cells the caller's deliveries may start in each spore a day, as a
+  hook's `perDay`; past it a delivery is delivered at once. Absent, `100`.
+- `perHour` is how many of the caller's deliveries may start a turn in each spore an hour, as a
+  hook's `perHour`; past it a delivery is said and starts nothing, and the next turn reads it.
+  Absent, no bound.
 - `--tick` runs the schedule pass (`spore tick`) every minute, for a container without a timer.
 - Exit code 2 means the configuration was refused; the unit does not restart after it.
 

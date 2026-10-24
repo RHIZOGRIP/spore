@@ -360,12 +360,19 @@ describe('the service', () => {
     expect(logs.join('\n')).toMatch(/ignored — x-forgejo-event is issues/)
   })
 
-  it('says a delivery past the hourly limit without starting a turn', async () => {
+  it('says a delivery past the hourly limit without starting a turn, counting across a restart', async () => {
     await start({ forge: { ...forge.forge, perHour: 1 } })
     await fetch(`${base}/hook/forge`, signed('{}'))
     await fetch(`${base}/hook/forge`, signed('{"n":2}', { 'x-forgejo-delivery': 'd-2' }))
     expect(delivered()).toHaveLength(1)
-    expect(said.map(one => one.requestId)).toEqual([idOf('{"n":2}')])
+    expect(said.map(one => [one.requestId, one.startsTurn])).toEqual([[idOf('{"n":2}'), false]])
+    expect(logs.join('\n')).toMatch(/said, not started — 1 turns started in the last hour/)
+
+    await new Promise(resolve => server.close(resolve))
+    await start({ forge: { ...forge.forge, perHour: 1 } })
+    await fetch(`${base}/hook/forge`, signed('{"n":3}', { 'x-forgejo-delivery': 'd-3' }))
+    expect(delivered()).toHaveLength(1)
+    expect(said.map(one => one.requestId)).toEqual([idOf('{"n":2}'), idOf('{"n":3}')])
   })
 
   it('refuses every delivery while spores are paused, keeping nothing of it', async () => {
@@ -468,7 +475,9 @@ describe('the service', () => {
       await fetch(`${base}/hook/forge`, signed('{"n":3}', { 'x-forgejo-delivery': 'd-3' }))
       await server.routed()
       const capped = heldIn(routed).find(row => JSON.parse(row.entry).hookDelivery === 'd-3')
-      expect(capped.releaseAt).toBe(capped.deadline)
+      expect(Date.parse(capped.releaseAt) - Date.parse(capped.at)).toBeGreaterThanOrEqual(2 * 3_600_000)
+      expect(Date.parse(capped.releaseAt) - Date.parse(capped.at)).toBeLessThan(2 * 3_600_000 + 5_000)
+      expect(capped.releaseAt <= capped.deadline).toBe(true)
     })
 
     it('keeps only the latest delivery held when the router says it replaces the others', async () => {
@@ -615,7 +624,7 @@ describe('the service', () => {
       expect(said).toEqual([])
       expect(released).toHaveLength(1)
       const entry = readInbox(wsOf('main')).find(one => one.hookDelivery === 'd-2')
-      expect(entry.hook).toBe('forge')
+      expect(entry).toMatchObject({ hook: 'forge', startsTurn: false })
       expect(entry.files.map(file => file.name)).toEqual(['payload.json', 'headers.json', 'pages.json'])
       expect(logs.join('\n')).toMatch(/said, not started/)
     })

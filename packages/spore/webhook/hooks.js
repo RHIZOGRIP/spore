@@ -10,8 +10,8 @@ import { dirname, resolve } from 'node:path'
 import Ajv from 'ajv'
 
 import { CONFIG_FILE, SporeError } from '../src/index.js'
-import { durationMs, sizeBytes } from '../src/delegation/definition.js'
-import { TRIAGE_PER_DAY } from '../src/core/triage.js'
+import { sizeBytes } from '../src/delegation/definition.js'
+import { deliveryBounds } from '../src/core/route.js'
 
 export const HOOKS_FILE = 'hooks.json'
 export const hooksPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), HOOKS_FILE)
@@ -173,14 +173,7 @@ export function loadHooks (path = hooksPath(), env = process.env) {
     const accept = hook.accept === undefined ? null : parseAccept(path, name, hook.accept)
     const maxBytes = hook.maxBytes === undefined ? DEFAULT_MAX_BYTES : sizeBytes(hook.maxBytes)
     if (!(maxBytes > 0)) throw refuse(path, name, `has a maxBytes spore cannot read — ${hook.maxBytes}`, 'a size such as 1MB or 512KB')
-    const perHour = hook.perHour ?? DEFAULT_PER_HOUR
-    if (!Number.isInteger(perHour) || perHour < 1) throw refuse(path, name, `has a perHour that is not a count — ${hook.perHour}`, 'how many turns it may start an hour, a whole number from 1')
-    const maxWait = hook.maxWait === undefined ? null : durationMs(hook.maxWait)
-    if (hook.maxWait !== undefined && !(maxWait > 0)) {
-      throw refuse(path, name, `has a maxWait spore cannot read — ${hook.maxWait}`, 'the most a delivery may wait for its spore, as 30m or 2h; a spore\'s router decides within it')
-    }
-    const perDay = hook.perDay ?? TRIAGE_PER_DAY
-    if (!Number.isInteger(perDay) || perDay < 1) throw refuse(path, name, `has a perDay that is not a count — ${hook.perDay}`, 'how many triage cells it may start in a spore a day, a whole number from 1')
+    const { maxWait, perDay, perHour } = deliveryBounds(hook, (problem, detail) => refuse(path, name, problem, detail), { perHour: DEFAULT_PER_HOUR })
     hooks.set(name, { name, spores, accepts, check, accept, maxBytes, perHour, maxWait, perDay, secrets })
   }
   return hooks

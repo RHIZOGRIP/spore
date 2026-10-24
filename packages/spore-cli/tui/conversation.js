@@ -4,15 +4,14 @@
  * events arrive. Pure: records and events in, items out.
  */
 
+import { originLabel } from '@rhizogrip/spore'
+
 import { printable } from './printable.js'
 
-/** Who said an entry, when that is known: a person by name, or the schedule, webhook or job. */
+/** Who said an entry, when that is known: a person by name, or what said it when no person did. */
 export function saidBy (entry) {
   if (entry.fromName) return printable(entry.fromName)
-  if (entry.schedule) return `schedule "${entry.schedule}"`
-  if (entry.hook) return `webhook "${entry.hook}"`
-  if (entry.job) return `job "${entry.job}"`
-  return null
+  return originLabel(entry)
 }
 
 export function originOf (entry) {

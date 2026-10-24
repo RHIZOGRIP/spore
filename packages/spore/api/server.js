@@ -25,7 +25,6 @@ import { paused } from '../src/core/admission.js'
 import { SporeError } from '../src/observability/errors.js'
 import { endSpanError, endSpanOk, formatTraceparent, parseTraceparent, startSpan } from '../src/observability/tracing.js'
 import { deliver } from '../src/core/route.js'
-import { TRIAGE_PER_DAY } from '../src/core/triage.js'
 import { callerOf, reaches } from './config.js'
 
 const MAX_BODY = 32 * 1024 * 1024
@@ -122,7 +121,8 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       options,
       maxWait: caller.maxWait,
       stdin: payload === undefined ? null : PAYLOAD,
-      perDay: TRIAGE_PER_DAY,
+      perDay: caller.perDay,
+      perHour: caller.perHour,
       briefing: briefingOf(caller.name, delivery),
       ref: delivery,
       event: null,

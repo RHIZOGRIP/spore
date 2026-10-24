@@ -13,23 +13,46 @@ import { dirname, join } from 'node:path'
 
 import { SporeError } from '../observability/errors.js'
 import { launchStandalone } from './cell.js'
-import { release as releaseHeld, send } from './send.js'
+import { release as releaseHeld } from './send.js'
 import { pluginProgram } from './plugins.js'
 import { prepareFor, runPrepare } from './prepare.js'
-import { INBOX_DIR, attachHeld, holdDelivery, originOfOptions, releaseHeld as releaseDue, rescheduleHeld } from './spore-dir.js'
+import { INBOX_DIR, attachHeld, enqueue, holdDelivery, originOfOptions, releaseHeld as releaseDue, rescheduleHeld, startingSince } from './spore-dir.js'
 import { ROUTE_TIMEOUT_MS, routerFor, runRouter } from './router.js'
-import { precursorFor, triage, triageIn } from './triage.js'
-import { parseDefinition } from '../delegation/definition.js'
+import { precursorFor, triage, triageIn, TRIAGE_PER_DAY } from './triage.js'
+import { durationMs, parseDefinition } from '../delegation/definition.js'
 import { TOOL_NAMES } from './tool-names.js'
 
 const iso = (ms) => new Date(ms).toISOString()
 const PREPARE_GRACE_MS = 5_000
+const HOUR_MS = 3_600_000
 const PREPARED_DIR = 'prepared'
 
 const KEPT_HELD = {
   ADMISSION_FULL: 'held — every turn slot is taken, the pass releases it once one frees',
   PAUSED: 'held — spores are paused, the pass releases it after spore unpause',
   SPEND_LIMIT: 'held — the spend limit is reached, the pass releases it once the day or month turns or the limit is raised'
+}
+
+/**
+ * The bounds an operator's file sets on the deliveries of one origin — a hook's in `hooks.json`,
+ * a caller's in `api.json` — as `deliver` takes them: `{ maxWait, perDay, perHour }`, `maxWait`
+ * null when unsaid, `perHour` the file's own default (`perHour`, null for none). A spore's own jobs
+ * are bounded in its `spore.cmk`. `refused(problem, detail)` is the error the file's loader throws.
+ */
+export function deliveryBounds (raw, refused, { perHour: unsaidPerHour = null } = {}) {
+  const maxWait = raw.maxWait === undefined ? null : durationMs(String(raw.maxWait))
+  if (raw.maxWait !== undefined && !(maxWait > 0)) {
+    throw refused(`has a maxWait spore cannot read — ${JSON.stringify(raw.maxWait)}`, 'the longest a spore\'s router or triage cell may keep a delivery waiting, as 30m or 2h')
+  }
+  const perDay = raw.perDay ?? TRIAGE_PER_DAY
+  if (!Number.isInteger(perDay) || perDay < 1) {
+    throw refused(`has a perDay that is not a count — ${JSON.stringify(raw.perDay)}`, 'how many triage cells its deliveries may start in a spore a day, a whole number from 1')
+  }
+  const perHour = raw.perHour ?? unsaidPerHour
+  if (perHour !== null && (!Number.isInteger(perHour) || perHour < 1)) {
+    throw refused(`has a perHour that is not a count — ${JSON.stringify(raw.perHour)}`, 'how many of its deliveries may start a turn in a spore an hour, a whole number from 1')
+  }
+  return { maxWait, perDay, perHour }
 }
 
 /** Releases what is due in `ws` and says what came of it; every slot taken, or a pause, leaves it held. */
@@ -63,24 +86,28 @@ function decidingMs ({ router, precursor }, routeTimeoutMs) {
  * attaches what it makes; then the spore's router or triage cell for the origin, if it keeps one,
  * answers how long it may wait, up to `maxWait` (none: it is released at once, a summary or
  * `replaces` still taken). Released, it starts a turn or joins the one running, and no free slot,
- * or a pause, leaves it held for the pass. `start: false` releases it without starting a turn and
- * skips the spore's step. `stdin` and `headers` are the names of the attached files given to both
+ * or a pause, leaves it held for the pass. Once `perHour` deliveries from its origin were let start
+ * a turn in the last hour (null: no bound), it is said without starting one, its entry's
+ * `startsTurn` false, and skips the spore's step. `stdin` and `headers` are the names of the attached files given to both
  * steps as the payload and the headers, either null; `briefing({ payload, headers })` is
  * what a triage cell is told; `envOf()` the environment a cell and a release start with. Answers
  * `{ outcome, judged, started, prepared }`: a line for the caller's log, the steps under way,
  * whether a turn started now, and whether a prepare step runs.
  */
 export function deliver ({
-  ws, said, options, maxWait = null, start = true, stdin = null, headers = null, event, ref, perDay, briefing, envOf, log, heading,
-  now = Date.now, release = releaseHeld, say = (ws, text, options) => send(ws, text, { ...options, start: false }), route = runRouter, launch = launchStandalone, routeTimeoutMs = ROUTE_TIMEOUT_MS,
+  ws, said, options: given, maxWait = null, perHour = null, stdin = null, headers = null, event, ref, perDay, briefing, envOf, log, heading,
+  now = Date.now, release = releaseHeld, say = enqueue, route = runRouter, launch = launchStandalone, routeTimeoutMs = ROUTE_TIMEOUT_MS,
   prepareOf = prepareFor, programOf = pluginProgram, prepareBy = runPrepare
 }) {
-  const origin = originOfOptions(options)
+  const origin = originOfOptions(given)
   if (origin === null) throw new SporeError('a message a person typed is said, never delivered', { type: 'DELIVERY_INVALID', detail: 'deliver takes a webhook\'s, a job\'s or an API caller\'s message; send takes a person\'s' })
+  const start = perHour === null || startingSince(ws, origin, iso(now() - HOUR_MS)) < perHour
+  const options = start ? given : { ...given, startsTurn: false }
+  const past = start ? '' : ` — ${perHour} turns started in the last hour`
   const prepare = prepareOf(ws, origin)
   if (!start && !prepare) {
     const sent = say(ws, said, options)
-    return { outcome: sent.repeated ? 'already received' : 'said, not started', judged: Promise.resolve(), started: false, prepared: false }
+    return { outcome: `${sent.repeated ? 'already received' : 'said, not started'}${past}`, judged: Promise.resolve(), started: false, prepared: false }
   }
   const judges = start ? judgesOf(ws, origin) : {}
   const timed = Boolean(judges.router || judges.precursor)
@@ -114,7 +141,7 @@ export function deliver ({
     tell(releaseNow(release, ws, { env: envOf() }).outcome)
   })().catch(err => log(`${heading} · failed — ${err.type ?? err.name} ${err.message}${err.detail ? ` — ${err.detail}` : ''}; it is released at its deadline`))
   const steps = [prepare && `prepared by ${prepare.plugin}/${prepare.program}`, timed && `timed by ${judges.router ? judges.router.split('/').pop() : `precursors/${precursorFor(origin)}.cmk`}`].filter(Boolean)
-  return { outcome: `held — ${steps.join(', then ')}`, judged, started: false, prepared: Boolean(prepare) }
+  return { outcome: `held — ${steps.join(', then ')}${past}`, judged, started: false, prepared: Boolean(prepare) }
 }
 
 /**

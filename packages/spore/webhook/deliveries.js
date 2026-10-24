@@ -1,13 +1,11 @@
 /**
- * One delivery of a hook handed to each spore it names, under the hook's bounds: its `perHour`, and
- * its `maxWait` for the spore's router or triage cell.
+ * One delivery of a hook handed to each spore it names, under the hook's bounds — `perHour`,
+ * `maxWait` and `perDay` — which `deliver` keeps.
  */
 
 import { isWorkspace, readConfig, workspaceFor } from '../src/index.js'
 import { deliver } from '../src/core/route.js'
 import { CONFIG_FILE } from '../src/library/config.js'
-
-const HOUR = 60 * 60 * 1000
 
 const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
@@ -30,19 +28,9 @@ export function createHookDelivery ({
   now = Date.now,
   ...delivering
 }) {
-  const started = new Map()
   const routing = new Set()
 
-  const underLimit = (hook, spore) => {
-    const key = `${hook.name}\0${spore}`
-    const recent = (started.get(key) ?? []).filter(at => now() - at < HOUR)
-    started.set(key, recent)
-    return recent.length < hook.perHour
-  }
-  const counted = (hook, spore) => started.get(`${hook.name}\0${spore}`).push(now())
-
-  const deliverTo = (hook, spore, ws, options, stdin, heading, envOf) => {
-    const start = underLimit(hook, spore)
+  const deliverTo = (hook, ws, options, stdin, heading, envOf) => {
     const { event, delivery } = options.hook
     const delivered = deliver({
       ws,
@@ -50,8 +38,8 @@ export function createHookDelivery ({
       options,
       event,
       ref: delivery,
-      maxWait: hook.maxWait ?? null,
-      start,
+      maxWait: hook.maxWait,
+      perHour: hook.perHour,
       stdin,
       headers: 'headers.json',
       perDay: hook.perDay,
@@ -62,10 +50,9 @@ export function createHookDelivery ({
       now,
       ...delivering
     })
-    if (start && (delivered.started || delivered.prepared)) counted(hook, spore)
     routing.add(delivered.judged)
     delivered.judged.finally(() => routing.delete(delivered.judged))
-    return start ? delivered.outcome : `${delivered.outcome} — ${hook.perHour} turns started in the last hour`
+    return delivered.outcome
   }
 
   /**
@@ -89,7 +76,7 @@ export function createHookDelivery ({
       return { spore, outcome: `not delivered — there is no spore "${spore}"`, failed: true }
     }
     try {
-      const outcome = deliverTo(hook, spore, ws, { ...options, env: envOf() }, stdin, heading, envOf)
+      const outcome = deliverTo(hook, ws, { ...options, env: envOf() }, stdin, heading, envOf)
       log(`${heading} · ${outcome}`)
       return { spore, outcome }
     } catch (err) {
