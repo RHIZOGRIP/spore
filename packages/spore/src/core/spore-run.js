@@ -100,7 +100,6 @@ export async function runSpore ({
   limits,
   sandbox: applySandbox = false,
   emitter,
-  realtimeHandler,
   initialMessages,
   // The suite's tools the definition does not grant, taken off what the model is offered.
   excludeTools,
@@ -435,7 +434,6 @@ export async function runSpore ({
         ['ask', { stopReason: 'question', says: true }],
         ['quiet', { stopReason: 'quiet', says: false }]
       ]),
-      realtimeHandler,
       onMessage,
       sessionMemory,
       cacheTtl,

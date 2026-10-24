@@ -26,11 +26,10 @@ const TRUNCATION_NOTICE = '\n\n[truncated — output exceeded size limit]'
 /**
  * Compute max tool result size from model context limit.
  * @param {number} contextTokenLimit
- * @param {number} [ratio=0.10] — fraction of context per result
  */
-export function maxResultSizeForContext (contextTokenLimit, ratio = RESULT_BUDGET_RATIO) {
+export function maxResultSizeForContext (contextTokenLimit) {
   if (!contextTokenLimit) return FALLBACK_MAX_RESULT_SIZE
-  return Math.max(4000, Math.floor(contextTokenLimit * ratio * CHARS_PER_TOKEN))
+  return Math.max(4000, Math.floor(contextTokenLimit * RESULT_BUDGET_RATIO * CHARS_PER_TOKEN))
 }
 
 /**
@@ -38,15 +37,12 @@ export function maxResultSizeForContext (contextTokenLimit, ratio = RESULT_BUDGE
  * threshold and the transcript truncation cap `loop()` applies each round.
  *
  * @param {object} model — mohdel model proxy
- * @param {{ ratio?: number, override?: number }} [opts]
- *   `ratio` overrides the default 10%. `override` short-circuits the
- *   maxResultSize computation (a caller passes `maxResultSize` to `loop()` to fix the cap).
  * @returns {{ contextLimit: number, maxResultSize: number }}
  */
-export function computeBudget (model, { ratio, override } = {}) {
+export function computeBudget (model) {
   const info = model?.info?.() || {}
   const contextLimit = effectiveContextLimit(info)
-  const maxResultSize = override || maxResultSizeForContext(contextLimit, ratio)
+  const maxResultSize = maxResultSizeForContext(contextLimit)
   return { contextLimit, maxResultSize }
 }
 
@@ -79,11 +75,10 @@ function compactResult (content, limit) {
  * @param {Array} messages
  * @param {object} [opts]
  * @param {number} [opts.maxResultSize=50000] — max chars per tool_result content
- * @param {Object<string,number>} [opts.toolResultBudgets] — per-tool overrides: { toolName → maxChars }
  * @param {object} [opts.logger]
  * @returns {Array} the sanitized messages array
  */
-export function sanitizeTranscript (messages, { maxResultSize = FALLBACK_MAX_RESULT_SIZE, toolResultBudgets, logger = silent } = {}) {
+export function sanitizeTranscript (messages, { maxResultSize = FALLBACK_MAX_RESULT_SIZE, logger = silent } = {}) {
   // Collect all toolCallIds declared by assistant messages
   const declaredCalls = new Set()
   for (const msg of messages) {
@@ -123,17 +118,16 @@ export function sanitizeTranscript (messages, { maxResultSize = FALLBACK_MAX_RES
         resolvedCalls.add(id)
       }
 
-      // Truncate oversized content (per-tool override if declared). Tools budget their
+      // Truncate oversized content. Tools budget their
       // own result, so this is the backstop for anything that did not — and it has to
       // leave something the model can still read. Slicing a call record's JSON at a
       // byte count produced a truncation marker glued to half an object.
-      const effectiveLimit = toolResultBudgets?.[msg.toolName] ?? maxResultSize
       // Truncating collapses parts to the text: a result too big to carry whole is one
       // whose image was the expensive half.
       const text = textOf(msg)
-      if (text.length > effectiveLimit) {
-        logger.debug({ chars: text.length, limit: effectiveLimit, tool: msg.toolName }, '[transcript] truncating tool_result')
-        msg.content = compactResult(text, effectiveLimit)
+      if (text.length > maxResultSize) {
+        logger.debug({ chars: text.length, limit: maxResultSize, tool: msg.toolName }, '[transcript] truncating tool_result')
+        msg.content = compactResult(text, maxResultSize)
       }
 
       // Normalize null/undefined content

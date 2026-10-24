@@ -64,7 +64,7 @@ const DRIFT_FLOOR = 2_000
  * @param {object} [opts.logger]
  * @returns {{ output: string|null, messages: Array, rounds: number, usage: object }}
  */
-export async function loop ({ model, system, prompt, tools, toolFns, describe, limits, ledger, emitter = noEmit, mutators, terminalTools, realtimeHandler, maxResultRatio, maxResultSize: maxResultSizeOverride, signal, logger = silent, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning = [], from }) {
+export async function loop ({ model, system, prompt, tools, toolFns, describe, limits, ledger, emitter = noEmit, mutators, terminalTools, signal, logger = silent, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning = [], from }) {
   const userMsg = { role: 'user', content: prompt }
   if (!Number.isInteger(limits?.rounds?.soft) || !Number.isInteger(limits?.rounds?.hard)) {
     throw new Error('loop needs limits.rounds — declared in a .cmk, not defaulted here')
@@ -92,6 +92,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
   const usage = { input: 0, output: 0, thinking: 0, cacheWrite: 0, cacheRead: 0, cost: 0 }
   const guard = createLoopGuard({ logger })
   const resilientModel = withRecovery(model, { messages, sessionMemory, logger, emitter, signal })
+  const { contextLimit, maxResultSize } = computeBudget(model)
   let lastInputTokens = 0
   let drifted = false
   const emptyState = { retries: 0 }
@@ -128,9 +129,9 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
   // Wire streaming through emitter
   // Asked for by a listener, not by an emitter existing: every turn carries one now, so
   // that test would request deltas on every run and a brokered one refuses them.
-  const streamHandler = realtimeHandler || (emitter.has?.('stream')
+  const streamHandler = emitter.has?.('stream')
     ? (chunk) => { if (chunk.delta) emitter.emit('stream', { kind: chunk.type, delta: chunk.delta }) }
-    : null)
+    : null
 
   // A continued turn cut before its round's results: the calls the model asked for run now,
   // under the runtime as it is today, and the turn goes on from what they return.
@@ -199,7 +200,6 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
     }
 
     emitter.emit('round', { index: i })
-    const { contextLimit, maxResultSize } = computeBudget(model, { ratio: maxResultRatio, override: maxResultSizeOverride })
     sanitizeTranscript(messages, { maxResultSize, logger })
     if (contextLimit) compactIfNeeded(messages, { contextLimit, lastInputTokens, logger })
 
