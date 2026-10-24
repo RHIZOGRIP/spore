@@ -154,7 +154,7 @@ minute ahead ([definition §A schedule](definition.md#a-schedule)).
 
 Names each hook an approval may tell how it ended ([INTEGRATION §Asking a person to
 approve](../INTEGRATION.md#asking-a-person-to-approve)): a name of letters, digits, `.`, `-` and
-`_`, an http or https `url`, and `secret`, the variable in `environment` holding the key its POSTs
+`_`, starting with a letter or digit, at most 64, an http or https `url`, and `secret`, the variable in `environment` holding the key its POSTs
 are signed with. The chat service that posted the approval makes the call; no turn is given the
 variable. Edited by hand, as `replyTo` is.
 
@@ -353,7 +353,7 @@ request, so a change needs no restart. `--check` reads them and exits.
 }
 ```
 
-A hook name is letters, digits, `.`, `-` and `_`.
+A hook name is letters, digits, `.`, `-` and `_`, starting with a letter or digit, at most 64.
 
 | field | meaning | default |
 |---|---|---|
@@ -415,6 +415,8 @@ node bin/spore-api.js --check     # read api.json and the environment, print whe
 - `listen` must be a loopback host (`127.0.0.1`, `::1` or `localhost`) and a port; any other host
   is refused. `socket` is an absolute path; the service makes its directory `0700` and the socket
   `0600`, and refuses to start when something already answers on it.
+- Each caller's name is letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most
+  64: it is the origin `api:<caller>` a spore's `prepare:` and router name.
 - Each caller's `token` is `${VAR}`, at least 32 characters once filled. The value goes in
   `~/.config/spore/environment` (`openssl rand -hex 32`), never in the file. `spores` lists names
   and patterns of letters, digits, `.`, `_`, `-` and `*`, where `*` matches within one name; a

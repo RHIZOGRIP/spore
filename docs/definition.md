@@ -668,7 +668,7 @@ plugins: [browser, ssh]
 **`spore.cmk` only.** Cells the spore spawns get none of the plugin's programs, variables or
 modules. Each entry is a plugin's
 name after `spore-plugin-`: lowercase letters, digits, `.`, `-` and `_`, starting with a letter or
-digit. No entry may appear twice. These are what the spore's turns get; a plugin that only
+digit, at most 64. No entry may appear twice. These are what the spore's turns get; a plugin that only
 [`prepare`](#prepare) names needs no entry. A plugin must also be allowed on the machine
 (`spore plugin allow <name>`), or `send` refuses the turn before anything is said
 ([Plugins](../ARCHITECTURE.md#plugins),
@@ -687,8 +687,8 @@ prepare.attach: [20, 200MB]
 
 **`spore.cmk` only.** A list of `<origin>=<plugin>/<program>`, the program the variable of one of
 the plugin's `programs`: for each origin, a delivery nobody typed — `hook:<name>`, `api:<caller>`
-or `job:<name>` — is held and the program runs on it before any turn reads it, the files it writes
-attached to the delivery. The plugin must offer the program among its `programs` ([plugins
+or `job:<name>`, each a name that hook, caller or job can have — is held and the program runs on
+it before any turn reads it, the files it writes attached to the delivery. The plugin must offer the program among its `programs` ([plugins
 §Programs that prepare deliveries](plugins.md#programs-that-prepare-deliveries)), and be allowed on
 the machine: `send` refuses a turn when it is not, as for [`plugins`](#plugins), and a delivery
 whose program cannot start carries a line saying so. It need not be in `plugins`: named only here,

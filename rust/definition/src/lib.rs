@@ -13,10 +13,15 @@ use serde::Serialize;
 
 pub mod call;
 pub mod deadline;
+pub mod name;
 pub mod schedule;
 
 pub use call::{CallRow, Description};
 pub use deadline::{deadline, Calendar};
+pub use name::{
+    is_name, is_origin, name_pattern, name_rule, NAME_KINDS, NAME_MOST, VARIABLE_PATTERN,
+    VARIABLE_RULE,
+};
 pub use schedule::{parse_schedule, Due, Schedule};
 
 /// The tool suite, by name. Contract: ARCHITECTURE.md, "Tools".
@@ -100,16 +105,8 @@ static DOCUMENT: LazyLock<Regex> =
 static DURATION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^([0-9]+)(s|m|h)$").unwrap());
 static SIZE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^([0-9]+)(B|KB|MB|GB)?$").unwrap());
-static PLUGIN_NAME: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[a-z0-9][a-z0-9._-]*$").unwrap());
-static PRECURSOR_NAME: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9._-]*$").unwrap());
 static COUNT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9]+$").unwrap());
 static AMOUNT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9]+(\.[0-9]+)?$").unwrap());
-static ORIGIN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(hook|job|api):[A-Za-z0-9][A-Za-z0-9._-]*$").unwrap());
-static PROGRAM_NAME: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap());
 
 /// The most a prepare step may run, and attach, whatever a definition asks.
 pub const PREPARE_MOST_MS: f64 = 60_000.0;
@@ -930,7 +927,7 @@ fn parse_dream(fields: &Fields, cell: bool) -> Result<Option<Dream>, String> {
     let spend = parse_limit("dream.cost", fields.get("dream.cost"), cost)?;
     let held = parse_limit("dream.wall", fields.get("dream.wall"), duration_ms)?;
     let precursor = match fields.get("dream.precursor") {
-        Some(Value::Scalar(name)) if PRECURSOR_NAME.is_match(name) => name.clone(),
+        Some(Value::Scalar(name)) if is_name("precursor", name) == Ok(true) => name.clone(),
         other => {
             return Err(format!(
                 "has a dream.precursor it cannot read — got \"{}\", expected the name of one of its precursors, as dream.precursor: dream",
@@ -978,14 +975,14 @@ fn parse_prepare(fields: &Fields, cell: bool) -> Result<Option<Prepare>, String>
             ));
         };
         let (origin, run) = (trim(origin), trim(run));
-        if !ORIGIN.is_match(origin) {
+        if !is_origin(origin) {
             return Err(format!(
                 "has a prepare entry it cannot read — got origin \"{origin}\", expected {shape}"
             ));
         }
         let Some((plugin, program)) = run
             .split_once('/')
-            .filter(|(p, n)| PLUGIN_NAME.is_match(p) && PROGRAM_NAME.is_match(n))
+            .filter(|(p, n)| is_name("plugin", p) == Ok(true) && name::VARIABLE.is_match(n))
         else {
             return Err(format!(
                 "has a prepare entry it cannot read — got \"{run}\" for {origin}, expected {shape}"
@@ -1524,9 +1521,10 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         return Err("uses plugins, which a cell cannot — what a plugin offers is given to the root spore alone".into());
     }
     for (i, plugin) in plugins.iter().enumerate() {
-        if !PLUGIN_NAME.is_match(plugin) {
+        if is_name("plugin", plugin) != Ok(true) {
             return Err(format!(
-                "uses a plugin named \"{plugin}\" — expected the name after spore-plugin-, lowercase letters, digits, ., - and _"
+                "uses a plugin named \"{plugin}\" — expected the name after spore-plugin-, {}",
+                name_rule("plugin")?
             ));
         }
         if plugins[..i].contains(plugin) {
@@ -1988,6 +1986,8 @@ mod tests {
             "hook:scans=pdf/SPORE-PDF",
             "hook:scans=pdf/1PAGES",
             "hook:scans",
+            "job:Scan=pdf/SPORE_PDF_PAGES",
+            "api:a b=pdf/SPORE_PDF_PAGES",
         ] {
             assert!(
                 refused(&prepared(wrong)).contains("prepare entry it cannot read"),

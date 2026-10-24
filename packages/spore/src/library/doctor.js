@@ -11,7 +11,7 @@ import { getSystemErrorName } from 'node:util'
 import { callInfo } from 'mohdel/client'
 import { modelReadiness } from 'mohdel/readiness'
 
-import { CONFIG_FILE, containing, ENVIRONMENT_FILE, MEMORY_FILE, SOURCES_FILE, readConfig, spendLimits, workspaceFor } from './config.js'
+import { CONFIG_FILE, containing, ENVIRONMENT_FILE, ENVIRONMENT_LINE, environmentLines, MEMORY_FILE, SOURCES_FILE, readConfig, spendLimits, workspaceFor } from './config.js'
 import { isWorkspace } from './discover.js'
 import { list, show, sporangia } from './verbs.js'
 import { containCheck, keptRefusal } from '../core/command.js'
@@ -104,12 +104,9 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
   else if (abi < 6) note('machine', 'landlock', `is version ${abi}, which cannot scope signals: a spore can signal another spore's processes and reach its abstract sockets`, 'Linux 6.12 or newer scopes both — what matters when spores of different people share one account')
 
   if (existsSync(environment)) {
-    for (const [i, line] of readFileSync(environment, 'utf8').split('\n').entries()) {
-      const text = line.trim()
-      if (!text || text.startsWith('#') || text.startsWith(';')) continue
-      const assigned = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(text)
-      if (!assigned) problem('operator', `${environment}:${i + 1}`, 'is not KEY=value', 'one variable per line, as systemd reads it — no export, no spaces around =')
-      else if (ASSIGNMENT.test(assigned[2])) problem('operator', `${environment}:${i + 1}`, `${assigned[1]}'s value holds another assignment — two lines run together`, 'put a line break before the second name')
+    for (const { line, key, value } of environmentLines(readFileSync(environment, 'utf8'))) {
+      if (key === undefined) problem('operator', `${environment}:${line}`, 'is not KEY=value', ENVIRONMENT_LINE)
+      else if (ASSIGNMENT.test(value)) problem('operator', `${environment}:${line}`, `${key}'s value holds another assignment — two lines run together`, 'put a line break before the second name')
     }
   }
 

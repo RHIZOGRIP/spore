@@ -19,7 +19,7 @@ import { createRequire } from 'node:module'
 import { homedir, userInfo } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { CONFIG_DIR, pluginRoots, pluginServices, SERVICE_STATE_DIR, SporeError, versionAt } from '@rhizogrip/spore'
+import { CONFIG_DIR, NAMES, pluginRoots, pluginServices, SERVICE_STATE_DIR, SporeError, versionAt } from '@rhizogrip/spore'
 
 const SPORE_PACKAGE = '@rhizogrip/spore'
 const ROOT = dirname(createRequire(import.meta.url).resolve(`${SPORE_PACKAGE}/package.json`))
@@ -274,8 +274,6 @@ function serviceOf (name, catalog) {
   return service
 }
 
-const INSTANCE = /^[a-z0-9][a-z0-9._-]*$/i
-
 /**
  * `telegram@reviewer` is the service `telegram`, its instance `reviewer`. `verb` is the `spore
  * service` subcommand it was named to, for the command a refusal suggests.
@@ -294,8 +292,8 @@ function parsed (name, catalog, { instanceOptional = false, verb } = {}) {
       detail: `spore service ${verb} ${base}@<${service.instances.called}>, for the ${service.instances.called} in ${service.instances.dir}/<${service.instances.called}>${service.instances.ext} beside config.json`
     })
   }
-  if (instance !== null && !INSTANCE.test(instance)) {
-    throw new SporeError(`"${instance}" cannot be a ${service.instances.called}'s name`, { type: 'SERVICE_UNKNOWN', detail: 'letters, digits, ., - and _' })
+  if (instance !== null && !NAMES.bot.pattern.test(instance)) {
+    throw new SporeError(`"${instance}" cannot be a ${service.instances.called}'s name`, { type: 'SERVICE_UNKNOWN', detail: NAMES.bot.says })
   }
   return { base, instance, service }
 }

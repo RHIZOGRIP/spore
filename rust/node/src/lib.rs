@@ -348,6 +348,26 @@ pub fn spore_socket_dir(ws: String) -> napi::Result<String> {
         .to_string())
 }
 
+/// Each kind of name, and an environment variable's, as `{ <kind>: { pattern, says } }`.
+#[napi]
+pub fn name_rules() -> String {
+    let mut rules: serde_json::Map<String, serde_json::Value> = definition::NAME_KINDS
+        .iter()
+        .map(|kind| {
+            let rule = json!({
+                "pattern": definition::name_pattern(kind).expect("a kind it lists"),
+                "says": definition::name_rule(kind).expect("a kind it lists"),
+            });
+            (kind.to_string(), rule)
+        })
+        .collect();
+    rules.insert(
+        "variable".into(),
+        json!({ "pattern": definition::VARIABLE_PATTERN, "says": definition::VARIABLE_RULE }),
+    );
+    serde_json::Value::Object(rules).to_string()
+}
+
 #[napi]
 pub fn tool_names() -> Vec<String> {
     definition::TOOL_NAMES

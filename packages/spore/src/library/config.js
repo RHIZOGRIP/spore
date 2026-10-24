@@ -21,6 +21,7 @@ import { dirname, resolve, join } from 'node:path'
 
 import { isWorkspace, sporesInHome } from './discover.js'
 import { native } from '../native.js'
+import { NAMES } from '../core/names.js'
 import { SporeError } from '../observability/errors.js'
 
 export const CONFIG_DIR = process.env.XDG_CONFIG_HOME
@@ -72,6 +73,19 @@ export function readConfig (file = CONFIG_FILE) {
   }
 }
 
+export const ENVIRONMENT_LINE = 'one variable per line, as systemd reads it — no export, no spaces around ='
+
+/** Each line of an environment file that says something: `{ line, key, value }`, or `{ line }` for one that is not KEY=value. */
+export function environmentLines (text) {
+  return text.split('\n').flatMap((raw, i) => {
+    const text = raw.trim()
+    if (!text || text.startsWith('#') || text.startsWith(';')) return []
+    const at = text.indexOf('=')
+    const key = text.slice(0, at)
+    return at > 0 && NAMES.variable.pattern.test(key) ? [{ line: i + 1, key, value: text.slice(at + 1) }] : [{ line: i + 1 }]
+  })
+}
+
 /**
  * Sets what `environment` names and the process does not already have: a variable set by
  * whoever started the command wins over the file. The format is the one systemd's
@@ -84,18 +98,13 @@ export function loadEnvironment (file = CONFIG_FILE, env = process.env) {
   const path = resolve(dirname(file), ENVIRONMENT_FILE)
   const loaded = []
   if (!existsSync(path)) return { path, loaded }
-  const lines = readFileSync(path, 'utf8').split('\n')
-  for (const [i, line] of lines.entries()) {
-    const text = line.trim()
-    if (!text || text.startsWith('#') || text.startsWith(';')) continue
-    const found = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(text)
-    if (!found) {
-      throw new SporeError(`${path}:${i + 1} is not KEY=value`, {
+  for (const { line, key, value: raw } of environmentLines(readFileSync(path, 'utf8'))) {
+    if (key === undefined) {
+      throw new SporeError(`${path}:${line} is not KEY=value`, {
         type: 'ENVIRONMENT_INVALID',
-        detail: 'one variable per line, as systemd reads it — no export, no spaces around ='
+        detail: ENVIRONMENT_LINE
       })
     }
-    const [, key, raw] = found
     const quoted = /^(["'])(.*)\1$/.exec(raw)
     if (env[key] !== undefined) continue
     env[key] = quoted ? quoted[2] : raw
@@ -181,7 +190,7 @@ function validate (raw, file) {
     throw new SporeError(`${file} has an approvals that is not a map`, { type: 'CONFIG_INVALID', detail: APPROVALS_DETAIL })
   }
   for (const [name, hook] of Object.entries(raw.approvals ?? {})) {
-    const fits = HOOK_NAME.test(name) && isRecord(hook) && Object.keys(hook).every(key => key === 'url' || key === 'secret') &&
+    const fits = NAMES.approval.pattern.test(name) && isRecord(hook) && Object.keys(hook).every(key => key === 'url' || key === 'secret') &&
       typeof hook.url === 'string' && URL.canParse(hook.url) && ['http:', 'https:'].includes(new URL(hook.url).protocol) &&
       typeof hook.secret === 'string' && /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/.test(hook.secret)
     if (!fits) {
@@ -259,8 +268,7 @@ export function existing (paths) {
 
 const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'largestFile', 'freeFloor', 'spendPerDay', 'spendPerMonth', 'contain', 'docs', 'hereSnapshots'])
 const DOCS = ['follow', 'kept']
-const HOOK_NAME = /^[A-Za-z0-9._-]+$/
-const APPROVALS_DETAIL = 'approvals names each hook an approval may call, by a name of letters, digits, ., - and _, as { "kpi": { "url": "https://…", "secret": "${KPI_HOOK_SECRET}" } } — the secret set in environment beside config.json' // eslint-disable-line no-template-curly-in-string
+const APPROVALS_DETAIL = `approvals names each hook an approval may call, by a name of ${NAMES.approval.says}, as { "kpi": { "url": "https://…", "secret": "\${KPI_HOOK_SECRET}" } } — the secret set in environment beside config.json`
 const DOCS_DETAIL = 'docs says whether a runner starts by replacing the root documents that differ from what is installed (follow) or leaves them to spore upgrade (kept) — spore config set docs follow|kept'
 const SWITCHES = { on: true, off: false }
 const COUNTS = new Set(['turns', 'modelSessions', 'hereSnapshots', 'homeSplit'])
@@ -351,13 +359,7 @@ const known = (key) => {
 
 export const NAMES_A_PATH = /^[.~]|\//
 
-/**
- * A name becomes a directory under `home` and gets typed into shells, so it is one path
- * segment of ordinary characters. The first must be alphanumeric: a leading `-` would be
- * read as a flag, and a workspace is flat and undotted by design. The 64 is not forced by
- * anything — it keeps `ls` legible and turns `ENAMETOOLONG` into a sentence.
- */
-export const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
+export const NAME = NAMES.spore.pattern
 
 /**
  * What a spore's name or path points at, and for `new` what to make. `named` says which form
@@ -371,7 +373,7 @@ export function workspaceFor (asked, { config, cwd = process.cwd(), file = CONFI
   if (!NAME.test(asked)) {
     throw new SporeError(`"${asked}" is not a usable name`, {
       type: 'CONFIG_BAD_NAME',
-      detail: 'letters, digits, dot, dash and underscore, starting with a letter or digit, up to 64 — or pass a path'
+      detail: `${NAMES.spore.says} — or pass a path`
     })
   }
   const { home, homeSplit } = config ?? readConfig(file)

@@ -58,6 +58,8 @@ describe('hooks.json', () => {
     expect(refusal(() => loadHooks(join(dir, 'hooks.json'), {})).message).toMatch(/script/)
     writeHooks({ 'a/b': { spore: 'main', verify: { token: 'a' } } })
     expect(refusal(() => loadHooks(join(dir, 'hooks.json'), {})).message).toMatch(/URL/)
+    writeHooks({ ['h'.repeat(65)]: { spore: 'main', verify: { token: 'a' } } })
+    expect(refusal(() => loadHooks(join(dir, 'hooks.json'), {})).detail).toMatch(/at most 64/)
   })
 
   it('takes one spore or a list of them, each once', () => {

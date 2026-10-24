@@ -11,6 +11,7 @@ import { dirname, isAbsolute, resolve } from 'node:path'
 import { CONFIG_FILE } from '../src/library/config.js'
 import { SporeError } from '../src/observability/errors.js'
 import { deliveryBounds } from '../src/core/route.js'
+import { NAMES } from '../src/core/names.js'
 
 export const API_FILE = 'api.json'
 export const apiPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), API_FILE)
@@ -58,6 +59,7 @@ export function loadApi (path = apiPath(), env = process.env) {
   }
   const secrets = new Set()
   const callers = Object.entries(raw.callers).map(([name, caller]) => {
+    if (!NAMES.caller.pattern.test(name)) throw refuse(path, `has a caller named ${JSON.stringify(name)}`, `a caller is named with ${NAMES.caller.says}: the name is its origin, api:<caller>`)
     const variable = TOKEN.exec(caller?.token ?? '')?.[1]
     if (!variable) throw refuse(path, `has a token for ${name} that is not \${VAR}`, 'a token is read from the environment, never written in the file')
     const token = env[variable]

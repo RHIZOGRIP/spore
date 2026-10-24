@@ -13,12 +13,11 @@ import { basename, dirname, relative, resolve, sep } from 'node:path'
 
 import { native } from '../native.js'
 import { readInbox } from './spore-dir.js'
+import { NAMES } from './names.js'
 import { SporeError } from '../observability/errors.js'
 
 export const SCHEDULE_DIR = 'schedules'
 export const SCHEDULE_EXT = '.cmk'
-
-const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 /** @returns {object | { error: string }} */
 export function parseSchedule (source) {
@@ -56,8 +55,8 @@ export function scheduleNameOf (ws, abs) {
     return { error: `${SCHEDULE_DIR}/ holds only <name>${SCHEDULE_EXT} files, one per schedule — ${relative(ws, abs)} is not one` }
   }
   const name = within.slice(0, -SCHEDULE_EXT.length)
-  if (!NAME.test(name)) {
-    return { error: `"${name}" is not a schedule name — letters, digits, ., _ and -, starting with a letter or digit` }
+  if (!NAMES.schedule.pattern.test(name)) {
+    return { error: `"${name}" is not a schedule name — ${NAMES.schedule.says}` }
   }
   return { name }
 }

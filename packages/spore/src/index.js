@@ -33,6 +33,7 @@ export { approvalHookVariables, callApprovalHook, inputsProblem } from './librar
 export { annotate, define, defaultModel, switchModel, edit, extend, grantOf, jobs, list, listApprovals, log, pause, requestApproval, show, sporePaths, usage, precursors, remake, remove, schedules, setDefaultModel, setSchedule, removeSchedule, sporangia, sql, stopJob, unpause, upgrade, wrap, defaultSporangiumPath } from './library/verbs.js'
 export { isWorkspace, workspacesIn } from './library/discover.js'
 export { readConfig, followingDocs, loadEnvironment, workspaceFor, recordLayout, existing, getKey, setKey, addTo, removeFrom, settings, hereSnapshots, CONFIG_FILE, CONFIG_DIR, NAME, NAMES_A_PATH } from './library/config.js'
+export { NAMES } from './core/names.js'
 export { recordStarted, versionAt, SERVICE_STATE_DIR } from './library/service-record.js'
 export { billingFor, unmetered } from './core/billing.js'
 export { checkSqlite } from './core/sqlite.js'

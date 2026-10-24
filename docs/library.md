@@ -1216,7 +1216,16 @@ The directory of spore's host configuration: `$XDG_CONFIG_HOME/spore`, else `~/.
 ### `NAME`
 
 The pattern a spore name matches: a letter or digit, then up to 63 letters, digits, `.`, `_` and
-`-`.
+`-`. It is `NAMES.spore.pattern`.
+
+### `NAMES`
+
+What each thing spore and its host name may be called, one rule per kind from the definition
+parser: `NAMES.<kind>` is `{ pattern, says }`, the pattern a `RegExp` and `says` the rule in words.
+The kinds are `spore`, `schedule`, `job`, `hook`, `caller`, `bot` (a relay's bot file, and the
+instance a service is defined for), `sporangium`, `approval`, `plugin` and `precursor` — a letter
+or digit, then letters, digits, `.`, `_` and `-`, at most 64, lowercase for `job` and `plugin` —
+and `variable`, an environment variable's name.
 
 ### `NAMES_A_PATH`
 

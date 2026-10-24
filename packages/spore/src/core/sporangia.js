@@ -13,13 +13,12 @@ import { fileURLToPath } from 'node:url'
 
 import { SporeError } from '../observability/errors.js'
 import { DEFINITION_FILE } from './spore-dir.js'
+import { NAMES } from './names.js'
 
 export const SPORANGIA_DIR = 'sporangia'
 export const DEFAULT_SPORANGIUM = 'default'
 export const SPORANGIUM_RECORD = 'sporangium.json'
 export const SHIPPED_SPORANGIA = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', SPORANGIA_DIR)
-
-const NAME = /^[a-z0-9][a-z0-9._-]*$/i
 
 export const operatorSporangia = (configFile) => resolve(dirname(configFile), SPORANGIA_DIR)
 
@@ -46,8 +45,8 @@ export function knownSporangia ({ configFile = null } = {}) {
  * read, which is what a confined process can reach.
  */
 export function sporangiumTree (name, { configFile = null } = {}) {
-  if (!NAME.test(name)) {
-    throw new SporeError(`"${name}" cannot be a sporangium's name`, { type: 'SPORANGIUM_UNKNOWN', detail: 'letters, digits, ., - and _' })
+  if (!NAMES.sporangium.pattern.test(name)) {
+    throw new SporeError(`"${name}" cannot be a sporangium's name`, { type: 'SPORANGIUM_UNKNOWN', detail: NAMES.sporangium.says })
   }
   const dirsOf = (one) => [join(SHIPPED_SPORANGIA, one), ...(configFile ? [join(operatorSporangia(configFile), one)] : [])]
   const own = dirsOf(name).filter(dir => existsSync(dir))

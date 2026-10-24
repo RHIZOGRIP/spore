@@ -12,11 +12,11 @@ import Ajv from 'ajv'
 import { CONFIG_FILE, SporeError } from '../src/index.js'
 import { sizeBytes } from '../src/delegation/definition.js'
 import { deliveryBounds } from '../src/core/route.js'
+import { NAMES } from '../src/core/names.js'
 
 export const HOOKS_FILE = 'hooks.json'
 export const hooksPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), HOOKS_FILE)
 
-const NAME = /^[a-z0-9][a-z0-9._-]*$/i
 const DEFAULT_MAX_BYTES = 1024 * 1024
 const DEFAULT_PER_HOUR = 30
 
@@ -149,7 +149,7 @@ export function loadHooks (path = hooksPath(), env = process.env) {
   }
   const hooks = new Map()
   for (const [name, hook] of Object.entries(raw)) {
-    if (!NAME.test(name)) throw refuse(path, name, 'has a name that cannot be part of a URL', 'letters, digits, ., - and _')
+    if (!NAMES.hook.pattern.test(name)) throw refuse(path, name, 'has a name that cannot be part of a URL', NAMES.hook.says)
     const entries = typeof hook?.spore === 'string' ? [hook.spore] : hook?.spore
     const named = (entry) => (typeof entry === 'string' && entry) || (entry && typeof entry === 'object' && !Array.isArray(entry) && typeof entry.name === 'string' && entry.name)
     if (!Array.isArray(entries) || !entries.length || !entries.every(named)) {

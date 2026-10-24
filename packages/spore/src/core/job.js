@@ -22,11 +22,11 @@ import { TRIAGE_PER_DAY } from './triage.js'
 import { release } from './send.js'
 import { beginJob, definitionPath, endJob, jobsIn, saidUnread } from './spore-dir.js'
 import { TOOL_NAMES } from './tool-names.js'
+import { NAMES } from './names.js'
 
 const BIN = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin')
 export const JOB_BIN = join(BIN, 'job.js')
 
-export const JOB_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/
 export const JOBS_DIR = join('data', 'jobs')
 export const STATUS_FILE = 'status.json'
 const LOG_FILE = 'supervisor.log'
@@ -129,8 +129,8 @@ const jobWrites = (definition) => definition.writes.filter(grant => definition.j
  * job's directory, never through a link, and written through the descriptors it keeps.
  */
 export async function superviseJob ({ ws, name, count, wallMs, command, answer, env, envOf, signal, releaseHeld = release, contain = containing(readConfig()) }) {
-  if (!JOB_NAME.test(name)) {
-    return answer(refusal('JOB_NAME_INVALID', `a job cannot be named "${name}"`, 'a name is lowercase letters, digits, ., - and _, starting with a letter or digit, at most 64'))
+  if (!NAMES.job.pattern.test(name)) {
+    return answer(refusal('JOB_NAME_INVALID', `a job cannot be named "${name}"`, `a name is ${NAMES.job.says}`))
   }
   const run = `${Date.now()}-${randomBytes(3).toString('hex')}`
   const lock = native.jobLockPath(run)

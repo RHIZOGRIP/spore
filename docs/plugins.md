@@ -39,7 +39,7 @@ A service skips steps 3 to 5: `spore service` offers it once the plugin is insta
 
 The package is `spore-plugin-<name>`, or `@<scope>/spore-plugin-<name>`. `<name>` is what a
 definition names and what every command takes. A definition accepts it when it is lowercase
-letters, digits, `.`, `-` and `_`, starting with a letter or a digit.
+letters, digits, `.`, `-` and `_`, starting with a letter or a digit, at most 64.
 
 Spore looks for plugins in its own `node_modules`, in every `node_modules` it is installed under
 (the global one `npm i -g` uses among them), and in a checkout's hoisted `node_modules`. A name no

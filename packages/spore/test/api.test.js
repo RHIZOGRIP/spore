@@ -318,6 +318,7 @@ describe('api.json', () => {
     expect(loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], maxWait: '30m', perDay: 5, perHour: 2 } } }), env).callers[0]).toMatchObject({ maxWait: 30 * 60_000, perDay: 5, perHour: 2 })
     expect(loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'] } } }), env).callers[0]).toMatchObject({ maxWait: null, perDay: 100, perHour: null })
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], perHour: 1.5 } } }), env)).toThrow(/caller "a" has a perHour that is not a count — 1.5/)
+    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { 'my app': { token, spores: ['*'] } } }), env)).toThrow(/has a caller named "my app"/)
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], maxWait: 'soon' } } }), env)).toThrow(/caller "a" has a maxWait spore cannot read — "soon"/)
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], perDay: 0 } } }), env)).toThrow(/caller "a" has a perDay that is not a count — 0/)
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], router: { plugin: 'pdf', name: 'pages' } } } }), env)).toThrow(/router for a, which api.json no longer binds/)

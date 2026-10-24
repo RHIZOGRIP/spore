@@ -24,6 +24,7 @@ import { systemReadPaths } from '../isolation/sandbox.js'
 import { sporangiumOf, sporangiumTree } from './sporangia.js'
 import { DATA_DIR, definitionPath, LIBRARIES_FILE, PASSED_THROUGH, PLUGIN_CALLS, PLUGINS_DIR, REFERENCE_FILE, RUNTIME_ENV } from './spore-dir.js'
 import { TOOL_NAMES } from './tool-names.js'
+import { NAMES } from './names.js'
 import { pluginCallRows } from './call-table.js'
 
 const SPORE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -38,7 +39,6 @@ const SERVICE_NAME = /^[a-z][a-z0-9-]*$/
 const FILE_NAME = /^[a-z0-9][a-z0-9._-]*$/i
 const SETTING_KINDS = ['port', 'text']
 const PLACEHOLDERS = ['name', 'ws', 'data', 'sockets']
-const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 const PLACEHOLDER = /\{([^{}]*)\}/g
 
 const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -166,7 +166,7 @@ function checkEnvName (found, name, refuse) {
   const own = `SPORE_${upper(found.name)}`
   const reserved = RUNTIME_ENV.includes(name) || PASSED_THROUGH.includes(name) ||
     (name.startsWith('SPORE_') && name !== own && !name.startsWith(`${own}_`))
-  if (!ENV_NAME.test(name) || reserved) {
+  if (!NAMES.variable.pattern.test(name) || reserved) {
     throw refuse(`sets ${name}, which it may not`, `a plugin's variables are its own: ${own} or ${own}_*, or a name the runtime does not set`)
   }
 }

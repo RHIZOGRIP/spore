@@ -214,7 +214,9 @@ describe('the hook', () => {
       { kpi: { url: 'ftp://host.example', secret: SECRET } },
       { kpi: { url: 'https://host.example', secret: 'plain' } },
       { kpi: { url: 'https://host.example', secret: SECRET, method: 'PUT' } },
-      { 'k p i': { url: 'https://host.example', secret: SECRET } }
+      { 'k p i': { url: 'https://host.example', secret: SECRET } },
+      { '-kpi': { url: 'https://host.example', secret: SECRET } },
+      { ['k'.repeat(65)]: { url: 'https://host.example', secret: SECRET } }
     ]
     for (const approvals of refused) {
       writeFileSync(CONFIG, JSON.stringify({ approvals }))

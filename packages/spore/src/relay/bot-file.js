@@ -17,9 +17,9 @@ import { basename, dirname, join, resolve } from 'node:path'
 
 import { CONFIG_FILE } from '../library/config.js'
 import { native } from '../native.js'
+import { NAMES } from '../core/names.js'
 import { SporeError } from '../observability/errors.js'
 
-const NAME = /^[a-z0-9][a-z0-9._-]*$/i
 const VARIABLE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/
 const SHOWS = ['working', 'react', 'both']
 const REACTIONS = { taken: '👨‍💻', failed: '💔' }
@@ -30,8 +30,8 @@ const typeOf = (spec, what) => `${spec.kind.toUpperCase()}_${what}`
 export const botsDir = (spec, configFile = CONFIG_FILE) => resolve(dirname(configFile), spec.kind)
 
 export function botPath (spec, name, configFile = CONFIG_FILE) {
-  if (!NAME.test(name)) {
-    throw new SporeError(`"${name}" cannot be a bot's name`, { type: typeOf(spec, 'BOT_INVALID'), detail: 'letters, digits, ., - and _' })
+  if (!NAMES.bot.pattern.test(name)) {
+    throw new SporeError(`"${name}" cannot be a bot's name`, { type: typeOf(spec, 'BOT_INVALID'), detail: NAMES.bot.says })
   }
   return join(botsDir(spec, configFile), `${name}.json`)
 }
