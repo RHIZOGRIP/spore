@@ -486,14 +486,20 @@ is checked, not at the agent's first call.
 **A plugin is a manifest.** The `spore` field of its `package.json` says what it gives:
 `works`, the `@rhizogrip/spore` versions it works with, which is required; and, each optional,
 `settings` the host must supply, each a `port` or `text`; `programs`, a variable naming an
-executable in the plugin or in a package it depends on; `describe`, how a call of each of its
+executable in the plugin or in a package it depends on, which the agent runs, and which a spore's
+definition may also bind for the runtime to run on the deliveries of an origin (`prepare:`,
+§Deliveries nobody typed); `describe`, how a call of each of its
 programs is shown ([§Describing a call](#describing-a-call)); `env`, more variables from `{name}`,
 `{ws}`, `{data}`, `{sockets}` and `{settings.<key>}`; `modules`, dependencies of the plugin an agent's own
 programs may import, none of them a provisioned one; `sources`, endpoints described as the
 host's `sources.json` describes them, held by the runner and granted with the plugin; a
 `reference`, one markdown file; a directory of `precursors`; and `services`, below. The core reads
-the manifest and runs none of the plugin's code — there is no hook in `send`, the runner or the
-agent, and no tool a plugin adds. Every key, its shape and its refusals are in
+the manifest and runs none of the plugin's code of its own accord — there is no hook in `send`, the
+runner or the agent, and no tool a plugin adds. What runs is what the agent calls, the program a
+definition binds with `prepare:`, and the services the operator defines. Who runs a program is
+the spore's choice, not the plugin's: `plugins:` gives a plugin's programs to the spore's turns,
+`prepare:` one of them to a step on its deliveries, either without the other. A plugin is the unit
+of that choice, so what a spore must be able to take apart ships as separate plugins. Every key, its shape and its refusals are in
 [docs/plugins.md](docs/plugins.md), the guide for a plugin's author.
 
 **Allowed on the machine, used by a spore.** Allowing a plugin checks it — the manifest, the
@@ -502,8 +508,9 @@ kind, every precursor parsing and named as its file — and records it under `pl
 `config.json` with the version and the directory of the copy it checked. `send` holds a turn to
 that copy: a plugin whose version or directory changed since is refused (`PLUGIN_CHANGED`) until it
 is allowed again, so what a spore runs is what someone allowed. A definition says which of the
-allowed ones it uses, `plugins: [browser, ssh]`; one naming a plugin that is not allowed is
-refused at `send`, before anything is said. A cell's definition cannot name one: what a plugin
+allowed ones it gives its turns, `plugins: [browser, ssh]`, and which prepare its deliveries,
+`prepare:`; one naming a plugin that is not allowed, in either, is refused at `send`, before
+anything is said. A cell's definition cannot name one: what a plugin
 gives goes to the root spore alone, since `spore-spawn` builds a cell's environment from
 `PASSED_THROUGH` and a plugin's variables are not in it.
 
@@ -537,7 +544,7 @@ in a global install is the cost: it may be another version within the range, and
 another version made is refused at open. Telegram and Discord are such plugins (`plugins/telegram/`, `plugins/discord/`).
 
 **What a plugin offers is not a boundary.** Its programs run under the agent's sandbox like
-any other; a plugin whose resource the sandbox cannot close — the browser's debugging port —
+any other, and under a step's confinement where a definition binds one to deliveries; a plugin whose resource the sandbox cannot close — the browser's debugging port —
 is shared on trust, and says so in its own README (`plugins/browser/README.md`).
 
 ### Documentation that moves
@@ -1610,11 +1617,10 @@ or the request carried one; the NDJSON event stream carries none.
 **A program delivers as itself.** `POST /v1/spores/<name>/messages` is a person speaking through
 the caller, and nothing a person says is held. Work a program hands a spore goes to
 `POST /v1/spores/<name>/deliveries`, from origin `api:<caller>` (the inbox's `api` column): held,
-released at once or after the owner's router the operator binds to that caller in `api.json`. The
+prepared and timed as any delivery nobody typed, within the caller's `maxWait` in `api.json`. The
 turn reads it as the operator's own message, with no line naming the sender: the caller is the
 operator's program, not an outsider whose payload is data, which is what a hook is. It names no
-person, so its answer goes to the default reply-to. A spore's own router and triage cell are not
-asked for this origin, and no `maxWait` bounds it. Hooks are outsiders' signed events, on the
+person, so its answer goes to the default reply-to. Hooks are outsiders' signed events, on the
 webhook service only.
 
 ## Webhooks
@@ -1667,27 +1673,34 @@ answer is `500`, and the sender's retry reaches only that one. `perHour` bounds 
 starts in each spore; past it a delivery is said and starts nothing (`send` with `start: false`), and the next turn
 reads it.
 Otherwise a delivery goes the way every message nobody typed goes (§Deliveries nobody typed):
-said at once, or routed within the hook's `maxWait` when it declares one, and held for the pass
-when no slot is free. A body past `maxBytes` is `413`, a bad check `401`, an unknown hook `404`,
+prepared and timed as its spore says, within the hook's `maxWait`, and held for the pass when no
+slot is free. A body past `maxBytes` is `413`, a bad check `401`, an unknown hook `404`,
 and every request while spores are paused `503` (§Turns of one user).
 
 ## Deliveries nobody typed
 
 A webhook's delivery, what a job says (§Jobs) and what a program delivers through the API (§The
-HTTP API) are messages no person typed, and all arrive one way, `deliver` in `src/core/route.js`: held first, judged when the origin's owner allows it,
+HTTP API) are messages no person typed, and all arrive one way, `deliver` in `src/core/route.js`: held first, prepared and timed when its spore says so,
 released by the caller at once or by the pass — the one retry when no admission slot is free. A
 release into a running turn looks at the lock again after, as `send` does, so a runner letting
 go in between leaves nothing unread. A delivery reaching a running turn joins it and interrupts
 whatever that turn was doing, so each is routed by its **origin** — `hook:forge`, `job:scan`,
-`api:engine` — whoever said it.
+`api:pipeline` — whoever said it.
 
-**The bound is the owner's, the judgment the spore's.** The owner says how long a delivery of an
-origin may wait — a hook's `maxWait` in `hooks.json`, `jobs.maxWait` in `spore.cmk` — and a spore
-may keep a **router** for the origin at `data/routes/<origin>.route` (or `.route.js`;
-`hook-forge.route`, `job-scan.route`), a program the spore wrote or its owner put there, asked
-how long each delivery may wait. It answers with a wait, a one-line summary, and whether the
-delivery replaces what is still held from that origin; its contract is in `reference.md`
-§Webhooks. Without both — the bound and a router or a triage cell — a delivery is said at once.
+**Two steps, in order, each optional.** A delivery is first *prepared*: the program the spore's
+definition binds to its origin (`prepare:`) runs on it and attaches what it makes (below). It is
+then *timed*: the spore's router or triage cell for the origin answers how long it may wait. Both
+may apply to one delivery, and the second sees what the first attached. With neither, a delivery
+is said at once.
+
+**The bound is the owner's, the judgment the spore's.** A spore may keep a **router** for an
+origin at `data/routes/<origin>.route` (or `.route.js`; `hook-forge.route`, `job-scan.route`,
+`api-pipeline.route`), a program the spore wrote or its owner put there, asked how long each
+delivery may wait. It answers with a wait, a one-line summary, and whether the delivery replaces
+what is still held from that origin; its contract is in `reference.md` §Webhooks. It runs whenever
+it exists. The owner caps the wait — a hook's `maxWait` in `hooks.json`, a caller's in `api.json`,
+`jobs.maxWait` in `spore.cmk` — and without a cap a delivery waits for nothing: it is released as
+soon as it is timed, its summary and `replaces` still taken.
 
 - **It can only delay.** The router is code the agent may have written while reading text an
   attacker wrote, so it never delays by more than the bound, and never drops — dropping stays a
@@ -1695,9 +1708,9 @@ delivery replaces what is still held from that origin; its contract is in `refer
 - **It runs confined**, through `confine` as `exec` does: the workspace readable, nothing
   writable but a scratch directory, and an environment of `PATH`, `HOME` and `TMPDIR` — the
   service holds every hook's secrets in its own.
-- **Failure delivers.** The delivery is held before the router is asked, until its 10 s timeout;
-  a router that exits non-zero, runs out its time or prints something else, or a process that
-  dies meanwhile, lets it go at once or at that timeout
+- **Failure delivers.** The delivery is held before the router is asked, until its 10 s timeout
+  on top of what its prepare step may take; a router that exits non-zero, runs out its time or
+  prints something else, or a process that dies meanwhile, lets it go at once or at that timeout
   ([principle 21](PRINCIPLES.md#21-when-something-fails-it-says-so)).
 - **A held delivery is not in the inbox** (`t_held`, the `held` view, keyed by origin), so it
   blocks nothing: the inbox is still read in order, and its order is the order of release.
@@ -1712,8 +1725,8 @@ delivery replaces what is still held from that origin; its contract is in `refer
 **What a program cannot judge, a cell can.** A spore may also keep `precursors/route-<origin>.cmk`
 (`route-hook-forge`, `route-job-scan`): run when it keeps no router for that origin, or when its
 router answers `{ "ask": true }`, as a cell outside any turn (§A cell outside any turn) asked for
-by that origin about that delivery. It finds the payload, the headers and a briefing in its
-directory and answers as a router does, under the same bound and the same failure rule; the held
+by that origin about that delivery. It finds the payload, the headers, what was prepared for the
+delivery under `prepared/`, and a briefing in its directory and answers as a router does, under the same bound and the same failure rule; the held
 delivery is kept for as long as the cell's hard wall allows. Such a cell is refused `enzymes` and
 `reads`, as it is refused `sources`: under a turn a cell's supervisor sits inside its agent's
 confinement, so what those grant stays inside it too, but outside one the supervisor is a host
@@ -1723,22 +1736,24 @@ origin starts in a spore a day — a hook's `perDay`, a job's `jobs.perDay`, 100
 counted from the `cells` view; past it a delivery that would have asked one is delivered now, and
 the log says why.
 
-**What an owner's router attaches is data.** A hook may also be bound to a router a plugin
-offers (`routes` in its manifest), in `hooks.json`, and a caller of the API in `api.json` — the
-owner's, which the agent can neither write nor replace. It does work no turn should spend a round on, before any turn reads the delivery: it
-runs on the payload, and the files it writes to `out/` are attached to the delivery under
-`inbox.d/<delivery>/<router>/`, of the same standing as the payload, within the bounds the binding
-gives (at most 60 s, 100 files, 256 MB). It never delays: the delivery is released as soon as the
-router answers. For its origin it takes the place of the spore's own router and triage cell, which
-are not asked. It runs confined, reading the plugin, the delivery's files and the directories the
-binding declares, never the workspace, so what it reads beyond the payload is granted to it and
-not to the agent — or, for `"reads": "spore"`, the read-only grants of the delivered spore's
-definition, exactly what its agent may read, never its `writes:`. The delivery is held carrying a line that the router did not answer, until its
-timeout, and the router's answer replaces that line with what it attached, or with why it attached
-nothing (`attachHeld`) — so a router that fails, or a service that stops while it runs, still
-releases the delivery, and the turn reads that it has no attachments rather than an empty set. A
-router that wrote past its bounds attaches nothing: a partial result is not handed on as a whole
-one. A spore's own router does not attach: it may have been written while reading attacker text.
+**What a prepare step attaches is data.** A spore's definition binds one of a plugin's `programs`
+to an origin, by its variable, root only: `prepare: [hook:scans=pdf-pages/SPORE_PDF_PAGES]`, the
+plugin allowed on the machine, with one `prepare.timeout` and one `prepare.attach` for every step
+(at most 60 s, 100 files, 256 MB). The binding grants that program to the step alone: the spore's
+turns get nothing of the plugin unless `plugins:` names it too, though what the plugin hides
+(`contain`) is hidden from every process of the spore. The agent can write neither the definition nor the plugin. The step does
+work no turn should spend a round on, before any turn reads the delivery. It runs as the router
+does (`runStep`): the payload on its stdin, the same first four arguments, confined, in a scratch
+directory holding `out/`. Where the router prints its answer, the step's is the files it writes to
+`out/`, attached to the delivery under `inbox.d/<delivery>/<program>/`, of the same standing as the
+payload. It never delays. It reads the plugin, the delivery's files and the spore's `reads:` grants
+— exactly what its agent may read, never its `writes:` or the workspace. The delivery is held
+carrying a line that the step did not answer, until its timeout, and its answer replaces that line
+with what it attached, or with why it attached nothing (`attachHeld`) — so a step that fails, or a
+service that stops while it runs, still releases the delivery, and the turn reads that nothing was
+prepared rather than an empty set. A step that wrote past its bounds attaches nothing: a partial
+result is not handed on as a whole one. A spore's own router does not attach: it may have been
+written while reading attacker text.
 
 ## Approvals
 
@@ -1810,7 +1825,7 @@ unaccounted — so a job is started explicitly, bounded, and its end is a messag
 polled.
 
 - **Granted by the owner**, `jobs: [count, wall]` in `spore.cmk` — how many at once, the hard
-  wall of each — with `jobs.maxWait` and `jobs.perDay` bounding how its messages are routed; root
+  wall of each — with `jobs.maxWait` and `jobs.perDay` bounding how its messages are timed; root
   only, as the agent cannot write it. Without it the runner serves no job socket.
 - **Started through the runner.** `node "$SPORE_JOB" start <name> -- <command>` (`bin/job.js`)
   asks the turn's job socket, keyed as every broker is; the runner launches `bin/spore-job.js`
@@ -1837,8 +1852,8 @@ polled.
 - **Stopped at its wall**, or by `spore job stop`, which signals the supervisor through the lock;
   what it started is swept by its token when it ends.
 - **Its end is a delivery** from origin `job:<name>`, event `ended`, `walled` or `stopped`, with
-  `job.json` attached — routed as above under `jobs.maxWait`, said at once without it, and kept
-  for the pass when no slot is free. The entry records `job`, `jobEvent` and `jobRun`, and the
+  `job.json` attached — prepared and timed as above, within `jobs.maxWait`, and kept for the
+  pass when no slot is free. The entry records `job`, `jobEvent` and `jobRun`, and the
   agent reads `[Sent by job "<name>": ended, run …]`.
 - **Progress is state, not an event**: the job writes `data/jobs/<name>/progress`, and the last
   line written this run shows in `spore show`, `spore job ls` and Telegram's `/status`.

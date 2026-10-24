@@ -22,7 +22,7 @@ pub use schedule::{parse_schedule, Due, Schedule};
 /// The tool suite, by name. Contract: ARCHITECTURE.md, "Tools".
 pub const TOOL_NAMES: [&str; 7] = ["read", "write", "edit", "exec", "wsexec", "ask", "quiet"];
 
-const FIELDS: [&str; 37] = [
+const FIELDS: [&str; 40] = [
     "name",
     "description",
     "model",
@@ -59,6 +59,9 @@ const FIELDS: [&str; 37] = [
     "dream.wall",
     "dream.precursor",
     "plugins",
+    "prepare",
+    "prepare.timeout",
+    "prepare.attach",
     "reasoning",
 ];
 
@@ -103,6 +106,15 @@ static PRECURSOR_NAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9._-]*$").unwrap());
 static COUNT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9]+$").unwrap());
 static AMOUNT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9]+(\.[0-9]+)?$").unwrap());
+static ORIGIN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(hook|job|api):[A-Za-z0-9][A-Za-z0-9._-]*$").unwrap());
+static PROGRAM_NAME: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap());
+
+/// The most a prepare step may run, and attach, whatever a definition asks.
+pub const PREPARE_MOST_MS: f64 = 60_000.0;
+pub const PREPARE_MOST_FILES: u64 = 100;
+pub const PREPARE_MOST_BYTES: u64 = 256 * 1024 * 1024;
 
 /// A frontmatter value: `key: scalar` or `key: [a, b]`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -243,6 +255,28 @@ pub struct Jobs {
     pub writes: Vec<String>,
 }
 
+/// One of a plugin's programs, by its variable, run on every delivery from `origin` before any turn reads it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PrepareStep {
+    pub origin: String,
+    pub plugin: String,
+    pub program: String,
+}
+
+/// What prepares this spore's deliveries, by origin, and the bounds every step runs within.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Prepare {
+    pub steps: Vec<PrepareStep>,
+    pub timeout: f64,
+    pub attach: Attach,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Attach {
+    pub files: u64,
+    pub bytes: u64,
+}
+
 /// When the spore dreams — after how many turns, and how much quiet, at the pressure the
 /// two make together — what one dream may spend and how long it may hold the spore, and the
 /// precursor it runs.
@@ -300,6 +334,8 @@ pub struct Definition {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dream: Option<Dream>,
     pub plugins: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prepare: Option<Prepare>,
     /// How a person is shown its calls, from its `:::call` blocks, in the order written.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub calls: Vec<CallRow>,
@@ -911,6 +947,97 @@ fn parse_dream(fields: &Fields, cell: bool) -> Result<Option<Dream>, String> {
     }))
 }
 
+// Absent, a delivery reaches its spore as it came. Root only, and only from a plugin the spore
+// uses: the program is the owner's, outside the workspace, and runs before the agent sees anything.
+fn parse_prepare(fields: &Fields, cell: bool) -> Result<Option<Prepare>, String> {
+    let raw = match fields.get("prepare") {
+        None => {
+            return match ["prepare.timeout", "prepare.attach"]
+                .into_iter()
+                .find(|key| fields.get(key).is_some())
+            {
+                Some(key) => Err(format!("declares {key} without prepare — it bounds the programs that prepare this spore's deliveries, as prepare: [hook:scans=pdf/SPORE_PDF_PAGES]")),
+                None => Ok(None),
+            };
+        }
+        Some(_) if cell => {
+            return Err("declares prepare, which is the root definition's — deliveries reach the spore, not a cell".into());
+        }
+        Some(Value::List(raw)) if !raw.is_empty() => raw,
+        Some(_) => {
+            return Err("needs prepare as a list of <origin>=<plugin>/<program>, as prepare: [hook:scans=pdf/SPORE_PDF_PAGES]".into())
+        }
+    };
+    let mut steps: Vec<PrepareStep> = Vec::new();
+    for entry in raw {
+        let shape =
+            "<origin>=<plugin>/<program>, the origin hook:<name>, job:<name> or api:<caller>, the program a variable among the plugin's programs";
+        let Some((origin, run)) = entry.split_once('=') else {
+            return Err(format!(
+                "has a prepare entry it cannot read — got \"{entry}\", expected {shape}"
+            ));
+        };
+        let (origin, run) = (trim(origin), trim(run));
+        if !ORIGIN.is_match(origin) {
+            return Err(format!(
+                "has a prepare entry it cannot read — got origin \"{origin}\", expected {shape}"
+            ));
+        }
+        let Some((plugin, program)) = run
+            .split_once('/')
+            .filter(|(p, n)| PLUGIN_NAME.is_match(p) && PROGRAM_NAME.is_match(n))
+        else {
+            return Err(format!(
+                "has a prepare entry it cannot read — got \"{run}\" for {origin}, expected {shape}"
+            ));
+        };
+        if steps.iter().any(|step| step.origin == origin) {
+            return Err(format!(
+                "prepares {origin} twice — one program prepares an origin"
+            ));
+        }
+        steps.push(PrepareStep {
+            origin: origin.into(),
+            plugin: plugin.into(),
+            program: program.into(),
+        });
+    }
+    let timeout = match fields.get("prepare.timeout") {
+        Some(Value::Scalar(text)) => match duration_ms(text) {
+            Some(ms) if ms > 0.0 && ms <= PREPARE_MOST_MS => ms,
+            _ => {
+                return Err(format!(
+                    "has a prepare.timeout it cannot take — got \"{text}\", expected how long one program may run, at most {}s, as 45s",
+                    PREPARE_MOST_MS / 1000.0
+                ));
+            }
+        },
+        Some(_) => return Err("has a prepare.timeout it cannot read — expected one duration, as prepare.timeout: 45s".into()),
+        None => return Err("declares prepare without prepare.timeout — how long one program may run, as prepare.timeout: 45s".into()),
+    };
+    let attach = match fields.get("prepare.attach") {
+        Some(Value::List(pair)) if pair.len() == 2 => {
+            let files = whole_number(&pair[0], 1).filter(|n| *n <= PREPARE_MOST_FILES);
+            let bytes = size_bytes(&pair[1]).filter(|b| *b >= 1.0 && *b <= PREPARE_MOST_BYTES as f64);
+            let (Some(files), Some(bytes)) = (files, bytes) else {
+                return Err(format!(
+                    "has a prepare.attach it cannot take — got [{}], expected how many files and bytes a program may attach, at most [{PREPARE_MOST_FILES}, {}MB], as [20, 200MB]",
+                    pair.join(", "),
+                    PREPARE_MOST_BYTES / 1024 / 1024
+                ));
+            };
+            Attach { files, bytes: bytes as u64 }
+        }
+        Some(_) => return Err("needs prepare.attach as a count and a size, prepare.attach: [20, 200MB]".into()),
+        None => return Err("declares prepare without prepare.attach — how many files and bytes a program may attach, as prepare.attach: [20, 200MB]".into()),
+    };
+    Ok(Some(Prepare {
+        steps,
+        timeout,
+        attach,
+    }))
+}
+
 fn list<'a>(fields: &'a Fields, key: &str) -> &'a [String] {
     match fields.get(key) {
         Some(Value::List(items)) => items,
@@ -1112,6 +1239,9 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         }
         if source == "dream" {
             return Err("grants a source named \"dream\" — dream.cost is the field that bounds what a dream spends, so rename the source".into());
+        }
+        if source == "prepare" {
+            return Err("grants a source named \"prepare\" — prepare.timeout is the field that bounds what prepares a delivery, so rename the source".into());
         }
     }
 
@@ -1404,6 +1534,8 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         }
     }
 
+    let prepare = parse_prepare(&fields, opts.cell)?;
+
     let reasoning = list(&fields, "reasoning").to_vec();
     for (i, asked) in reasoning.iter().enumerate() {
         if !REASONING.contains(&asked.as_str()) {
@@ -1442,6 +1574,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         jobs,
         dream,
         plugins,
+        prepare,
         calls,
         reasoning,
     })
@@ -1795,6 +1928,110 @@ mod tests {
             refused("sources: [chart]\n").contains("a source and an enzyme both named \"chart\"")
         );
         assert!(refused("other.with: [a]\n").contains("without granting the source"));
+    }
+
+    #[test]
+    fn reads_what_prepares_each_origin_from_a_plugin_it_uses_at_the_root_only() {
+        let with = |lines: &str| {
+            parse(&WELL_FORMED.replace("tools: [read]\n", &format!("tools: [read]\n{lines}")))
+        };
+        const BOUNDS: &str = "prepare.timeout: 45s\nprepare.attach: [20, 200MB]\n";
+        let prepared = |entries: &str| format!("plugins: [pdf]\nprepare: [{entries}]\n{BOUNDS}");
+        assert_eq!(
+            with(&prepared(
+                "hook:scans=pdf/SPORE_PDF_PAGES, api:pipeline=pdf/SPORE_PDF_OCR"
+            ))
+            .unwrap()
+            .prepare,
+            Some(Prepare {
+                steps: vec![
+                    PrepareStep {
+                        origin: "hook:scans".into(),
+                        plugin: "pdf".into(),
+                        program: "SPORE_PDF_PAGES".into()
+                    },
+                    PrepareStep {
+                        origin: "api:pipeline".into(),
+                        plugin: "pdf".into(),
+                        program: "SPORE_PDF_OCR".into()
+                    }
+                ],
+                timeout: 45_000.0,
+                attach: Attach {
+                    files: 20,
+                    bytes: 200 * 1024 * 1024
+                }
+            })
+        );
+        assert_eq!(with("").unwrap().prepare, None);
+        let refused = |lines: &str| with(lines).unwrap_err();
+        assert!(refused(BOUNDS).contains("without prepare"));
+        assert_eq!(
+            with(&format!(
+                "plugins: [ocr]\nprepare: [hook:scans=pdf/SPORE_PDF_PAGES]\n{BOUNDS}"
+            ))
+            .unwrap()
+            .prepare
+            .unwrap()
+            .steps[0]
+                .plugin,
+            "pdf"
+        );
+        assert!(refused(&prepared(
+            "hook:scans=pdf/SPORE_PDF_PAGES, hook:scans=pdf/SPORE_PDF_OCR"
+        ))
+        .contains("twice"));
+        for wrong in [
+            "scans=pdf/SPORE_PDF_PAGES",
+            "chat:x=pdf/SPORE_PDF_PAGES",
+            "hook:scans=pages",
+            "hook:scans=pdf/SPORE-PDF",
+            "hook:scans=pdf/1PAGES",
+            "hook:scans",
+        ] {
+            assert!(
+                refused(&prepared(wrong)).contains("prepare entry it cannot read"),
+                "{wrong}"
+            );
+        }
+        assert!(
+            refused("plugins: [pdf]\nprepare: hook:scans=pdf/SPORE_PDF_PAGES\n")
+                .contains("needs prepare as a list")
+        );
+        let bounded = |bounds: &str| {
+            refused(&format!(
+                "plugins: [pdf]\nprepare: [hook:scans=pdf/SPORE_PDF_PAGES]\n{bounds}"
+            ))
+        };
+        assert!(bounded("prepare.attach: [20, 200MB]\n").contains("without prepare.timeout"));
+        assert!(bounded("prepare.timeout: 45s\n").contains("without prepare.attach"));
+        assert!(
+            bounded("prepare.timeout: 2m\nprepare.attach: [20, 200MB]\n").contains("at most 60s")
+        );
+        assert!(
+            bounded("prepare.timeout: 45s\nprepare.attach: [101, 1MB]\n")
+                .contains("prepare.attach it cannot take")
+        );
+        assert!(bounded("prepare.timeout: 45s\nprepare.attach: [1, 1GB]\n")
+            .contains("prepare.attach it cannot take"));
+        assert!(refused(&format!(
+            "{}sources: [prepare]\n",
+            prepared("hook:scans=pdf/SPORE_PDF_PAGES")
+        ))
+        .contains("source named \"prepare\""));
+        assert!(cell(&CHART.replace(
+            "on-wrap: keep\n",
+            &format!("on-wrap: keep\nprepare: [hook:scans=pdf/SPORE_PDF_PAGES]\n{BOUNDS}")
+        ))
+        .unwrap_err()
+        .contains("root definition's"));
+        let json =
+            serde_json::to_value(with(&prepared("job:scan=pdf/SPORE_PDF_PAGES")).unwrap()).unwrap();
+        assert_eq!(json["prepare"]["steps"][0]["origin"], "job:scan");
+        assert!(serde_json::to_value(with("").unwrap())
+            .unwrap()
+            .get("prepare")
+            .is_none());
     }
 
     #[test]

@@ -1,13 +1,10 @@
 /**
- * One delivery of a hook handed to each spore it names, under the hook's bounds: its `perHour`, its
- * `maxWait` for the spore's router or triage cell, or the owner's router bound to it.
+ * One delivery of a hook handed to each spore it names, under the hook's bounds: its `perHour`, and
+ * its `maxWait` for the spore's router or triage cell.
  */
 
-import { isWorkspace, readConfig, release, send, workspaceFor } from '../src/index.js'
-import { launchStandalone } from '../src/core/cell.js'
-import { ownerRouter } from '../src/core/plugins.js'
+import { isWorkspace, readConfig, workspaceFor } from '../src/index.js'
 import { deliver } from '../src/core/route.js'
-import { ROUTE_TIMEOUT_MS, runOwnerRouter, runRouter } from '../src/core/router.js'
 import { CONFIG_FILE } from '../src/library/config.js'
 
 const HOUR = 60 * 60 * 1000
@@ -26,18 +23,12 @@ const briefingOf = ({ name, event, delivery }) => ({ payload, headers }) => [
 export function createHookDelivery ({
   log,
   configFile = CONFIG_FILE,
-  say = (ws, text, options) => send(ws, text, { ...options, start: false }),
   sporeOf = (name) => {
     const ws = workspaceFor(name, { config: readConfig(configFile) }).path
     return isWorkspace(ws) ? ws : null
   },
   now = Date.now,
-  route = runRouter,
-  attachBy = runOwnerRouter,
-  routerOf = ownerRouter,
-  launchCell = launchStandalone,
-  routeTimeoutMs = ROUTE_TIMEOUT_MS,
-  releaseHeld = release
+  ...delivering
 }) {
   const started = new Map()
   const routing = new Set()
@@ -52,10 +43,6 @@ export function createHookDelivery ({
 
   const deliverTo = (hook, spore, ws, options, stdin, heading, envOf) => {
     const start = underLimit(hook, spore)
-    if (!start && !hook.router) {
-      say(ws, '', options)
-      return `said, not started — ${hook.perHour} turns started in the last hour`
-    }
     const { event, delivery } = options.hook
     const delivered = deliver({
       ws,
@@ -64,27 +51,21 @@ export function createHookDelivery ({
       event,
       ref: delivery,
       maxWait: hook.maxWait ?? null,
-      owner: hook.router,
+      start,
       stdin,
       headers: 'headers.json',
-      start,
       perDay: hook.perDay,
       briefing: briefingOf(options.hook),
       envOf,
       log,
       heading,
       now,
-      route,
-      launch: launchCell,
-      release: releaseHeld,
-      routeTimeoutMs,
-      attachBy,
-      routerOf
+      ...delivering
     })
-    if (delivered.started || (hook.router && start)) counted(hook, spore)
+    if (start && (delivered.started || delivered.prepared)) counted(hook, spore)
     routing.add(delivered.judged)
     delivered.judged.finally(() => routing.delete(delivered.judged))
-    return delivered.outcome
+    return start ? delivered.outcome : `${delivered.outcome} — ${hook.perHour} turns started in the last hour`
   }
 
   /**

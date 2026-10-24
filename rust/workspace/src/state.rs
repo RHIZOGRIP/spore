@@ -1150,7 +1150,7 @@ pub fn reschedule_held(
 }
 
 /// A held delivery's files replaced by `files`, a JSON array of the entry's file records, already
-/// written in `inbox.d/`: what an owner's router attached, or the line saying why nothing was.
+/// written in `inbox.d/`: what a prepare step attached, or the line saying why nothing was.
 /// False when it is no longer held.
 pub fn attach_held(ws: &Path, held_no: i64, files: &str) -> Result<bool, String> {
     let files: Vec<Value> =
@@ -3258,8 +3258,8 @@ mod tests {
         let ws = scratch("attach");
         let held = hold_delivery(
             &ws,
-            &json!({ "at": "t", "hook": "lake", "hookDelivery": "d1",
-                     "files": [{ "path": null, "name": "mine's output", "missing": "the router did not finish" }] })
+            &json!({ "at": "t", "hook": "scans", "hookDelivery": "d1",
+                     "files": [{ "path": null, "name": "pages' output", "missing": "the router did not finish" }] })
             .to_string(),
             "2026-10-03T12:01:00.000Z",
             "2026-10-03T12:01:00.000Z",
@@ -3313,17 +3313,17 @@ mod tests {
             .unwrap_err()
             .contains("one at most"));
         assert_eq!(
-            of(json!({ "api": "engine" })).unwrap().as_deref(),
-            Some("api:engine")
+            of(json!({ "api": "pipeline" })).unwrap().as_deref(),
+            Some("api:pipeline")
         );
-        assert!(of(json!({ "api": "engine", "hook": "forge" }))
+        assert!(of(json!({ "api": "pipeline", "hook": "forge" }))
             .unwrap_err()
             .contains("one at most"));
-        assert!(
-            of(json!({ "api": "engine", "fromName": "A", "fromId": "x:1", "fromWhere": "w" }))
-                .unwrap_err()
-                .contains("does not also come from api:engine")
-        );
+        assert!(of(
+            json!({ "api": "pipeline", "fromName": "A", "fromId": "x:1", "fromWhere": "w" })
+        )
+        .unwrap_err()
+        .contains("does not also come from api:pipeline"));
     }
 
     #[test]
@@ -3331,26 +3331,29 @@ mod tests {
         let ws = scratch("api-origin");
         let held = hold_delivery(
             &ws,
-            &json!({ "at": "t", "text": "analyse it", "api": "engine", "requestId": "api:engine:doc-1" })
+            &json!({ "at": "t", "text": "analyse it", "api": "pipeline", "requestId": "api:pipeline:report-1" })
                 .to_string(),
             "2026-10-03T12:00:00.000Z",
             "2026-10-03T12:00:00.000Z",
         )
         .unwrap();
         assert!(held["held"].as_i64().is_some());
-        assert_eq!(row(&ws, "SELECT origin FROM held")["origin"], "api:engine");
+        assert_eq!(
+            row(&ws, "SELECT origin FROM held")["origin"],
+            "api:pipeline"
+        );
         assert_eq!(
             release_held(&ws, "2026-10-03T12:00:00.000Z", true).unwrap(),
             vec![1]
         );
         assert_eq!(
             row(&ws, "SELECT api, text, requestId FROM inbox"),
-            json!({ "api": "engine", "text": "analyse it", "requestId": "api:engine:doc-1" })
+            json!({ "api": "pipeline", "text": "analyse it", "requestId": "api:pipeline:report-1" })
         );
         assert!(append_inbox(&ws, r#"{"at":"t","text":"x","api":""}"#).is_err());
         assert!(append_inbox(
             &ws,
-            r#"{"at":"t","text":"x","api":"engine","replyTo":"terminal"}"#
+            r#"{"at":"t","text":"x","api":"pipeline","replyTo":"terminal"}"#
         )
         .is_err());
     }

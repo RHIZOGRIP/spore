@@ -3,7 +3,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSy
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { allowPlugin, checkPlugin, containOf, differingDocs, disallowPlugin, installedPlugins, listPlugins, ownerRouter, pluginRoots, pluginServices, preparePlugins, showPlugin, upgradeDocs, PLUGIN_READS } from '../src/core/plugins.js'
+import { allowPlugin, checkPlugin, containOf, differingDocs, disallowPlugin, installedPlugins, listPlugins, pluginProgram, pluginRoots, pluginServices, preparePlugins, showPlugin, upgradeDocs, PLUGIN_READS } from '../src/core/plugins.js'
 import { PLUGIN_CALLS } from '../src/core/spore-dir.js'
 import { readConfig } from '../src/library/config.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
@@ -196,16 +196,15 @@ describe('checking a plugin', () => {
     expect(refusal(() => checkPlugin(found)).message).toMatch(/outside itself and what it depends on/)
   })
 
-  it('offers routers an owner binds to an origin, each a program of its own', () => {
-    const da = (routes, programs = { 'bin/mine': 0o755 }) => plugin('spore-plugin-da', { routes }, { programs })
-    const found = da({ mine: './bin/mine' })
-    expect(checkPlugin(found).routes).toEqual({ mine: join(found.dir, 'bin/mine') })
-    expect(ownerRouter('da', 'mine', roots)).toEqual({ program: join(found.dir, 'bin/mine'), reads: [realpathSync(found.dir)] })
-    expect(refusal(() => ownerRouter('da', 'scan', roots))).toMatchObject({ type: 'ROUTER_UNKNOWN', detail: 'it offers mine' })
-    expect(refusal(() => ownerRouter('lake', 'mine', roots)).type).toBe('PLUGIN_NOT_INSTALLED')
-    expect(refusal(() => checkPlugin(da({ Mine: './bin/mine' }))).message).toMatch(/has a router named "Mine"/)
-    expect(refusal(() => checkPlugin(da({ mine: './bin/mine' }, { 'bin/mine': 0o644 }))).message).toMatch(/a router mine that is not executable/)
-    expect(refusal(() => checkPlugin(da(['./bin/mine']))).message).toMatch(/routes that are not a map/)
+  it('offers a program to the runtime by its variable, found only once the plugin is allowed', () => {
+    const found = plugin('spore-plugin-pdf', { programs: { SPORE_PDF_PAGES: './bin/pages' } }, { programs: { 'bin/pages': 0o755 } })
+    expect(refusal(() => pluginProgram('pdf', 'SPORE_PDF_PAGES', { config: readConfig(CONFIG), roots })).type).toBe('PLUGIN_NOT_ALLOWED')
+    allowPlugin('pdf', [], { configFile: CONFIG, roots })
+    const config = readConfig(CONFIG)
+    expect(pluginProgram('pdf', 'SPORE_PDF_PAGES', { config, roots })).toEqual({ program: join(found.dir, 'bin/pages'), reads: [realpathSync(found.dir)] })
+    expect(refusal(() => pluginProgram('pdf', 'SPORE_PDF_SCAN', { config, roots }))).toMatchObject({ type: 'PROGRAM_UNKNOWN', detail: 'it has SPORE_PDF_PAGES' })
+    expect(refusal(() => checkPlugin(plugin('spore-plugin-pdf', { routines: { pages: './bin/pages' } }, { programs: { 'bin/pages': 0o755 } }))).message).toMatch(/a manifest field spore does not know — routines/)
+    expect(refusal(() => checkPlugin(plugin('spore-plugin-pdf', { routes: { pages: './bin/pages' } }, { programs: { 'bin/pages': 0o755 } }))).detail).toMatch(/a program it offers is one of its programs/)
   })
 
   it('takes how calls of its own programs are described, and nothing else', () => {
@@ -495,6 +494,23 @@ describe('a turn of a spore that uses plugins', () => {
     useIn(WS, ['hider'])
     expect(containOf(WS, { config: config({ hider: allowed('hider', { dir: '/run/gate' }) }), roots })).toEqual([{ plugin: 'hider', hide: '/run/gate' }])
     expect(refusal(() => containOf(WS, { config: config({ hider: allowed('hider', { dir: 'relative' }) }), roots })).message).toMatch(/hides relative, which is not a directory/)
+  })
+
+  it('gives the agent nothing of a plugin only prepare: names, keeping what it hides in the spore\'s view', () => {
+    plugin('spore-plugin-pages', { settings: { dir: 'text' }, programs: { SPORE_PAGES: './bin/pages' }, reference: 'reference.md', contain: { hide: '{settings.dir}' } }, {
+      files: { 'reference.md': '# Pages\n' },
+      programs: { 'bin/pages': 0o755 }
+    })
+    mkdirSync(WS, { recursive: true })
+    writeFileSync(join(WS, 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5').replace('\n---', '\nprepare: [hook:scans=pages/SPORE_PAGES]\nprepare.timeout: 30s\nprepare.attach: [2, 1MB]\n---'))
+    const settings = { config: config({ pages: allowed('pages', { dir: '/run/pages' }) }), roots }
+    const turn = preparePlugins(WS, settings)
+    expect(turn.env).toEqual({})
+    expect(turn.plugins).toEqual([])
+    expect(existsSync(join(WS, 'plugins/pages.md'))).toBe(false)
+    expect(turn.contain).toEqual([{ plugin: 'pages', hide: '/run/pages' }])
+    expect(containOf(WS, settings)).toEqual([{ plugin: 'pages', hide: '/run/pages' }])
+    expect(refusal(() => containOf(WS, { config: config({}), roots }))).toMatchObject({ type: 'PLUGIN_NOT_ALLOWED', detail: 'spore plugin allow pages, or drop it from prepare: in its spore.cmk' })
   })
 
   it('refuses a contain it cannot read', () => {

@@ -61,6 +61,7 @@ export function deliverJob (ws, { name, run, event, ref, text, report }, { envOf
     },
     event,
     ref: run,
+    stdin: 'job.json',
     maxWait: definition.jobs?.maxWait ?? null,
     perDay: definition.jobs?.perDay ?? TRIAGE_PER_DAY,
     briefing: briefingOf({ name, event, run }),

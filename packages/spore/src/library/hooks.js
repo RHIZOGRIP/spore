@@ -30,7 +30,6 @@ function summary (hook, config, { since, limit }) {
     perHour: hook.perHour,
     maxWait: hook.maxWait,
     perDay: hook.perDay,
-    owner: hook.router && { plugin: hook.router.plugin, name: hook.router.name, timeoutMs: hook.router.timeoutMs, attach: hook.router.attach, reads: hook.router.reads },
     spores: hook.spores.map(name => {
       const ws = workspaceFor(name, { config }).path
       if (!isWorkspace(ws)) return { name, ws: null }

@@ -123,7 +123,10 @@ export async function runCell ({ ws, precursor, origin, ref = null, files = {}, 
 
   const cellWs = join(cellsRoot(env), basename(ws), slugOf(origin), `${now()}-${randomBytes(3).toString('hex')}`)
   mkdirSync(join(cellWs, 'data'), { recursive: true })
-  for (const [name, from] of Object.entries(files)) copyFileSync(from, join(cellWs, name))
+  for (const [name, from] of Object.entries(files)) {
+    mkdirSync(dirname(join(cellWs, name)), { recursive: true })
+    copyFileSync(from, join(cellWs, name))
+  }
   for (const [name, text] of Object.entries(contents)) writeFileSync(join(cellWs, name), text)
   writeFileSync(join(cellWs, PROMPT), briefing)
 

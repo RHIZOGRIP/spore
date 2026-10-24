@@ -46,15 +46,11 @@ function renderHook (hook) {
   console.log(`${hook.name} — ${hook.path}`)
   console.log(`  verify   ${verifyText(hook.verify)}`)
   if (hook.accept) console.log(`  accepts  ${acceptText(hook.accept)}`)
-  console.log(`  bounds   ${kb(hook.maxBytes)} a request · ${hook.perHour} turns an hour · ${hook.maxWait ? `waits up to ${durationText(hook.maxWait)} · ${hook.perDay} triage cells a day` : 'released at once'}`)
-  if (hook.owner) {
-    const { plugin, name, timeoutMs, attach, reads } = hook.owner
-    console.log(`  router   ${plugin}/${name}, the owner's: attaches up to ${attach.files} files and ${kb(attach.bytes)} within ${durationText(timeoutMs)}${reads === 'spore' ? ', reading what the spore\'s reads: grant' : reads.length ? `, reading ${reads.join(', ')}` : ''}`)
-  }
+  console.log(`  bounds   ${kb(hook.maxBytes)} a request · ${hook.perHour} turns an hour · ${hook.maxWait ? `waits up to ${durationText(hook.maxWait)}` : 'never waits'} · ${hook.perDay} triage cells a day`)
   for (const spore of hook.spores) {
     console.log(`\n${sporeLine(spore, spore.name.length)}`)
     if (!spore.ws) continue
-    if (spore.router) console.log(`  router   ${spore.router}${hook.owner ? ', not run: the owner\'s router is' : ''}`)
+    if (spore.router) console.log(`  router   ${spore.router}`)
     if (spore.triage) console.log(`  triage   ${spore.triage}`)
     for (const held of spore.held) console.log(`  held     since ${held.at}, released ${held.releaseAt}, at the latest ${held.deadline}${held.summary ? ` — ${held.summary}` : ''}`)
     for (const d of spore.deliveries) {

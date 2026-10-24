@@ -2,7 +2,7 @@
  * The library's verbs over HTTP, for a caller that is not on this machine or not in this
  * container: send, watch, show, list, stop, wrap, extend, the running turn as a person is shown it and
  * a line of the caller's own in it, and
- * approvals asked and read, and a program's delivery held for the owner's router. Every
+ * approvals asked and read, and a program's delivery, prepared and timed as its spore says. Every
  * request names its caller by token and reaches only the spores that caller may; its
  * `traceparent` is the parent of the request's span, which a message carries on to its turn.
  * Contract: ARCHITECTURE.md, "The HTTP API".
@@ -25,6 +25,7 @@ import { paused } from '../src/core/admission.js'
 import { SporeError } from '../src/observability/errors.js'
 import { endSpanError, endSpanOk, formatTraceparent, parseTraceparent, startSpan } from '../src/observability/tracing.js'
 import { deliver } from '../src/core/route.js'
+import { TRIAGE_PER_DAY } from '../src/core/triage.js'
 import { callerOf, reaches } from './config.js'
 
 const MAX_BODY = 32 * 1024 * 1024
@@ -45,6 +46,11 @@ const STATUS = {
 }
 
 const failure = (type, message, detail) => new SporeError(message, { type, detail })
+
+const briefingOf = (caller, delivery) => ({ payload }) => [
+  `A delivery from "${caller}" through the API, delivery ${delivery}.`,
+  payload ? `Its payload is ${payload} in your directory.` : 'It has no payload.'
+].join('\n') + '\n'
 
 function readBody (request) {
   return new Promise((resolve, reject) => {
@@ -114,8 +120,10 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       ws,
       said: text,
       options,
-      owner: caller.router,
+      maxWait: caller.maxWait,
       stdin: payload === undefined ? null : PAYLOAD,
+      perDay: TRIAGE_PER_DAY,
+      briefing: briefingOf(caller.name, delivery),
       ref: delivery,
       event: null,
       envOf: () => turnEnv,

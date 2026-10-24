@@ -54,7 +54,7 @@ The file is written whole and renamed into place.
 | `largestFile` | the largest file a turn may write, as `1GB`, `512MB` or bytes | 1 GB |
 | `freeFloor` | free disk below which a turn is refused | 2 GB |
 | `spendPerDay`, `spendPerMonth` | dollars all your spores may spend per local day or month | no limit |
-| `contain` | `on` or `off`: whether every turn, job and router runs in namespaces of its own | on |
+| `contain` | `on` or `off`: whether every turn, job, router and prepare step runs in namespaces of its own | on |
 | `docs` | `follow` or `kept`: whether a runner's start replaces the root documents that differ from what is installed | kept |
 | `hereSnapshots` | how many `spore here` session snapshots are kept per spore | 20 |
 | `plugins` | the plugins allowed on this machine; written by `spore plugin allow`, not by `config set` | none |
@@ -117,10 +117,10 @@ spore config rm spendPerDay        # back to unset
 
 ### `contain`
 
-On unless set: every turn's agent, job command, router command
+On unless set: every turn's agent, job command, router command, prepare step
 and cell outside any turn starts in user, PID and mount namespaces of its own. On a host that
 refuses unprivileged user namespaces, a turn is recorded as `CONTAIN_FAILED` with its message
-left unread, and a job, router or standalone cell is refused.
+left unread, and a job, router, prepare step or standalone cell is refused.
 
 ```bash
 spore config set contain off    # only where no one else's spores run as this user
@@ -180,7 +180,7 @@ What the user's spores share while they run, under `$XDG_STATE_HOME/spore/`, els
 | `tick.lock` | held by the pass that fires schedules |
 | `jobs/<run>.lock` | held by a job's supervisor while the job runs |
 | `services/<name>.json` | the plugin and spore versions each service started with, read by `spore service restart --outdated` |
-| `cells/` | the workspaces of cells run outside any turn, such as a router's, and of dreams |
+| `cells/` | the workspaces of cells run outside any turn, such as a triage cell's, and of dreams |
 | `telegram/<bot>/`, `discord/<bot>/` | each chat bot's position |
 
 The spend ledger is written whether or not a limit is set, so a limit set at noon counts the
@@ -362,27 +362,15 @@ A hook name is letters, digits, `.`, `-` and `_`.
 | `accept` | which requests are kept: `{ "header", "values": [ … ] }` keeps a request whose header has one of the values; `{ "payload": <JSON Schema> }` keeps one whose JSON body matches; both may be given. One that keeps everything is refused | keep everything |
 | `maxBytes` | the largest body, as `1MB` or `512KB`; past it, `413` | `1MB` |
 | `perHour` | turns the hook may start in each spore an hour; past it a delivery is said and starts nothing | `30` |
-| `maxWait` | the longest a delivery may be held for the spore's router or triage cell, as `30m` or `2h` | none: said at once |
+| `maxWait` | the longest the spore's router or triage cell may keep a delivery waiting, as `30m` or `2h` | none: released as soon as it is timed |
 | `perDay` | triage cells the hook may start in each spore a day; past it a delivery is said at once | `100` |
-| `router` | an owner's router run on every delivery before a turn reads it (below) | none |
 
-**`router`** binds a router a plugin offers (`routes` in its manifest, [plugins
-§Routes](plugins.md#routes)) to the hook:
-
-```json
-"router": { "plugin": "da", "name": "mine", "timeout": "45s", "attach": { "files": 20, "bytes": "200MB" }, "reads": ["/export/lakes/l1"] }
-```
-
-Each delivery is held while the router runs on it, then released at once with the files it wrote
-attached. `timeout` is at most `60s`, `attach` at most 100 files and `256MB`; `reads` are
-directories it may read besides the plugin and the delivery, and none of the spore's, or
-`"spore"`: the read-only grants (`reads:`) of the spore the delivery is for, read at each delivery;
-one missing then attaches nothing and says so. The spore's
-own router and triage cell for the hook are not asked, and `maxWait` is not needed. A router that
-fails, or a service that stops before it answers, releases the delivery without attachments by its
-timeout, with a line saying why. A delivery past `perHour` is still routed, and said without
-starting a turn. `spore doctor` checks that the plugin offers the router and that its reads are
-there.
+What a delivery goes through before a turn reads it is the spore's: the program its `spore.cmk`
+binds to `hook:<name>` with `prepare:`, which attaches what it makes ([definition
+§prepare](definition.md#prepare)), then its router or triage cell for the hook
+([ARCHITECTURE §Deliveries nobody typed](../ARCHITECTURE.md#deliveries-nobody-typed)).
+`hooks.json` names no code; a hook with a `router` is refused. A delivery past `perHour` is still
+prepared, and said without starting a turn.
 
 **`verify`** is one of:
 
@@ -419,7 +407,7 @@ node bin/spore-api.js --check     # read api.json and the environment, print whe
   "listen": "127.0.0.1:8787",
   "callers": {
     "app": { "token": "${SPORE_API_APP}", "spores": ["support-*"] },
-    "engine": { "token": "${SPORE_API_ENGINE}", "spores": ["doc-*"], "router": { "plugin": "da", "name": "mine", "timeout": "45s", "attach": { "files": 20, "bytes": "200MB" }, "reads": "spore" } }
+    "pipeline": { "token": "${SPORE_API_PIPELINE}", "spores": ["report-*"], "maxWait": "30m" }
   }
 }
 ```
@@ -431,9 +419,10 @@ node bin/spore-api.js --check     # read api.json and the environment, print whe
   `~/.config/spore/environment` (`openssl rand -hex 32`), never in the file. `spores` lists names
   and patterns of letters, digits, `.`, `_`, `-` and `*`, where `*` matches within one name; a
   caller reaches only the spores under `home` that its patterns name.
-- `router` binds an owner's router to the caller, as a hook's is bound
-  ([§Webhooks](#webhooks)): `POST /v1/spores/<name>/deliveries` from that caller is held while it
-  runs, then released with what it attached. Its stdin is the delivery's `payload`, if any.
+- `maxWait` is the longest the spore's router or triage cell for `api:<caller>` may keep a
+  delivery from the caller (`POST /v1/spores/<name>/deliveries`) waiting, as a hook's `maxWait`
+  ([§Webhooks](#webhooks)); absent, it is released as soon as it is timed. What prepares it is
+  the spore's `prepare:`, never `api.json`'s, and a caller with a `router` is refused.
 - `--tick` runs the schedule pass (`spore tick`) every minute, for a container without a timer.
 - Exit code 2 means the configuration was refused; the unit does not restart after it.
 

@@ -1,7 +1,7 @@
 # Writing a plugin
 
 A plugin is an npm package that gives the spores using it more than the runtime ships: programs
-for the agent, libraries for the agent's own programs, endpoints the runner calls, a reference
+for the agent, programs the runtime runs on a spore's deliveries, libraries for the agent's own programs, endpoints the runner calls, a reference
 the agent reads, precursors, and services the host runs.
 
 How the mechanism works is in [ARCHITECTURE §Plugins](../ARCHITECTURE.md#plugins). What an
@@ -15,7 +15,7 @@ and, for services, `packages/spore-cli/src/services.js`.
 
 | part | manifest key | what the spore gets |
 |---|---|---|
-| programs | `programs` | a variable in the agent's environment naming an executable, which the agent runs |
+| programs | `programs` | a variable in the agent's environment naming an executable, which the agent runs, and which the runtime runs on deliveries where the spore's definition binds it: `prepare:` |
 | variables | `env` | more variables in the agent's environment, filled per spore |
 | sources | `sources` | endpoints the runner calls for the agent through `$SPORE_SOURCE`, granted with the plugin |
 | libraries | `modules` | links in `<ws>/node_modules/` that the agent's own programs import by name |
@@ -61,7 +61,6 @@ runs none of the plugin's code.
 | `works` | a semver range | required | the `@rhizogrip/spore` versions the plugin works with |
 | `settings` | `{ "<key>": "port" \| "text" }` | optional | values the operator gives at `allow` |
 | `programs` | `{ "<VARIABLE>": "<program>" }` | optional | `./<path>` in the plugin, or `<package>/<path>` in a dependency |
-| `routes` | `{ "<router>": "<program>" }` | optional | as `programs`; routers an owner binds to a hook (`hooks.json`) or a caller of the API (`api.json`) |
 | `describe` | `[{ "program", "title", "category", "detail"? }, …]` | optional | how a call of one of its `programs` is shown: `program` a regexp naming one of them |
 | `env` | `{ "<VARIABLE>": "<text>" }` | optional | text with `{placeholders}` |
 | `contain` | `{ "hide", "keep"?, "missing"? }` | optional | text with `{placeholders}`: a directory of the host a contained spore sees nothing of, or only one directory of |
@@ -248,36 +247,37 @@ not in the list and a key not among these are each `PLUGIN_INVALID`. A spore's o
 come before these, and the runtime's rows after ([ARCHITECTURE §Describing a
 call](../ARCHITECTURE.md#describing-a-call)).
 
-## Routes
+## Programs that prepare deliveries
 
 ```json
-"routes": { "mine": "./bin/mine.js" }
+"programs": { "SPORE_PDF_PAGES": "./bin/pages.js" }
 ```
 
-Each key is a router's name, lowercase letters, digits and `-`; each value a program, located and
-checked as one of `programs` is. A router is not given to any spore: the owner binds it to a hook
-in `hooks.json` ([operating §Webhooks](operating.md)) or to a caller in `api.json`, and the service
-the delivery arrives at — the webhook service, or the HTTP API — runs it on each delivery before
-any turn reads it. Its contract:
+One of `programs` may also prepare a delivery nobody typed: a spore's definition binds it to an
+origin by its variable, `prepare: [hook:scans=pdf-pages/SPORE_PDF_PAGES]` ([definition
+§prepare](definition.md#prepare)), and the service the delivery arrives at — the webhook service,
+the HTTP API, a job's supervisor — runs it on each delivery before any turn reads it. The binding
+grants it to that step alone: the spore's turns get the plugin only when its `plugins:` names it
+too, and then all of it. A spore takes a plugin whole, so a program meant only for deliveries ships
+as a plugin of its own, `spore-plugin-pdf-pages` beside `spore-plugin-pdf`, its reference
+describing only what it offers. On a delivery, its contract is:
 
-- **It is called** as `<program> <origin> <event> <ref> <headers>`: the origin (`hook:lake`,
-  `api:engine`), the sender's event and delivery id, either empty when the sender names none, and
-  the path of the delivery's `headers.json`, empty through the API. The payload is on its stdin,
-  which is empty for a delivery through the API without one.
+- **It is called** as `<program> <origin> <event> <ref> <headers>`: the origin (`hook:scans`,
+  `api:pipeline`, `job:scan`), the sender's event and delivery id, either empty when the sender
+  names none, and the path of the delivery's `headers.json`, empty when it has none. The payload is
+  on its stdin, which is empty for a delivery without one.
 - **It writes what it attaches to `out/`**, in its working directory: plain files, each named by
   letters, digits, `.`, `_` and `-`. They are attached to the delivery under
-  `inbox.d/<delivery>/<router>/`, within the bounds the owner gave, and the turn reads them as files
-  sent with it. Its stdout is not read.
-- **Exit 0 is success.** A non-zero exit, a run past the owner's timeout, a file past the bounds, a
-  directory in `out/`, or a router the plugin no longer offers attaches nothing, and the delivery
-  carries one line saying why instead.
-- **It runs confined**, as a spore's router does: it reads the plugin and what it depends on, the
-  delivery's own files, and the directories the owner lets it read, or the delivered spore's
-  `reads:` grants; it writes nothing but its working directory; its environment is `PATH`, `HOME`
-  and `TMPDIR`.
+  `inbox.d/<delivery>/<VARIABLE>/`, within the spore's `prepare.attach`, and the turn reads them as
+  files sent with it. Its stdout is not read.
+- **Exit 0 is success.** A non-zero exit, a run past the spore's `prepare.timeout`, a file past the
+  bounds, a directory in `out/`, or a program the plugin no longer has attaches nothing, and the
+  delivery carries one line saying why instead.
+- **It runs confined**, as a spore's router does, by the same runner: it reads the plugin and what
+  it depends on, the delivery's own files and the spore's `reads:` grants; it writes nothing but
+  its working directory; its environment is `PATH`, `HOME` and `TMPDIR`.
 
-A name that is not one, and a program as `programs` refuses one, are each `PLUGIN_INVALID`;
-`spore plugin show` lists the routers.
+The `routes` key of earlier releases is `PLUGIN_INVALID`.
 
 ## `env`
 
@@ -346,8 +346,9 @@ the spore is refused (`PLUGIN_CONTAIN_INVALID`). Two
 plugins of one spore that hide the same directory, or one inside the other, are refused
 (`PLUGIN_CONFLICT`).
 
-Every contained process of the spore gets the same view — the agent of a turn, its jobs, its
-routers, a cell started outside any turn — laid out by `confine --contain` in the namespace it
+Every contained process of the spore gets the same view, of every plugin it uses, in `plugins:`
+or only in `prepare:` — the agent of a turn, its jobs, its routers and prepare steps, a cell
+started outside any turn — laid out by `confine --contain` in the namespace it
 already makes, so it holds for whatever the process runs. One that is not contained (`contain
 off`, or `--unsafe`) would see all of `hide`, and is refused instead; so is one whose `keep` is not
 there, with `missing` as the fix, or, with no `keep`, whose `hide` is not. These refusals are

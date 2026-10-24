@@ -194,7 +194,7 @@ describe('while a job runs', () => {
 describe('what a job says', () => {
   const report = { job: 'scan', run: 'r-1', event: 'ended' }
 
-  it('is routed when the owner bounds its wait and the spore keeps a router for it', async () => {
+  it('is routed when the spore keeps a router for it, waiting as told within jobs.maxWait', async () => {
     writeFileSync(join(ws, 'spore.cmk'), grant('jobs: [2, 1m]\njobs.maxWait: 2h\n'))
     mkdirSync(join(ws, 'data', 'routes'), { recursive: true })
     writeFileSync(join(ws, 'data', 'routes', 'job-scan.route'), '#!/bin/sh\n')
@@ -212,18 +212,19 @@ describe('what a job says', () => {
     expect(Date.parse(held.releaseAt) - Date.parse(held.at)).toBeGreaterThan(29 * 60_000)
   })
 
-  it('is said at once without a bound, and kept for the tick when every slot is taken', async () => {
+  it('is released at once with its summary without jobs.maxWait, and kept for the tick when every slot is taken', async () => {
     mkdirSync(join(ws, 'data', 'routes'), { recursive: true })
     writeFileSync(join(ws, 'data', 'routes', 'job-scan.route'), '#!/bin/sh\n')
     const released = []
     await deliverJob(ws, { name: 'scan', run: 'r-1', event: 'ended', ref: 'ended', text: 'The job exited 0 after 3m.', report }, {
       envOf: () => ({}),
       log: (line) => logs.push(line),
-      route: async () => { throw new Error('no router is asked without jobs.maxWait') },
+      route: async () => ({ wait: 30 * 60_000, summary: 'scan: done', replaces: false }),
       releaseHeld: (at) => { released.push(at); throw Object.assign(new Error('full'), { type: 'ADMISSION_FULL' }) }
     })
     expect(released).toEqual([ws])
     const [held] = heldIn(ws)
+    expect(held.summary).toBe('scan: done')
     expect(held.releaseAt).toBe(held.deadline)
     expect(logs.join('\n')).toMatch(/every turn slot is taken, the pass releases it once one frees/)
   })

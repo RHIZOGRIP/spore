@@ -12,7 +12,6 @@ import Ajv from 'ajv'
 import { CONFIG_FILE, SporeError } from '../src/index.js'
 import { durationMs, sizeBytes } from '../src/delegation/definition.js'
 import { TRIAGE_PER_DAY } from '../src/core/triage.js'
-import { ROUTER_SHAPE, parseRouter } from '../src/core/router.js'
 
 export const HOOKS_FILE = 'hooks.json'
 export const hooksPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), HOOKS_FILE)
@@ -165,7 +164,8 @@ export function loadHooks (path = hooksPath(), env = process.env) {
       if (unknownEntry.length) throw refuse(path, name, `has spore "${entry.name}" with a field spore does not know — ${unknownEntry.join(', ')}`, 'a spore entry is { "name", "accept" }')
       if (entry.accept !== undefined) accepts.set(entry.name, parseAccept(path, `${name}" → "${entry.name}`, entry.accept))
     }
-    const known = ['spore', 'verify', 'accept', 'maxBytes', 'perHour', 'maxWait', 'perDay', 'router']
+    if (hook.router !== undefined) throw refuse(path, name, 'has a router, which hooks.json no longer binds', 'what prepares a delivery is the spore\'s: prepare: [hook:<name>=<plugin>/<program>] in its spore.cmk')
+    const known = ['spore', 'verify', 'accept', 'maxBytes', 'perHour', 'maxWait', 'perDay']
     const unknown = Object.keys(hook).filter(key => !known.includes(key))
     if (unknown.length) throw refuse(path, name, `has a field spore does not know — ${unknown.join(', ')}`, `a hook takes ${known.join(', ')}`)
     const secrets = []
@@ -181,10 +181,7 @@ export function loadHooks (path = hooksPath(), env = process.env) {
     }
     const perDay = hook.perDay ?? TRIAGE_PER_DAY
     if (!Number.isInteger(perDay) || perDay < 1) throw refuse(path, name, `has a perDay that is not a count — ${hook.perDay}`, 'how many triage cells it may start in a spore a day, a whole number from 1')
-    const bound = hook.router === undefined ? { router: null } : parseRouter(hook.router)
-    if (bound.problem) throw refuse(path, name, bound.problem, ROUTER_SHAPE)
-    const { router } = bound
-    hooks.set(name, { name, spores, accepts, check, accept, maxBytes, perHour, maxWait, perDay, router, secrets })
+    hooks.set(name, { name, spores, accepts, check, accept, maxBytes, perHour, maxWait, perDay, secrets })
   }
   return hooks
 }

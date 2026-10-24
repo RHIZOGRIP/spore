@@ -150,7 +150,6 @@ describe('a program\'s delivery through the API', () => {
   const alpha = () => join(root, 'home', 'alpha')
   const held = () => heldIn(alpha()).map(row => JSON.parse(row.entry))
   const sent = { delivery: 'doc-1', text: 'Analyse it.', payload: { doc: 'q3.pdf' } }
-  const mine = { plugin: 'da', name: 'mine', timeout: '30s', attach: { files: 4, bytes: '1MB' } }
 
   const restart = async (callers = {}, delivering = {}, extra = {}) => {
     const secrets = { API_APP: APP, API_NARROW: NARROW }
@@ -194,14 +193,16 @@ describe('a program\'s delivery through the API', () => {
     expect(readInbox(alpha())).toEqual([])
   })
 
-  it('runs the owner\'s router bound to the caller on its payload, reading what the spore\'s reads: grant, and the delivery carries what it attached', async () => {
+  const preparing = (extra = '') => writeFileSync(join(alpha(), 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5').replace('\nretain:', `\nprepare: [api:app=pdf/SPORE_PDF_PAGES]\nprepare.timeout: 30s\nprepare.attach: [4, 1MB]\n${extra}retain:`))
+
+  it('runs the program the spore binds to the caller on its payload, reading what its reads: grant, and the delivery carries what it attached', async () => {
     const docs = join(root, 'docs')
     mkdirSync(docs)
-    writeFileSync(join(alpha(), 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5').replace('\nretain:', `\nreads: [docs=${docs}]\nretain:`))
+    preparing(`reads: [docs=${docs}]\n`)
     const ran = []
-    await restart({ app: { router: { ...mine, reads: 'spore' } } }, {
-      routerOf: () => ({ program: '/plugins/da/bin/mine', reads: [] }),
-      attachBy: async (asked) => {
+    await restart({}, {
+      programOf: () => ({ program: '/plugins/pdf/bin/pages', reads: [] }),
+      prepareBy: async (asked) => {
         ran.push(asked)
         mkdirSync(join(asked.ws, asked.into), { recursive: true })
         writeFileSync(join(asked.ws, asked.into, 'pages.json'), readFileSync(asked.payload))
@@ -209,23 +210,39 @@ describe('a program\'s delivery through the API', () => {
       }
     })
     const body = { ...sent, attach: [{ name: 'note.txt', mime: 'text/plain', data: '' }] }
-    expect((await call('POST', '/v1/spores/alpha/deliveries', { body })).json()).toMatchObject({ outcome: 'held for router da/mine', started: false })
+    expect((await call('POST', '/v1/spores/alpha/deliveries', { body })).json()).toMatchObject({ outcome: 'held — prepared by pdf/SPORE_PDF_PAGES', started: false })
     await server.routed()
-    expect(ran[0]).toMatchObject({ origin: 'api:app', ref: 'doc-1', headers: null, reads: [docs], timeoutMs: 30_000 })
+    expect(ran[0]).toMatchObject({ origin: 'api:app', ref: 'doc-1', headers: null, reads: [docs], timeoutMs: 30_000, attach: { files: 4, bytes: 1024 * 1024 } })
     expect(ran[0].payload).toMatch(/payload\.json$/)
     expect(held()[0].files.map(file => file.name)).toEqual(['payload.json', 'note.txt', 'pages.json'])
     expect(released).toEqual([alpha()])
   })
 
-  it('gives the router an empty stdin when the delivery has no payload, and is released at once without a router bound', async () => {
+  it('gives the program an empty stdin when the delivery has no payload', async () => {
+    preparing()
     const ran = []
-    await restart({ app: { router: mine } }, {
-      routerOf: () => ({ program: '/plugins/da/bin/mine', reads: [] }),
-      attachBy: async (asked) => { ran.push(asked); return { files: [] } }
+    await restart({}, {
+      programOf: () => ({ program: '/plugins/pdf/bin/pages', reads: [] }),
+      prepareBy: async (asked) => { ran.push(asked); return { files: [] } }
     })
     await call('POST', '/v1/spores/alpha/deliveries', { body: { delivery: 'doc-2', attach: [{ name: 'payload.txt', mime: 'text/plain', data: '' }] } })
     await server.routed()
     expect(ran[0]).toMatchObject({ payload: null, reads: [] })
+  })
+
+  it('asks the spore\'s router for the caller, and holds the delivery up to the caller\'s maxWait', async () => {
+    mkdirSync(join(alpha(), 'data', 'routes'), { recursive: true })
+    writeFileSync(join(alpha(), 'data', 'routes', 'api-app.route'), '#!/bin/sh\n')
+    const asked = []
+    await restart({ app: { maxWait: '1h' } }, { route: async (question) => { asked.push(question); return { wait: 3 * 3_600_000, summary: 'report queued' } } })
+    expect((await call('POST', '/v1/spores/alpha/deliveries', { body: sent })).json()).toMatchObject({ outcome: 'held — timed by api-app.route', started: false })
+    await server.routed()
+    expect(asked[0]).toMatchObject({ origin: 'api:app', ref: 'doc-1', prepared: null })
+    const [row] = heldIn(alpha())
+    expect(row.summary).toBe('report queued')
+    expect(row.releaseAt).toBe(row.deadline)
+    expect(Date.parse(row.deadline) - Date.parse(row.at)).toBeGreaterThan(59 * 60_000)
+    expect(released).toEqual([])
   })
 
   it('answers a spore the caller may not reach as one that does not exist, and refuses a delivery it cannot read', async () => {
@@ -255,7 +272,7 @@ describe('a program\'s delivery through the API', () => {
   })
 
   it('has no route for a hook', async () => {
-    expect((await call('POST', '/v1/hooks/lake/deliveries', { body: sent })).status).toBe(404)
+    expect((await call('POST', '/v1/hooks/scans/deliveries', { body: sent })).status).toBe(404)
   })
 })
 
@@ -286,11 +303,10 @@ describe('api.json', () => {
     expect(loadApi(write({ listen: '127.0.0.1:8787', callers: { a: { token, spores: ['*'] } } }), env).listen).toEqual({ host: '127.0.0.1', port: 8787 })
   })
 
-  it('binds an owner\'s router to a caller, its reads a list of directories or the spore\'s own grants', () => {
-    const router = { plugin: 'da', name: 'mine', timeout: '45s', attach: { files: 20, bytes: '200MB' }, reads: 'spore' }
-    const [caller] = loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], router } } }), env).callers
-    expect(caller.router).toEqual({ plugin: 'da', name: 'mine', timeoutMs: 45_000, attach: { files: 20, bytes: 200 * 1024 * 1024 }, reads: 'spore' })
-    expect(loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'] } } }), env).callers[0].router).toBe(null)
-    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], router: { ...router, timeout: '2m' } } } }), env)).toThrow(/router timeout spore cannot take — 2m for a/)
+  it('takes a caller\'s maxWait, and refuses a router, naming where what prepares a delivery is bound now', () => {
+    expect(loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], maxWait: '30m' } } }), env).callers[0].maxWait).toBe(30 * 60_000)
+    expect(loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'] } } }), env).callers[0].maxWait).toBe(null)
+    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], maxWait: 'soon' } } }), env)).toThrow(/maxWait for a it cannot read — "soon"/)
+    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], router: { plugin: 'pdf', name: 'pages' } } } }), env)).toThrow(/router for a, which api.json no longer binds/)
   })
 })

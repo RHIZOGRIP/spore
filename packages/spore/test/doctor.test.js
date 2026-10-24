@@ -104,6 +104,13 @@ describe('spore doctor', () => {
     expect(examine().needsTick).toEqual(['worker is granted jobs'])
   })
 
+  it('reports a spore prepared by a plugin it may not use, and that it holds deliveries while they are prepared', () => {
+    spore('main', 'prepare: [hook:scans=pdf/SPORE_PDF_PAGES]\nprepare.timeout: 30s\nprepare.attach: [2, 1MB]\n')
+    const { findings, needsTick } = examine()
+    expect(findings).toEqual([expect.objectContaining({ subject: 'main', problem: expect.stringMatching(/^prepares deliveries with plugin pdf, which is not allowed — every turn is refused/) })])
+    expect(needsTick).toEqual(['main holds deliveries while they are prepared'])
+  })
+
   it('reports a spore whose definition does not parse, and carries on with the rest', () => {
     spore('main', 'jobs: [2, 1m]\n')
     mkdirSync(join(home, 'broken'))

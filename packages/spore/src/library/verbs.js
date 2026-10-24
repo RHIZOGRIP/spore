@@ -609,6 +609,7 @@ export function show ({ ws, configFile = CONFIG_FILE } = {}) {
     memory: definition.memory ?? null,
     reads: definition.reads,
     writes: definition.writes,
+    prepare: definition.prepare ?? null,
     messages: readTranscript(path).length,
     waiting: waitingIn(path, state.state === RUNNING).length,
     paused: paused(),

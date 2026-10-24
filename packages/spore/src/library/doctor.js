@@ -15,7 +15,7 @@ import { CONFIG_FILE, containing, ENVIRONMENT_FILE, MEMORY_FILE, SOURCES_FILE, r
 import { isWorkspace } from './discover.js'
 import { list, show, sporangia } from './verbs.js'
 import { containCheck, keptRefusal } from '../core/command.js'
-import { containOf, listPlugins, misplaced, ownerRouter, secretsIn, showPlugin } from '../core/plugins.js'
+import { containOf, listPlugins, misplaced, pluginProgram, secretsIn, showPlugin } from '../core/plugins.js'
 import { paused, SLOT_DIR, spendStop } from '../core/admission.js'
 import { DEFAULT_SPORANGIUM } from '../core/sporangia.js'
 import { outbox } from '../core/spore-dir.js'
@@ -98,7 +98,7 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
   const environment = resolve(dir, ENVIRONMENT_FILE)
   const unsetIn = (described) => secretsIn(described).filter(variable => env[variable] === undefined)
 
-  if (root) problem('machine', 'user', 'spore is running as root — every turn, job and router is refused', 'run spore as an ordinary user (in a container, USER or --user)')
+  if (root) problem('machine', 'user', 'spore is running as root — every turn, job, router and prepare step is refused', 'run spore as an ordinary user (in a container, USER or --user)')
   if (abi === -constants.errno.EOPNOTSUPP) problem('machine', 'landlock', 'is built into this kernel and not enabled at boot — every turn fails', 'add landlock to the kernel\'s lsm= boot parameter, or pass --unsafe to run unconfined')
   else if (abi < 0) problem('machine', 'landlock', `is not in this kernel (${getSystemErrorName(abi)}) — every turn fails`, 'run spore on Linux 5.13+ built with CONFIG_SECURITY_LANDLOCK, or pass --unsafe to run unconfined')
   else if (abi < 6) note('machine', 'landlock', `is version ${abi}, which cannot scope signals: a spore can signal another spore's processes and reach its abstract sockets`, 'Linux 6.12 or newer scopes both — what matters when spores of different people share one account')
@@ -122,7 +122,7 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
   }
 
   if (!containing(config)) note('machine', 'processes', 'turns are not contained (contain off): each sees the processes and command lines of every other spore of this user', 'spore config set contain on, where this host gives unprivileged user namespaces')
-  else if (!contain.contained) problem('machine', 'processes', `every turn, job and router is refused: this host cannot give them namespaces of their own (${contain.why})`, 'allow unprivileged user namespaces for spore\'s confine — on Ubuntu an AppArmor profile for it, in Docker seccomp, apparmor and systempaths unconfined (spore filters what it confines itself) — or spore config set contain off when no one else\'s spores run as this user')
+  else if (!contain.contained) problem('machine', 'processes', `every turn, job, router and prepare step is refused: this host cannot give them namespaces of their own (${contain.why})`, 'allow unprivileged user namespaces for spore\'s confine — on Ubuntu an AppArmor profile for it, in Docker seccomp, apparmor and systempaths unconfined (spore filters what it confines itself) — or spore config set contain off when no one else\'s spores run as this user')
 
   const spores = []
   const { workspaces, missing } = list({ configFile })
@@ -140,14 +140,27 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
     for (const plugin of shown.plugins) {
       if (!config.plugins?.[plugin]) problem('spores', name, `uses plugin ${plugin}, which is not allowed — every turn is refused`, `spore plugin allow ${plugin}, or drop it from plugins: in its spore.cmk`)
     }
-    if (shown.plugins.every(plugin => config.plugins?.[plugin])) {
+    const preparing = [...new Set((shown.prepare?.steps ?? []).map(step => step.plugin))].filter(plugin => !shown.plugins.includes(plugin))
+    for (const plugin of preparing) {
+      if (!config.plugins?.[plugin]) problem('spores', name, `prepares deliveries with plugin ${plugin}, which is not allowed — every turn is refused`, `spore plugin allow ${plugin}, or drop it from prepare: in its spore.cmk`)
+    }
+    if ([...shown.plugins, ...preparing].every(plugin => config.plugins?.[plugin])) {
       try {
         const refused = keptRefusal(containOf(ws, { config }), containing(config) && contain.contained)
-        if (refused) problem('spores', name, `${refused.problem} — every turn, job and router is refused`, refused.fix)
+        if (refused) problem('spores', name, `${refused.problem} — every turn, job, router and prepare step is refused`, refused.fix)
       } catch (err) {
         problem('spores', name, err.message, err.detail)
       }
     }
+    for (const step of shown.prepare?.steps ?? []) {
+      if (!config.plugins?.[step.plugin]) continue
+      try {
+        pluginProgram(step.plugin, step.program, { config })
+      } catch (err) {
+        problem('spores', name, `prepares ${step.origin} with ${step.plugin}/${step.program}: ${err.message} — those deliveries reach it without what it prepares`, err.detail)
+      }
+    }
+    if (shown.prepare) needsTick.push(`${name} holds deliveries while they are prepared`)
     if (shown.differs.length) note('spores', name, `${shown.differs.join(', ')} differ from what is installed`, `spore upgrade ${name}`)
     if (shown.state === 'crashed') note('spores', name, `its runner died (pid ${shown.pid}) without recording the turn`, 'the next spore send records it')
     if (shown.schedules.length) needsTick.push(`${name} has schedules`)
@@ -190,16 +203,6 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
   described(SOURCES_FILE, raw => Object.entries(raw).map(([source, spec]) => ({ what: `source ${source}`, spec, uses: spore => spore.sources.includes(source), wrong: misplaced(spec) })))
   described(MEMORY_FILE, raw => [{ what: 'the vector store', spec: raw, uses: spore => spore.memory?.backend === 'vectors' }])
 
-  const boundRouter = (file, whose, { plugin, name, reads }) => {
-    try {
-      ownerRouter(plugin, name)
-    } catch (err) {
-      problem('operator', file, `${whose}'s router ${plugin}/${name}: ${err.message} — its deliveries reach their spores without its attachments`, err.detail)
-    }
-    if (reads !== 'spore') for (const dir of reads.filter(dir => !existsSync(dir))) problem('operator', file, `${whose}'s router reads ${dir}, which is not there — it attaches nothing`, 'make it, or drop it from the router\'s reads')
-    needsTick.push(`${whose} holds deliveries for its router`)
-  }
-
   const hooks = hooksPath(configFile)
   if (existsSync(hooks)) {
     try {
@@ -209,7 +212,6 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
           else startsUnasked(spore, `hook ${hook.name}`)
         }
         if (hook.maxWait) needsTick.push(`hook ${hook.name} holds deliveries`)
-        if (hook.router) boundRouter(hooks, `hook ${hook.name}`, hook.router)
       }
     } catch (err) {
       problem('operator', hooks, err.message, err.detail)
@@ -219,7 +221,7 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
   const api = apiPath(configFile)
   if (existsSync(api)) {
     try {
-      for (const caller of loadApi(api, env).callers.filter(each => each.router)) boundRouter(api, `caller ${caller.name}`, caller.router)
+      for (const caller of loadApi(api, env).callers.filter(each => each.maxWait)) needsTick.push(`caller ${caller.name} holds deliveries`)
     } catch (err) {
       problem('operator', api, err.message, err.detail)
     }

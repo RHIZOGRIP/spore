@@ -31,7 +31,7 @@ const SPORE_PACKAGE = JSON.parse(readFileSync(join(SPORE_ROOT, 'package.json'), 
 
 const PREFIX = 'spore-plugin-'
 export const PLUGIN_READS = 'SPORE_PLUGIN_READS'
-const MANIFEST_FIELDS = ['works', 'settings', 'programs', 'routes', 'describe', 'env', 'contain', 'modules', 'sources', 'reference', 'precursors', 'services']
+const MANIFEST_FIELDS = ['works', 'settings', 'programs', 'describe', 'env', 'contain', 'modules', 'sources', 'reference', 'precursors', 'services']
 const CONTAIN_FIELDS = ['hide', 'keep', 'missing']
 const SERVICE_FIELDS = ['what', 'program', 'instances', 'check']
 const SERVICE_NAME = /^[a-z][a-z0-9-]*$/
@@ -182,6 +182,7 @@ const fits = (kind, value) => kind === 'port'
  */
 export function checkPlugin (found, settings = null) {
   const { pkg, manifest, refuse } = readManifest(found)
+  if (manifest.routes !== undefined) throw refuse('has routes, which spore no longer reads', 'a program it offers is one of its programs, as "programs": { "SPORE_PDF_PAGES": "./bin/pages.js" }, and a spore binds one with prepare: in its spore.cmk')
   const unknown = Object.keys(manifest).filter(key => !MANIFEST_FIELDS.includes(key))
   if (unknown.length) throw refuse(`has a manifest field spore does not know — ${unknown.join(', ')}`, `a manifest takes ${MANIFEST_FIELDS.join(', ')}`)
 
@@ -230,13 +231,6 @@ export function checkPlugin (found, settings = null) {
     programs[name] = runnable(found, `a program ${name}`, spec, reads, refuse)
   }
 
-  const routes = {}
-  if (!isRecord(manifest.routes ?? {})) throw refuse('has routes that are not a map', 'routes maps a router\'s name to its program, as { "mine": "./bin/mine.js" }')
-  for (const [name, spec] of Object.entries(manifest.routes ?? {})) {
-    if (!SERVICE_NAME.test(name)) throw refuse(`has a router named "${name}"`, 'a router\'s name is lowercase letters, digits and -')
-    routes[name] = runnable(found, `a router ${name}`, spec, reads, refuse)
-  }
-
   const env = {}
   if (!isRecord(manifest.env ?? {})) throw refuse('has an env that is not a map', 'env maps a variable to its value, as { "X_PORT": "{settings.port}" }')
   for (const [name, template] of Object.entries(manifest.env ?? {})) {
@@ -269,7 +263,7 @@ export function checkPlugin (found, settings = null) {
   const services = checkServices(found, manifest.services ?? {}, refuse)
   const describe = checkDescribe(found, manifest.describe ?? [], Object.keys(programs), refuse)
 
-  return { name: found.name, package: found.package, version: pkg.version, dir: found.dir, range, kinds, settings, programs, routes, describe, env, contain, modules, sources, reference, precursors, reads, services }
+  return { name: found.name, package: found.package, version: pkg.version, dir: found.dir, range, kinds, settings, programs, describe, env, contain, modules, sources, reference, precursors, reads, services }
 }
 
 /** `spec` located and checked as something run: there, executable, inside the plugin's reads. */
@@ -430,27 +424,36 @@ const overlapping = (a, b) => a === b || a.startsWith(`${b}${sep}`) || b.startsW
 
 /**
  * What a contained process of this spore keeps in view of what its plugins hide — the agent's,
- * a job's, a router's, a cell's outside any turn — with nothing copied or linked.
+ * a job's, a router's, a prepare step's, a cell's outside any turn — with nothing copied or linked.
  */
 export function containOf (ws, { config = readConfig(), roots = pluginRoots() } = {}) {
-  return (usedPlugins(ws, config, roots) ?? []).map(plugin => keptOf(plugin, ws)).filter(Boolean)
+  const used = usedPlugins(ws, config, roots)
+  return used ? [...used.agent, ...used.prepare].map(plugin => keptOf(plugin, ws)).filter(Boolean) : []
 }
 
-/** The plugins the spore's definition names, each allowed and checked; null with no readable definition. */
+/**
+ * The plugins the spore's definition uses, each allowed and checked: `agent`, those `plugins:`
+ * gives its turns, and `prepare`, those only `prepare:` names; null with no readable definition.
+ */
 function usedPlugins (ws, config, roots) {
   if (!existsSync(definitionPath(ws))) return null
   const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
   if (definition.error) return null
-  return definition.plugins.map(name => {
+  const checked = (name, how, field) => {
     const allowed = config.plugins?.[name]
     if (!allowed) {
-      throw new SporeError(`${ws} uses plugin "${name}", which is not allowed`, {
+      throw new SporeError(`${ws} ${how} plugin "${name}", which is not allowed`, {
         type: 'PLUGIN_NOT_ALLOWED',
-        detail: `spore plugin allow ${name}, or drop it from plugins: in its spore.cmk`
+        detail: `spore plugin allow ${name}, or drop it from ${field}: in its spore.cmk`
       })
     }
     return allowedPlugin(name, allowed, roots)
-  })
+  }
+  const preparing = [...new Set((definition.prepare?.steps ?? []).map(step => step.plugin))].filter(name => !definition.plugins.includes(name))
+  return {
+    agent: definition.plugins.map(name => checked(name, 'uses', 'plugins')),
+    prepare: preparing.map(name => checked(name, 'prepares deliveries with', 'prepare'))
+  }
 }
 
 /** What `allow` records of a plugin: the settings it was given, and which installed copy it was. */
@@ -483,29 +486,32 @@ function readsOf (plugins) {
  * A definition that does not parse gets nothing here: the agent refuses it, and the turn it
  * records says why.
  *
- * @returns {{ env: Record<string, string>, plugins: object[], sources: object }} `env` is for the
- * agent, through the runner; it carries `SPORE_PLUGIN_READS`, what the agent's sandbox grants it of
- * the plugins, when there are any. `sources` are the plugins' endpoints, for the runner alone
+ * @returns {{ env: Record<string, string>, plugins: object[], sources: object, contain: object[] }}
+ * `env` is for the agent, through the runner; it carries `SPORE_PLUGIN_READS`, what the agent's
+ * sandbox grants it of the plugins, when there are any. `sources` are the plugins' endpoints, for
+ * the runner alone. Everything but `contain` comes of the plugins `plugins:` names; `contain`, the
+ * spore's one view, of those `prepare:` names too.
  */
 export function preparePlugins (ws, { config = readConfig(), roots = pluginRoots() } = {}) {
   const used = usedPlugins(ws, config, roots)
   if (!used) return { env: {}, plugins: [], sources: {}, contain: [] }
+  const contain = []
+  for (const plugin of [...used.agent, ...used.prepare]) {
+    const kept = keptOf(plugin, ws)
+    if (!kept) continue
+    const other = contain.find(k => overlapping(k.hide, kept.hide))
+    if (other) throw new SporeError(`plugins ${other.plugin} and ${plugin.name} both hide ${kept.hide}`, { type: 'PLUGIN_CONFLICT', detail: 'a spore can use one of them, not both' })
+    contain.push(kept)
+  }
   const env = {}
   const from = {}
   const modules = {}
   const sources = {}
   const describedBy = {}
-  const contain = []
   const calls = []
   const plugins = []
-  for (const plugin of used) {
+  for (const plugin of used.agent) {
     const { name } = plugin
-    const kept = keptOf(plugin, ws)
-    if (kept) {
-      const other = contain.find(k => overlapping(k.hide, kept.hide))
-      if (other) throw new SporeError(`plugins ${other.plugin} and ${name} both hide ${kept.hide}`, { type: 'PLUGIN_CONFLICT', detail: 'a spore can use one of them, not both' })
-      contain.push(kept)
-    }
     for (const [key, value] of Object.entries(fill(plugin, ws))) {
       if (from[key]) {
         throw new SporeError(`plugins ${from[key]} and ${name} both set ${key}`, { type: 'PLUGIN_CONFLICT', detail: 'a spore can use one of them, not both' })
@@ -638,7 +644,6 @@ const describe = (plugin) => ({
   works: plugin.range,
   settings: plugin.kinds,
   programs: plugin.programs,
-  routes: plugin.routes,
   env: plugin.env,
   contain: plugin.contain,
   reference: plugin.reference,
@@ -651,16 +656,18 @@ const describe = (plugin) => ({
 })
 
 /**
- * The owner's router `name` of the installed plugin `plugin`: `{ program, reads }`, the program and
- * what it may read of the plugin and its dependencies.
+ * The program `variable` names among the `programs` of the allowed plugin `plugin`, for the runtime
+ * to run: `{ program, reads }`, the program and what it may read of the plugin and its dependencies.
  */
-export function ownerRouter (plugin, name, roots = pluginRoots()) {
-  const checked = checkPlugin(findPlugin(plugin, roots))
-  const program = checked.routes[name]
+export function pluginProgram (plugin, variable, { config = readConfig(), roots = pluginRoots() } = {}) {
+  const allowed = config.plugins?.[plugin]
+  if (!allowed) throw new SporeError(`plugin ${plugin} is not allowed`, { type: 'PLUGIN_NOT_ALLOWED', detail: `spore plugin allow ${plugin}` })
+  const checked = allowedPlugin(plugin, allowed, roots)
+  const program = checked.programs[variable]
   if (!program) {
-    throw new SporeError(`plugin ${plugin} offers no router "${name}"`, {
-      type: 'ROUTER_UNKNOWN',
-      detail: Object.keys(checked.routes).length ? `it offers ${Object.keys(checked.routes).join(', ')}` : 'it offers none'
+    throw new SporeError(`plugin ${plugin} has no program ${variable}`, {
+      type: 'PROGRAM_UNKNOWN',
+      detail: Object.keys(checked.programs).length ? `it has ${Object.keys(checked.programs).join(', ')}` : 'it has none'
     })
   }
   return { program, reads: checked.reads }

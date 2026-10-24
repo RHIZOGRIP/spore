@@ -76,9 +76,9 @@ The grammar has nothing else: no nesting, no multi-line values, no defaults.
 |---|---|---|
 | count | digits only: `40` | `rounds`, `extend.rounds` |
 | amount | dollars as `<digits>` or `<digits>.<digits>`: `0.50`, `5`, `5.00`. Not `.5`, not `$0.50` | `cost`, `extend.cost` |
-| duration | digits and one unit, `s`, `m` or `h`: `90s`, `10m`, `3h`. No days, fractions or combinations (`1h30m` is refused; write `90m`). A bare number is not a duration | `wall`, `extend.wall`, `schedules`, `jobs`, `jobs.maxWait`, a schedule's `late` |
-| size | digits and an optional unit, `B`, `KB`, `MB` or `GB` in any case: `10MB`, `512kb`. Units are 1024-based, and a bare number is bytes | `images` |
-| whole number | digits only, at least 1: `64000` — not `64k`, `6.4e4`, `+5` or `2.0` | `retain`, `history`, `push`, `pull`, the counts of `images`, `schedules` and `jobs`, `jobs.perDay` |
+| duration | digits and one unit, `s`, `m` or `h`: `90s`, `10m`, `3h`. No days, fractions or combinations (`1h30m` is refused; write `90m`). A bare number is not a duration | `wall`, `extend.wall`, `schedules`, `jobs`, `jobs.maxWait`, `prepare.timeout`, a schedule's `late` |
+| size | digits and an optional unit, `B`, `KB`, `MB` or `GB` in any case: `10MB`, `512kb`. Units are 1024-based, and a bare number is bytes | `images`, `prepare.attach` |
+| whole number | digits only, at least 1: `64000` — not `64k`, `6.4e4`, `+5` or `2.0` | `retain`, `history`, `push`, `pull`, the counts of `images`, `schedules`, `jobs` and `prepare.attach`, `jobs.perDay` |
 | name | a letter, then letters, digits, `-` and `_` | enzymes, `reads` and `writes` names, sources and their parameters, `cell-models` names, a precursor's `model` |
 | model id | `<provider>/<name>` with no whitespace: `anthropic/claude-sonnet-5-5` | `model`, `models`, `cell-models`, `embedding` |
 
@@ -132,7 +132,7 @@ that level. **Absent** says what leaving the field out means where it is accepte
 | [`reasoning`](#reasoning) | list of `summaries`, `raw` | optional | optional | neither asked for | what each model call asks for besides the answer | [What a running turn shows](../ARCHITECTURE.md#what-a-running-turn-shows) |
 | [`schedules`](#schedules) | `[count, interval]` | optional | refused | `schedules/` read-only to the agent | lets the agent write its own schedules, bounded | [Turns the clock starts](../ARCHITECTURE.md#turns-the-clock-starts) |
 | [`jobs`](#jobs) | `[count, wall]` | optional | refused | no jobs | work a turn starts that outlives it | [Jobs](../ARCHITECTURE.md#jobs) |
-| [`jobs.maxWait`](#jobsmaxwait) | duration | optional² | refused | delivered at once | longest a job's delivery may be held | [Deliveries nobody typed](../ARCHITECTURE.md#deliveries-nobody-typed) |
+| [`jobs.maxWait`](#jobsmaxwait) | duration | optional² | refused | released once timed | longest the spore's router or triage cell may keep a job's delivery waiting | [Deliveries nobody typed](../ARCHITECTURE.md#deliveries-nobody-typed) |
 | [`jobs.perDay`](#jobsperday) | whole number | optional² | refused | 100 | triage cells a job's deliveries may start a day | same |
 | [`jobs.writes`](#jobswrites) | list of `writes` names | optional² | refused | none | `writes` directories a job may write | [Jobs](../ARCHITECTURE.md#jobs) |
 | [`dream`](#dream) | `[turns, quiet]` | optional | refused | never dreams | when a dream is due: the turns and the quiet that together make it | [Dreams](../ARCHITECTURE.md#dreams) |
@@ -140,6 +140,9 @@ that level. **Absent** says what leaving the field out means where it is accepte
 | [`dream.wall`](#dreamcost-and-dreamwall) | `[soft, hard]` durations | with `dream` | refused | — | how long one dream may hold the spore | same |
 | [`dream.precursor`](#dreamprecursor) | precursor name | with `dream` | refused | — | the precursor a dream runs | same |
 | [`plugins`](#plugins) | list of names | optional | refused | none | allowed plugins the spore uses | [Plugins](../ARCHITECTURE.md#plugins) |
+| [`prepare`](#prepare) | list of `origin=plugin/program` | optional | refused | none | the program that prepares each origin's deliveries | [Deliveries nobody typed](../ARCHITECTURE.md#deliveries-nobody-typed) |
+| [`prepare.timeout`](#preparetimeout) | duration | with `prepare` | refused | — | how long one prepare step may run | same |
+| [`prepare.attach`](#prepareattach) | `[count, size]` | with `prepare` | refused | — | the files and bytes one prepare step may attach | same |
 
 ¹ A sporangium's `spore.cmk`, the template spores are made from, may leave `model` out
 (§[`model`](#model)).
@@ -583,9 +586,10 @@ directories that `jobs.writes` names. Absent, the runner serves no job socket
 jobs.maxWait: 30m
 ```
 
-A single duration greater than zero: the longest a job's delivery may be held for the spore's
-router or triage cell. Absent, a job's deliveries are said at once
-([Deliveries nobody typed](../ARCHITECTURE.md#deliveries-nobody-typed)).
+A single duration greater than zero: the longest the spore's router or triage cell for a job
+(`data/routes/job-<name>.route`, `precursors/route-job-<name>.cmk`) may keep its delivery waiting.
+Absent, a job's delivery waits for nothing: it is released as soon as it is timed, or at once when
+the spore keeps neither ([Deliveries nobody typed](../ARCHITECTURE.md#deliveries-nobody-typed)).
 
 ### `jobs.perDay`
 
@@ -664,10 +668,48 @@ plugins: [browser, ssh]
 **`spore.cmk` only.** Cells the spore spawns get none of the plugin's programs, variables or
 modules. Each entry is a plugin's
 name after `spore-plugin-`: lowercase letters, digits, `.`, `-` and `_`, starting with a letter or
-digit. No entry may appear twice. A plugin must also be allowed on the machine
+digit. No entry may appear twice. These are what the spore's turns get; a plugin that only
+[`prepare`](#prepare) names needs no entry. A plugin must also be allowed on the machine
 (`spore plugin allow <name>`), or `send` refuses the turn before anything is said
 ([Plugins](../ARCHITECTURE.md#plugins),
 [operating.md §Plugins on the host](operating.md#plugins-on-the-host)).
+
+## Preparing deliveries
+
+### `prepare`
+
+```
+plugins: [pdf]
+prepare: [hook:scans=pdf-pages/SPORE_PDF_PAGES, api:pipeline=pdf-pages/SPORE_PDF_PAGES]
+prepare.timeout: 45s
+prepare.attach: [20, 200MB]
+```
+
+**`spore.cmk` only.** A list of `<origin>=<plugin>/<program>`, the program the variable of one of
+the plugin's `programs`: for each origin, a delivery nobody typed — `hook:<name>`, `api:<caller>`
+or `job:<name>` — is held and the program runs on it before any turn reads it, the files it writes
+attached to the delivery. The plugin must offer the program among its `programs` ([plugins
+§Programs that prepare deliveries](plugins.md#programs-that-prepare-deliveries)), and be allowed on
+the machine: `send` refuses a turn when it is not, as for [`plugins`](#plugins), and a delivery
+whose program cannot start carries a line saying so. It need not be in `plugins`: named only here,
+it gives the spore's turns nothing, and what it hides (`contain`) is hidden from every process of
+the spore. One program prepares an origin: an origin named
+twice is refused. A step reads the plugin, the delivery and this file's [`reads`](#reads) grants,
+never its `writes` or the workspace ([Deliveries nobody
+typed](../ARCHITECTURE.md#deliveries-nobody-typed)).
+
+### `prepare.timeout`
+
+A single duration greater than zero and at most `60s`: how long one step may run before it is
+stopped and the delivery goes on without what it would have attached.
+
+### `prepare.attach`
+
+A two-item list: a whole number of files, at most 100, and a size, at most `256MB`: what one step
+may attach. A step that writes more attaches nothing, and the delivery says why.
+
+`prepare.timeout` and `prepare.attach` are both required beside `prepare`, and each is refused
+without it. A [source](#sources) named `prepare` is refused.
 
 ## A schedule
 

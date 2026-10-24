@@ -537,9 +537,9 @@ own instead — a document to analyse, a batch to check — deliver it:
 
 ```bash
 curl --unix-socket /run/spore/api.sock -H "Authorization: Bearer $T" \
-  -d '{"delivery": "doc-8812", "text": "Analyse this document.", "payload": {"lake": "l1", "doc": "q3.pdf"}}' \
-  http://spore/v1/spores/analyst/deliveries
-# {"delivery":"doc-8812","outcome":"started","started":true}
+  -d '{"delivery": "upload-8812", "text": "Summarize this report.", "payload": {"file": "q3.pdf"}}' \
+  http://spore/v1/spores/report-q3/deliveries
+# {"delivery":"upload-8812","outcome":"started","started":true}
 ```
 
 The spore reads it as the operator's own message: its `text`, with `payload` attached as
@@ -550,10 +550,14 @@ twice is delivered once (`"outcome": "already received"`). A delivery carries a 
 file at least; an attached file may not be called `payload.json` beside a payload. Your
 `traceparent` is the parent of the turn it starts; while spores are paused the answer is `503`.
 
-When the operator binds a router to your token in `api.json`
-([docs/operating.md](docs/operating.md#the-http-api-service)), each delivery is held while it runs
-— `"outcome": "held for router <plugin>/<name>"` — and released with what it attached; it reads
-`payload.json` on its stdin, or nothing without one.
+A spore may hold a delivery before any turn reads it. When its definition names a program that
+prepares deliveries from your caller (`prepare: [api:<caller>=<plugin>/<program>]`,
+[docs/definition.md](docs/definition.md#prepare)), the delivery is held while it runs —
+`"outcome": "held — prepared by <plugin>/<program>"` — and released with what it attached; the
+program reads `payload.json` on its stdin, or nothing without one. When the spore keeps a router or
+a triage cell for `api:<caller>`, it may keep the delivery waiting, at most your caller's `maxWait`
+in `api.json` ([docs/operating.md](docs/operating.md#the-http-api-service)) —
+`"outcome": "held — timed by <router>"`. `started` is then false: the turn starts on release.
 
 ### Errors
 

@@ -191,7 +191,7 @@ function validate (raw, file) {
   if (raw.contain !== undefined && typeof raw.contain !== 'boolean') {
     throw new SporeError(`${file} has a contain that is not true or false`, {
       type: 'CONFIG_INVALID',
-      detail: 'contain says whether every turn, job and router runs in namespaces of its own, seeing only its own processes — spore config set contain on|off'
+      detail: 'contain says whether every turn, job, router and prepare step runs in namespaces of its own, seeing only its own processes — spore config set contain on|off'
     })
   }
   if (raw.docs !== undefined && !DOCS.includes(raw.docs)) {
@@ -225,7 +225,7 @@ const switchOf = (value) => {
   throw new SporeError(`contain is on or off, not "${value}"`, { type: 'CONFIG_INVALID', detail: 'spore config set contain on|off' })
 }
 
-/** Whether turns, jobs and routers must run contained: on unless the operator turned it off. */
+/** Whether turns, jobs, routers and prepare steps must run contained: on unless the operator turned it off. */
 export const containing = (config) => config.contain ?? DEFAULTS.contain
 
 const docsOf = (value) => {

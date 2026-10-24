@@ -38,7 +38,7 @@ A spore using the plugin runs contained, in a mount namespace of its own, where
 `/run/user/<uid>/sluice` is an empty directory with only `spores/<spore>/` put back. It reaches its
 own socket and no other spore's, and none of the other sluice brokers of its user, an agent
 broker's included. A spore that is not contained (`spore config set contain off`, or a host
-without user namespaces) would see them all, so its turns, jobs and routers are refused instead.
+without user namespaces) would see them all, so its turns, jobs, routers and prepare steps are refused instead.
 
 Processes of the user outside spore are not contained: they reach every socket, as they could run
 the commands themselves. What must stay out of reach of those runs as another user.

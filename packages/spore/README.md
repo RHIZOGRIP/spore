@@ -380,7 +380,7 @@ Three layers:
 - **`safe-path.js`** — canonical containment, gates the tools
 - **Landlock** on the process — kernel-enforced filesystem confinement
 - **`confine`** — applies Landlock and a syscall filter *then* execs, which is what makes `exec`
-  read-only. Every turn, job and router also starts through it in user, PID and mount namespaces of
+  read-only. Every turn, job, router and prepare step also starts through it in user, PID and mount namespaces of
   its own, so it sees only its own processes
 
 Landlock does not gate unix-socket connect.
