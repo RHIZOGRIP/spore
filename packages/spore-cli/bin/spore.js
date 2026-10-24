@@ -254,7 +254,7 @@ if (verb === 'tui') {
 if (verb === 'setup') {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     fail('setup asks questions, and this is not a terminal — the same steps are spore config set home <dir>, ' +
-      'mo onboard <provider>, spore config set model <provider>/<name>, spore config set spendPerDay <dollars>, spore doctor')
+      'mo onboard <provider>, spore config set model <provider>/<name>, spore doctor')
   }
   const { setup } = await import('../src/setup.js')
   try {

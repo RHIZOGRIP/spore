@@ -88,7 +88,7 @@ position, `started` says whether this call started a turn, `pid` is the runner's
   seccomp filter. For a host without Landlock; `spore send --unsafe` sets it. `debug`: starts
   the runner with debug output.
 
-Throws `ADMISSION_FULL`, `SPEND_LIMIT`, `PAUSED` (each `retryable`; when the message was already
+Throws `ADMISSION_FULL`, `PAUSED` (each `retryable`; when the message was already
 said, `detail` says so), `MESSAGE_EMPTY`, `REQUEST_ID_INVALID`, `TRACEPARENT_INVALID`,
 `HOOK_INVALID`, `FROM_INVALID`, `APPROVAL_INVALID`, `ATTACH_INVALID`, `INBOX_UNWRITABLE`, and the refusals of a spore whose plugins cannot be
 prepared, such as `PLUGIN_NOT_ALLOWED`, `PLUGIN_CHANGED`, `PLUGIN_NOT_INSTALLED`, `PLUGIN_CONFLICT`,
@@ -476,7 +476,7 @@ the others print. The guide:
 
 ```
 list({ where, disk = false, configFile })
-→ { configured, file, home, asked, paused, spend, contain, missing, workspaces }
+→ { configured, file, home, asked, paused, contain, missing, workspaces }
 ```
 
 Every spore the configuration points at: those directly under `home` and those named in
@@ -486,7 +486,7 @@ directory, and `asked` is true. Each row of
 `workspaces` is `{ ws, from, writes, definitionError, historyOver, …stateOf(ws) }`, with `bytes`
 when `disk` is true (a walk of the whole tree). `historyOver` is true when the last turn carried
 more history than its bound, by more than a tenth. `missing` is `[{ path, why }]` for listed paths that are gone or
-not a spore. `paused` is `paused()`, `spend` is `spendSoFar()`. Throws the `CONFIG_*` refusals of
+not a spore. `paused` is `paused()`. Throws the `CONFIG_*` refusals of
 `readConfig`.
 
 ### `sporePaths`
@@ -532,11 +532,11 @@ Throws `NOT_A_WORKSPACE`, `DEFINITION_INVALID`.
 
 ```
 usage({ ws, days, since, until, tz, configFile })
-→ { ws, window, days, by, totals, unsettled, spend? }
+→ { ws, window, days, by, totals, unsettled }
 ```
 
-What one spore, or every spore `list` finds when `ws` is left out (`ws: null` in the answer,
-with `spend`), spent over local days in `tz` (default: the process's time zone): the last `days`
+What one spore, or every spore `list` finds when `ws` is left out (`ws: null` in the answer),
+spent over local days in `tz` (default: the process's time zone): the last `days`
 up to today (7 when neither is given), or `since` to `until` (`YYYY-MM-DD`, `until` defaulting to
 today). `days` is one row per day; `by` has `spore`, `origin`, `model`, `outcome` and `precursor`,
 each `[{ key, …counters }]`, most spent first; `unsettled` counts final turns no ledger settled.
@@ -695,15 +695,6 @@ paused({ dir = SLOT_DIR }) → { at, why? } | null
 The pause in force on this user's spores, or `null`
 ([docs/operating.md §Pausing every spore](operating.md#pausing-every-spore)).
 
-### `spendSoFar`
-
-```
-spendSoFar({ dir = SLOT_DIR, config = readConfig() }) → { date, day, month, limits: { day, month } }
-```
-
-What this user's spores have settled today and this month, beside the `spendPerDay` and
-`spendPerMonth` limits (`null` where none is set).
-
 ### `listHooks`
 
 ```
@@ -854,7 +845,7 @@ Makes `into` as the workspace `run` stood when the round of call `at` came back 
 call of the last turn, `'<runId>/0003'` for another), and starts the turn going on from there,
 under `definition` when given. `replay` cuts before the round's results, so its calls run again.
 Returns once the runner has started, like `send`. Throws `FORK_REFUSED`, and `ADMISSION_FULL`,
-`SPEND_LIMIT`, `PAUSED`
+`PAUSED`
 ([docs/operating.md §Forking a turn](operating.md#forking-a-turn-spore-fork)).
 
 ### `forkWorkspace`
@@ -1052,7 +1043,7 @@ release(ws, { now = Date.now(), env }) → { ws, released, started, pid? }
 
 Moves the held deliveries that are due into the inbox, then starts a turn to read them or joins
 the running one, as `send` does. While a turn runs, only deliveries past their deadline move,
-into that turn. Throws `ADMISSION_FULL`, `SPEND_LIMIT`, `PAUSED` and the plugin refusals of `send`.
+into that turn. Throws `ADMISSION_FULL`, `PAUSED` and the plugin refusals of `send`.
 
 ### `survey`
 
@@ -1421,7 +1412,7 @@ doctor({ configFile, env, abi, contain, root, slots = SLOT_DIR })
 ```
 
 What is wrong on this machine for spore, read and never repaired: the kernel's confinement, the
-operator's files, each spore, the plugins, a pause or spend stop. `severity` is `problem` or
+operator's files, each spore, the plugins, a pause. `severity` is `problem` or
 `note`. `needsTick` says why the tick timer is wanted; `replies` lists default reply-to places and
 pending outbox entries. `abi`, `contain` and `root` override what `doctor` detects: the Landlock
 ABI, whether namespaces work, and whether it runs as root.

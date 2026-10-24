@@ -1,30 +1,18 @@
 //! The flags the host gives the runner and a cell outside any turn alike, as `hostFlags` in
-//! `send.js` builds them: the Node and the mohdel helpers they run, the spend limits, whether to
-//! contain, what the spore's plugins keep in view of a contained process, and the gate.
+//! `send.js` builds them: the Node and the mohdel helpers they run, whether to contain, what the spore's plugins keep in view of a contained process, and the gate.
 
 use std::path::PathBuf;
 
 use spore_workspace::kept::{kept_from, Kept};
-use spore_workspace::spend::Limits;
 
 #[derive(Debug, Default)]
 pub struct HostArgs {
     pub node: Option<String>,
     pub session: Option<String>,
     pub chatgpt_helper: Option<String>,
-    pub spend: Limits,
     pub no_contain: bool,
     pub kept: Vec<Kept>,
     pub gate: Option<PathBuf>,
-}
-
-fn dollars(name: &str, given: &str) -> Result<f64, String> {
-    match given.parse::<f64>() {
-        Ok(amount) if amount > 0.0 && amount.is_finite() => Ok(amount),
-        _ => Err(format!(
-            "{name} is an amount of dollars above zero — got {given}"
-        )),
-    }
 }
 
 impl HostArgs {
@@ -35,8 +23,6 @@ impl HostArgs {
             "--node" => self.node = Some(value()),
             "--session" => self.session = Some(value()),
             "--chatgpt-helper" => self.chatgpt_helper = Some(value()),
-            "--spend-per-day" => self.spend.day = Some(dollars(name, &value())?),
-            "--spend-per-month" => self.spend.month = Some(dollars(name, &value())?),
             "--no-contain" => self.no_contain = true,
             "--contain-keep" => self.kept = kept_from(&value())?,
             "--gate" => self.gate = Some(PathBuf::from(value())),
@@ -69,10 +55,6 @@ mod tests {
             "s",
             "--chatgpt-helper",
             "c",
-            "--spend-per-day",
-            "5",
-            "--spend-per-month",
-            "50",
             "--no-contain",
             "--contain-keep",
             "[]",
@@ -81,7 +63,6 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(host.node.as_deref(), Some("/usr/bin/node"));
-        assert_eq!((host.spend.day, host.spend.month), (Some(5.0), Some(50.0)));
         assert!(host.no_contain && host.kept.is_empty());
         assert_eq!(host.gate, Some(PathBuf::from("/run/gate.sock")));
     }
@@ -92,9 +73,6 @@ mod tests {
             HostArgs::default().take("--ws", || unreachable!()),
             Ok(false)
         );
-        assert!(read(&["--spend-per-day", "0"])
-            .unwrap_err()
-            .contains("above zero"));
         assert!(read(&["--contain-keep", "{"]).is_err());
     }
 }

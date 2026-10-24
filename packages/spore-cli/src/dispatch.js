@@ -47,8 +47,6 @@ function renderList (result) {
   }
   for (const skip of result.missing) console.error(`spore: skipped ${skip.path} — ${skip.why}`)
   if (result.paused) console.log(`your spores are ${pausedText(result.paused)} — no turn starts until spore unpause\n`)
-  const limited = spendText(result.spend)
-  if (limited) console.log(`your spores have spent ${limited}\n`)
   if (!result.contain) console.log('turns are not contained (contain off): each sees every other spore\'s processes\n')
 
   const home = result.workspaces.filter(row => row.from === result.home)
@@ -65,17 +63,6 @@ function renderList (result) {
 }
 
 const listExit = (result) => (result.configured ? 0 : 2)
-
-/** `today $4.12 of $20.00 · October $81.30 of $300.00`, the windows a limit is set on; null with none. */
-const spendText = ({ date, day, month, limits }) => {
-  const of = (spent, limit) => `$${spent.toFixed(2)} of $${limit.toFixed(2)}${spent >= limit ? ' — reached, no turn starts' : ''}`
-  const monthName = new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })
-  const parts = [
-    limits.day === null ? null : `today ${of(day, limits.day)}`,
-    limits.month === null ? null : `${monthName} ${of(month, limits.month)}`
-  ].filter(Boolean)
-  return parts.length ? parts.join(' · ') : null
-}
 
 function renderModels ({ model, models }) {
   console.log(`runs on ${model}`)
@@ -572,8 +559,6 @@ function renderUsage (result, by) {
     unsettled.turns ? `${plural(unsettled.turns, 'turn')} unsettled, not summed` : null
   ].filter(Boolean)
   console.log([result.ws ? basename(result.ws) : 'every spore', `${window.since} – ${window.until} ${window.tz}`, dollars(totals.micros), ...notes].join(' · '))
-  const limited = result.spend ? spendText(result.spend) : null
-  if (limited) console.log(`your spores have spent ${limited}`)
   if (!totals.turns && !totals.cells) {
     console.log('\nnothing ran in this window')
     return

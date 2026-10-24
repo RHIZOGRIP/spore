@@ -237,11 +237,6 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, des
       // loop and `runSpore` alike, so the turn record — written after the loop
       // returns — was never reached: a cancelled or deadlined run left no stop
       // reason, no cost, and a workspace that looked like it had never run.
-      if (err.type === 'SPEND_LIMIT') {
-        logger.warn({ rounds: i, reason: err.message }, '[loop] the spend limit is reached — stopped')
-        emitter.emit('complete', { output: null, usage, rounds: i, stopReason: 'hard:spend' })
-        return { output: null, messages, rounds: i, usage, stopReason: 'hard:spend', spent: spent(i) }
-      }
       if (!signal?.aborted) throw err
       logger.info({ rounds: i }, '[loop] cancelled mid-call')
       emitter.emit('complete', { output: null, usage, rounds: i, cancelled: true, stopReason: 'cancelled' })

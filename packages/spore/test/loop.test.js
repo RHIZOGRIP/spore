@@ -4,7 +4,6 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loop } from '../src/core/loop.js'
 import { WRAP, marked } from '../src/core/marks.js'
-import { SporeError } from '../src/observability/errors.js'
 import { CALL_OPTIONS } from '../src/infra/model-client.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -413,14 +412,6 @@ describe('tool loop', () => {
     const res = await run({ model: m, limits: { rounds: { soft: 90, hard: 99 }, cost: { soft: 0.5, hard: 0.7 } } })
     expect(res.stopReason).toBe('hard:cost')
     expect(res.spent.cost).toBeGreaterThanOrEqual(0.7)
-  })
-
-  it('stops when the spend limit is reached, with the rounds it got through', async () => {
-    const refusing = {
-      answer: async () => { throw new SporeError('your spores have spent $20.00 today, which reaches your daily limit of $20.00', { type: 'SPEND_LIMIT', detail: 'turns start again tomorrow' }) }
-    }
-    const res = await run({ model: refusing, limits: { rounds: { soft: 3, hard: 5 } } })
-    expect(res).toMatchObject({ output: null, stopReason: 'hard:spend', rounds: 0 })
   })
 
   it('wraps on cost before it stops on cost', async () => {

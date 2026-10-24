@@ -80,17 +80,16 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }))
 
 describe('spore setup', () => {
-  it('takes a fresh machine through home, a provider, the default model, a spend limit, the tick timer and a first spore', async () => {
+  it('takes a fresh machine through home, a provider, the default model, the tick timer and a first spore', async () => {
     const home = join(root, 'spores')
     const code = await run({
-      prompt: scripted({ 'live\\?': home, 'spend limit': '5', 'tick timer': 'y' }),
+      prompt: scripted({ 'live\\?': home, 'tick timer': 'y' }),
       pick: picks('openrouter', 'openrouter/priced')
     })
     expect(code).toBe(0)
     expect(readConfig().home).toBe(home)
     expect(onboarded).toEqual(['openrouter'])
     expect(defaultModel().model).toBe('openrouter/priced')
-    expect(getKey('spendPerDay')).toEqual({ spendPerDay: 5 })
     expect(acted).toEqual([['define', 'tick'], ['enable', 'tick'], ['start', 'tick']])
     expect(isWorkspace(join(home, 'main'))).toBe(true)
     expect(said).toContain(`made      main, your first spore, in ${join(home, 'main')}`)
@@ -101,7 +100,7 @@ describe('spore setup', () => {
   it('stops after spore doctor\'s problems, making no spore and offering no next step', async () => {
     const home = join(root, 'spores')
     const code = await run({
-      prompt: scripted({ 'live\\?': home, 'spend limit': '', 'tick timer': 'n' }),
+      prompt: scripted({ 'live\\?': home, 'tick timer': 'n' }),
       pick: picks('openrouter', 'openrouter/priced'),
       report: async () => ({ findings: [{ area: 'services', subject: 'tick', severity: 'problem', problem: 'is failing', fix: 'spore service log tick' }] })
     })
@@ -112,7 +111,7 @@ describe('spore setup', () => {
 
   it('asks nothing a second time once each step is done', async () => {
     const mohdel = mohdelWith()
-    await run({ mohdel, prompt: scripted({ 'live\\?': join(root, 'spores'), 'spend limit': '5', 'tick timer': 'y' }), pick: picks('openrouter', 'openrouter/priced') })
+    await run({ mohdel, prompt: scripted({ 'live\\?': join(root, 'spores'), 'tick timer': 'y' }), pick: picks('openrouter', 'openrouter/priced') })
     asked = []
     onboarded = []
     const code = await run({ mohdel, services: servicesWith({ defined: true, enabled: true }), pick: async () => { throw new Error('picked again') } })
@@ -125,9 +124,8 @@ describe('spore setup', () => {
   })
 
   it('says a model chosen without prices counts as $0, and how to fill them', async () => {
-    await run({ prompt: scripted({ 'live\\?': join(root, 'spores'), 'spend limit': '', 'tick timer': 'n' }), pick: picks('openrouter', 'openrouter/unpriced') })
+    await run({ prompt: scripted({ 'live\\?': join(root, 'spores'), 'tick timer': 'n' }), pick: picks('openrouter', 'openrouter/unpriced') })
     expect(said.find(line => line.startsWith('model'))).toMatch(/openrouter\/unpriced, no prices: its calls count as \$0.*mo model instructions openrouter/)
-    expect(getKey('spendPerDay')).toEqual({ spendPerDay: null })
   })
 
   it('offers every ready provider\'s models after mohdel\'s own setup', async () => {
@@ -138,7 +136,7 @@ describe('spore setup', () => {
     await run({
       mohdel,
       onboard: (provider) => { onboarded.push(provider); return 0 },
-      prompt: scripted({ 'live\\?': join(root, 'spores'), 'spend limit': '', 'tick timer': 'n' }),
+      prompt: scripted({ 'live\\?': join(root, 'spores'), 'tick timer': 'n' }),
       pick: async (menu) => { offered = menu.items.map(item => item.value); return pick(menu) }
     })
     expect(onboarded).toEqual([null])

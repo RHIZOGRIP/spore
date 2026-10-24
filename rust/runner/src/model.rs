@@ -31,8 +31,7 @@ use mohdel_thin_gate::defaults::{FileQuotaPolicy, FileRoutePolicy};
 use mohdel_thin_gate::prelude::*;
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
-use spore_workspace::spend::{add_spend, spend_refusal, Limits};
-use spore_workspace::{micros, Settled};
+use spore_workspace::Settled;
 use tokio::sync::{mpsc, watch};
 
 use crate::broker::{json_response, refuse};
@@ -92,16 +91,9 @@ pub struct Remote {
     pub media_roots: Vec<PathBuf>,
 }
 
-/// Where the user's spend is kept, and the limits they set on it.
-pub struct Spending {
-    pub slots: PathBuf,
-    pub limits: Limits,
-}
-
 pub struct Model {
     key: String,
     limit: Mutex<f64>,
-    spending: Option<Spending>,
     upstream: Upstream,
     ledger: Mutex<Ledger>,
     entries: Mutex<HashMap<String, Value>>,
@@ -143,16 +135,10 @@ fn caller(req: &Request<Incoming>) -> Caller {
 }
 
 impl Model {
-    pub fn new(
-        key: String,
-        limit: f64,
-        spending: Option<Spending>,
-        upstream: Upstream,
-    ) -> Arc<Model> {
+    pub fn new(key: String, limit: f64, upstream: Upstream) -> Arc<Model> {
         Arc::new(Model {
             key,
             limit: Mutex::new(limit),
-            spending,
             upstream,
             ledger: Mutex::default(),
             entries: Mutex::default(),
@@ -226,24 +212,7 @@ impl Model {
                 false,
             ));
         }
-        let spending = self.spending.as_ref()?;
-        match spend_refusal(&spending.slots, &spending.limits) {
-            Ok(None) => None,
-            Ok(Some(refused)) => Some(refuse(
-                StatusCode::PAYMENT_REQUIRED,
-                &refused.message,
-                &refused.detail,
-                refused.kind,
-                false,
-            )),
-            Err(e) => Some(refuse(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "cannot read what your spores have spent",
-                &e.to_string(),
-                "SPEND_UNREADABLE",
-                false,
-            )),
-        }
+        None
     }
 
     /// Until the gate has dispatched it, a call belongs to its connection, and a turn ending
@@ -539,11 +508,6 @@ impl Model {
     }
 
     fn count(&self, cost: f64, round: bool, caller: &Caller) {
-        if let Some(spending) = &self.spending {
-            if let Err(e) = add_spend(&spending.slots, micros(cost)) {
-                eprintln!("spore: a call's ${cost:.4} is not in your spores' spend, which your limits read — {e}");
-            }
-        }
         let mut ledger = self.ledger.lock().expect("ledger");
         ledger.spend += cost;
         ledger.rounds += u64::from(round);
@@ -908,7 +872,7 @@ mod tests {
 
     fn model() -> Arc<Model> {
         let (_tx, rx) = watch::channel(None);
-        Model::new("k".repeat(64), 1.0, None, Upstream::Pool(rx))
+        Model::new("k".repeat(64), 1.0, Upstream::Pool(rx))
     }
 
     #[test]
@@ -962,30 +926,6 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(refused.contains("m/costly is not a model this spore's definition names — it may run on m/root, m/low"), "{refused}");
-    }
-
-    #[test]
-    fn adds_each_call_to_the_users_spend_and_refuses_once_it_reaches_a_limit() {
-        let dir = std::env::temp_dir().join(format!("spore-model-spend-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let slots = dir.join("slots");
-        let (_tx, rx) = watch::channel(None);
-        let spending = Spending {
-            slots: slots.clone(),
-            limits: Limits {
-                day: Some(0.5),
-                month: None,
-            },
-        };
-        let m = Model::new("k".repeat(64), 10.0, Some(spending), Upstream::Pool(rx));
-        m.count(0.25, true, &Caller::Own);
-        assert!(m.stopped().is_none());
-        m.count(0.25, false, &Caller::Unnamed);
-        assert_eq!(spore_workspace::spend::spent(&slots).unwrap().day, 500_000);
-        assert_eq!(
-            m.stopped().map(|refused| refused.status()),
-            Some(StatusCode::PAYMENT_REQUIRED)
-        );
     }
 
     #[tokio::test]

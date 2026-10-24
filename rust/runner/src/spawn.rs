@@ -24,12 +24,11 @@ use spore_runner::plan::{dream_for, plan_spawn, Asked, Plan};
 use spore_runner::supervise::{
     confined, kept_refusal, owner_token, owners_with, supervise, Kept, GRACE, OWNERS,
 };
-use spore_workspace::spend::Limits;
 use spore_workspace::{
     acquire_lock, agent_env, begin_turn, broker_socket_path, end_channel, finalize_turn,
     granted_path_containing, hand_over, iso_now, leave_wal, provision_modules, read_paths_refusal,
-    release_lock, serve, slot_dir, spore_socket_path, turn_state, unanswered, write_model_key,
-    write_outcome, Acquired, Unanswered, CELL_MODELS_ENV, HOME_DIR, MODEL_KEY_FILE, STATE_FD,
+    release_lock, serve, spore_socket_path, turn_state, unanswered, write_model_key, write_outcome,
+    Acquired, Unanswered, CELL_MODELS_ENV, HOME_DIR, MODEL_KEY_FILE, STATE_FD,
 };
 use tokio::process::Command;
 use tokio::signal::unix::{signal, SignalKind};
@@ -55,10 +54,8 @@ Usage:
   --standalone with --node, --session and --chatgpt-helper: a cell outside any turn,
                for a host that is not one. It starts its own model session, under a key
                of its own and the precursor's hard cost, instead of reaching its
-               parent's, and counts what the cell spent on the cell's own record
-               and in its user's spend; --spend-per-day and --spend-per-month,
-               in dollars, are the operator's limits on that; --no-contain when the
-               operator turned containment off; --gate with --auth on a host whose
+               parent's, and counts what the cell spent on the cell's own record;
+               --no-contain when the operator turned containment off; --gate with --auth on a host whose
                model calls go through a mohdel gate, under the spore's auth
   --super      with --standalone: a super cell, which reaches what the spore's root
                agent reaches one notch lower — its writes grants and its precursors
@@ -90,7 +87,6 @@ struct Standalone {
     node: String,
     session: String,
     chatgpt_helper: String,
-    spend: Limits,
     contain: bool,
     kept: Vec<Kept>,
     gate: Option<(PathBuf, String)>,
@@ -283,7 +279,6 @@ async fn main() {
             node: need(&args.host.node, "--node"),
             session: need(&args.host.session, "--session"),
             chatgpt_helper: need(&args.host.chatgpt_helper, "--chatgpt-helper"),
-            spend: args.host.spend,
             contain: !args.host.no_contain,
             kept: args.host.kept.clone(),
             gate: args
@@ -409,16 +404,7 @@ async fn main() {
                         ))
                     }
                 };
-                let spending = model::Spending {
-                    slots: slot_dir(),
-                    limits: own.spend,
-                };
-                let model = Model::new(
-                    key.clone(),
-                    plan.precursor.limits.cost.hard,
-                    Some(spending),
-                    upstream,
-                );
+                let model = Model::new(key.clone(), plan.precursor.limits.cost.hard, upstream);
                 let path = broker_socket_path("model")
                     .map_err(|e| format!("cannot make the model socket's directory — {e}"))?
                     .map_err(|refused| format!("{} — {}", refused.message, refused.detail))?;

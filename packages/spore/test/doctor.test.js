@@ -4,7 +4,6 @@ import { constants } from 'node:os'
 import { join } from 'node:path'
 
 import { doctor, modelFindings } from '../src/library/doctor.js'
-import { spendSoFar } from '../src/core/admission.js'
 import { appendInbox, appendTurn } from '../src/core/spore-dir.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 
@@ -180,20 +179,6 @@ describe('spore doctor', () => {
     expect(examine().findings).toEqual([expect.objectContaining({ area: 'machine', subject: 'processes', severity: 'note', problem: expect.stringMatching(/^turns are not contained \(contain off\)/) })])
   })
 
-  it('says when the spores have spent a limit set on them, and nothing while they are under it', () => {
-    spore('main')
-    operator('config.json', { home, spendPerDay: 5 })
-    expect(examine().findings).toEqual([])
-    mkdirSync(join(root, 'state', 'spend'), { recursive: true })
-    writeFileSync(join(root, 'state', 'spend', spendSoFar({ dir: join(root, 'state', 'slots'), config: {} }).date), '5000000')
-    expect(about(examine().findings, 'spend')).toEqual([expect.objectContaining({
-      area: 'operator',
-      severity: 'note',
-      problem: expect.stringMatching(/daily limit of \$5\.00 — no turn starts and no model call is made/),
-      fix: expect.stringMatching(/spore config set spendPerDay/)
-    })])
-  })
-
   it('reports a listed workspace that is gone', () => {
     operator('config.json', { home, workspaces: [join(root, 'elsewhere')] })
     expect(examine().findings).toEqual([expect.objectContaining({ subject: join(root, 'elsewhere'), problem: 'is in workspaces and gone' })])
@@ -250,7 +235,7 @@ describe('spore doctor on the models spores name', () => {
 
   it('notes a model with no prices: it runs, and its calls count as $0 against the limits', async () => {
     spore('main', 'models: [openai/gpt-cheap]\n')
-    expect(await examine()).toEqual([{ area: 'models', subject: 'openai/gpt-cheap', severity: 'note', problem: expect.stringMatching(/\$0, so cost and spend limits never stop them/), fix: 'mo model instructions openai' }])
+    expect(await examine()).toEqual([{ area: 'models', subject: 'openai/gpt-cheap', severity: 'note', problem: expect.stringMatching(/\$0, so cost never stops them/), fix: 'mo model instructions openai' }])
   })
 })
 

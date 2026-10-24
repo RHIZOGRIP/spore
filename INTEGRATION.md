@@ -351,7 +351,7 @@ signature of each, and every error it throws, is in [docs/library.md](docs/libra
 
 | export | returns |
 |---|---|
-| `list({ where, disk })` | `{ home, paused, spend, workspaces: [{ ws, state, lastTurnNo, last, … }], missing }` — what `spore ls` prints |
+| `list({ where, disk })` | `{ home, paused, workspaces: [{ ws, state, lastTurnNo, last, … }], missing }` — what `spore ls` prints |
 | `show({ ws })` | one spore in detail: its state, definition, limits, how many messages are waiting, schedules, running jobs, last `deliverables` |
 | `log({ ws })` | one entry per turn (`endedAt`, `stopReason`, `concluded`, `treeUsd`, `asked`), what is `waiting`, schedules `held` |
 | `usage({ ws, days, since, until, tz })` | spend per local day and by origin, model, outcome and precursor. Without `ws`, every spore |
@@ -364,7 +364,7 @@ signature of each, and every error it throws, is in [docs/library.md](docs/libra
 | `isWorkspace(dir)`, `workspacesIn(dir)`, `workspaceFor(name)` | finding spores |
 | `readConfig()`, `settings()`, `getKey(key)` | the host's `config.json` |
 | `sporangia()`, `defaultModel()` | what a spore can be made from, and the model new spores get |
-| `paused()`, `spendSoFar()` | the pause in force (`{ at, why? }` or `null`); what was settled today and this month against the limits |
+| `paused()` | the pause in force (`{ at, why? }` or `null`) |
 
 ### Making and changing spores
 
@@ -570,7 +570,7 @@ An error is `{ "error": { "type", "message", "detail"? } }`.
 | 404 | `NOT_A_WORKSPACE`, `API_NOT_FOUND` |
 | 405 | `API_METHOD` |
 | 413 | `API_TOO_LARGE` |
-| 503 | `ADMISSION_FULL`, `PAUSED`, `SPEND_LIMIT` |
+| 503 | `ADMISSION_FULL`, `PAUSED` |
 | 500 | anything else; `API_FAILED` when the error carried no type |
 
 An error after the event stream has started ends the stream without an error object.
@@ -672,7 +672,7 @@ turn's facts are read from its **record**: `readTurns(ws)`, `turnOfMessage`, `wa
 
 `stopReason` is `answer`, `question` (the agent called `ask`; `output` is the question), `quiet`
 (nothing to say; `output` is null, `because` says why), `soft:<dimension>` (answered at a soft
-limit), `hard:<dimension>` (stopped at a hard limit, `spend` included), `cancelled` or `error`
+limit), `hard:<dimension>` (stopped at a hard limit), `cancelled` or `error`
 (`error` names it). `concluded` is true when the turn left an `output` or ended `quiet`. See the
 [README §How a turn ends](packages/spore/README.md#how-a-turn-ends).
 
@@ -734,8 +734,8 @@ setDefaultModel(picked)
 
 `modelsOf` is the list to offer your user. Instead of `setDefaultModel`, a single spore takes the
 model at `define({ ws, model })`. `fix` is the `mo` command that closes the first thing missing.
-A model with `priced: false` runs, and its calls count as $0, so `cost` and the host's spend
-limits never stop it: offer `fix` before relying on them. `modelFindings()` checks every model the host's spores name. mohdel's own
+A model with `priced: false` runs, and its calls count as $0, so `cost` never stops
+it: offer `fix` before relying on them. `modelFindings()` checks every model the host's spores name. mohdel's own
 INTEGRATION.md, §Setting up your user, has the rest.
 
 ---
@@ -778,7 +778,6 @@ program driving spores meets most; every function's own list is in [docs/library
 | `type` | from | meaning |
 |---|---|---|
 | `ADMISSION_FULL` | `send`, `fork` | every one of the user's turn slots is held. Nothing was said, unless the error's `detail` says the message is in the inbox (a running turn let go at that moment); the next turn reads it then. `retryable` |
-| `SPEND_LIMIT` | `send`, `fork` | the user's spores reached `spendPerDay` or `spendPerMonth`. Clears when the day or month turns or the limit is raised |
 | `PAUSED` | `send`, `fork` | `spore pause` is in force. Clears with `unpause` ([docs/operating.md](docs/operating.md#pausing-every-spore)) |
 | `NOT_A_WORKSPACE` | the read verbs, the API | no spore by that name, or the caller does not reach it |
 | `CONFIG_NO_HOME`, `CONFIG_BAD_NAME` | `workspaceFor` | a name with no `home` set; a name that is not one path segment |
@@ -794,7 +793,7 @@ program driving spores meets most; every function's own list is in [docs/library
 | `BATCH_USAGE` | `runBatch` | an errand without an `id` or messages, or a bad `atOnce` |
 | `SQLITE_TOO_OLD` | `checkSqlite` | Node's SQLite is older than spore needs |
 
-`retryable` is true on `ADMISSION_FULL`, `SPEND_LIMIT` and `PAUSED`.
+`retryable` is true on `ADMISSION_FULL` and `PAUSED`.
 
 A turn that fails is not a thrown error. It is a record with `stopReason: 'error'` and `error`
 naming why (`START_FAILED`, `DISK_FULL`, `CONTAIN_FAILED`, …), and its message waits unread for the

@@ -29,8 +29,7 @@ const PREPARED_DIR = 'prepared'
 
 const KEPT_HELD = {
   ADMISSION_FULL: 'held — every turn slot is taken, the pass releases it once one frees',
-  PAUSED: 'held — spores are paused, the pass releases it after spore unpause',
-  SPEND_LIMIT: 'held — the spend limit is reached, the pass releases it once the day or month turns or the limit is raised'
+  PAUSED: 'held — spores are paused, the pass releases it after spore unpause'
 }
 
 /**

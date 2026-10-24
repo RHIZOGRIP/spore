@@ -36,7 +36,7 @@ export const TICK_LOCK = native.tickLockPath()
  * `spent`, or `failed` when `send` refused for a reason other than every slot taken — or one
  * spore's held deliveries: `released`, with how many and whether a turn started — or one job whose
  * supervisor is gone: `interrupted`, said to its spore — or one spore's dream: `dreaming` once
- * started, `held` with why while every slot is taken or the spend limit reached.
+ * started, `held` with why while every slot is taken.
  *
  * While spores are paused, a pass fires and releases nothing: `paused` carries the mark, and what was due
  * goes at the first pass after `spore unpause` — one catch-up slot per schedule, never a burst.
@@ -65,8 +65,7 @@ function interruptedIn ({ ws }, { env, configFile }) {
 }
 
 const HELD_BY = {
-  ADMISSION_FULL: 'every turn slot is taken',
-  SPEND_LIMIT: 'the spend limit is reached'
+  ADMISSION_FULL: 'every turn slot is taken'
 }
 
 function releaseIn ({ ws }, { now, env, configFile }) {

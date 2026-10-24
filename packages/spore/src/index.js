@@ -55,7 +55,7 @@ export { listPlugins, showPlugin, allowPlugin, disallowPlugin, differingDocs, pl
 
 // Turns the clock starts: one pass fires what is due, and a schedule is a file.
 export { tick, tickReport, TICK_LOCK } from './core/tick.js'
-export { paused, spendSoFar } from './core/admission.js'
+export { paused } from './core/admission.js'
 export { bytesText, durationSpelling, durationText, sizeSpelling } from './core/units.js'
 export { parseSchedule, survey, SCHEDULE_DIR } from './core/schedule.js'
 

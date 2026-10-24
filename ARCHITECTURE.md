@@ -772,7 +772,7 @@ plugin service's instance files — unless `sources.json`, `memory.json` or a gr
 sources name it, since those are the runner's to fill. The home holds spores, one per subdirectory, and nothing else, so it can be
 backed up, moved or wiped without taking configuration or credentials with it.
 `$XDG_STATE_HOME/spore/` holds what the user's spores share while they run: the admission slots,
-the spend ledger, the pause mark, `tick.lock`, each job supervisor's lock, each service's start
+the pause mark, `tick.lock`, each job supervisor's lock, each service's start
 record, the workspaces of cells run outside any turn, and each chat bot's position. None of the
 three is granted to a confined agent, which reaches only its own workspace. A unix socket is
 another matter: Landlock does not gate `connect()`, so every socket of the user — any broker's
@@ -1449,39 +1449,12 @@ off.
 
 ### What a user's spores spend
 
-`cost` bounds one turn's tree; nothing in a definition bounds what all of a user's spores spend
-together. **`spendPerDay` and `spendPerMonth`**, host settings beside `turns`, are that bound,
-in dollars, either, both or neither — with neither set, nothing is checked. The day and the
-month are the host's local ones. Like the slots and the pause it is per user.
-
-**The count is a ledger beside the slots** (`rust/workspace/src/spend.rs`):
-`$XDG_STATE_HOME/spore/spend/<YYYY-MM-DD>`, one number of micros per day, outside every sandbox
-grant. The model broker adds each call's cost as the call settles — the runner's for a turn and
-its cells, `spore-spawn`'s own for a cell outside any turn — under a lock, renaming the new total
-into place so a reader never sees half a number. It is written whether or not a limit is set, so
-a limit set at noon counts the morning, and this month and the one before are kept. The ledger puts
-a call on the day it settled, `usage` puts a turn on the day it started and forgets a removed spore,
-so `spore usage` is the account of what spores did and the ledger the account of what their user
-paid.
-
-**Settled spend reaching a limit stops spend, never a forecast**
-([principle 12](PRINCIPLES.md#12-a-soft-limit-asks-to-wrap-up-a-hard-limit-stops)), in three places:
-
-- `take_slot` refuses `SPEND_LIMIT` as it refuses `PAUSED`, nothing said or started, saying
-  which window, how much, and when it turns. `send`, `fork` and a release are refused; `spore
-  tick` holds a due schedule or a held delivery for a later pass, as when every slot is taken;
-  a cell outside any turn checks it and does not start.
-- The runner checks it before each turn, beside `freeFloor`, since a turn it carries on to takes
-  no slot, and records one refused as an error, `SPEND_LIMIT`.
-- The model broker refuses a new call once it is reached, as it refuses one past the tree's
-  `cost.hard`. The loop ends the turn **`hard:spend`**, and a continuation is built from the
-  record as at any hard bound; a cell refused so ends the same way, and its parent's next call
-  is refused in turn.
-
-Calls already running finish and are paid, so a window can end past its limit by what was in
-flight. A model no meter counts costs nothing here, as it costs nothing against `cost`. `spore
-ls` and `spore usage` say how far each limited window has gone, and `spore doctor` notes one
-reached; an unset limit is no finding.
+Spore bounds a turn — `cost` for its tree, held by the model broker on settled spend — and how many
+turns run at once, the slots; it does not bound what all of a user's spores spend together. That
+total is the operator's, or an orchestrator's: every turn record carries its settled `ownMicros`
+and `treeMicros`, `watchAll` and the `turn_end` event hand them over as turns end, `spore usage`
+sums them, and `spore pause` stops every turn and job and starts none. A turn running when such a
+total is reached is bounded by its own `cost.hard`.
 
 ### CPU and memory on one machine
 
@@ -1535,7 +1508,7 @@ slot at or before now that is after both the slot it last fired for and the file
 a changed schedule means from now. That is one firing however many slots were missed, and none
 for a slot older than `late`. It fires only into a spore that is `idle`, `wrapped`, `halted` or
 `cancelled`, the rule the runner applies to carrying on. A held slot fires once released, for its
-latest slot. One firing per spore per pass. `ADMISSION_FULL` and `SPEND_LIMIT` leave it due: the
+latest slot. One firing per spore per pass. `ADMISSION_FULL` leaves it due: the
 pass is the caller, and waiting is the caller's
 ([principle 14](PRINCIPLES.md#14-the-computers-limits-belong-to-its-owner)). It never waits on a
 turn — `send` starts the runner detached — so the lock is held for as long as reading the

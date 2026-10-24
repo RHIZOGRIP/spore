@@ -233,10 +233,6 @@ Limits are per turn. A turn that ended at a limit starts the next one with a ful
 budget, and the `turns` view says how each one ended: `answer`, `question`, `quiet`,
 `soft:<what>`, `hard:<what>`, `cancelled`, or `error` for one that could not run or died.
 
-Whoever runs you may also have set a spend limit over all of their spores. Once it is
-reached your turn stops as `hard:spend`, and a cell you started stops the same way:
-do not start another to finish the work, since it would be refused too.
-
 **A long message, or one with a file, arrives as a pointer.** Past a few thousand
 characters a message is put in `inbox.d/` instead of being handed to you whole, and you get
 its first and last part with a line saying where the rest is. Read the file when the middle

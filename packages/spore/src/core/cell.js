@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { parsedDefinition, parseDefinition } from '../delegation/definition.js'
 import { CONFIG_FILE, readConfig } from '../library/config.js'
 import { errorText } from '../observability/errors.js'
-import { paused, spendStop } from './admission.js'
+import { paused } from './admission.js'
 import { containOf } from './plugins.js'
 import { exitText } from './command.js'
 import { hostFlags } from './send.js'
@@ -103,8 +103,6 @@ export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model
 export async function runCell ({ ws, precursor, origin, ref = null, files = {}, contents = {}, briefing, env, configFile, starting = () => {}, launch = launchStandalone, now = Date.now, dream = null, signal = null }) {
   const unstarted = (failed) => ({ answer: null, failed, started: false, costUsd: 0, durationMs: 0, cellWs: null })
   if (paused()) return unstarted('spores are paused')
-  const stopped = spendStop()
-  if (stopped) return unstarted(stopped.message)
   const cell = parseDefinition(readFileSync(join(ws, PRECURSOR_DIR, `${precursor}.cmk`), 'utf8'), { knownTools: TOOL_NAMES, cell: true })
   if (cell.error) return unstarted(`${PRECURSOR_DIR}/${precursor}.cmk ${cell.error}`)
   const root = parsedDefinition(ws)

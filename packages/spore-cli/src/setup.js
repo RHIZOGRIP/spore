@@ -9,7 +9,7 @@ import { createInterface } from 'node:readline/promises'
 
 import {
   checkSqlite, CONFIG_FILE, defaultModel, define, doctor, list, loadMohdelEnvironment, MO,
-  modelReadiness, modelsOf, providerReadiness, readConfig, setDefaultModel, setKey, settings
+  modelReadiness, modelsOf, providerReadiness, readConfig, setDefaultModel, setKey
 } from '@rhizogrip/spore'
 
 import { createServices } from './services.js'
@@ -71,7 +71,7 @@ const readings = { loadKeys: loadMohdelEnvironment, modelReadiness, modelsOf, pr
 
 const billingText = ({ billing, priced }) => billing === 'plan'
   ? 'your plan — not metered'
-  : priced === false ? 'no prices: its calls count as $0 against cost and spend limits' : billing
+  : priced === false ? 'no prices: its calls count as $0 against cost' : billing
 
 /**
  * Resolves with the exit code: 0 once every step is done, 1 when one stops, saying what to do
@@ -131,15 +131,6 @@ export async function setup ({
 
   const model = await chooseModel({ line, say, pick, onboard, mohdel })
   if (model === null) return 1
-
-  const spend = settings().find(row => row.key === 'spendPerDay')
-  if (spend.from === 'set') {
-    line('spend', `at most $${spend.value} a day`)
-  } else {
-    const dollars = await prompt('a daily spend limit for your spores, in dollars — empty for none:')
-    if (dollars) setKey('spendPerDay', dollars)
-    line('spend', dollars ? `at most $${dollars} a day` : 'no daily limit — spore config set spendPerDay <dollars> sets one')
-  }
 
   await tickTimer({ line, yes, services })
 

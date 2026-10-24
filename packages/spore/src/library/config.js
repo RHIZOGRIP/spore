@@ -215,14 +215,6 @@ function validate (raw, file) {
       detail: DOCS_DETAIL
     })
   }
-  for (const key of DOLLARS) {
-    if (raw[key] !== undefined && !(typeof raw[key] === 'number' && Number.isFinite(raw[key]) && raw[key] > 0)) {
-      throw new SporeError(`${file} has a ${key} that is not an amount`, {
-        type: 'CONFIG_INVALID',
-        detail: `${key} is how many dollars your spores may spend ${key === 'spendPerDay' ? 'in a day' : 'in a month'}, above zero — spore config rm ${key} for no limit`
-      })
-    }
-  }
   for (const key of SIZES) {
     if (raw[key] !== undefined && !(typeof raw[key] === 'string' && native.sizeBytes(raw[key]) > 0)) {
       throw new SporeError(`${file} has a ${key} that is not a size`, {
@@ -254,9 +246,6 @@ export const followingDocs = (config) => (config.docs ?? DEFAULTS.docs) === 'fol
 /** How many sessions `spore here` keeps a snapshot of, per spore, the newest kept. */
 export const hereSnapshots = (config) => config.hereSnapshots ?? DEFAULTS.hereSnapshots
 
-/** The spend limits in dollars, each null where none is set. */
-export const spendLimits = (config) => ({ day: config.spendPerDay ?? null, month: config.spendPerMonth ?? null })
-
 /** A size setting in bytes, or null where the file leaves it to the runner's default. */
 export const bytesOf = (config, key) => (config[key] === undefined ? null : Math.floor(native.sizeBytes(config[key])))
 
@@ -272,13 +261,12 @@ export function existing (paths) {
   return { live, missing }
 }
 
-const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'largestFile', 'freeFloor', 'spendPerDay', 'spendPerMonth', 'contain', 'docs', 'hereSnapshots'])
+const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'largestFile', 'freeFloor', 'contain', 'docs', 'hereSnapshots'])
 const DOCS = ['follow', 'kept']
 const APPROVALS_DETAIL = `approvals names each hook an approval may call, by a name of ${NAMES.approval.says}, as { "kpi": { "url": "https://…", "secret": "\${KPI_HOOK_SECRET}" } } — the secret set in environment beside config.json`
 const DOCS_DETAIL = 'docs says whether a runner starts by replacing the root documents that differ from what is installed (follow) or leaves them to spore upgrade (kept) — spore config set docs follow|kept'
 const SWITCHES = { on: true, off: false }
 const COUNTS = new Set(['turns', 'modelSessions', 'hereSnapshots', 'homeSplit'])
-const DOLLARS = new Set(['spendPerDay', 'spendPerMonth'])
 const SIZES = new Set(['largestFile', 'freeFloor'])
 const LISTS = new Set(['workspaces'])
 
@@ -459,7 +447,7 @@ export function setKey (key, value, file = CONFIG_FILE) {
   if (key === 'homeSplit' && Number(value) !== (current.homeSplit ?? null)) refuseRelayout(current, Number(value))
   const next = LISTS.has(key)
     ? value.split(',').map(v => store(v.trim())).filter(Boolean)
-    : COUNTS.has(key) || DOLLARS.has(key) ? Number(value) : SIZES.has(key) ? value : key === 'contain' ? switchOf(value) : key === 'docs' ? docsOf(value) : store(value)
+    : COUNTS.has(key) ? Number(value) : SIZES.has(key) ? value : key === 'contain' ? switchOf(value) : key === 'docs' ? docsOf(value) : store(value)
   const written = { ...current, [key]: next }
   validate(written, file)
   if (key === 'home') checkLayout(expand(next), written.homeSplit ?? null, file)

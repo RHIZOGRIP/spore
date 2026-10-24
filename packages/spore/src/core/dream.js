@@ -25,8 +25,7 @@ export const DREAM_FLOOR = 0.25
  * `quietLeft` is how long, at today's pressure, the spore must stay without a turn for one —
  * null while pressure is under its floor, which no quiet makes up for.
  *
- * Paused spores, the spend limits and the admission slots are the starter's to check, as they are
- * for any turn.
+ * Paused spores and the admission slots are the starter's to check, as they are for any turn.
  *
  * @param {{ turns: number, quiet: number, wall: { hard: number } }} dream
  * @param {{ state: string, draining?: boolean }} spore — `stateOf(ws)`

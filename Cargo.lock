@@ -1794,7 +1794,6 @@ name = "spore-workspace"
 version = "1.36.0"
 dependencies = [
  "dirs",
- "jiff",
  "libc",
  "rusqlite",
  "serde",

@@ -20,7 +20,6 @@ use serde_json::{json, Value};
 pub mod kept;
 pub mod owners;
 pub mod source_spec;
-pub mod spend;
 pub mod state;
 
 pub use state::{
@@ -720,13 +719,8 @@ pub fn unpause(slots: &Path) -> io::Result<bool> {
 }
 
 /// A free admission slot, held until its descriptor closes. Refused while the user's spores
-/// are paused, once their spend reaches a limit, and when every slot is held: waiting is a policy,
-/// and it belongs to the caller.
-pub fn take_slot(
-    turns: u32,
-    dir: &Path,
-    limits: &spend::Limits,
-) -> io::Result<Result<Slot, Refusal>> {
+/// are paused and when every slot is held: waiting is a policy, and it belongs to the caller.
+pub fn take_slot(turns: u32, dir: &Path) -> io::Result<Result<Slot, Refusal>> {
     DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
     if let Some(mark) = paused(dir)? {
         let since = match (mark["at"].as_str(), mark["why"].as_str()) {
@@ -740,12 +734,6 @@ pub fn take_slot(
             detail: format!(
                 "{since} — nothing was said or started; spore unpause lets turns start again"
             ),
-        }));
-    }
-    if let Some(refused) = spend::spend_refusal(dir, limits)? {
-        return Ok(Err(Refusal {
-            detail: format!("nothing was said or started; {}", refused.detail),
-            ..refused
         }));
     }
     for i in 0..turns {
@@ -1549,17 +1537,11 @@ mod tests {
     #[test]
     fn refuses_a_slot_once_all_are_held() {
         let dir = scratch("slots");
-        let one = take_slot(1, &dir, &spend::Limits::default())
-            .unwrap()
-            .unwrap();
-        let refused = take_slot(1, &dir, &spend::Limits::default())
-            .unwrap()
-            .unwrap_err();
+        let one = take_slot(1, &dir).unwrap().unwrap();
+        let refused = take_slot(1, &dir).unwrap().unwrap_err();
         assert_eq!(refused.kind, "ADMISSION_FULL");
         drop(one);
-        assert!(take_slot(1, &dir, &spend::Limits::default())
-            .unwrap()
-            .is_ok());
+        assert!(take_slot(1, &dir).unwrap().is_ok());
     }
 
     #[test]
@@ -1571,9 +1553,7 @@ mod tests {
         let (mark, already) = pause(&dir, Some("alerts storm")).unwrap();
         assert!(!already);
         assert_eq!(mark["why"], "alerts storm");
-        let refused = take_slot(4, &dir, &spend::Limits::default())
-            .unwrap()
-            .unwrap_err();
+        let refused = take_slot(4, &dir).unwrap().unwrap_err();
         assert_eq!(refused.kind, "PAUSED");
         assert!(
             refused.detail.contains("(alerts storm)") && refused.detail.contains("spore unpause")
@@ -1584,37 +1564,15 @@ mod tests {
         assert_eq!(held, mark);
 
         assert!(unpause(&dir).unwrap());
-        assert!(take_slot(4, &dir, &spend::Limits::default())
-            .unwrap()
-            .is_ok());
+        assert!(take_slot(4, &dir).unwrap().is_ok());
 
         fs::write(pause_path(&dir), "").unwrap();
         assert_eq!(paused(&dir).unwrap(), Some(json!({})));
-        assert!(take_slot(4, &dir, &spend::Limits::default())
+        assert!(take_slot(4, &dir)
             .unwrap()
             .unwrap_err()
             .detail
             .contains("no date"));
-    }
-
-    #[test]
-    fn admits_no_turn_once_the_spores_have_spent_their_limit() {
-        let dir = scratch("spent").join("slots");
-        let limits = spend::Limits {
-            day: Some(1.0),
-            month: None,
-        };
-        spend::add_spend(&dir, 999_999).unwrap();
-        assert!(take_slot(1, &dir, &limits).unwrap().is_ok());
-        spend::add_spend(&dir, 1).unwrap();
-        let refused = take_slot(1, &dir, &limits).unwrap().unwrap_err();
-        assert_eq!(refused.kind, "SPEND_LIMIT");
-        assert!(refused
-            .detail
-            .starts_with("nothing was said or started; turns start again tomorrow"));
-        assert!(take_slot(1, &dir, &spend::Limits::default())
-            .unwrap()
-            .is_ok());
     }
 
     #[test]

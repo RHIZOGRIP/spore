@@ -25,7 +25,6 @@ use spore_runner::supervise::{
     GRACE, OWNERS,
 };
 use spore_runner::{broker, job, model, source, store, trace, vectors};
-use spore_workspace::spend::spend_refusal;
 use spore_workspace::{
     acquire_lock, agent_env, begin_turn, crash_at, end_channel, finalize_turn, free_bytes,
     hand_over, iso_now, leave_wal, limit_file_size, make_spore_socket_dir, prune_trail,
@@ -319,10 +318,6 @@ async fn follow_limits(
 async fn main() {
     let args = parse_args();
     check_slot(args.slot.as_deref());
-    let slots = Path::new(args.slot.as_deref().expect("checked"))
-        .parent()
-        .expect("a slot lives in a directory")
-        .to_path_buf();
     let node = args.host.node.clone().unwrap_or_else(|| fail("a runner is told which node to start the agent with — start it through send() or fork()"));
     let ws = std::path::absolute(&args.ws)
         .unwrap_or_else(|e| fail(format!("{} — {e}", args.ws.display())));
@@ -628,11 +623,7 @@ async fn main() {
         };
         let model = match &upstream {
             Some(upstream) => {
-                let spending = model::Spending {
-                    slots: slots.clone(),
-                    limits: args.host.spend,
-                };
-                let model = model::Model::new(key.clone(), def.limits.cost.hard, Some(spending), upstream.clone());
+                let model = model::Model::new(key.clone(), def.limits.cost.hard, upstream.clone());
                 let path = socket(&sockets, "model")?;
                 bind("model", &mut served, model::serve(model.clone(), Path::new(&path)), &path)?;
                 passed.insert("SPORE_MODEL_SOCKET".into(), path);
@@ -768,21 +759,6 @@ async fn main() {
             eprintln!("spore: {problem}");
             record(&ws, &iso_now(), "error", "CONTAIN_FAILED", &problem, 0.0);
             break 2;
-        }
-        match spend_refusal(&slots, &args.host.spend) {
-            Ok(None) => {}
-            Ok(Some(refused)) => {
-                let problem = format!("{} — {}", refused.message, refused.detail);
-                eprintln!("spore: {problem}");
-                record(&ws, &iso_now(), "error", refused.kind, &problem, 0.0);
-                break 2;
-            }
-            Err(e) => {
-                let problem = format!("cannot read what your spores have spent — {e}");
-                eprintln!("spore: {problem}");
-                record(&ws, &iso_now(), "error", "START_FAILED", &problem, 0.0);
-                break 2;
-            }
         }
         // A fork carries a turn on and reads no message, so it answers no caller.
         let traced = if continuing {

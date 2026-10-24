@@ -11,12 +11,12 @@ import { getSystemErrorName } from 'node:util'
 import { callInfo } from 'mohdel/client'
 import { modelReadiness } from 'mohdel/readiness'
 
-import { CONFIG_FILE, containing, ENVIRONMENT_FILE, ENVIRONMENT_LINE, environmentLines, MEMORY_FILE, SOURCES_FILE, readConfig, spendLimits, workspaceFor } from './config.js'
+import { CONFIG_FILE, containing, ENVIRONMENT_FILE, ENVIRONMENT_LINE, environmentLines, MEMORY_FILE, SOURCES_FILE, readConfig, workspaceFor } from './config.js'
 import { isWorkspace } from './discover.js'
 import { list, show, sporangia } from './verbs.js'
 import { containCheck, keptRefusal } from '../core/command.js'
 import { containOf, listPlugins, misplaced, pluginProgram, secretsIn, showPlugin } from '../core/plugins.js'
-import { paused, SLOT_DIR, spendStop } from '../core/admission.js'
+import { paused, SLOT_DIR } from '../core/admission.js'
 import { DEFAULT_SPORANGIUM } from '../core/sporangia.js'
 import { outbox } from '../core/spore-dir.js'
 import { landlockAbi } from '../isolation/sandbox.js'
@@ -30,8 +30,8 @@ const are = (names) => `${names.join(', ')}, which ${names.length > 1 ? 'are' : 
 /**
  * What mohdel says of each model a spore names — its `model`, what it may switch to, its
  * `cell-models` — once per model: a problem when a turn on it cannot run, a note when it runs
- * unpriced, its calls then counting as $0 against `cost` and the spend limits. On a host that
- * names a gate, the gate's catalog says it.
+ * unpriced, its calls then counting as $0 against `cost`. On a host that names a gate, the gate's
+ * catalog says it.
  */
 export async function modelFindings ({ configFile = CONFIG_FILE, readiness = modelReadiness, info = callInfo } = {}) {
   const used = new Map()
@@ -55,7 +55,7 @@ export async function modelFindings ({ configFile = CONFIG_FILE, readiness = mod
       const what = !found.credential ? 'has no credential — no key, or no sign-in' : 'is not in mohdel\'s catalog'
       findings.push({ area: 'models', subject: model, severity: 'problem', problem: `${what}, so a turn of ${who} on it fails`, fix: found.fix })
     } else if (found.priced === false) {
-      findings.push({ area: 'models', subject: model, severity: 'note', problem: `has no prices in mohdel's catalog: the calls of ${who} on it count as $0, so cost and spend limits never stop them`, fix: found.fix })
+      findings.push({ area: 'models', subject: model, severity: 'note', problem: `has no prices in mohdel's catalog: the calls of ${who} on it count as $0, so cost never stops them`, fix: found.fix })
     }
   }
   return findings
@@ -245,8 +245,6 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
 
   const pause = paused({ dir: slots })
   if (pause) note('operator', 'turns', `paused since ${pause.at}${pause.why ? ` (${pause.why})` : ''} — no turn starts`, 'spore unpause')
-  const stopped = spendStop({ dir: slots, spend: spendLimits(config) })
-  if (stopped) note('operator', 'spend', `${stopped.message} — no turn starts and no model call is made`, stopped.detail)
 
   return { findings, needsTick, replies }
 }

@@ -52,8 +52,7 @@ filesystem, not on a directory shared from the host.
 
 `spore setup` is the first run. It checks this machine — Node's SQLite, Landlock, whether turns
 can be contained — asks where spores live, sets up a provider through mohdel's `mo onboard`
-(ChatGPT, OpenRouter or another), sets the model new spores run on, offers a daily spend limit
-and the tick timer, runs `spore doctor` and makes a first spore, `main`. Each step looks first,
+(ChatGPT, OpenRouter or another), sets the model new spores run on, offers the tick timer, runs `spore doctor` and makes a first spore, `main`. Each step looks first,
 so running it again is a check. The same by hand:
 
 ```bash
@@ -232,7 +231,7 @@ rise through `spore extend` only as far as the definition's `extend.*` fields al
 | `question` | it called `ask`; the question is the turn's output |
 | `quiet` | it called `quiet`: done, with nothing to say; no output, and the reason in the turn record's `because` |
 | `soft:<dim>` | it crossed a soft bound, was told to wrap up, and answered with what it had |
-| `hard:<dim>` | it crossed a hard bound and was stopped — `rounds`, `cost` or `wall`, or `spend`, the limit on all your spores (below) |
+| `hard:<dim>` | it crossed a hard bound and was stopped — `rounds`, `cost` or `wall` |
 | `cancelled` | it was stopped — `spore stop`, Ctrl-C twice in the terminal, a stop from the HTTP API |
 | `error` | it could not run, or died: the turn record's `error` says why (`START_FAILED`, `DISK_FULL`, `CONTAIN_FAILED`, …) and its message waits unread |
 
@@ -246,17 +245,9 @@ tool stays available.
 
 However a turn ends, `spore send` again continues the conversation.
 
-**What all your spores may spend** is optional, and off until you set it:
-
-```bash
-spore config set spendPerDay 20      # dollars, the host's local day
-spore config set spendPerMonth 300   # and month; either, both, or neither
-```
-
-Once what your spores have settled reaches one, no turn starts and no new model
-call is made — a turn cut by it ends `hard:spend` — until the day or month turns or the
-limit is raised. Calls already running finish and are paid. `spore ls` shows how far each
-window has gone; `spore config rm spendPerDay` lifts it.
+**What all your spores spend together** is not bounded by spore: `cost` bounds each turn. A
+total over spores is for whatever runs them — each turn's settled spend is in its record, and
+`spore pause` stops every turn and job.
 
 ## Turns the clock starts
 
@@ -417,7 +408,7 @@ limit for the whole tree — the agent's own calls and every sub-agent's, agains
 one number the agent cannot rewrite. Once the tree's settled spend reaches it, the broker refuses
 every new model call; model calls already running finish and are paid, so a turn can end past it by
 what was in flight. What a call costs is mohdel's catalog price for its model. A model the catalog
-has no price for runs, and its calls count as $0, so `cost` and the spend limits never stop them;
+has no price for runs, and its calls count as $0, so `cost` never stops them;
 `spore doctor` names each such model a spore uses, with the `mo` command that fills its prices, and
 each model not ready to call at all.
 

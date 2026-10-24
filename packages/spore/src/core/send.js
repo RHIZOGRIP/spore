@@ -18,7 +18,7 @@ import { preparePlugins, upgradeDocs } from './plugins.js'
 import { enqueue, ERR_FILE, heldIn, inboxRequest, OUT_FILE, PLUGIN_ENV, releaseHeld } from './spore-dir.js'
 import { RUNNING, stateOf } from './state.js'
 import { turnEnv } from './turn-env.js'
-import { bytesOf, CONFIG_FILE, containing, followingDocs, MEMORY_FILE, readConfig, SOURCES_FILE, spendLimits } from '../library/config.js'
+import { bytesOf, CONFIG_FILE, containing, followingDocs, MEMORY_FILE, readConfig, SOURCES_FILE } from '../library/config.js'
 
 const RUNNER = resolve(dirname(fileURLToPath(import.meta.url)), '../../native/spore-runner')
 // mohdel's session program, resolved the way Node resolves the package this runs with.
@@ -186,17 +186,14 @@ export function startRunner (workspace, { slot, plugins, unsafe = false, debug =
 
 /**
  * The flags the runner and a cell outside any turn are both given by the host: the Node and the
- * mohdel helpers they run, the spend limits, whether to contain, what the spore's plugins keep in
- * view of a contained process, and the gate.
+ * mohdel helpers they run, whether to contain, what the spore's plugins keep in view of a contained
+ * process, and the gate.
  */
 export function hostFlags (config, keep) {
-  const spend = spendLimits(config)
   return [
     '--node', process.execPath,
     '--session', SESSION,
     '--chatgpt-helper', CHATGPT_HELPER,
-    ...(spend.day === null ? [] : ['--spend-per-day', String(spend.day)]),
-    ...(spend.month === null ? [] : ['--spend-per-month', String(spend.month)]),
     ...(containing(config) ? [] : ['--no-contain']),
     ...(keep.length ? ['--contain-keep', JSON.stringify(keep)] : []),
     ...(config.gate ? ['--gate', config.gate] : [])
@@ -205,8 +202,8 @@ export function hostFlags (config, keep) {
 
 /**
  * The spore's dream started, through the lock race a turn uses, and refused as a turn is while the
- * spores are paused, past a spend limit, or with every slot taken. Its runner looks again under the
- * lock: a dream started a moment too late runs the turn that came first, or nothing.
+ * spores are paused or with every slot taken. Its runner looks again under the lock: a dream
+ * started a moment too late runs the turn that came first, or nothing.
  *
  * @returns {{ ws: string, started: boolean, pid?: number }}
  */

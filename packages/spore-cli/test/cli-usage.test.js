@@ -177,9 +177,9 @@ describe('spore config', () => {
   afterEach(() => rmSync(HOME, { recursive: true, force: true }))
 
   it('prints what it holds after a set, a map one entry a line', () => {
-    const set = config('set', 'spendPerDay', '0.01')
+    const set = config('set', 'turns', '3')
     expect(set.status, set.stderr).toBe(0)
-    expect(set.stdout).toBe('plugins:\n  browser 0.2.0\nreplyTo:\n  triage → discord:ops/1234\nspendPerDay: 0.01\n')
+    expect(set.stdout).toBe('plugins:\n  browser 0.2.0\nreplyTo:\n  triage → discord:ops/1234\nturns: 3\n')
   })
 })
 

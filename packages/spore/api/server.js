@@ -41,8 +41,7 @@ const STATUS = {
   API_METHOD: 405,
   API_TOO_LARGE: 413,
   ADMISSION_FULL: 503,
-  PAUSED: 503,
-  SPEND_LIMIT: 503
+  PAUSED: 503
 }
 
 const failure = (type, message, detail) => new SporeError(message, { type, detail })

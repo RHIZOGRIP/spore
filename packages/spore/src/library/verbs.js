@@ -23,7 +23,7 @@ import { grantedPathContaining, writesRefusal } from '../isolation/sandbox.js'
 import { parsedDefinition, parseDefinition, parseFrontmatter, sporeDefinition } from '../delegation/definition.js'
 import { RUNNING, isRunning, stateOf, stop } from '../core/state.js'
 import { historyOver } from '../resilience/compaction.js'
-import { paused, pauseSpores, spendSoFar, unpauseSpores } from '../core/admission.js'
+import { paused, pauseSpores, unpauseSpores } from '../core/admission.js'
 import { dropSchedule, survey, writeSchedule } from '../core/schedule.js'
 import { DIMENSIONS, extendTurn, limitText, wrapTurn } from '../core/limits.js'
 import { durationSpelling } from '../core/units.js'
@@ -556,7 +556,6 @@ export function list ({ where, disk = false, configFile = CONFIG_FILE } = {}) {
     home: config.home,
     asked: Boolean(where),
     paused: paused(),
-    spend: spendSoFar({ config }),
     contain: containing(config),
     missing: [
       ...missing.map(path => ({ path, why: 'gone' })),
@@ -880,5 +879,5 @@ export function usage ({ ws, days, since, until, tz = Intl.DateTimeFormat().reso
   if (!found.configured) {
     throw new SporeError(`no ${found.file}`, { type: 'CONFIG_MISSING', detail: 'spore config set home <dir> names where spores live, or name one spore' })
   }
-  return { ws: null, ...usageOver({ spores: found.workspaces.map(row => ({ name: basename(row.ws), ws: row.ws })), since: first, until: last, tz }), spend: found.spend }
+  return { ws: null, ...usageOver({ spores: found.workspaces.map(row => ({ name: basename(row.ws), ws: row.ws })), since: first, until: last, tz }) }
 }

@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, spendLimits, workspaceFor, containing, followingDocs, hereSnapshots } from '../src/library/config.js'
+import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, workspaceFor, containing, followingDocs, hereSnapshots } from '../src/library/config.js'
 import { workspacesIn, isWorkspace } from '../src/library/discover.js'
 import { define, defaultModel, defaultSporangiumPath, switchModel, edit, grantOf, list, log, pause, show, sporePaths, precursors, schedules, setDefaultModel, setSchedule, removeSchedule, sql, unpause, usage } from '../src/library/verbs.js'
 import { billingOf } from 'mohdel/providers'
@@ -187,18 +187,6 @@ describe('editing where to look', () => {
     expect(() => setKey('docs', 'on', CONFIG)).toThrow(/follow or kept/)
     setKey('docs', 'kept', CONFIG)
     expect(followingDocs(readConfig(CONFIG))).toBe(false)
-  })
-
-  it('holds the spend limits as dollars, no limit when unset', () => {
-    expect(spendLimits(readConfig(CONFIG))).toEqual({ day: null, month: null })
-    setKey('spendPerDay', '20', CONFIG)
-    setKey('spendPerMonth', '300.5', CONFIG)
-    expect(spendLimits(readConfig(CONFIG))).toEqual({ day: 20, month: 300.5 })
-    expect(() => setKey('spendPerDay', '0', CONFIG)).toThrow(/not an amount/)
-    expect(() => setKey('spendPerMonth', 'lots', CONFIG)).toThrow(/not an amount/)
-    removeFrom('spendPerDay', undefined, CONFIG)
-    expect(spendLimits(readConfig(CONFIG))).toEqual({ day: null, month: 300.5 })
-    expect(Object.fromEntries(settings(CONFIG).map(({ key, value, from }) => [key, [value, from]]))).toMatchObject({ spendPerDay: [null, 'unset'], spendPerMonth: [300.5, 'set'] })
   })
 
   it('says the value in effect for every setting, and whether it is the runtime\'s default', () => {

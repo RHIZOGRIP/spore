@@ -53,7 +53,6 @@ The file is written whole and renamed into place.
 | `gate` | the data socket of a mohdel gate every turn calls its models through | each turn starts its own model sessions |
 | `largestFile` | the largest file a turn may write, as `1GB`, `512MB` or bytes | 1 GB |
 | `freeFloor` | free disk below which a turn is refused | 2 GB |
-| `spendPerDay`, `spendPerMonth` | dollars all your spores may spend per local day or month | no limit |
 | `contain` | `on` or `off`: whether every turn, job, router and prepare step runs in namespaces of its own | on |
 | `docs` | `follow` or `kept`: whether a runner's start replaces the root documents that differ from what is installed | kept |
 | `hereSnapshots` | how many `spore here` session snapshots are kept per spore | 20 |
@@ -90,7 +89,7 @@ config rm workspaces <path>` drops it.
 spore config                       # every setting, and whether it is set or the default
 spore config set turns 4
 spore config set largestFile 4GB
-spore config rm spendPerDay        # back to unset
+spore config rm largestFile        # back to the default
 ```
 
 - **`turns`** — a start past it is refused, `ADMISSION_FULL`, and no message is recorded and no
@@ -109,11 +108,11 @@ spore config rm spendPerDay        # back to unset
   total.
 - **`freeFloor`** — the turn is recorded as an error, `DISK_FULL`, without starting, and its
   message waits unread for the next turn.
-- **`spendPerDay`, `spendPerMonth`** — once what the user's spores have settled reaches one, no
-  turn starts (`SPEND_LIMIT`, saying which window, how much, and when it turns) and no new model
-  call is made: a running turn ends `hard:spend`. Calls already running finish and are paid.
-  `spore ls` and `spore usage` show how far each window has gone; `spore doctor` notes one
-  reached.
+
+What all of your spores spend together has no limit here: `cost` in each `spore.cmk` bounds a
+turn, and a total over spores is the orchestrator's — it reads each turn's settled spend from the
+turn records and stops them all with `spore pause`
+([ARCHITECTURE](../ARCHITECTURE.md#what-a-users-spores-spend)).
 
 ### `contain`
 
@@ -175,7 +174,6 @@ What the user's spores share while they run, under `$XDG_STATE_HOME/spore/`, els
 | path | what it is |
 |---|---|
 | `slots/` | the admission slots, `0` … `turns`−1; a running turn holds one's `flock` |
-| `spend/<YYYY-MM-DD>` | dollars settled that local day, in micros; this month and the last are kept |
 | `paused` | `{ at, why? }`, present while `spore pause` is in force; a file made by hand pauses as well |
 | `tick.lock` | held by the pass that fires schedules |
 | `jobs/<run>.lock` | held by a job's supervisor while the job runs |
@@ -183,20 +181,15 @@ What the user's spores share while they run, under `$XDG_STATE_HOME/spore/`, els
 | `cells/` | the workspaces of cells run outside any turn, such as a triage cell's, and of dreams |
 | `telegram/<bot>/`, `discord/<bot>/` | each chat bot's position |
 
-The spend ledger is written whether or not a limit is set, so a limit set at noon counts the
-morning. It counts every spore of the user, including one no config lists and one since
-removed, and puts each call on the day it settled; `spore usage` reads the workspaces instead
-and puts each turn on the day it started.
-
 ## Models on the host
 
 `spore setup` asks questions and refuses without a terminal, naming the commands its steps are:
 `spore config set home <dir>`, `mo onboard <provider>`, `spore config set model <provider>/<name>`,
-`spore config set spendPerDay <dollars>`, `spore doctor`.
+`spore doctor`.
 
 `spore doctor`'s **models** area reads every model a spore names — `model`, `models` and the
 `cell-models` values — once each: a problem when a turn on it cannot run, a note when it has no
-prices in mohdel's catalog, its calls then counting as $0 against `cost` and the spend limits.
+prices in mohdel's catalog, its calls then counting as $0 against `cost`.
 Each names the `mo` command that fixes it. On a host that names a `gate`, the gate's catalog
 answers instead (`POST /v1/info`): a problem when the gate has no entry for a model or refuses its
 lane, or when it does not answer at all. Its credentials are the gate's, and doctor does not see them.
@@ -215,9 +208,8 @@ reaches an agent.
 
 A `chatgpt/<model>` call uses the ChatGPT account `mo chatgpt login` signed in and
 `mo chatgpt select` made active, through an OAuth token mohdel's helper fetches. Its calls report
-zero spend: a definition's `cost` limits and the host's `spendPerDay` and `spendPerMonth` never
-stop a spore running on a ChatGPT plan, while `rounds` and `wall` still do. Wherever spend is
-shown — the header `send` and `fork` print when a turn starts, `spore show`, `spore usage`,
+zero spend: a definition's `cost` limits never stop a spore running on a ChatGPT plan, while
+`rounds` and `wall` still do. Wherever spend is shown — the header `send` and `fork` print when a turn starts, `spore show`, `spore usage`,
 Telegram's `/status` — such a model reads `not metered · <label>` instead of dollars, as does any
 model mohdel declares billed by `plan` or `capacity`.
 
@@ -281,7 +273,7 @@ A socket mounted where a spore runs is one its agent's commands can connect to a
 credential in `headers` is what keeps them out, so the service behind it must refuse a call
 without it. A response past 32 MB is refused, and a call times out after 30 s.
 
-Source calls count toward no spend limit; cap a paid endpoint at its provider.
+Source calls count toward no `cost`; cap a paid endpoint at its provider.
 
 ## Accounts held by more than one spore
 
@@ -565,8 +557,7 @@ A running job also shows in `spore show`, with its last progress line.
 
 A spore dreams only when its `spore.cmk` says so, with `dream` and its `dream.*` fields
 ([definition.md](definition.md#dreams)). The `tick` pass starts a dream that is due, as it fires a
-schedule: it takes an admission slot, and waits while the spores are paused or a spend limit is
-reached. While it runs, `spore ls`, `spore show` and the TUI say `dreaming`; `spore send` queues
+schedule: it takes an admission slot, and waits while the spores are paused. While it runs, `spore ls`, `spore show` and the TUI say `dreaming`; `spore send` queues
 the message and says so, and the turn after the dream reads it. `spore stop` stops a dream as it
 stops a turn. Each dream is a row in the `cells` view with origin `dream`, what it cost, and what
 it changed; its workspace is under `$XDG_STATE_HOME/spore/cells/<spore>/dream/`, and the runner's

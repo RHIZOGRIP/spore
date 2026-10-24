@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
-import { paused, pauseSpores, spendSoFar, spendStop, takeSlot, unpauseSpores, withSlot } from '../src/core/admission.js'
+import { paused, pauseSpores, takeSlot, unpauseSpores, withSlot } from '../src/core/admission.js'
 import { send } from '../src/core/send.js'
 import { CONFIG_FILE } from '../src/library/config.js'
 import { appendInbox, statePath } from '../src/core/spore-dir.js'
@@ -59,23 +59,6 @@ describe('admission slots', () => {
     expect(unpauseSpores({ dir: slots })).toBe(true)
     expect(unpauseSpores({ dir: slots })).toBe(false)
     closeSync(takeSlot({ turns: 2, dir: slots }).fd)
-  })
-
-  it('gives no slot once the spores have spent a limit they were given, and says so with none', () => {
-    const slots = resolve(dir, 'slots')
-    const { date } = spendSoFar({ dir: slots, config: {} })
-    mkdirSync(resolve(dir, 'spend'), { recursive: true })
-    writeFileSync(resolve(dir, 'spend', date), '20000000')
-
-    expect(spendSoFar({ dir: slots, config: { spendPerDay: 20 } })).toEqual({ date, day: 20, month: 20, limits: { day: 20, month: null } })
-    expect(() => takeSlot({ turns: 2, spend: { day: 20, month: null }, dir: slots })).toThrow(expect.objectContaining({
-      type: 'SPEND_LIMIT',
-      message: expect.stringMatching(/^your spores have spent \$20\.00 today.*your daily limit of \$20\.00/),
-      detail: expect.stringMatching(/^nothing was said or started; turns start again tomorrow/)
-    }))
-    expect(spendStop({ dir: slots, spend: { day: null, month: 20 } })).toMatchObject({ type: 'SPEND_LIMIT', message: expect.stringMatching(/monthly limit/) })
-    expect(spendStop({ dir: slots, spend: { day: 25, month: null } })).toBe(null)
-    closeSync(takeSlot({ turns: 2, spend: { day: null, month: null }, dir: slots }).fd)
   })
 
   it('counts only the slots the limit names, so lowering it binds at once', () => {

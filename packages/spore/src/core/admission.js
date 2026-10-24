@@ -11,7 +11,7 @@
 
 import { closeSync } from 'node:fs'
 
-import { readConfig, spendLimits } from '../library/config.js'
+import { readConfig } from '../library/config.js'
 import { native } from '../native.js'
 import { SporeError } from '../observability/errors.js'
 
@@ -21,14 +21,13 @@ export const DEFAULT_TURNS = native.defaultTurns()
 
 /**
  * A free slot, held by this process until `fd` closes. Refused while the user's spores are paused
- * (`PAUSED`), once its settled spend reaches a limit (`SPEND_LIMIT`) and when every one is
- * held (`ADMISSION_FULL`): nothing waits here, because waiting is a policy and it belongs to
- * the caller. The rule is `rust/workspace`'s.
+ * (`PAUSED`) and when every one is held (`ADMISSION_FULL`): nothing waits here, because waiting
+ * is a policy and it belongs to the caller. The rule is `rust/workspace`'s.
  *
  * @returns {{ fd: number, path: string }}
  */
-export function takeSlot ({ config = readConfig(), turns = config.turns ?? DEFAULT_TURNS, spend = spendLimits(config), dir = SLOT_DIR } = {}) {
-  const taken = JSON.parse(native.takeSlot(turns, dir, spend.day, spend.month))
+export function takeSlot ({ config = readConfig(), turns = config.turns ?? DEFAULT_TURNS, dir = SLOT_DIR } = {}) {
+  const taken = JSON.parse(native.takeSlot(turns, dir))
   if (taken.error) {
     throw new SporeError(taken.error.message, {
       type: taken.error.type,
@@ -48,21 +47,6 @@ export function withSlot (then, options) {
   } finally {
     closeSync(slot.fd)
   }
-}
-
-/**
- * What the user's spores have settled today and this month, in dollars, beside the limits
- * on it: `{ date, day, month, limits: { day, month } }`, a limit null where none is set.
- */
-export function spendSoFar ({ dir = SLOT_DIR, config = readConfig() } = {}) {
-  const { date, day, month } = JSON.parse(native.spendSoFar(dir))
-  return { date, day: day / 1e6, month: month / 1e6, limits: spendLimits(config) }
-}
-
-/** The refusal a spend limit reached gives — `{ type, message, detail }` — or null. */
-export function spendStop ({ dir = SLOT_DIR, spend = spendLimits(readConfig()) } = {}) {
-  const refused = native.spendRefusal(dir, spend.day, spend.month)
-  return refused === null ? null : JSON.parse(refused).error
 }
 
 /** The pause in force on the user's spores — `{ at, why? }` — or null. */

@@ -283,48 +283,13 @@ pub fn default_free_floor() -> f64 {
 }
 
 #[napi]
-pub fn take_slot(
-    turns: u32,
-    dir: String,
-    spend_per_day: Option<f64>,
-    spend_per_month: Option<f64>,
-) -> napi::Result<String> {
-    let limits = workspace::spend::Limits {
-        day: spend_per_day,
-        month: spend_per_month,
-    };
+pub fn take_slot(turns: u32, dir: String) -> napi::Result<String> {
     Ok(
-        match workspace::take_slot(turns, Path::new(&dir), &limits).map_err(failed)? {
+        match workspace::take_slot(turns, Path::new(&dir)).map_err(failed)? {
             Ok(slot) => json!({ "fd": slot.file.into_raw_fd(), "path": slot.path }).to_string(),
             Err(refusal) => refused(&refusal),
         },
     )
-}
-
-/// `{ date, day, month }`: the local day and the micros settled on it and in its month so far.
-#[napi]
-pub fn spend_so_far(dir: String) -> napi::Result<String> {
-    let spent = workspace::spend::spent(Path::new(&dir)).map_err(failed)?;
-    Ok(
-        json!({ "date": spent.date.to_string(), "day": spent.day, "month": spent.month })
-            .to_string(),
-    )
-}
-
-/// The refusal a limit reached gives, as JSON, or null.
-#[napi]
-pub fn spend_refusal(
-    dir: String,
-    spend_per_day: Option<f64>,
-    spend_per_month: Option<f64>,
-) -> napi::Result<Option<String>> {
-    let limits = workspace::spend::Limits {
-        day: spend_per_day,
-        month: spend_per_month,
-    };
-    Ok(workspace::spend::spend_refusal(Path::new(&dir), &limits)
-        .map_err(failed)?
-        .map(|refusal| refused(&refusal)))
 }
 
 /// The pause in force on the spores whose slots are in `dir`, as JSON, or null.
