@@ -17,6 +17,11 @@ export function durationMs (v) {
   return native.durationMs(String(v))
 }
 
+/** An amount of the limit `dimension` — `rounds`, `cost` or `wall` — as a definition writes one, or null. */
+export function limitAmount (dimension, v) {
+  return native.limitAmount(dimension, String(v))
+}
+
 /** `10MB` in bytes, or null. A bare number is bytes. */
 export function sizeBytes (v) {
   return native.sizeBytes(String(v))

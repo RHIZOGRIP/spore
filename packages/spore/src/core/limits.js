@@ -7,17 +7,11 @@
 import { readFileSync } from 'node:fs'
 
 import { SporeError } from '../observability/errors.js'
-import { durationMs, parseDefinition } from '../delegation/definition.js'
+import { durationMs, limitAmount, parseDefinition } from '../delegation/definition.js'
 import { changeLimits, definitionPath } from './spore-dir.js'
 import { TOOL_NAMES } from './tool-names.js'
 
 export const DIMENSIONS = ['rounds', 'cost', 'wall']
-
-const AMOUNT = {
-  rounds: (text) => (/^[0-9]+$/.test(text) ? Number(text) : null),
-  cost: (text) => (/^[0-9]+(\.[0-9]+)?$/.test(text) ? Number(text) : null),
-  wall: (text) => durationMs(text)
-}
 
 const SHAPE = { rounds: '20', cost: '1.50', wall: '30m' }
 
@@ -63,7 +57,7 @@ export function extendTurn (ws, dimension, amount) {
       detail: 'as spore extend <name> wall 30m'
     })
   }
-  const by = AMOUNT[dimension](String(amount ?? ''))
+  const by = limitAmount(dimension, amount ?? '')
   if (!(by > 0)) {
     throw new SporeError(`"${amount ?? ''}" is not an amount of ${dimension}`, {
       type: 'LIMIT_AMOUNT',

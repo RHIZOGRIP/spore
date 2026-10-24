@@ -115,6 +115,11 @@ pub fn duration_ms(value: String) -> Option<f64> {
 }
 
 #[napi]
+pub fn limit_amount(dimension: String, value: String) -> Option<f64> {
+    definition::limit_amount(&dimension, &value)
+}
+
+#[napi]
 pub fn size_bytes(value: String) -> Option<f64> {
     definition::size_bytes(&value)
 }
@@ -366,6 +371,23 @@ pub fn name_rules() -> String {
         json!({ "pattern": definition::VARIABLE_PATTERN, "says": definition::VARIABLE_RULE }),
     );
     serde_json::Value::Object(rules).to_string()
+}
+
+/// Why a contained process of a spore whose plugins keep `kept` (`[{ plugin, hide, keep?,
+/// missing? }]`) cannot start, as `{ problem, fix }`, or none.
+#[napi]
+pub fn kept_refusal(kept: String, contained: bool) -> napi::Result<Option<String>> {
+    let kept = workspace::kept::kept_from(&kept).map_err(failed)?;
+    Ok(workspace::kept::kept_problem(&kept, contained)
+        .map(|(problem, fix)| json!({ "problem": problem, "fix": fix }).to_string()))
+}
+
+/// The placeholder in a source's spec the runner would refuse, as JSON `{found, where, why}`.
+#[napi]
+pub fn misplaced(spec: String) -> napi::Result<Option<String>> {
+    let spec: Value = serde_json::from_str(&spec).map_err(failed)?;
+    Ok(workspace::source_spec::misplaced(&spec)
+        .map(|m| json!({ "found": m.found, "where": m.place, "why": m.why }).to_string()))
 }
 
 #[napi]

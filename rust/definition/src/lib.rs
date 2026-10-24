@@ -490,6 +490,16 @@ fn cost(v: &str) -> Option<f64> {
     AMOUNT.is_match(v).then(|| number(v))
 }
 
+/// An amount of one of a turn's limits, read as a definition's limits are: `40`, `0.50`, `10m`.
+pub fn limit_amount(dimension: &str, v: &str) -> Option<f64> {
+    match dimension {
+        "rounds" => rounds(v),
+        "cost" => cost(v),
+        "wall" => duration_ms(v),
+        _ => None,
+    }
+}
+
 /// The grammar only: `key: scalar` and `key: [a, b]`. Which keys are allowed is the
 /// schema's business — a definition that describes an agent — and an origin's frontmatter
 /// is read with it when an experiment inherits its settings.
@@ -1757,6 +1767,17 @@ mod tests {
             serde_json::to_string(&fields).unwrap(),
             r#"{"b":"1","a":["x","y"]}"#
         );
+    }
+
+    #[test]
+    fn reads_an_amount_of_each_limit_as_a_definition_writes_it() {
+        assert_eq!(limit_amount("rounds", "20"), Some(20.0));
+        assert_eq!(limit_amount("rounds", "2.5"), None);
+        assert_eq!(limit_amount("cost", "1.50"), Some(1.5));
+        assert_eq!(limit_amount("cost", "$1"), None);
+        assert_eq!(limit_amount("wall", "30m"), Some(1_800_000.0));
+        assert_eq!(limit_amount("wall", "30"), None);
+        assert_eq!(limit_amount("spend", "1"), None);
     }
 
     #[test]

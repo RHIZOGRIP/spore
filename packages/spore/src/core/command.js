@@ -4,6 +4,7 @@ import { once } from 'node:events'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { systemReadPaths } from '../isolation/sandbox.js'
+import { native } from '../native.js'
 
 export const CONFINE_BIN = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'build', 'Release', 'confine')
 
@@ -21,19 +22,11 @@ export function containCheck () {
 /**
  * Why a contained command of a spore whose plugins keep `kept` in view cannot start, as
  * `{ problem, fix }`, or null: it would not be contained, and so would see all its plugins hide,
- * or a directory to hide or keep is not there. The runner refuses a turn on the same grounds.
+ * or a directory to hide or keep is not there — the rule the runner refuses a turn by.
  */
 export function keptRefusal (kept, contained) {
-  if (!kept.length) return null
-  if (!contained) {
-    return { problem: `plugin ${kept.map(k => k.plugin).join(', ')} shows this spore only its own part of the host by containing it, and this one would not be contained`, fix: 'spore config set contain on' }
-  }
-  const there = (path) => statSync(path, { throwIfNoEntry: false })?.isDirectory()
-  const absent = kept.find(k => !there(k.keep ?? k.hide))
-  if (!absent) return null
-  return absent.keep
-    ? { problem: `plugin ${absent.plugin} needs ${absent.keep}, which is not there`, fix: absent.missing }
-    : { problem: `plugin ${absent.plugin} hides ${absent.hide}, which is not there`, fix: `make it, or drop ${absent.plugin} from plugins: in its spore.cmk` }
+  const refused = native.keptRefusal(JSON.stringify(kept), contained)
+  return refused === null ? null : JSON.parse(refused)
 }
 
 const SAMPLE_MS = 2000

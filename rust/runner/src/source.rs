@@ -34,6 +34,7 @@ use hyper::{Method, Request, Response, StatusCode, Uri};
 use mohdel_thin_gate::prelude::{not_found_response, Body};
 use serde_json::{json, Map, Value};
 use spore_definition::Ordered;
+use spore_workspace::source_spec::{misplaced, placeholders, text, Misplaced};
 use url::Url;
 
 use crate::broker::{answer, read_json, Refusal};
@@ -120,13 +121,6 @@ fn strings(value: &Value) -> Option<Vec<String>> {
         .collect()
 }
 
-fn text(value: &Value) -> String {
-    match value {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    }
-}
-
 /// `value` with each `${VAR}` replaced from `env`; the error names the first variable not set.
 pub(crate) fn fill_variables(
     value: &str,
@@ -167,62 +161,16 @@ fn fill(name: &str, value: &str, env: &impl Fn(&str) -> Option<String>) -> Resul
     })
 }
 
-const NAMED_HEADER: &str =
-    "a header may hold {name}, the calling spore's name, which the runner fills";
-
-fn placeholders(raw: &str) -> Vec<(usize, usize)> {
-    let mut found = Vec::new();
-    let mut at = 0;
-    while let Some(open) = raw[at..].find('{').map(|i| i + at) {
-        let ident = raw[open + 1..]
-            .char_indices()
-            .take_while(|(i, c)| {
-                c.is_ascii_alphabetic()
-                    || *c == '_'
-                    || (*i > 0 && (c.is_ascii_digit() || *c == '.'))
-            })
-            .count();
-        let close = open + 1 + ident;
-        if ident > 0 && raw[close..].starts_with('}') && !raw[..open].ends_with('$') {
-            found.push((open, close + 1));
-            at = close + 1;
-        } else {
-            at = open + 1;
-        }
-    }
-    found
-}
-
-fn with_name(source: &str, header: &str, raw: &str, spore: &str) -> Result<String, Refusal> {
+fn with_name(raw: &str, spore: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut from = 0;
     for (start, end) in placeholders(raw) {
-        let placeholder = &raw[start + 1..end - 1];
-        if placeholder != "name" {
-            return Err(invalid(
-                format!("source \"{source}\" has {{{placeholder}}} in its {header} header, which spore does not fill"),
-                NAMED_HEADER,
-            ));
-        }
         out.push_str(&raw[from..start]);
         out.push_str(spore);
         from = end;
     }
     out.push_str(&raw[from..]);
-    Ok(out)
-}
-
-fn unnamed(source: &str, field: &str, raw: &str) -> Result<(), Refusal> {
-    if placeholders(raw)
-        .into_iter()
-        .any(|(start, end)| &raw[start + 1..end - 1] == "name")
-    {
-        return Err(invalid(
-            format!("source \"{source}\" has {{name}} in its {field}"),
-            "only a header takes {name}, which the runner fills and the agent cannot replace",
-        ));
-    }
-    Ok(())
+    out
 }
 
 fn resolve(
@@ -246,11 +194,16 @@ fn resolve(
             shape,
         ));
     }
+    if let Some(Misplaced { found, place, why }) = misplaced(spec) {
+        return Err(invalid(
+            format!("source \"{name}\" has {found} in {place}"),
+            why,
+        ));
+    }
     let raw = match spec.get("url") {
         Some(Value::String(url)) if !url.is_empty() => url,
         _ => return Err(invalid(format!("source \"{name}\" has no url"), shape)),
     };
-    unnamed(name, "url", raw)?;
     let filled = fill(name, raw, env)?;
     let url = Url::parse(&filled).map_err(|e| {
         invalid(
@@ -267,7 +220,6 @@ fn resolve(
     let dial = match spec.get("socket") {
         None => Dial::Net(net.clone()),
         Some(Value::String(raw)) => {
-            unnamed(name, "socket", raw)?;
             let path = socket_path(&fill(name, raw, env)?, &url).map_err(|why| {
                 invalid(format!("source \"{name}\" has a socket it cannot use"), why)
             })?;
@@ -365,9 +317,8 @@ fn resolve(
                 .map(|(k, v)| {
                     let raw = text(v);
                     let raw = if field == "headers" {
-                        with_name(name, k, &raw, spore)?
+                        with_name(&raw, spore)
                     } else {
-                        unnamed(name, field, &raw)?;
                         raw
                     };
                     Ok((k.clone(), fill(name, &raw, env)?))
