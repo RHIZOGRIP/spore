@@ -22,6 +22,7 @@ import { dirname, resolve, join } from 'node:path'
 import { isWorkspace, sporesInHome } from './discover.js'
 import { native } from '../native.js'
 import { NAMES } from '../core/names.js'
+import { variableOf } from '../core/variables.js'
 import { SporeError } from '../observability/errors.js'
 
 export const CONFIG_DIR = process.env.XDG_CONFIG_HOME
@@ -192,7 +193,7 @@ function validate (raw, file) {
   for (const [name, hook] of Object.entries(raw.approvals ?? {})) {
     const fits = NAMES.approval.pattern.test(name) && isRecord(hook) && Object.keys(hook).every(key => key === 'url' || key === 'secret') &&
       typeof hook.url === 'string' && URL.canParse(hook.url) && ['http:', 'https:'].includes(new URL(hook.url).protocol) &&
-      typeof hook.secret === 'string' && /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/.test(hook.secret)
+      variableOf(hook.secret) !== null
     if (!fits) {
       throw new SporeError(`${file} has an approval hook "${name}" spore cannot read`, { type: 'CONFIG_INVALID', detail: APPROVALS_DETAIL })
     }

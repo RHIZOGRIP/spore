@@ -33,7 +33,7 @@ use hyper::header::{HeaderName, HeaderValue, CONTENT_TYPE};
 use hyper::{Method, Request, Response, StatusCode, Uri};
 use mohdel_thin_gate::prelude::{not_found_response, Body};
 use serde_json::{json, Map, Value};
-use spore_definition::Ordered;
+use spore_definition::{fill_variables, Ordered};
 use spore_workspace::source_spec::{misplaced, placeholders, text, Misplaced};
 use url::Url;
 
@@ -119,35 +119,6 @@ fn strings(value: &Value) -> Option<Vec<String>> {
         .iter()
         .map(|v| v.as_str().map(str::to_string))
         .collect()
-}
-
-/// `value` with each `${VAR}` replaced from `env`; the error names the first variable not set.
-pub(crate) fn fill_variables(
-    value: &str,
-    env: &impl Fn(&str) -> Option<String>,
-) -> Result<String, String> {
-    let mut out = String::with_capacity(value.len());
-    let mut rest = value;
-    while let Some(at) = rest.find("${") {
-        out.push_str(&rest[..at]);
-        let after = &rest[at + 2..];
-        let ident = after
-            .char_indices()
-            .take_while(|(i, c)| {
-                c.is_ascii_alphabetic() || *c == '_' || (*i > 0 && c.is_ascii_digit())
-            })
-            .count();
-        if ident > 0 && after[ident..].starts_with('}') {
-            let variable = &after[..ident];
-            out.push_str(&env(variable).ok_or_else(|| variable.to_string())?);
-            rest = &after[ident + 1..];
-        } else {
-            out.push_str("${");
-            rest = after;
-        }
-    }
-    out.push_str(rest);
-    Ok(out)
 }
 
 fn fill(name: &str, value: &str, env: &impl Fn(&str) -> Option<String>) -> Result<String, Refusal> {

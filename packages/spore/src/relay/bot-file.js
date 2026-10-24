@@ -18,9 +18,9 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { CONFIG_FILE } from '../library/config.js'
 import { native } from '../native.js'
 import { NAMES } from '../core/names.js'
+import { variableOf } from '../core/variables.js'
 import { SporeError } from '../observability/errors.js'
 
-const VARIABLE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/
 const SHOWS = ['working', 'react', 'both']
 const REACTIONS = { taken: '👨‍💻', failed: '💔' }
 const EVERY_BOT = ['brief', 'files']
@@ -70,7 +70,7 @@ export function readBot (spec, path) {
     throw new SporeError(`${path} has a files that is not a size or false`, { type: typeOf(spec, 'BOT_INVALID'), detail: `files is the largest file the bot takes from a person, as "10MB", ${spec.label}'s own ${spec.limits.fetch / 1024 / 1024} MB when left out — or false to take none` })
   }
   for (const field of spec.credentials) {
-    if (typeof raw[field] !== 'string' || !VARIABLE.test(raw[field])) {
+    if (variableOf(raw[field]) === null) {
       throw new SporeError(`${path} has no ${field} spore can read`, {
         type: typeOf(spec, 'BOT_INVALID'),
         detail: `${field} names the variable holding it, as "\${${spec.kind.toUpperCase()}_${field.toUpperCase()}}", set in environment beside config.json; it never reaches a spore`
@@ -134,7 +134,7 @@ export function filesOf (spec, path) {
   return files === undefined ? spec.limits.fetch : Math.min(spec.limits.fetch, Math.floor(native.sizeBytes(files)))
 }
 
-export const credentialVariable = (spec, path, field) => VARIABLE.exec(readBot(spec, path)[field])[1]
+export const credentialVariable = (spec, path, field) => variableOf(readBot(spec, path)[field])
 
 export function credentialOf (spec, path, field, env) {
   const variable = credentialVariable(spec, path, field)

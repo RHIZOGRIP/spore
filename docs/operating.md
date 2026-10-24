@@ -253,7 +253,8 @@ model mohdel declares billed by `plan` or `capacity`.
 | `requires` | parameters a definition granting the source must narrow with `<source>.<param>` |
 
 `${VAR}` in `url`, `socket`, `query` and `headers` is filled from the runner's environment, which includes
-`~/.config/spore/environment`; the agent never sees the value.
+`~/.config/spore/environment`; the agent never sees the value. A variable set to nothing is not set,
+and refuses the source.
 
 `{name}` in a header value is the calling spore's name, its workspace directory's name, filled
 by the runner whoever started the turn; a cell sends its root's. One credential then serves
@@ -317,7 +318,7 @@ turn; the agent never sees it, its URL or its credential.
 |---|---|---|
 | `url` | required | the store, `http` or `https` |
 | `socket` | optional | an absolute path: the store is reached on this unix socket instead of the url's host, the url then `http` |
-| `headers` | optional | sent on every request; each `${VAR}` is filled from the runner's environment, and an unset one is an error |
+| `headers` | optional | sent on every request; each `${VAR}` is filled from the runner's environment, and an unset or empty one is an error |
 | `paths` | optional | where `ready`, `create`, `fetch`, `upsert` and `query` live, each starting with `/`; `fetch`, `upsert` and `query` must contain `{collection}`. Absent ones are the protocol's defaults |
 | `collectionField` | optional | the field of a create's body that names the collection; `collection` when absent |
 

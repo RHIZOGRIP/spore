@@ -96,7 +96,7 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
   const startsUnasked = (name, what) => unasked.set(name, [...(unasked.get(name) ?? []), what])
   const dir = dirname(configFile)
   const environment = resolve(dir, ENVIRONMENT_FILE)
-  const unsetIn = (described) => secretsIn(described).filter(variable => env[variable] === undefined)
+  const unsetIn = (described) => secretsIn(described).filter(variable => !env[variable])
 
   if (root) problem('machine', 'user', 'spore is running as root — every turn, job, router and prepare step is refused', 'run spore as an ordinary user (in a container, USER or --user)')
   if (abi === -constants.errno.EOPNOTSUPP) problem('machine', 'landlock', 'is built into this kernel and not enabled at boot — every turn fails', 'add landlock to the kernel\'s lsm= boot parameter, or pass --unsafe to run unconfined')

@@ -16,10 +16,10 @@ use http_body_util::{BodyExt, Full};
 use hyper::{Method, Request, StatusCode};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
+use spore_definition::fill_variables;
 
 use crate::broker::Refusal;
 use crate::dial::{https_client, socket_path, Dial};
-use crate::source::fill_variables;
 
 pub const MEMORY_FILE: &str = "memory.json";
 pub const MAX_RECORDS: usize = 256;

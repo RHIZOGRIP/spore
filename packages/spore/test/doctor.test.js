@@ -64,6 +64,9 @@ describe('spore doctor', () => {
       expect.objectContaining({ severity: 'note', problem: 'source spare wants SPARE_KEY, which is not set' })
     ])
     expect(examine({ LEDGER_KEY: 'k', SPARE_KEY: 'k' }).findings).toEqual([])
+    expect(examine({ LEDGER_KEY: '', SPARE_KEY: 'k' }).findings).toEqual([
+      expect.objectContaining({ severity: 'problem', problem: 'source ledger wants LEDGER_KEY, which is not set — main cannot start a turn' })
+    ])
   })
 
   it('reports a source holding a placeholder the runner would refuse', () => {

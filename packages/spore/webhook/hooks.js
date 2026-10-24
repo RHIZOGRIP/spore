@@ -13,6 +13,7 @@ import { CONFIG_FILE, SporeError } from '../src/index.js'
 import { sizeBytes } from '../src/delegation/definition.js'
 import { deliveryBounds } from '../src/core/route.js'
 import { NAMES } from '../src/core/names.js'
+import { fillVariables, variablesIn } from '../src/core/variables.js'
 
 export const HOOKS_FILE = 'hooks.json'
 export const hooksPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), HOOKS_FILE)
@@ -74,13 +75,12 @@ export function payloadRefusal (match, body) {
 const refuse = (path, name, problem, detail) => new SporeError(`${path}: hook "${name}" ${problem}`, { type: 'WEBHOOK_INVALID', detail })
 
 function fill (path, name, value, env, used) {
-  return String(value).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, variable) => {
-    if (env[variable] === undefined || env[variable] === '') {
-      throw refuse(path, name, `wants $${variable}, which is not set`, 'a secret is read from the environment — add it to ~/.config/spore/environment')
-    }
-    used.push(variable)
-    return env[variable]
-  })
+  const { filled, missing } = fillVariables(value, env)
+  if (missing !== undefined) {
+    throw refuse(path, name, `wants $${missing}, which is not set`, 'a secret is read from the environment — add it to ~/.config/spore/environment')
+  }
+  used.push(...variablesIn(value))
+  return filled
 }
 
 function verifier (path, name, verify, env, used) {

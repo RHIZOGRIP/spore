@@ -12,13 +12,13 @@ import { CONFIG_FILE } from '../src/library/config.js'
 import { SporeError } from '../src/observability/errors.js'
 import { deliveryBounds } from '../src/core/route.js'
 import { NAMES } from '../src/core/names.js'
+import { variableOf } from '../src/core/variables.js'
 
 export const API_FILE = 'api.json'
 export const apiPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), API_FILE)
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
 const PATTERN = /^[A-Za-z0-9*][A-Za-z0-9._*-]{0,63}$/
-const TOKEN = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/
 
 const refuse = (path, problem, detail) => new SporeError(`${path} ${problem}`, { type: 'API_CONFIG_INVALID', detail })
 
@@ -60,7 +60,7 @@ export function loadApi (path = apiPath(), env = process.env) {
   const secrets = new Set()
   const callers = Object.entries(raw.callers).map(([name, caller]) => {
     if (!NAMES.caller.pattern.test(name)) throw refuse(path, `has a caller named ${JSON.stringify(name)}`, `a caller is named with ${NAMES.caller.says}: the name is its origin, api:<caller>`)
-    const variable = TOKEN.exec(caller?.token ?? '')?.[1]
+    const variable = variableOf(caller?.token)
     if (!variable) throw refuse(path, `has a token for ${name} that is not \${VAR}`, 'a token is read from the environment, never written in the file')
     const token = env[variable]
     if (!token) throw refuse(path, `wants $${variable} for ${name}, which is not set`, 'add it to ~/.config/spore/environment')

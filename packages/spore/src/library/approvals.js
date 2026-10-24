@@ -10,6 +10,7 @@ import { createHmac, randomBytes } from 'node:crypto'
 
 import { CONFIG_FILE, readConfig } from './config.js'
 import { native } from '../native.js'
+import { variableOf } from '../core/variables.js'
 import { SporeError } from '../observability/errors.js'
 import { recordApproval } from '../core/spore-dir.js'
 
@@ -23,7 +24,6 @@ const CALENDAR_FIELDS = ['tz', 'days', 'holidays']
 const OPTION_ID = /^[A-Za-z0-9_-]{1,32}$/
 const KIND = /^[a-z][a-z0-9-]*$/
 const PERSON = /^\S+$/
-const VARIABLE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/
 const STYLES = ['positive', 'destructive']
 const WITHIN = '24h'
 const HOOK_TIMEOUT_MS = 10_000
@@ -152,7 +152,7 @@ export function askApproval (ws, request, { configFile = CONFIG_FILE, now = Date
 }
 
 /** The variables the approval hooks of `config` keep their secrets in: none of them reaches a turn. */
-export const approvalHookVariables = (config) => Object.values(config.approvals ?? {}).map(hook => VARIABLE.exec(hook.secret)[1])
+export const approvalHookVariables = (config) => Object.values(config.approvals ?? {}).map(hook => variableOf(hook.secret))
 
 const hookFailed = (name, why) => new SporeError(`the approval hook "${name}" failed`, { type: 'APPROVAL_HOOK_FAILED', detail: why })
 
@@ -187,7 +187,7 @@ async function answerOf (name, response) {
 export async function callApprovalHook (name, payload, { configFile = CONFIG_FILE, env, sleep, signal, fetchImpl = fetch, retriesMs = HOOK_RETRIES_MS }) {
   const hook = readConfig(configFile).approvals?.[name]
   if (!hook) throw hookFailed(name, `${configFile} no longer names it`)
-  const variable = VARIABLE.exec(hook.secret)[1]
+  const variable = variableOf(hook.secret)
   const secret = env[variable]
   if (!secret) throw hookFailed(name, `its secret is $${variable}, which is not set — it goes in environment beside config.json`)
   const body = JSON.stringify(payload)

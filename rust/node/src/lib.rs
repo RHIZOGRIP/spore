@@ -3,6 +3,7 @@
 //! frontmatter keeps its order. A descriptor crosses as its number, and from then on the
 //! JavaScript side owns it.
 
+use std::collections::HashMap;
 use std::os::fd::{FromRawFd, IntoRawFd};
 use std::path::{Path, PathBuf};
 
@@ -117,6 +118,26 @@ pub fn duration_ms(value: String) -> Option<f64> {
 #[napi]
 pub fn limit_amount(dimension: String, value: String) -> Option<f64> {
     definition::limit_amount(&dimension, &value)
+}
+
+#[napi]
+pub fn variable_of(value: String) -> Option<String> {
+    definition::variable_of(&value)
+}
+
+#[napi]
+pub fn variables_in(text: String) -> Vec<String> {
+    definition::variables_in(&text)
+}
+
+/// `{ filled }`, `value` with each `${VAR}` replaced from `env`, or `{ missing }`, the first
+/// variable not set.
+#[napi]
+pub fn fill_variables(value: String, env: HashMap<String, String>) -> String {
+    match definition::fill_variables(&value, &|name| env.get(name).cloned()) {
+        Ok(filled) => json!({ "filled": filled }).to_string(),
+        Err(missing) => json!({ "missing": missing }).to_string(),
+    }
 }
 
 #[napi]

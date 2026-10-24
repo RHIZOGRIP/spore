@@ -14,6 +14,7 @@ use serde::Serialize;
 pub mod call;
 pub mod deadline;
 pub mod name;
+pub mod reference;
 pub mod schedule;
 
 pub use call::{CallRow, Description};
@@ -22,6 +23,7 @@ pub use name::{
     is_name, is_origin, name_pattern, name_rule, NAME_KINDS, NAME_MOST, VARIABLE_PATTERN,
     VARIABLE_RULE,
 };
+pub use reference::{fill_variables, variable_of, variables_in};
 pub use schedule::{parse_schedule, Due, Schedule};
 
 /// The tool suite, by name. Contract: ARCHITECTURE.md, "Tools".

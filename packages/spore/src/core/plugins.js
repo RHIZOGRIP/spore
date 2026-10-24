@@ -25,6 +25,7 @@ import { sporangiumOf, sporangiumTree } from './sporangia.js'
 import { DATA_DIR, definitionPath, LIBRARIES_FILE, PASSED_THROUGH, PLUGIN_CALLS, PLUGINS_DIR, REFERENCE_FILE, RUNTIME_ENV } from './spore-dir.js'
 import { TOOL_NAMES } from './tool-names.js'
 import { NAMES } from './names.js'
+import { variablesIn } from './variables.js'
 import { pluginCallRows } from './call-table.js'
 
 const SPORE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -612,9 +613,7 @@ export function upgradeDocs (ws, options = {}) {
   return { ws, replaced: replaced.map(d => d.file) }
 }
 
-const SECRET = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g
-
-export const secretsIn = (described) => [...new Set([...JSON.stringify(described).matchAll(SECRET)].map(found => found[1]))]
+export const secretsIn = (described) => variablesIn(JSON.stringify(described))
 
 /**
  * A placeholder in a source's spec the runner would refuse, as `{ found, where, why }`, or null:
