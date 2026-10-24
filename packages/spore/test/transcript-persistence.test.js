@@ -19,7 +19,7 @@ const run = async (over = {}) => {
       prompt: 'what next',
       workspace: WS,
       identity: DEFAULT_DEFINITION.identity,
-      modelIds: ['fake/model'],
+      modelId: 'fake/model',
       limits: { rounds: { soft: 10, hard: 12 } },
       mo: answering('done'),
       state: hostState(WS),

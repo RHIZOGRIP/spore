@@ -21,13 +21,13 @@ const history = () => {
 describe('what an overflow drop leaves the model', () => {
   const answering = (throwsFirst) => {
     let calls = 0
-    return [{
+    return {
       answer: async () => {
         if (calls++ < throwsFirst) throw overflow()
         return { status: 'completed', output: 'ok' }
       },
       info: () => ({ contextTokenLimit: 200000 })
-    }]
+    }
   }
 
   it('hands back the facts, not just their number', async () => {

@@ -95,7 +95,7 @@ describe('quiet when a person wrote in the turn', () => {
   const turn = (steps, inputs) => runSpore({
     workspace: WS,
     identity: DEFAULT_DEFINITION.identity,
-    modelIds: ['fake/model'],
+    modelId: 'fake/model',
     limits: { rounds: { soft: 10, hard: 12 } },
     mo: scripted(steps, inputs),
     state: hostState(WS)
@@ -148,7 +148,7 @@ describe('a turn that ends quiet', () => {
     prompt: 'check the queue',
     workspace: WS,
     identity: DEFAULT_DEFINITION.identity,
-    modelIds: ['fake/model'],
+    modelId: 'fake/model',
     limits: { rounds: { soft: 10, hard: 12 } },
     mo: quietly(because),
     state: hostState(WS),

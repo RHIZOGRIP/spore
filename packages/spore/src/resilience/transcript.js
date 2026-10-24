@@ -34,16 +34,8 @@ export function maxResultSizeForContext (contextTokenLimit, ratio = RESULT_BUDGE
 }
 
 /**
- * Compute live context/budget figures from a model proxy. Used by
- * `loop()` and `runTurn()` to recompute these per-turn so that a
- * mid-loop `RATE_LIMIT_TIER` fallback to a model with a different
- * context window picks up the new figures on the next round
- * (`compactIfNeeded` thresholds, transcript truncation cap).
- *
- * Note: tool-output truncation (`runSpore`)
- * captures `maxResultSize` once at startup via `makeTools()`. That cap
- * stays frozen across a fallback — accepted trade-off; the more
- * load-bearing path (per-turn compaction + drop) is live.
+ * Compute context/budget figures from a model proxy: the `compactIfNeeded`
+ * threshold and the transcript truncation cap `loop()` applies each round.
  *
  * @param {object} model — mohdel model proxy
  * @param {{ ratio?: number, override?: number }} [opts]

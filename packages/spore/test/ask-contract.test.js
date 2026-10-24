@@ -69,7 +69,7 @@ const run = (mo, over = {}) => runSpore({
   prompt: 'fix the build',
   workspace: WS,
   identity: DEFAULT_DEFINITION.identity,
-  modelIds: ['fake/model'],
+  modelId: 'fake/model',
   limits: { rounds: { soft: 10, hard: 12 } },
   mo,
   state: hostState(WS),

@@ -408,12 +408,15 @@ Records an asked approval as posted, with the payload the platform was given and
 ### `answerApproval`
 
 ```
-answerApproval(ws, id, { choice, inputs, person: { id, name } }) → boolean
+answerApproval(ws, id, { choice, inputs, person: { id, name } }) → { taken, reason? }
 ```
 
-Records the first press on a posted approval before its deadline. `false` for any later press, or
-a late one: they change nothing. The caller has checked that `person` is among its `approvers` and
-`choice` among its options, and `inputs` against its fields with `inputsProblem`.
+Records a press on a posted approval before its deadline, when `person` is among its `approvers`,
+`choice` among its options and `inputs` fit its fields (`inputsProblem`) — the first such press
+only. Anything else changes nothing and is `{ taken: false, reason }`, `reason` what the person
+pressing is told: `this is not yours to answer`, `that is not one of its choices`, what is missing
+from the fields, `this was answered already`, `this question is closed`, `this question is not
+open here`. That the platform vouched for `person` is the caller's to have checked.
 
 ### `expireApproval`
 

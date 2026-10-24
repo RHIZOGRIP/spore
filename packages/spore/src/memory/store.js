@@ -138,13 +138,8 @@ export function openStore (ws, { backend = 'bm25', push = null, pull = null, flo
     },
 
     /**
-     * What a deliberate question finds, each hit widened to what surrounds it.
-     *
-     * Scores are summed per containing section rather than taken per chunk, and that is
-     * not tidying: IDF *punishes* repetition, so a fact said twenty-five times scores
-     * 0.72 a mention against a one-off remark's 3.41. Ranked individually, the most
-     * reinforced memory in the store comes last. Summed across the forms it appears in,
-     * it comes first — which is what makes reinforcement work at all.
+     * What a deliberate question finds: chunks ranked as they score, each hit widened to
+     * the section it is in. Repetition earns nothing — see below.
      */
     async pull (query, take = pull) {
       // Ordinary ranking, each hit widened to what surrounds it.

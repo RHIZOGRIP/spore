@@ -78,7 +78,7 @@ try {
     identity: plan.precursor.identity,
     domainRules: enzymeRules(plan.precursor.enzymes),
     workspace: plan.ws,
-    modelIds,
+    modelId: modelIds[0],
     mo,
     // Written through `spore-spawn`, which holds the cell's database as a runner holds a root's.
     state: openChannel(Number(process.env.SPORE_STATE_FD)),

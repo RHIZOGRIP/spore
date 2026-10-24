@@ -7,7 +7,7 @@
  * last run stopped.
  */
 
-import { answerApproval, approvalOf, approvalsIn, callApprovalHook, errorText, expireApproval, inputsProblem, postApproval, refuseApproval, send, settleApproval, SporeError } from '../index.js'
+import { answerApproval, approvalOf, approvalsIn, callApprovalHook, errorText, expireApproval, postApproval, refuseApproval, send, settleApproval, SporeError } from '../index.js'
 
 const PRESS = /^ap:([0-9a-f]{12}):([A-Za-z0-9_-]{1,32})$/
 const TELL_AGAIN_MS = 30_000
@@ -212,22 +212,14 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
       return acknowledge('this question is not open here')
     }
     const { ws, name, approval } = found
-    if (approval.state !== 'posted' || Date.parse(approval.until) <= Date.now()) {
-      return acknowledge(approval.state === 'answered' ? 'this was answered already' : 'this question is closed')
+    if (busy.has(id)) return acknowledge('this was answered already')
+    const answer = answerApproval(ws, id, { choice, inputs, person })
+    if (!answer.taken) {
+      logged(approval, name, `refused a press by ${person.name} (${person.id}) on "${choice}" — ${answer.reason}`)
+      return acknowledge(answer.reason)
     }
-    if (!approval.approvers.includes(person.id)) {
-      logged(approval, name, `refused a press by ${person.name} (${person.id}) — it names ${approval.approvers.join(', ')}`)
-      return acknowledge('this is not yours to answer')
-    }
-    const option = approval.options.find(one => one.id === choice)
-    if (!option) {
-      logged(approval, name, `refused a press on "${choice}", which is none of its choices`)
-      return acknowledge('that is not one of its choices')
-    }
-    const unfit = inputsProblem(approval.fields, inputs)
-    if (unfit) return acknowledge(unfit)
-    if (busy.has(id) || !answerApproval(ws, id, { choice, inputs, person })) return acknowledge('this was answered already')
     busy.add(id)
+    const option = approval.options.find(one => one.id === choice)
     try {
       await acknowledge(`${option.label} — recorded`, { taken: true })
     } catch (err) {

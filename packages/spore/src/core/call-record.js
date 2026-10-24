@@ -250,8 +250,7 @@ export function createCallTrail (workspace, { runId = Date.now().toString(36), s
   return {
     runId,
     root,
-    // How many calls have been written down. A tool that refused before it got that far
-    // left nothing behind, which is what `recordRefusals` in make-tools watches for.
+    // How many calls have been written down.
     get finished () {
       return finished
     },

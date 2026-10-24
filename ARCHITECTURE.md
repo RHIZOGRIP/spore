@@ -1745,10 +1745,13 @@ party an approval must not depend on. So an approval is asked by the host — `r
 write neither `state.sqlite` nor the API's tokens — in a conversation the spore is reached in,
 of the people it names (`by`, their ids as the bot file writes them), with fixed options. It
 counts only as a press of a button the relay posted, by one of them, as the platform vouches for
-them: Telegram's callback query, Teams' signed `adaptiveCard/action` invoke. The first such press
-wins — `answer_approval` is one update on `state = 'posted'`, so a second press, a repeat of the
-first or a press past `until` changes nothing — and a press is matched to its approval by the id
-its button carries, never as whichever is pending.
+them: Telegram's callback query, Teams' signed `adaptiveCard/action` invoke. `answerApproval`
+takes a press only from someone the approval names, on one of its options, with what was filled
+in fitting its fields, whoever calls it; what only an adapter can know, that the platform vouched
+for the person, is the caller's. The first such press wins — `answer_approval` is one update on
+`state = 'posted'`, so a second press, a repeat of the first or a press past `until` changes
+nothing — and a press is matched to its approval by the id its button carries, never as whichever
+is pending.
 
 **Flow and presentation are separate.** The flow is spore's and the same on every platform: who
 may answer, the options, the first press, the deadline, the hook, closing the question, telling
@@ -2434,6 +2437,8 @@ fails with *the model comes from $MODEL, never from a flag* rather than being qu
 **The root definition says which models the spore runs on**: `model:` is what the root runs on,
 `models:` what a person may switch it to (`switchModel`, which rewrites `model:` and keeps the
 model it leaves in `models:`), and `cell-models:` the names a precursor's `model:` may give.
+A turn runs on `model:` alone: a used-up quota (`RATE_LIMIT_TIER`) is retried on it and then fails
+the turn, and nothing but a person's switch moves the spore to another model.
 **The model broker holds it:** its route policy (`DefinedModels`, `rust/runner/src/model.rs`)
 refuses a call to any model the definition does not name (`ROUTE_REJECTED`), before a key is
 filled, so neither a precursor nor `$MODEL` — both the agent's to set — reaches another.

@@ -61,7 +61,8 @@ import { answers, calls, scriptedMo } from './scripted-model.js'
 import { outsideRoot } from './outside-ws.js'
 import { brokerSocketPath } from '../../src/infra/broker-socket.js'
 import { definitionWith } from '../../src/core/identity-defaults.js'
-import { answerApproval, approvalOf, outbox, readInbox, readLock, readTurns, saidOf, statePath as databaseOf } from '../../src/core/spore-dir.js'
+import { approvalOf, outbox, readInbox, readLock, readTurns, saidOf, statePath as databaseOf } from '../../src/core/spore-dir.js'
+import { answerApproval } from '../../src/library/approvals.js'
 import { CONFIG_FILE } from '../../src/library/config.js'
 import { requestApproval } from '../../src/library/verbs.js'
 import { send } from '../../src/core/send.js'
@@ -964,7 +965,7 @@ export function conformance (harness, platformTests = () => {}) {
         const id = ask()
         await until(() => questions().length === 1)
         await first.stop()
-        expect(answerApproval(ws, id, { choice: 'apply', inputs: null, person: { id: '1', name: 'U1' } })).toBe(true)
+        expect(answerApproval(ws, id, { choice: 'apply', inputs: null, person: { id: '1', name: 'U1' } })).toEqual({ taken: true })
         const second = start({ approveEveryMs: 50 })
         await until(() => approval(id).told)
         await second.stop()

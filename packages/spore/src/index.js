@@ -29,7 +29,7 @@ export { describeCall } from './core/call-table.js'
 // What exists, what one is, what it has done — the read verbs the `spore` command prints.
 export { doctor, modelFindings } from './library/doctor.js'
 export { listHooks, showHook } from './library/hooks.js'
-export { callApprovalHook, inputsProblem } from './library/approvals.js'
+export { answerApproval, callApprovalHook, inputsProblem } from './library/approvals.js'
 export { annotate, define, defaultModel, switchModel, edit, extend, grantOf, jobs, list, listApprovals, log, pause, requestApproval, show, sporePaths, usage, precursors, remake, remove, schedules, setDefaultModel, setSchedule, removeSchedule, sporangia, sql, stopJob, unpause, upgrade, wrap, defaultSporangiumPath } from './library/verbs.js'
 export { isWorkspace, workspacesIn } from './library/discover.js'
 export { readConfig, followingDocs, loadEnvironment, workspaceFor, recordLayout, existing, getKey, setKey, addTo, removeFrom, settings, hereSnapshots, CONFIG_FILE, CONFIG_DIR, NAME, NAMES_A_PATH } from './library/config.js'
@@ -69,7 +69,7 @@ export { grantedPathContaining } from './isolation/sandbox.js'
 // what remains of one that was stopped.
 export { openWorkspace } from './core/workspace.js'
 export { textOf } from './core/message.js'
-export { readTranscript, readTurns, readEvents, readInbox, asked, saidOf, originLabel, lastEventSeq, databaseOf, definitionPath, heldIn, turnOfMessage, turnSummary, outbox, attemptOutbox, settleOutbox, setAside, approvalsIn, approvalOf, postApproval, answerApproval, expireApproval, refuseApproval, settleApproval } from './core/spore-dir.js'
+export { readTranscript, readTurns, readEvents, readInbox, asked, saidOf, originLabel, lastEventSeq, databaseOf, definitionPath, heldIn, turnOfMessage, turnSummary, outbox, attemptOutbox, settleOutbox, setAside, approvalsIn, approvalOf, postApproval, expireApproval, refuseApproval, settleApproval } from './core/spore-dir.js'
 export { mimeOf } from './core/call-record.js'
 export { SCHEMA as EVENT_SCHEMA, EVENTS, PROMISED } from './observability/event-log.js'
 

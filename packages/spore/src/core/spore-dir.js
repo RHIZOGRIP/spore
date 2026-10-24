@@ -685,11 +685,6 @@ export function postApproval (ws, id, { shown, note }) {
   return native.postApproval(ws, id, JSON.stringify(shown), note === null ? undefined : String(note))
 }
 
-/** The first press on a posted approval before its deadline; false for a later or late one. */
-export function answerApproval (ws, id, { choice, inputs, person }) {
-  return native.answerApproval(ws, id, choice, inputs === null ? undefined : JSON.stringify(inputs), person.id, person.name)
-}
-
 /** A posted approval past its deadline, expired; false when it is not posted or not due. */
 export function expireApproval (ws, id) {
   return native.expireApproval(ws, id)

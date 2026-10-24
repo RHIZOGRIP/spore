@@ -12,7 +12,7 @@ import { CONFIG_FILE, readConfig } from './config.js'
 import { native } from '../native.js'
 import { variableOf } from '../core/variables.js'
 import { SporeError } from '../observability/errors.js'
-import { recordApproval } from '../core/spore-dir.js'
+import { approvalOf, recordApproval } from '../core/spore-dir.js'
 
 export const APPROVAL_LIMITS = Object.freeze({ options: 5, label: 40, facts: 20, approvers: 50, body: 100_000, fields: 5, input: 2000 })
 
@@ -75,6 +75,27 @@ export function inputsProblem (fields, inputs) {
   }
   const missing = declared.filter(field => field.required && !given[field.id]?.trim())
   return missing.length ? `fill in ${missing.map(field => `"${field.label}"`).join(' and ')} first` : null
+}
+
+/**
+ * A press on an approval, taken only while it is posted and before its deadline, from someone it
+ * names, on one of its options, with what was filled in fitting its fields — and only the first:
+ * `{ taken: true }`, or `{ taken: false, reason }` with what the person pressing is told. That the
+ * platform vouched for `person` is the caller's.
+ */
+export function answerApproval (ws, id, { choice, inputs, person }) {
+  const refused = (reason) => ({ taken: false, reason })
+  const approval = approvalOf(ws, id)
+  if (!approval) return refused('this question is not open here')
+  if (approval.state !== 'posted' || Date.parse(approval.until) <= Date.now()) {
+    return refused(approval.state === 'answered' ? 'this was answered already' : 'this question is closed')
+  }
+  if (!approval.approvers.includes(person.id)) return refused('this is not yours to answer')
+  if (!approval.options.some(option => option.id === choice)) return refused('that is not one of its choices')
+  const unfit = inputsProblem(approval.fields, inputs)
+  if (unfit) return refused(unfit)
+  const taken = native.answerApproval(ws, id, choice, inputs === null ? undefined : JSON.stringify(inputs), person.id, person.name)
+  return taken ? { taken: true } : refused('this was answered already')
 }
 
 /** A body checked as far as the core reads it: keyed by platform kind or `default`, which the core renders. */

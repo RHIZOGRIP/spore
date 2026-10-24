@@ -64,7 +64,7 @@ const DRIFT_FLOOR = 2_000
  * @param {object} [opts.logger]
  * @returns {{ output: string|null, messages: Array, rounds: number, usage: object }}
  */
-export async function loop ({ model, models, system, prompt, tools, toolFns, describe, limits, ledger, emitter = noEmit, mutators, terminalTools, realtimeHandler, maxResultRatio, maxResultSize: maxResultSizeOverride, signal, logger = silent, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning = [], from }) {
+export async function loop ({ model, system, prompt, tools, toolFns, describe, limits, ledger, emitter = noEmit, mutators, terminalTools, realtimeHandler, maxResultRatio, maxResultSize: maxResultSizeOverride, signal, logger = silent, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning = [], from }) {
   const userMsg = { role: 'user', content: prompt }
   if (!Number.isInteger(limits?.rounds?.soft) || !Number.isInteger(limits?.rounds?.hard)) {
     throw new Error('loop needs limits.rounds — declared in a .cmk, not defaulted here')
@@ -91,14 +91,7 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, des
   if ((recall || now) && !continuing) messages[messages.length - 1] = { ...userMsg, content: shown }
   const usage = { input: 0, output: 0, thinking: 0, cacheWrite: 0, cacheRead: 0, cost: 0 }
   const guard = createLoopGuard({ logger })
-  // `models` is the chain recovery mutates: a RATE_LIMIT_TIER hit shifts the head
-  // off, and the rounds after it run on the next model. Solo callers can omit it
-  // and we wrap the singleton — but production never goes that way.
-  const modelList = models || [model]
-  // contextLimit / maxResultSize are recomputed each round from
-  // `modelList[0]` so a RATE_LIMIT_TIER fallback to a model with a
-  // different context window picks up the new figures on the next round.
-  const resilientModel = withRecovery(modelList, { messages, sessionMemory, logger, emitter, signal })
+  const resilientModel = withRecovery(model, { messages, sessionMemory, logger, emitter, signal })
   let lastInputTokens = 0
   let drifted = false
   const emptyState = { retries: 0 }
@@ -206,7 +199,7 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, des
     }
 
     emitter.emit('round', { index: i })
-    const { contextLimit, maxResultSize } = computeBudget(modelList[0], { ratio: maxResultRatio, override: maxResultSizeOverride })
+    const { contextLimit, maxResultSize } = computeBudget(model, { ratio: maxResultRatio, override: maxResultSizeOverride })
     sanitizeTranscript(messages, { maxResultSize, logger })
     if (contextLimit) compactIfNeeded(messages, { contextLimit, lastInputTokens, logger })
 
@@ -245,8 +238,6 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, des
       clearInterval(heartbeatTimer)
     }
     const elapsedMs = Date.now() - callStartAt
-    // Usage accounting + per-call `usage` event — shared with run-turn.js so
-    // the token/cost math and event shape can't drift between the two engines.
     lastInputTokens = accountUsage(res, { usage, emit, modelId: model?.id || 'unknown', elapsedMs })
     if (!drifted) {
       const estimated = estimateTokens([systemMessage, ...messages, { role: 'system', content: JSON.stringify(tools ?? []) }])
@@ -344,7 +335,7 @@ export async function loop ({ model, models, system, prompt, tools, toolFns, des
     }
 
     // Degenerate completion (no tool call, no text): nudge for a real answer
-    // (bounded) instead of returning empty. Shared with run-turn.js.
+    // (bounded) instead of returning empty.
     if (resolveEmptyCompletion(res, { emptyState, emit, append, logger, round: i })) continue
 
     const output = res.output || null

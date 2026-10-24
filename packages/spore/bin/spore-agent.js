@@ -58,7 +58,7 @@ try {
     identity: opened.identity,
     domainRules: opened.domainRules,
     workspace: opened.ws,
-    modelIds: [opened.model],
+    modelId: opened.model,
     mo,
     // The runner's end of it holds the workspace's writer; this process never opens one.
     state: openChannel(Number(process.env.SPORE_STATE_FD)),

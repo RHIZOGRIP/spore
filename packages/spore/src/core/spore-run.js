@@ -52,7 +52,7 @@ function nowLine (now = new Date()) {
  * @param {string} [opts.domainRules]   — pipeline-specific protocol
  * @param {'5m'|'1h'} [opts.cacheTtl='5m']
  * @param {string} opts.workspace
- * @param {string[]} [opts.modelIds]   — model ids for mohdel (first is default, rest are escalation)
+ * @param {string} opts.modelId        — the model the turn runs on, as the definition's `model:`
  * @param {boolean} [opts.unsafe=false]
  * @param {object} [opts.logger]
  * @returns {{ output, messages, rounds, usage, stopReason, spent }}
@@ -82,7 +82,7 @@ export async function runSpore ({
   // A root turn is told when it started; a cell's prompt was written by a parent that knew.
   dated = false,
   workspace,
-  modelIds,
+  modelId,
   // The model client, and it is required. This function is the confined half of a
   // supervisor and worker: the half that holds no key, reaches a model through
   // whatever it was handed, and does not decide how that was built.
@@ -128,10 +128,10 @@ export async function runSpore ({
   signal,
   logger = silent
 } = {}) {
-  if (!modelIds || !modelIds.length) {
+  if (!modelId) {
     throw new SporeError('model not set', {
       type: 'MODEL_NOT_SET',
-      detail: 'a definition says what it runs on, as model: <provider>/<name>; runSpore takes it as modelIds'
+      detail: 'a definition says what it runs on, as model: <provider>/<name>; runSpore takes it as modelId'
     })
   }
   if (!mo) {
@@ -164,7 +164,7 @@ export async function runSpore ({
   // Session is a runtime concept, not OTel — no spore.session span.
   const sporeDispatchSpan = startSpan('spore.dispatch', {
     'spore.workspace': WS,
-    'spore.model': modelIds[0]
+    'spore.model': modelId
   }, parentSpan)
   if (logger.child) logger = logger.child({ span: sporeDispatchSpan })
 
@@ -205,7 +205,7 @@ export async function runSpore ({
     return said.messages
   }
 
-  logger.info({ model: modelIds[0] }, '[spore] loop started')
+  logger.info({ model: modelId }, '[spore] loop started')
 
   // The root stays read-only so spore.cmk, lock and the transcript outlive the
   // agent; every directory it legitimately writes is granted back on top.
@@ -221,9 +221,9 @@ export async function runSpore ({
   const turnStartedAt = resume ? resume.startedAt : new Date().toISOString()
   if (applySandbox) sandbox(WS, { writeDir: DATA_DIR, extraWritePaths: [...islands, ...writes.map(w => w.path), socketDir], extraReadPaths: [...reads.map(r => r.path), ...pluginReads], logger })
 
-  const models = modelIds.map(id => mo.use(id))
+  const model = mo.use(modelId)
 
-  const contextLimit = effectiveContextLimit(models[0].info?.())
+  const contextLimit = effectiveContextLimit(model.info?.())
   // Only the spore carries a history; a cell is handed its prompt and used once.
   const carried = prompt === undefined ? historyBound(contextLimit, historyBudget) : null
   const maxOutput = maxResultSizeForContext(contextLimit)
@@ -254,7 +254,7 @@ export async function runSpore ({
   }
   events.emit('inbox_read', { inboxTo: inboxAt })
   let { fns, defs } = makeTools(WS, maxOutput, trail, {
-    modelIds,
+    modelId,
     traceparent: formatTraceparent(sporeDispatchSpan),
     modelSocket,
     storeSocket,
@@ -345,10 +345,10 @@ export async function runSpore ({
   let history = initialMessages
   if (history?.length) {
     history = await compactHistory(history, {
-      model: models[0],
+      model,
       contextLimit,
       budget: historyBudget,
-      sent: lastSent !== null && lastSent.model === models[0].id ? lastSent.tokens : null,
+      sent: lastSent !== null && lastSent.model === model.id ? lastSent.tokens : null,
       sessionMemory,
       signal: wallStop.signal,
       onCost: (cost) => { setupCost += cost },
@@ -420,8 +420,7 @@ export async function runSpore ({
     loopFrom = Date.now()
     const result = await loop({
       interject,
-      model: models[0],
-      models,
+      model,
       system: systemBlocks,
       prompt: turnPrompt,
       now: dated ? nowLine() : null,
@@ -470,7 +469,7 @@ export async function runSpore ({
       runId: trailRunId,
       startedAt: turnStartedAt,
       endedAt: new Date().toISOString(),
-      model: modelIds[0],
+      model: modelId,
       stopReason: result.stopReason || null,
       // Ended on its own terms: with an answer, a question, or nothing to say. A quiet turn
       // read and dealt with what it was sent, which is what the runner and `stateOf` ask.
@@ -549,7 +548,7 @@ export async function runSpore ({
       runId: trailRunId,
       startedAt: turnStartedAt,
       endedAt: new Date().toISOString(),
-      model: modelIds[0],
+      model: modelId,
       stopReason: 'error',
       error: err.type || err.name || 'ERROR',
       detail: err.detail || err.message,

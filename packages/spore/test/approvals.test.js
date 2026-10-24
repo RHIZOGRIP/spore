@@ -5,9 +5,9 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-import { askApproval, callApprovalHook, inputsProblem } from '../src/library/approvals.js'
+import { answerApproval, askApproval, callApprovalHook, inputsProblem } from '../src/library/approvals.js'
 import { readConfig } from '../src/library/config.js'
-import { answerApproval, approvalOf, approvalsIn, expireApproval, postApproval, readInbox, refuseApproval, saidOf, settleApproval } from '../src/core/spore-dir.js'
+import { approvalOf, approvalsIn, expireApproval, postApproval, readInbox, refuseApproval, saidOf, settleApproval } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 
 const ROOT = resolve(tmpdir(), 'spore-approvals-test')
@@ -120,16 +120,33 @@ describe('the fields an approval asks to be filled in', () => {
 })
 
 describe('an approval as it goes', () => {
+  it('takes a press only from someone it names, on one of its choices, with its fields filled in as they must be', () => {
+    const { approval } = ask({ fields: [{ id: 'value', label: 'Value', required: true }] }, { now: Date.now() })
+    postApproval(WS, approval, { shown: { text: 'Apply?' }, note: 7 })
+    const press = (choice, inputs, id) => answerApproval(WS, approval, { choice, inputs, person: { id, name: 'Someone' } })
+    expect(press('apply', { value: '84 %' }, '43')).toEqual({ taken: false, reason: 'this is not yours to answer' })
+    expect(press('maybe', { value: '84 %' }, '42')).toEqual({ taken: false, reason: 'that is not one of its choices' })
+    expect(press('apply', null, '42')).toEqual({ taken: false, reason: 'fill in "Value" first' })
+    expect(press('apply', { comment: 'x' }, '42')).toEqual({ taken: false, reason: '"comment" is not one of its fields' })
+    expect(approvalOf(WS, approval).state).toBe('posted')
+    expect(press('apply', { value: '84 %' }, '42')).toEqual({ taken: true })
+    expect(approvalOf(WS, approval)).toMatchObject({ state: 'answered', choice: 'apply', inputs: { value: '84 %' } })
+  })
+
+  it('takes no press on an approval nobody asked', () => {
+    expect(answerApproval(WS, 'a1b2c3d4e5f6', { choice: 'apply', inputs: null, person: { id: '42', name: 'Ann' } })).toEqual({ taken: false, reason: 'this question is not open here' })
+  })
+
   it('takes one press while it is posted, and is seen through once', () => {
     const { approval } = ask({}, { now: Date.now() })
-    expect(answerApproval(WS, approval, { choice: 'apply', inputs: null, person: { id: '42', name: 'Ann' } })).toBe(false)
+    expect(answerApproval(WS, approval, { choice: 'apply', inputs: null, person: { id: '42', name: 'Ann' } })).toEqual({ taken: false, reason: 'this question is closed' })
     expect(postApproval(WS, approval, { shown: { text: 'Apply?' }, note: 7 })).toBe(true)
-    expect(answerApproval(WS, approval, { choice: 'apply', inputs: { comment: 'ok' }, person: { id: '42', name: 'Ann' } })).toBe(true)
-    expect(answerApproval(WS, approval, { choice: 'cancel', inputs: null, person: { id: '43', name: 'Bob' } })).toBe(false)
+    expect(answerApproval(WS, approval, { choice: 'apply', inputs: null, person: { id: '42', name: 'Ann' } })).toEqual({ taken: true })
+    expect(answerApproval(WS, approval, { choice: 'cancel', inputs: null, person: { id: '42', name: 'Ann' } })).toEqual({ taken: false, reason: 'this was answered already' })
     expect(expireApproval(WS, approval)).toBe(false)
     expect(approvalsIn(WS, { open: true }).map(one => one.id)).toEqual([approval])
     expect(settleApproval(WS, approval, { outcome: 'confirmed', replaced: { text: 'done' }, tell: '82 % is in' })).toBe(true)
-    expect(approvalOf(WS, approval)).toMatchObject({ state: 'answered', choice: 'apply', inputs: { comment: 'ok' }, note: '7', answererName: 'Ann', outcome: 'confirmed', replaced: { text: 'done' }, tell: '82 % is in', told: false })
+    expect(approvalOf(WS, approval)).toMatchObject({ state: 'answered', choice: 'apply', inputs: null, note: '7', answererName: 'Ann', outcome: 'confirmed', replaced: { text: 'done' }, tell: '82 % is in', told: false })
     expect(approvalsIn(WS, { open: true }).map(one => one.id)).toEqual([approval])
 
     send(WS, 'Ann chose "Apply".', { start: false, requestId: `approval:${approval}`, replyTo: 'telegram:main/42', approval, from: { name: 'Ann', id: 'telegram:42', where: 'chat 42 on Telegram' } })

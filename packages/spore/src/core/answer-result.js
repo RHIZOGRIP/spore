@@ -53,7 +53,7 @@ export function accountUsage (res, { usage, emit, modelId, elapsedMs }) {
  * Decide what to do with a NON-tool-use completion: if it's degenerate (blank
  * text) and we have retries left, nudge for a real answer and signal the caller
  * to loop again; otherwise it's the final answer. The caller owns the message
- * sink (so loop.js and run-turn persist differently) and the loop control flow.
+ * sink and the loop control flow.
  *
  * @param {object} res                       — mohdel AnswerResult (non-tool-use)
  * @param {object} args
