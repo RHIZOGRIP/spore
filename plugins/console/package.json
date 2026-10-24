@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-console",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A console for spores: a chat whose other end is a program — test benches, scripted checks, automation, demos — over loopback HTTP, run as a service",
   "author": {
     "name": "Christophe Le Bars",
@@ -28,7 +28,7 @@
     "NOTICE"
   ],
   "peerDependencies": {
-    "@rhizogrip/spore": "^1.33.0"
+    "@rhizogrip/spore": "^1.36.0"
   },
   "scripts": {
     "test": "vitest run"

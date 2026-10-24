@@ -247,8 +247,7 @@ model mohdel declares billed by `plan` or `capacity`.
 | `socket` | an absolute path: the call goes to this unix socket instead of the url's host, the url still giving the `host` header, the path and the query; the url is then `http://` |
 | `query` | parameters sent with every call, as a host default |
 | `headers` | headers sent with every call; `{name}` in a value is the calling spore's name |
-| `method` | the one method of a plain source; `GET` when absent |
-| `methods` | with `paths`, the methods a call may name |
+| `methods` | the methods a call may name, the first the one a call gets when it names none; `["GET"]` when absent |
 | `paths` | path patterns under `url` a call may name: `*` one segment, `**` one or more; `url` must then end in `/` |
 | `requires` | parameters a definition granting the source must narrow with `<source>.<param>` |
 
@@ -265,8 +264,8 @@ every spore granted the source, and the service behind it tells them apart:
 ```
 
 The agent can neither set nor change it. The name is only as good as the credential beside it:
-whoever holds the credential can send any name, so the service checks both. Without `methods` and `paths` a
-source is one URL and one method, and the agent adds query parameters. With them it is an API:
+whoever holds the credential can send any name, so the service checks both. Without `paths` a
+source is one URL, and the agent adds query parameters. With them it is an API:
 a call names a method, a path matching a pattern, and a JSON body. Spore checks only the method
 and path; give the token no more scope at the service than the agent should have.
 

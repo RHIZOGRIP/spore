@@ -367,7 +367,7 @@ there, with `missing` as the fix, or, with no `keep`, whose `hide` is not. These
 ```
 
 Endpoints described as the host's `sources.json` describes one: `url`, and `query`, `headers`,
-`method`, `methods`, `paths` and `requires`
+`methods`, `paths` and `requires`
 ([operating.md §Sources](operating.md#sources-sourcesjson)). The plugin check takes a name of
 lowercase letters, digits and `-`, starting with a letter, and a `url` beginning with `http://` or
 `https://`; the runner checks the rest when a turn starts, by the rules of `sources.json`. A

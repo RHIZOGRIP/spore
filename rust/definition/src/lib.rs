@@ -420,8 +420,27 @@ fn pair_of<'a>(
     }
 }
 
-/// One of the values of a field written as several, read by `read`; one it cannot read is refused
-/// saying what it should be.
+/// The refusal of a value written where `key` takes another, saying what it should be.
+fn cannot_read(key: &str, text: &str, expected: &str) -> String {
+    let article = if key.starts_with(['a', 'e', 'i', 'o', 'u']) {
+        "an"
+    } else {
+        "a"
+    };
+    format!("has {article} {key} it cannot read — got \"{text}\", expected {expected}")
+}
+
+/// A value read by `read`; one it cannot read is refused saying what it should be.
+fn one<T>(
+    key: &str,
+    text: &str,
+    read: impl FnOnce(&str) -> Option<T>,
+    expected: &str,
+) -> Result<T, String> {
+    read(text).ok_or_else(|| cannot_read(key, text, expected))
+}
+
+/// One of the values of a field written as several.
 fn part<T>(
     key: &str,
     part: &str,
@@ -429,14 +448,7 @@ fn part<T>(
     read: impl FnOnce(&str) -> Option<T>,
     expected: &str,
 ) -> Result<T, String> {
-    read(text).ok_or_else(|| {
-        let article = if key.starts_with(['a', 'e', 'i', 'o', 'u']) {
-            "an"
-        } else {
-            "a"
-        };
-        format!("has {article} {key} {part} it cannot read — got \"{text}\", expected {expected}")
-    })
+    one(&format!("{key} {part}"), text, read, expected)
 }
 
 fn basename(p: &str) -> &str {
@@ -823,11 +835,7 @@ fn parse_extend(fields: &Fields, limits: &Limits, cell: bool) -> Result<Option<E
         if cell {
             return Err(format!("declares {key}, which is the root definition's — a cell's limits are its parent's to give, and nobody extends a cell's turn"));
         }
-        let Some(ceiling) = read(text) else {
-            return Err(format!(
-                "has a {key} it cannot read — got \"{text}\", expected {shape}"
-            ));
-        };
+        let ceiling = one(&key, text, read, shape)?;
         if ceiling <= pair.hard {
             return Err(format!("has a {key} that is not past the hard {dimension} limit — it is the highest that limit may be raised to, so it lies beyond it"));
         }
@@ -876,16 +884,22 @@ fn parse_jobs(fields: &Fields, cell: bool, granted: &[Grant]) -> Result<Option<J
     )?;
     let max_wait = scalar(fields, "jobs.maxWait")?
         .map(|text| {
-            duration_ms(text).filter(|ms| *ms > 0.0).ok_or_else(|| {
-                format!("has a jobs.maxWait it cannot read — got \"{text}\", expected the longest a job's delivery may be held, as 30m")
-            })
+            one(
+                "jobs.maxWait",
+                text,
+                |t| duration_ms(t).filter(|ms| *ms > 0.0),
+                "the longest a job's delivery may be held, as 30m",
+            )
         })
         .transpose()?;
     let per_day = scalar(fields, "jobs.perDay")?
         .map(|text| {
-            whole_number(text, 1).ok_or_else(|| {
-                format!("has a jobs.perDay it cannot read — got \"{text}\", expected how many triage cells a job's deliveries may start a day, a whole number from 1")
-            })
+            one(
+                "jobs.perDay",
+                text,
+                |t| whole_number(t, 1),
+                "how many triage cells a job's deliveries may start a day, a whole number from 1",
+            )
         })
         .transpose()?;
     let writes = match job_writes {
@@ -954,9 +968,10 @@ fn parse_dream(fields: &Fields, cell: bool) -> Result<Option<Dream>, String> {
     let precursor = match fields.get("dream.precursor") {
         Some(Value::Scalar(name)) if is_name("precursor", name) == Ok(true) => name.clone(),
         other => {
-            return Err(format!(
-                "has a dream.precursor it cannot read — got \"{}\", expected the name of one of its precursors, as dream.precursor: dream",
-                other.map(Value::text).unwrap_or_default()
+            return Err(cannot_read(
+                "dream.precursor",
+                &other.map(Value::text).unwrap_or_default(),
+                "the name of one of its precursors, as dream.precursor: dream",
             ));
         }
     };
@@ -1149,9 +1164,10 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         None => None,
         Some(Value::Scalar(d)) if !d.is_empty() => Some(d.clone()),
         Some(other) => {
-            return Err(format!(
-                "has a description it cannot read — got \"{}\", expected one line of text",
-                other.text()
+            return Err(cannot_read(
+                "description",
+                &other.text(),
+                "one line of text",
             ));
         }
     };
@@ -1165,9 +1181,10 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
             Some(a.clone())
         }
         (false, Some(other)) => {
-            return Err(format!(
-                "has an auth it cannot read — got \"{}\", expected one id of at most {AUTH_MAX_BYTES} bytes",
-                other.text()
+            return Err(cannot_read(
+                "auth",
+                &other.text(),
+                &format!("one id of at most {AUTH_MAX_BYTES} bytes"),
             ));
         }
     };
@@ -1222,11 +1239,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         }
         (true, Some(Value::Scalar(w))) if ON_WRAP.contains(&w.as_str()) => Some(w.clone()),
         (true, Some(other)) => {
-            return Err(format!(
-                "has an on-wrap it cannot read — got \"{}\", expected {}",
-                other.text(),
-                ON_WRAP.join(" or ")
-            ));
+            return Err(cannot_read("on-wrap", &other.text(), &ON_WRAP.join(" or ")));
         }
         (false, Some(_)) => {
             return Err("declares on-wrap, which is a cell's policy — a wrapped answer here goes to the user, who decides what it is worth".into());
@@ -1290,9 +1303,10 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
             Some(m.clone())
         }
         Some(other) => {
-            return Err(format!(
-                "has a model it cannot read — got \"{}\", expected one identifier like anthropic/claude-sonnet-5-5",
-                other.text()
+            return Err(cannot_read(
+                "model",
+                &other.text(),
+                "one identifier like anthropic/claude-sonnet-5-5",
             ));
         }
     };
@@ -1301,7 +1315,11 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
     }
     if let (false, Some(id)) = (opts.cell, &model) {
         if !model_id(id) {
-            return Err(format!("has a model it cannot read — got \"{id}\", expected <provider>/<name>, as anthropic/claude-sonnet-5-5"));
+            return Err(cannot_read(
+                "model",
+                id,
+                "<provider>/<name>, as anthropic/claude-sonnet-5-5",
+            ));
         }
     }
     if let (true, Some(named)) = (opts.cell, &model) {
@@ -1320,12 +1338,12 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         }
         Some(_) => {
             let text = scalar(&fields, "retain")?.unwrap_or_default();
-            let Some(n) = whole_number(text, 1) else {
-                return Err(format!(
-                    "has a retain it cannot read — got \"{text}\", expected a whole number of turns, at least 1"
-                ));
-            };
-            Some(n)
+            Some(one(
+                "retain",
+                text,
+                |t| whole_number(t, 1),
+                "a whole number of turns, at least 1",
+            )?)
         }
     };
 
@@ -1338,12 +1356,12 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         }
         Some(_) => {
             let text = scalar(&fields, "history")?.unwrap_or_default();
-            let Some(n) = whole_number(text, 1) else {
-                return Err(format!(
-                    "has a history it cannot read — got \"{text}\", expected a whole number of tokens, as history: 64000"
-                ));
-            };
-            Some(n)
+            Some(one(
+                "history",
+                text,
+                |t| whole_number(t, 1),
+                "a whole number of tokens, as history: 64000",
+            )?)
         }
     };
 
@@ -1408,25 +1426,27 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
                         "declares memory and no {key} — a definition carries its own depths, as {key}: {example}"
                     ));
                 };
-                whole_number(text, 1).ok_or_else(|| {
-                    format!("has a {key} it cannot read — got \"{text}\", expected a whole number of chunks, at least 1")
-                })
+                one(
+                    key,
+                    text,
+                    |t| whole_number(t, 1),
+                    "a whole number of chunks, at least 1",
+                )
             };
             let push = depth("push", 5)?;
             let pull = depth("pull", 20)?;
             // Absent means take anything scoring above zero. A floor only means the same
             // thing twice if the backend's scores do, so a usable one depends on the backend.
-            let floor = match scalar(&fields, "floor")? {
-                None => None,
-                Some(text) => match cost(text) {
-                    Some(n) => Some(n),
-                    None => {
-                        return Err(format!(
-                            "has a floor it cannot read — got \"{text}\", expected a score below which a hit is not worth surfacing"
-                        ));
-                    }
-                },
-            };
+            let floor = scalar(&fields, "floor")?
+                .map(|text| {
+                    one(
+                        "floor",
+                        text,
+                        cost,
+                        "a score below which a hit is not worth surfacing",
+                    )
+                })
+                .transpose()?;
             let embedding = match (backend.as_str(), fields.get("embedding")) {
                 ("vectors", None) => {
                     return Err("declares memory: vectors and no embedding — a vector store keeps vectors, and the definition names the model that makes them, as embedding: <provider>/<name>".into());
@@ -1437,9 +1457,10 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
                     Some(m.clone())
                 }
                 ("vectors", Some(other)) => {
-                    return Err(format!(
-                        "has an embedding it cannot read — got \"{}\", expected one identifier like openai/text-embedding-3-small",
-                        other.text()
+                    return Err(cannot_read(
+                        "embedding",
+                        &other.text(),
+                        "one identifier like openai/text-embedding-3-small",
                     ));
                 }
                 (_, Some(_)) => {

@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-teams",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Microsoft Teams for spores: a bot of yours in personal chats and channels, each reaching its spore, run as a service",
   "author": {
     "name": "Christophe Le Bars",
@@ -28,7 +28,7 @@
     "NOTICE"
   ],
   "peerDependencies": {
-    "@rhizogrip/spore": "^1.32.0"
+    "@rhizogrip/spore": "^1.36.0"
   },
   "scripts": {
     "test": "vitest run"

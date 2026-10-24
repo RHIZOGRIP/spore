@@ -43,16 +43,16 @@ use crate::dial::{https_client, socket_path, Dial, Net};
 pub const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 pub const TIMEOUT: Duration = Duration::from_secs(30);
 
-const FIELDS: [&str; 8] = [
-    "url", "socket", "method", "methods", "paths", "requires", "query", "headers",
+const FIELDS: [&str; 7] = [
+    "url", "socket", "methods", "paths", "requires", "query", "headers",
 ];
 
 struct Source {
     url: Url,
     dial: Dial,
-    method: Method,
-    /// The methods a call may ask for; none means the one `method`.
-    methods: Option<Vec<Method>>,
+    /// The methods a call may ask for, never empty; the first is the one a call that names
+    /// none gets.
+    methods: Vec<Method>,
     /// The paths under `url` a call may name, as segment patterns: `*` is one segment, `**`
     /// one or more. None means the source is called at `url` alone.
     paths: Option<Vec<Vec<String>>>,
@@ -151,8 +151,13 @@ fn resolve(
     env: &impl Fn(&str) -> Option<String>,
     net: &Net,
 ) -> Result<Source, Refusal> {
-    let shape =
-        "a source is { url, socket?, query?, headers?, method?, methods?, paths?, requires? }";
+    let shape = "a source is { url, socket?, query?, headers?, methods?, paths?, requires? }";
+    if spec.get("method").is_some() {
+        return Err(invalid(
+            format!("source \"{name}\" has method, which a source does not take"),
+            "it names what it may be called with as methods, the first the one a call gets when it names none, as \"methods\": [\"POST\"]",
+        ));
+    }
     if let Some(unknown) = spec
         .as_object()
         .and_then(|fields| fields.keys().find(|k| !FIELDS.contains(&k.as_str())))
@@ -203,19 +208,8 @@ fn resolve(
             ))
         }
     };
-    let method = spec
-        .get("method")
-        .map(text)
-        .unwrap_or_else(|| "GET".into())
-        .to_ascii_uppercase();
-    let method = Method::from_bytes(method.as_bytes()).map_err(|_| {
-        invalid(
-            format!("source \"{name}\" has a method \"{method}\" that is not one"),
-            shape,
-        )
-    })?;
     let methods = match spec.get("methods") {
-        None => None,
+        None => vec![Method::GET],
         Some(value) => {
             let named = strings(value)
                 .filter(|names| !names.is_empty())
@@ -225,19 +219,17 @@ fn resolve(
                         shape,
                     )
                 })?;
-            Some(
-                named
-                    .iter()
-                    .map(|m| {
-                        Method::from_bytes(m.to_ascii_uppercase().as_bytes()).map_err(|_| {
-                            invalid(
-                                format!("source \"{name}\" has a method \"{m}\" that is not one"),
-                                shape,
-                            )
-                        })
+            named
+                .iter()
+                .map(|m| {
+                    Method::from_bytes(m.to_ascii_uppercase().as_bytes()).map_err(|_| {
+                        invalid(
+                            format!("source \"{name}\" has a method \"{m}\" that is not one"),
+                            shape,
+                        )
                     })
-                    .collect::<Result<Vec<_>, _>>()?,
-            )
+                })
+                .collect::<Result<Vec<_>, _>>()?
         }
     };
     let paths = match spec.get("paths") {
@@ -325,7 +317,6 @@ fn resolve(
     Ok(Source {
         url,
         dial,
-        method,
         methods,
         paths,
         requires,
@@ -631,9 +622,12 @@ impl Sources {
                     .collect();
                 let source = &self.resolved[&name];
                 let mut shown = json!({ "name": name, "scope": scope });
-                if let Some(methods) = &source.methods {
-                    shown["methods"] =
-                        json!(methods.iter().map(Method::as_str).collect::<Vec<_>>());
+                if source.methods != [Method::GET] {
+                    shown["methods"] = json!(source
+                        .methods
+                        .iter()
+                        .map(Method::as_str)
+                        .collect::<Vec<_>>());
                 }
                 if let Some(paths) = &source.paths {
                     shown["base"] = json!(source.url.path());
@@ -722,15 +716,12 @@ impl Sources {
         }
 
         let method = match asked.get("method") {
-            None | Some(Value::Null) => source.method.clone(),
+            None | Some(Value::Null) => source.methods[0].clone(),
             Some(Value::String(m)) => Method::from_bytes(m.to_ascii_uppercase().as_bytes())
                 .map_err(|_| request("method is an HTTP method"))?,
             Some(_) => return Err(request("method is an HTTP method")),
         };
-        let allowed = source
-            .methods
-            .clone()
-            .unwrap_or_else(|| vec![source.method.clone()]);
+        let allowed = &source.methods;
         if !allowed.contains(&method) {
             return Err(Refusal::new(
                 StatusCode::FORBIDDEN,
@@ -1681,6 +1672,35 @@ mod tests {
             "SOURCE_METHOD_REFUSED"
         );
         assert!(seen.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn calls_with_the_first_of_its_methods_when_a_call_names_none() {
+        let (base, seen) = endpoint(Bytes::from_static(b"hi")).await;
+        let sources = load(
+            json!({ "ledger": { "url": format!("{base}/search"), "methods": ["post", "GET"] } }),
+            &["ledger"],
+            &[],
+        )
+        .unwrap();
+        sources.fetch(&json!({ "source": "ledger" })).await.unwrap();
+        assert_eq!(seen.last().2, "POST");
+        let listed = sources.list(None).unwrap();
+        assert_eq!(listed["sources"][0]["methods"], json!(["POST", "GET"]));
+    }
+
+    #[tokio::test]
+    async fn refuses_method_saying_to_write_methods() {
+        let refusal = load(
+            json!({ "ledger": { "url": "http://x.invalid", "method": "POST" } }),
+            &["ledger"],
+            &[],
+        )
+        .err()
+        .unwrap();
+        assert_eq!(refusal.kind, "SOURCE_INVALID");
+        assert!(refusal.message.contains("has method"));
+        assert!(refusal.detail.contains("\"methods\": [\"POST\"]"));
     }
 
     #[tokio::test]
