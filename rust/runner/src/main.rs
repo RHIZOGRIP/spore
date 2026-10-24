@@ -265,6 +265,44 @@ fn root() -> PathBuf {
 
 const ROOT_REFUSED_DETAIL: &str = "spore runs no turn as root: an agent's commands would hold every right on the host — run it as an ordinary user (in a container, USER or --user)";
 
+/// What must hold before each turn starts, checked in order: the first that does not, as the
+/// kind the turn is recorded with and why.
+fn admit(ws: &Path, args: &Args, def: &Definition) -> Result<(), (&'static str, String)> {
+    if unsafe { libc::getuid() == 0 || libc::geteuid() == 0 } {
+        return Err(("ROOT_REFUSED", ROOT_REFUSED_DETAIL.to_string()));
+    }
+    if let Some(retain) = def.retain {
+        prune_trail(ws, retain as u32)
+            .map_err(|e| ("START_FAILED", format!("cannot prune the trail — {e}")))?;
+    }
+    let free = free_bytes(ws).map_err(|e| {
+        (
+            "START_FAILED",
+            format!("cannot tell how much room is left on the disk — {e}"),
+        )
+    })?;
+    if free < args.free_floor {
+        return Err((
+            "DISK_FULL",
+            format!(
+                "the disk holding this workspace has {} MB free, under the {} MB floor the host keeps — spore config set freeFloor to change it",
+                free >> 20,
+                args.free_floor >> 20
+            ),
+        ));
+    }
+    let contained = !args.unsafe_ && !args.host.no_contain;
+    if contained {
+        if let Some(why) = contain_refused(&root()) {
+            return Err(("CONTAIN_FAILED", uncontained(&why)));
+        }
+    }
+    if let Some(problem) = kept_refusal(&args.host.kept, contained) {
+        return Err(("CONTAIN_FAILED", problem));
+    }
+    Ok(())
+}
+
 /// How often a running turn's limits are read again, for a change its owner made.
 const LIMITS_EVERY: Duration = Duration::from_secs(2);
 
@@ -713,51 +751,9 @@ async fn main() {
     let mut lock = Some(lock);
     let mut continuing = args.continuing;
     let code = loop {
-        if unsafe { libc::getuid() == 0 || libc::geteuid() == 0 } {
-            let problem = ROOT_REFUSED_DETAIL;
+        if let Err((kind, problem)) = admit(&ws, &args, &def) {
             eprintln!("spore: {problem}");
-            record(&ws, &iso_now(), "error", "ROOT_REFUSED", problem, 0.0);
-            break 2;
-        }
-        if let Some(retain) = def.retain {
-            if let Err(e) = prune_trail(&ws, retain as u32) {
-                let problem = format!("cannot prune the trail — {e}");
-                eprintln!("spore: {problem}");
-                record(&ws, &iso_now(), "error", "START_FAILED", &problem, 0.0);
-                break 2;
-            }
-        }
-        match free_bytes(&ws) {
-            Ok(free) if free >= args.free_floor => {}
-            Ok(free) => {
-                let problem = format!(
-                    "the disk holding this workspace has {} MB free, under the {} MB floor the host keeps — spore config set freeFloor to change it",
-                    free >> 20,
-                    args.free_floor >> 20
-                );
-                eprintln!("spore: {problem}");
-                record(&ws, &iso_now(), "error", "DISK_FULL", &problem, 0.0);
-                break 2;
-            }
-            Err(e) => {
-                let problem = format!("cannot tell how much room is left on the disk — {e}");
-                eprintln!("spore: {problem}");
-                record(&ws, &iso_now(), "error", "START_FAILED", &problem, 0.0);
-                break 2;
-            }
-        }
-        if !args.unsafe_ && !args.host.no_contain {
-            if let Some(why) = contain_refused(&root()) {
-                let problem = uncontained(&why);
-                eprintln!("spore: {problem}");
-                record(&ws, &iso_now(), "error", "CONTAIN_FAILED", &problem, 0.0);
-                break 2;
-            }
-        }
-        if let Some(problem) = kept_refusal(&args.host.kept, !args.unsafe_ && !args.host.no_contain)
-        {
-            eprintln!("spore: {problem}");
-            record(&ws, &iso_now(), "error", "CONTAIN_FAILED", &problem, 0.0);
+            record(&ws, &iso_now(), "error", kind, &problem, 0.0);
             break 2;
         }
         // A fork carries a turn on and reads no message, so it answers no caller.
