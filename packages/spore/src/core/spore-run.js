@@ -279,9 +279,8 @@ export async function runSpore ({
   // dropping turn-groups outright, and the replay is most of what a long run pays
   // for. The entry recorded here is what `readTranscript` collapses against next
   // time, so the summarizing happens once.
-  // One per turn. Facts are extracted from messages the turn is about to lose —
-  // to compaction at the start, or to an overflow drop mid-loop — and handed back
-  // to the model in the notice that reports the loss.
+  // One per turn. Facts are extracted from the messages an overflow drop mid-loop
+  // takes, and handed back to the model in the notice that reports the loss.
   const sessionMemory = createSessionMemory({ logger })
 
   // The wall is the one bound the loop cannot police for itself: a round that hangs
@@ -349,7 +348,6 @@ export async function runSpore ({
       contextLimit,
       budget: historyBudget,
       sent: lastSent !== null && lastSent.model === model.id ? lastSent.tokens : null,
-      sessionMemory,
       signal: wallStop.signal,
       onCost: (cost) => { setupCost += cost },
       onCompacted: (entry) => {

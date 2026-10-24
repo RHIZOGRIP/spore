@@ -231,61 +231,6 @@ describe('session-memory', () => {
     expect(sm.getFacts()[1].text).toContain('exec(grep -n token.valid auth.js) — 58 bytes out')
   })
 
-  // ── Custom extractors (precursors) ─────────────────────────────────
-
-  it('uses custom extractor over default truncation', () => {
-    const sm = createSessionMemory({
-      extractors: {
-        github_create_pr: (args, result) => {
-          const pr = JSON.parse(result)
-          return `created PR #${pr.number} on ${args.repo}`
-        }
-      }
-    })
-    sm.extract([
-      { role: 'assistant', content: '', toolCalls: [{ id: 'tc1', name: 'github_create_pr', arguments: { repo: 'org/app', title: 'Fix auth' } }] },
-      { role: 'tool', toolCallId: 'tc1', toolName: 'github_create_pr', content: '{"number":42,"url":"https://github.com/org/app/pull/42"}' }
-    ])
-    expect(sm.getFacts()[0].text).toBe('created PR #42 on org/app')
-  })
-
-  it('custom extractor does not override built-in tools', () => {
-    const sm = createSessionMemory({
-      extractors: { read: (args) => `custom read ${args.path}` }
-    })
-    sm.extract([
-      { role: 'assistant', content: '', toolCalls: [{ id: 'tc1', name: 'read', arguments: { path: 'x.js' } }] },
-      { role: 'tool', toolCallId: 'tc1', toolName: 'read', content: 'line1' }
-    ])
-    // Custom extractor takes precedence (it's checked first)
-    expect(sm.getFacts()[0].text).toBe('custom read x.js')
-  })
-
-  it('falls back to default for tools without custom extractor', () => {
-    const sm = createSessionMemory({
-      extractors: { github_create_pr: () => 'pr created' }
-    })
-    sm.extract([
-      { role: 'assistant', content: '', toolCalls: [{ id: 'tc1', name: 'unknown_tool', arguments: {} }] },
-      { role: 'tool', toolCallId: 'tc1', toolName: 'unknown_tool', content: 'some long result that needs truncation for session memory storage' }
-    ])
-    expect(sm.getFacts()[0].text).toMatch(/^unknown_tool\(\)/)
-  })
-
-  it('handles custom extractor that throws gracefully', () => {
-    const sm = createSessionMemory({
-      extractors: { buggy: () => { throw new Error('oops') } }
-    })
-    sm.extract([
-      { role: 'assistant', content: '', toolCalls: [{ id: 'tc1', name: 'buggy', arguments: {} }] },
-      { role: 'tool', toolCallId: 'tc1', toolName: 'buggy', content: 'result data here that is long enough' }
-    ])
-    // Should not crash — falls back to default
-    const facts = sm.getFacts()
-    expect(facts).toHaveLength(1)
-    expect(facts[0].text).toMatch(/^buggy\(\)/)
-  })
-
   // ── Edge cases ────────────────────────────────────────────────────
 
   it('handles empty messages array', () => {
@@ -336,34 +281,6 @@ describe('session-memory', () => {
     const formatted = sm.format()
     expect(formatted).toContain('[Session context from earlier work]')
     expect(formatted).toContain('- Migrate to ESM')
-  })
-
-  // ── Persistence ───��───────────────────────────────────────────────
-
-  it('toJSON/load round-trips correctly', () => {
-    const sm = createSessionMemory()
-    sm.extract([
-      { role: 'user', content: 'Migrate to ESM' },
-      { role: 'assistant', content: 'I will start with the config files because they have the fewest dependencies.' }
-    ])
-    const json = sm.toJSON()
-    expect(json.version).toBe(1)
-    expect(json.facts).toHaveLength(2)
-
-    const sm2 = createSessionMemory()
-    sm2.load(json)
-    expect(sm2.getFacts()).toEqual(json.facts)
-    expect(sm2.format()).toBe(sm.format())
-  })
-
-  it('load handles corrupt input gracefully', () => {
-    const sm = createSessionMemory()
-    sm.load(null)
-    sm.load({})
-    sm.load({ facts: 'not-array' })
-    sm.load({ facts: [null, { text: 'valid' }, { notext: true }] })
-    expect(sm.getFacts()).toHaveLength(1)
-    expect(sm.getFacts()[0].text).toBe('valid')
   })
 
   // ── Budget ────────────────────────────────────────────────────────

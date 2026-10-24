@@ -73,7 +73,7 @@ Be brief but complete. Use bullet points.`
  * @param {object} [opts.logger]
  * @returns {Array} compacted messages (may be same array if no compaction needed)
  */
-export async function compactHistory (messages, { model, contextLimit, budget: workingSet, sent = null, sessionMemory, onStarted, onCompacted, onFailed, onCost, signal, logger = silent } = {}) {
+export async function compactHistory (messages, { model, contextLimit, budget: workingSet, sent = null, onStarted, onCompacted, onFailed, onCost, signal, logger = silent } = {}) {
   if (!model) return messages
 
   const budget = historyBound(contextLimit, workingSet)
@@ -106,9 +106,6 @@ export async function compactHistory (messages, { model, contextLimit, budget: w
 
   // Check if head is already just a compaction summary
   if (head.length === 1 && marked(head[0], COMPACTED)) return failed('only a summary is before the latest two exchanges')
-
-  // Extract session memory from head before summarization
-  if (sessionMemory) sessionMemory.extract(head)
 
   // Summarize head via LLM
   const headText = formatMessagesForSummary(head)

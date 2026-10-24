@@ -1,15 +1,14 @@
 /**
  * Session memory — deterministic fact extraction from messages.
  *
- * Extracts key facts before messages are compacted or dropped,
- * so the model retains continuity across context window management.
- * Injected into system prompt as plain-text bullet points.
+ * Extracts key facts from the turn-groups an overflow drops mid-turn, so the
+ * notice reporting the drop can say what was lost: recall never reaches the
+ * turn being answered, so nothing else carries it.
  *
  * Extraction is turn-group aware: an assistant message + its tool
- * calls/results are compressed into one fact instead of N separate ones.
- * Tool-specific extractors pull the semantically useful bits from args
- * and results (file paths, exit codes, match counts) instead of raw
- * content truncation.
+ * calls/results are compressed into one fact instead of N separate ones,
+ * from what the call record says (file paths, exit codes, bytes out)
+ * rather than raw content truncation.
  *
  * No LLM calls — purely heuristic. Budget-capped.
  */
@@ -65,20 +64,6 @@ function summarize (name, args, result) {
     : head
 }
 
-/**
- * Summarize one call. A precursor may supply its own extractor for a tool it granted;
- * everything else goes through the projection above.
- */
-function summarizeToolCall (tc, result, customExtractors) {
-  const extractor = customExtractors?.[tc.name]
-  if (extractor) {
-    try {
-      return extractor(tc.arguments, textOf(result))
-    } catch {}
-  }
-  return summarize(tc.name, tc.arguments, result)
-}
-
 // ── Turn-group segmentation ─────────��──────────────────────────────
 
 /**
@@ -119,19 +104,17 @@ function segmentTurnGroups (messages) {
  * @param {object} [opts]
  * @param {number} [opts.maxFacts=100]
  * @param {number} [opts.maxChars=8000]
- * @param {object} [opts.extractors] — custom extractors by tool name: { name: (args, result) => string }
  */
-export function createSessionMemory ({ maxFacts = DEFAULT_MAX_FACTS, maxChars = DEFAULT_MAX_CHARS, extractors, logger } = {}) {
-  const customExtractors = extractors || null
-  let facts = []
+export function createSessionMemory ({ maxFacts = DEFAULT_MAX_FACTS, maxChars = DEFAULT_MAX_CHARS, logger } = {}) {
+  const facts = []
   const log = logger || { debug () {} }
 
   /**
    * Extract facts from messages (deterministic, no LLM).
-   * Call this before messages are dropped or compacted.
+   * Call this before messages are dropped.
    *
    * Groups messages into turn-groups and produces one fact per group
-   * using tool-aware extractors for high signal density.
+   * from what each call's record says.
    */
   function extract (messages) {
     if (!messages?.length) return
@@ -154,7 +137,7 @@ export function createSessionMemory ({ maxFacts = DEFAULT_MAX_FACTS, maxChars = 
       // Assistant with tool calls — compress entire turn-group into one fact
       if (first.role === 'assistant' && first.toolCalls?.length) {
         const resultMap = buildResultMap(group)
-        const summaries = first.toolCalls.map(tc => summarizeToolCall(tc, resultMap.get(tc.id), customExtractors))
+        const summaries = first.toolCalls.map(tc => summarize(tc.name, tc.arguments, resultMap.get(tc.id)))
         const reasoning = textOf(first).trim()
         let text = summaries.join('; ')
         if (reasoning) text = truncate(reasoning, 100) + ' → ' + text
@@ -199,16 +182,6 @@ export function createSessionMemory ({ maxFacts = DEFAULT_MAX_FACTS, maxChars = 
     return [...facts]
   }
 
-  function load (json) {
-    if (!json || !Array.isArray(json.facts)) return
-    facts = json.facts.filter(f => f && typeof f.text === 'string')
-    trimFacts()
-  }
-
-  function toJSON () {
-    return { facts: [...facts], version: 1 }
-  }
-
   function trimFacts () {
     let dropped = 0
     while (facts.length > maxFacts) { facts.shift(); dropped++ }
@@ -221,7 +194,7 @@ export function createSessionMemory ({ maxFacts = DEFAULT_MAX_FACTS, maxChars = 
     return -dropped
   }
 
-  return { extract, format, getFacts, load, toJSON }
+  return { extract, format, getFacts }
 }
 
 /**

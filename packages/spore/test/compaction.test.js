@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { compactHistory, historyOver } from '../src/resilience/compaction.js'
 import { COMPACTED, mark, marked } from '../src/core/marks.js'
-import { createSessionMemory } from '../src/resilience/session-memory.js'
 import { estimateTokens } from '../src/resilience/context-guard.js'
 
 function mockModel (summaryText) {
@@ -195,16 +194,7 @@ describe('compaction', () => {
     expect(await compactHistory(messages, { model, budget: Math.floor(estimateTokens(messages) / 4) })).not.toBe(messages)
   })
 
-  it('extracts session memory from head before summarization', async () => {
-    const messages = makeMessages(20)
-    const model = mockModel('compact summary')
-    const sm = createSessionMemory()
-    await compactHistory(messages, { model, contextLimit: 500, sessionMemory: sm })
-    const facts = sm.getFacts()
-    expect(facts.length).toBeGreaterThan(0)
-  })
-
-  it('works unchanged without sessionMemory', async () => {
+  it('leaves a marked summary in front', async () => {
     const messages = makeMessages(20)
     const model = mockModel('compact summary')
     const result = await compactHistory(messages, { model, contextLimit: 500 })
