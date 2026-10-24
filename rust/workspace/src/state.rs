@@ -3413,7 +3413,7 @@ mod tests {
         let ws = scratch("starting-since");
         let hook = |at: &str, delivery: &str, starts: Option<bool>| {
             let mut entry =
-                json!({ "at": at, "text": "", "hook": "forge", "hookDelivery": delivery });
+                json!({ "at": at, "text": "pushed", "hook": "forge", "hookDelivery": delivery });
             if let Some(starts) = starts {
                 entry["startsTurn"] = json!(starts);
             }
@@ -3424,7 +3424,7 @@ mod tests {
         append_inbox(&ws, &hook("2026-10-03T12:01:00.000Z", "d2", Some(false))).unwrap();
         append_inbox(
             &ws,
-            r#"{"at":"2026-10-03T12:02:00.000Z","text":"","hook":"other","hookDelivery":"d3"}"#,
+            r#"{"at":"2026-10-03T12:02:00.000Z","text":"pushed","hook":"other","hookDelivery":"d3"}"#,
         )
         .unwrap();
         hold_delivery(
