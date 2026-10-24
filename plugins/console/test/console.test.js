@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 
 import { botPath, routesOf } from '@rhizogrip/spore/relay'
 
-import { CONSOLE, createAdapter, messageOf } from '../src/adapter.js'
+import { CONSOLE, createAdapter, listenOf, messageOf } from '../src/adapter.js'
 import { openEvents } from '../src/events.js'
 import { serve } from '../src/server.js'
 
@@ -37,8 +37,10 @@ describe('a console\'s people', () => {
     expect(() => routesOf(CONSOLE, path)).toThrow(/maps person u1 to something that is not a spore/)
     consoleFile({})
     expect(() => routesOf(CONSOLE, path)).toThrow(/has no people/)
-    consoleFile({ listen: '0.0.0.0:8790', people: {} })
-    expect(() => routesOf(CONSOLE, path)).toThrow(/listens on "0.0.0.0:8790"/)
+    consoleFile({ listen: '8790', people: {} })
+    expect(() => routesOf(CONSOLE, path)).toThrow(/listens on "8790"/)
+    expect(listenOf({}, path).text).toBe('127.0.0.1:8790')
+    expect(listenOf({ listen: '0.0.0.0:8790' }, path).shown).toBe('0.0.0.0:8790 (plain HTTP, reachable beyond this machine)')
   })
 })
 

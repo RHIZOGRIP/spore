@@ -75,7 +75,7 @@ export const SLACK = {
   routeOf: (conversation) => conversation.split(THREAD)[0],
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/spore extend wall 30m, /spore extend cost 1.50 or /spore extend rounds 20' },
   limits: { message: 12000, file: 0, fetch: 25 * 1024 * 1024, editEveryMs: 5000, typingEveryMs: 0 },
-  can: { upload: false, remove: true, react: false, typing: false, reply: true, choose: true, fields: false },
+  can: { upload: false, remove: true, react: false, typing: false, choose: true, fields: false },
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {

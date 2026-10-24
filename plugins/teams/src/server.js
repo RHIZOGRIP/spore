@@ -8,20 +8,10 @@
 import { createServer } from 'node:http'
 
 import { SporeError } from '@rhizogrip/spore'
+import { readBody } from '@rhizogrip/spore/relay'
 
 const PATH = '/api/messages'
 const MOST_BYTES = 1024 * 1024
-
-const bodyOf = (request) => new Promise((resolve, reject) => {
-  const chunks = []
-  let bytes = 0
-  request.on('data', (chunk) => {
-    bytes += chunk.length
-    if (bytes <= MOST_BYTES) chunks.push(chunk)
-  })
-  request.on('end', () => bytes > MOST_BYTES ? reject(Object.assign(new Error('too large'), { status: 413 })) : resolve(Buffer.concat(chunks).toString('utf8')))
-  request.on('error', reject)
-})
 
 /**
  * Serves until `signal` aborts, telling `listening` the port once it listens. `trace` is asked
@@ -31,11 +21,13 @@ export function serve ({ host, port, verify, onActivity, signal, log, trace = ()
   const server = createServer(async (request, response) => {
     const answer = (status) => response.writeHead(status).end()
     if (request.method !== 'POST' || request.url !== PATH) return answer(404)
+    const body = await readBody(request, response, MOST_BYTES)
+    if (body === null) return answer(413)
     let activity
     try {
-      activity = JSON.parse(await bodyOf(request))
-    } catch (err) {
-      return answer(err.status ?? 400)
+      activity = JSON.parse(body.toString('utf8'))
+    } catch {
+      return answer(400)
     }
     let refused
     try {

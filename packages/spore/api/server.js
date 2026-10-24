@@ -23,6 +23,7 @@ import { approvalOf, approvalsIn, readEvents } from '../src/core/spore-dir.js'
 import { askApproval } from '../src/library/approvals.js'
 import { paused } from '../src/core/admission.js'
 import { SporeError } from '../src/observability/errors.js'
+import { readBody } from '../src/infra/http.js'
 import { endSpanError, endSpanOk, formatTraceparent, parseTraceparent, startSpan } from '../src/observability/tracing.js'
 import { deliver } from '../src/core/route.js'
 import { callerOf, reaches } from './config.js'
@@ -51,27 +52,9 @@ const briefingOf = (caller, delivery) => ({ payload }) => [
   payload ? `Its payload is ${payload} in your directory.` : 'It has no payload.'
 ].join('\n') + '\n'
 
-function readBody (request) {
-  return new Promise((resolve, reject) => {
-    const chunks = []
-    let bytes = 0
-    request.on('data', chunk => {
-      bytes += chunk.length
-      if (bytes > MAX_BODY) {
-        request.removeAllListeners('data')
-        request.resume()
-        reject(failure('API_TOO_LARGE', 'the request is larger than the API takes', `at most ${MAX_BODY} bytes`))
-        return
-      }
-      chunks.push(chunk)
-    })
-    request.on('end', () => resolve(Buffer.concat(chunks)))
-    request.on('error', reject)
-  })
-}
-
-async function jsonOf (request) {
-  const body = await readBody(request)
+async function jsonOf (request, response) {
+  const body = await readBody(request, response, MAX_BODY)
+  if (body === null) throw failure('API_TOO_LARGE', 'the request is larger than the API takes', `at most ${MAX_BODY} bytes`)
   if (!body.length) return {}
   try {
     const parsed = JSON.parse(body.toString('utf8'))
@@ -95,8 +78,8 @@ const attachmentsOf = (attach) => {
 export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () => {}, pausedNow = paused, delivering = {} }) {
   const routing = new Set()
 
-  const deliveries = async ({ request, caller, ws, span }) => {
-    const asked = await jsonOf(request)
+  const deliveries = async ({ request, response, caller, ws, span }) => {
+    const asked = await jsonOf(request, response)
     const pause = pausedNow()
     if (pause) throw failure('PAUSED', 'spores are paused', `since ${pause.at ?? 'spore pause'} — spore unpause lets deliveries in again`)
     const { delivery, text = '', payload, attach, ...rest } = asked
@@ -161,8 +144,8 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       if (!running) return { status: 200, body: { live: null, lines: [], seq: null } }
       return { status: 200, body: { live: running.live, lines: renderLive(running.live, { level }), seq: running.seq } }
     },
-    'POST messages': async ({ request, ws, span }) => {
-      const asked = await jsonOf(request)
+    'POST messages': async ({ request, response, ws, span }) => {
+      const asked = await jsonOf(request, response)
       if (typeof asked.text !== 'string' || !asked.text.trim()) throw failure('API_BAD_REQUEST', 'a message needs its text', '{ "text": "…" }')
       const sent = send(ws, asked.text, {
         attach: attachmentsOf(asked.attach),
@@ -175,18 +158,18 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       })
       return { status: 202, body: { inbox: sent.inbox, started: sent.started, repeated: Boolean(sent.repeated) } }
     },
-    'POST approvals': async ({ request, ws }) => ({ status: 201, body: askApproval(ws, await jsonOf(request), { configFile }) }),
+    'POST approvals': async ({ request, response, ws }) => ({ status: 201, body: askApproval(ws, await jsonOf(request, response), { configFile }) }),
     'GET approvals': ({ ws }) => ({ status: 200, body: { approvals: approvalsIn(ws) } }),
     'GET approval': ({ ws, id }) => {
       const one = approvalOf(ws, id)
       if (!one) throw failure('API_NOT_FOUND', `no approval ${id} in this spore`)
       return { status: 200, body: one }
     },
-    'POST annotate': async ({ request, ws }) => ({ status: 200, body: annotateTurn(ws, (await jsonOf(request)).text) }),
+    'POST annotate': async ({ request, response, ws }) => ({ status: 200, body: annotateTurn(ws, (await jsonOf(request, response)).text) }),
     'POST stop': ({ ws }) => ({ status: 200, body: stop(ws) }),
-    'POST wrap': async ({ request, ws }) => ({ status: 200, body: wrapTurn(ws, (await jsonOf(request)).wait) }),
-    'POST extend': async ({ request, ws }) => {
-      const { dimension, amount } = await jsonOf(request)
+    'POST wrap': async ({ request, response, ws }) => ({ status: 200, body: wrapTurn(ws, (await jsonOf(request, response)).wait) }),
+    'POST extend': async ({ request, response, ws }) => {
+      const { dimension, amount } = await jsonOf(request, response)
       return { status: 200, body: extendTurn(ws, dimension, String(amount)) }
     }
   }
@@ -233,7 +216,7 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       }
       const handle = route === 'deliveries' ? request.method === 'POST' && deliveries : routes[`${request.method} ${route}`]
       if (!handle) throw failure('API_METHOD', `${request.method} is not how ${route} is asked`)
-      const { status, body } = await handle({ request, caller, ws, id, span, url })
+      const { status, body } = await handle({ request, response, caller, ws, id, span, url })
       answer(response, status, body, traceparent)
       endSpanOk(span, { 'http.status_code': status })
       log(`${caller.name} · ${request.method} ${url.pathname} · ${status}`)
@@ -244,10 +227,6 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       if (response.headersSent) {
         response.end()
         return
-      }
-      if (err.type === 'API_TOO_LARGE') {
-        response.setHeader('connection', 'close')
-        response.once('finish', () => request.destroy())
       }
       answer(response, status, { error: { type: err.type ?? 'API_FAILED', message: err.message, ...(err.detail ? { detail: err.detail } : {}) } }, traceparent)
     }

@@ -10,6 +10,7 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { createServer } from 'node:http'
 
 import { SporeError, parseTraceparent } from '@rhizogrip/spore'
+import { readBody } from '@rhizogrip/spore/relay'
 
 import { isPerson } from './adapter.js'
 
@@ -35,23 +36,15 @@ class Refused extends Error {
 
 const digest = (text) => createHash('sha256').update(text).digest()
 
-const bodyOf = (request, most) => new Promise((resolve, reject) => {
-  const chunks = []
-  let bytes = 0
-  request.on('data', (chunk) => {
-    bytes += chunk.length
-    if (bytes <= most) chunks.push(chunk)
-  })
-  request.on('end', () => {
-    if (bytes > most) return reject(new Refused(413, `a request carries at most ${most} bytes`))
-    try {
-      resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')))
-    } catch (err) {
-      reject(new Refused(400, `the body is not JSON — ${err.message}`))
-    }
-  })
-  request.on('error', reject)
-})
+async function bodyOf (request, response, most) {
+  const body = await readBody(request, response, most)
+  if (body === null) throw new Refused(413, `a request carries at most ${most} bytes`)
+  try {
+    return JSON.parse(body.toString('utf8'))
+  } catch (err) {
+    throw new Refused(400, `the body is not JSON — ${err.message}`)
+  }
+}
 
 const numberIn = (query, field, { least = 0, most = Infinity, absent }) => {
   const raw = query.get(field)
@@ -96,9 +89,9 @@ export function serve ({ host, port, token, file, events, people, deliver, press
     }
   }
 
-  const say = async (request, query, aborted) => {
+  const say = async (request, response, query, aborted) => {
     const wait = numberIn(query, 'wait', { most: MOST_WAIT_S, absent: 0 })
-    const { person, text = null, id, files: sent, ...rest } = await bodyOf(request, MOST_MESSAGE_BYTES)
+    const { person, text = null, id, files: sent, ...rest } = await bodyOf(request, response, MOST_MESSAGE_BYTES)
     const extra = Object.keys(rest)
     if (extra.length) throw new Refused(400, `a message is { "person", "text", "id", "files" } — not ${extra.join(', ')}`)
     mapped(person)
@@ -131,8 +124,8 @@ export function serve ({ host, port, token, file, events, people, deliver, press
     return { status: 200, body: { events: found, next: found.at(-1)?.seq ?? after } }
   }
 
-  const answer = async (request, approval) => {
-    const { choice, by, inputs = null, ...rest } = await bodyOf(request, MOST_BYTES)
+  const answer = async (request, response, approval) => {
+    const { choice, by, inputs = null, ...rest } = await bodyOf(request, response, MOST_BYTES)
     const extra = Object.keys(rest)
     if (extra.length) throw new Refused(400, `an answer is { "choice", "by", "inputs" } — not ${extra.join(', ')}`)
     if (typeof choice !== 'string' || !CHOICE.test(choice)) throw new Refused(400, 'choice is the id of one of the card\'s options')
@@ -146,12 +139,12 @@ export function serve ({ host, port, token, file, events, people, deliver, press
     return heard.taken ? { status: 200, body: { taken: true, text: heard.text } } : { status: 409, body: { taken: false, reason: heard.text } }
   }
 
-  const route = (request, url, aborted) => {
-    if (request.method === 'POST' && url.pathname === '/messages') return say(request, url.searchParams, aborted)
+  const route = (request, response, url, aborted) => {
+    if (request.method === 'POST' && url.pathname === '/messages') return say(request, response, url.searchParams, aborted)
     const conversation = CONVERSATION.exec(url.pathname)
     if (request.method === 'GET' && conversation) return read(request, url.searchParams, decodeURIComponent(conversation[1]), aborted)
     const approval = APPROVAL.exec(url.pathname)
-    if (request.method === 'POST' && approval) return answer(request, approval[1])
+    if (request.method === 'POST' && approval) return answer(request, response, approval[1])
     throw new Refused(404, 'the console serves POST /messages, GET /conversations/<person> and POST /approvals/<id>/answer')
   }
 
@@ -187,7 +180,7 @@ export function serve ({ host, port, token, file, events, people, deliver, press
     response.on('close', () => closed.abort())
     const aborted = AbortSignal.any([closed.signal, signal])
     try {
-      const done = await route(request, new URL(request.url, 'http://console'), aborted)
+      const done = await route(request, response, new URL(request.url, 'http://console'), aborted)
       if (done.stream) return stream(response, done.stream)
       json(done.status, done.body)
     } catch (err) {

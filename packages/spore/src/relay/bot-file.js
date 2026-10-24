@@ -198,7 +198,7 @@ export function filesOf (spec, path) {
   return files === undefined ? spec.limits.fetch : Math.min(spec.limits.fetch, Math.floor(native.sizeBytes(files)))
 }
 
-export const credentialVariable = (spec, path, field) => variableOf(readBot(spec, path)[field])
+const credentialVariable = (spec, path, field) => variableOf(readBot(spec, path)[field])
 
 export function credentialOf (spec, path, field, env) {
   const variable = credentialVariable(spec, path, field)
@@ -210,11 +210,3 @@ export function credentialOf (spec, path, field, env) {
   }
   return env[variable]
 }
-
-/**
- * Every variable a bot of this kind keeps a credential in: none reaches a spore's runner unless
- * a source of the plugin's own needs it. A bot file that cannot be read is refused rather than
- * skipped, since its credential would pass unnoticed.
- */
-export const credentialVariables = (spec, configFile = CONFIG_FILE) =>
-  botNames(spec, configFile).flatMap(name => spec.credentials.map(field => credentialVariable(spec, botPath(spec, name, configFile), field)))

@@ -114,7 +114,7 @@ The static part, which the relay reads before the service starts:
 | `stateFields` | the adapter's own fields in the state file, handed to its `restore` |
 | `usage` | `{ help, briefHelp, extend }`: the commands as this platform types them — `briefHelp` without `extend`, for a brief conversation |
 | `limits` | `{ message, file, fetch, editEveryMs, typingEveryMs }`: the longest message, the largest upload, the largest file the platform lets a bot fetch, how often `working…` is edited, how often typing is renewed |
-| `can` | `{ upload, remove, react, typing, reply, choose, fields }`: `reply` false where a post cannot reply to a message, and opens with whom it answers instead; `choose` where it carries approvals, and beside it `fields`, true or false, whether it shows an approval's fields to fill in — where false, the relay refuses an approval with a required field and posts one without its optional ones |
+| `can` | `{ upload, remove, react, typing, choose, fields }`: `choose` where it carries approvals, and beside it `fields`, true or false, whether it shows an approval's fields to fill in — where false, the relay refuses an approval with a required field and posts one without its optional ones |
 | `showShared` | how a turn shows itself in a conversation many people share when the routing says nothing: `react` or `working` |
 | `reactions` | the emoji the platform lets a bot react with, or null for any |
 | `refusals` | error types that mean the platform will not have this bot at all: the service exits 2 and is not restarted |
@@ -215,7 +215,11 @@ errors — go in the callback the suite hands its context to. `telegram-service.
 
 - Inbound authenticity is checked before anything is read: the connector's own connection, or the
   platform's signature on what it pushes.
-- A listener binds loopback only; exposing it is the operator's proxy's job.
+- A listener takes its address with `listenOf(given, { port, refused })` from
+  `@rhizogrip/spore/relay` — loopback on its own `port` when `given` is undefined, any address it
+  is told, `shown` marking one beyond loopback as plain HTTP — and reads a body with
+  `readBody(request, response, most)`, null past `most` bytes, answered 413 and the connection
+  closed; exposing it is the operator's proxy's job.
 - In a conversation shared by many people, only a message that addresses a spore reaches it as
   said to it; the rest is `addresses: []`, never guessed at.
 - Nothing a spore writes pings anyone but whom it answers.

@@ -307,10 +307,11 @@ describe('api.json', () => {
     expect(['ops', 'support-eu', 'opsx', 'support'].map(name => reaches(caller, name))).toEqual([true, true, false, false])
   })
 
-  it('listens only where it is told, and on this machine\'s loopback alone', () => {
+  it('listens only where it is told, and says so of an address beyond loopback', () => {
     expect(() => loadApi(write({ callers: { a: { token, spores: ['*'] } } }), env)).toThrow(/neither a socket nor an address/)
-    expect(() => loadApi(write({ listen: '0.0.0.0:8787', callers: { a: { token, spores: ['*'] } } }), env)).toThrow(/not this machine's loopback/)
-    expect(loadApi(write({ listen: '127.0.0.1:8787', callers: { a: { token, spores: ['*'] } } }), env).listen).toEqual({ host: '127.0.0.1', port: 8787 })
+    expect(() => loadApi(write({ listen: '8787', callers: { a: { token, spores: ['*'] } } }), env)).toThrow(/listens on "8787"/)
+    expect(loadApi(write({ listen: '127.0.0.1:8787', callers: { a: { token, spores: ['*'] } } }), env).listen).toEqual({ host: '127.0.0.1', port: 8787, text: '127.0.0.1:8787', shown: '127.0.0.1:8787' })
+    expect(loadApi(write({ listen: '0.0.0.0:8787', callers: { a: { token, spores: ['*'] } } }), env).listen.shown).toBe('0.0.0.0:8787 (plain HTTP, reachable beyond this machine)')
   })
 
   it('takes a caller\'s maxWait, perDay and perHour, and refuses a router, naming where what prepares a delivery is bound now', () => {

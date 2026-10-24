@@ -13,9 +13,9 @@ await runService({
   program: 'spore-console',
   root: resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   open: async ({ bot, file, credentials }) => {
-    const { host, port } = listenOf(readBot(CONSOLE, file), file)
+    const { host, port, shown } = listenOf(readBot(CONSOLE, file), file)
     const events = openEvents(join(dirname(statePath(CONSOLE.kind, bot)), 'events.sqlite'))
     const receive = (handlers) => serve({ host, port, token: credentials.token, file, events, people: () => routesOf(CONSOLE, file), ...handlers })
-    return { adapter: createAdapter({ name: bot, events, receive }), who: `${host}:${port}` }
+    return { adapter: createAdapter({ name: bot, events, receive }), who: shown }
   }
 })

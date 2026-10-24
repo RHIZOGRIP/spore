@@ -30,8 +30,8 @@ as its type and a new Microsoft App ID — Microsoft no longer makes multi-tenan
 service asks your tenant for its token. Its app registration in Entra ID gives the bot file its
 `app` (the Microsoft App ID), its `tenant`, and a client secret — the secret's value, kept in
 `environment` under the variable `secret` names. The Azure Bot's messaging endpoint is a public
-HTTPS address of yours, which your proxy forwards to `listen` — a loopback address: the service
-never faces the internet itself. With nginx, a path per bot:
+HTTPS address of yours, which your proxy forwards to `listen` — `127.0.0.1:3978` when the file
+says none: the service never faces the internet itself. With nginx, a path per bot:
 
 ```nginx
 location = /ops/api/messages { proxy_pass http://127.0.0.1:3978/api/messages; }

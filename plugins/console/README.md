@@ -5,7 +5,7 @@ bench, a scripted check, an automation, a demo. A program says something as a pe
 person's conversation back as ordered events, and presses an approval's buttons as them, on the
 same path a person in Teams or Slack takes: the same delivery, the same approvals, the same hook.
 It runs on the machine the spores are on, once per console, as a systemd user unit, on a loopback
-address. It gives spores nothing, so it needs no `spore plugin allow`: `spore service` offers it
+address by default. It gives spores nothing, so it needs no `spore plugin allow`: `spore service` offers it
 once it is installed.
 
 ```bash
@@ -23,9 +23,9 @@ the file maps — that is what the console is for — so a real person's spore n
 
 ## The console file
 
-`console/<name>.json` beside `config.json`: where it listens, a loopback address and a port; the
-variable holding its token, set in `environment` beside `config.json`; and its `people`, each
-person by an id you choose — letters, digits, `.`, `_`, `@` and `-` — against the spore they
+`console/<name>.json` beside `config.json`: `listen`, where it listens — `127.0.0.1:8790` when
+unsaid, and an address beyond loopback is plain HTTP; the variable holding its token, set in
+`environment` beside `config.json`; and its `people`, each person by an id you choose — letters, digits, `.`, `_`, `@` and `-` — against the spore they
 reach: `"<spore>"`, or `{ "spore": "<name>", "details": true, "brief": true }`. `details` shows a
 turn's calls rather than their kinds, `brief` keeps the conversation to the spore's state and its
 answers. The file is read on every request, so a person is added, moved or removed by editing a

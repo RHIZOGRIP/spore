@@ -6,12 +6,11 @@
  */
 
 import { SporeError } from '@rhizogrip/spore'
-import { commandOf, escapeHtml } from '@rhizogrip/spore/relay'
+import { commandOf, escapeHtml, listenOf as listening } from '@rhizogrip/spore/relay'
 
 const FIELDS = ['app', 'tenant', 'secret', 'listen', 'people', 'channels', 'trace']
 const PERSON = /^[0-9a-f][0-9a-f-]*$/i
 const CHANNEL = /^19:[^\s;]+@thread\.[a-z0-9]+$/i
-const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
 const THREAD = ';messageid='
 const SERVICE_URL = 'https://smba.trafficmanager.net/teams/'
 const CARD = 'application/vnd.microsoft.card.adaptive'
@@ -20,21 +19,14 @@ const IMAGE = /^image\/(png|jpeg|gif|webp)$/
 const PRESSED = 'spore'
 const ANSWERING = new Set(['Action.Submit', 'Action.Execute'])
 const FIELD = 'field:'
-const SHAPE = '{ "app": "<app id>", "tenant": "<tenant id>", "secret": "${OPS_TEAMS_SECRET}", "listen": "127.0.0.1:3978", "people": { "<object id>": "<spore>" }, "channels": { "<channel id>": { "spores": ["<spore>"], "people": ["<object id>"] } } }' // eslint-disable-line no-template-curly-in-string
+const SHAPE = '{ "app": "<app id>", "tenant": "<tenant id>", "secret": "${OPS_TEAMS_SECRET}", "people": { "<object id>": "<spore>" }, "channels": { "<channel id>": { "spores": ["<spore>"], "people": ["<object id>"] } } }' // eslint-disable-line no-template-curly-in-string
 
 const invalid = (path, problem, detail = `a bot is ${SHAPE}`) => new SporeError(`${path} ${problem}`, { type: 'TEAMS_BOT_INVALID', detail })
 
 const record = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
 
-/** Where the service listens, `<loopback host>:<port>`: the operator's proxy is what faces Microsoft. */
-export function listenOf (raw, path) {
-  const found = /^(.+):(\d+)$/.exec(raw.listen ?? '')
-  const host = found?.[1].replace(/^\[(.*)\]$/, '$1')
-  if (!found || !LOOPBACK.has(host) || Number(found[2]) > 65535) {
-    throw invalid(path, `listens on ${JSON.stringify(raw.listen)}`, 'listen is a loopback address and a port, as 127.0.0.1:3978 — a proxy of yours gives it the public HTTPS address the Azure Bot names')
-  }
-  return { host, port: Number(found[2]) }
-}
+/** Where the service listens, 127.0.0.1:3978 unless the bot file says: a proxy of the operator's gives it the HTTPS address the Azure Bot names. */
+export const listenOf = (raw, path) => listening(raw.listen, { port: 3978, refused: (problem, detail) => invalid(path, problem, detail) })
 
 /**
  * The bot's app and tenant, where it listens, and its routing: `people`, each person's personal
@@ -88,7 +80,7 @@ export const TEAMS = {
   routeOf: (conversation) => conversation.split(THREAD)[0],
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 40000, file: 0, fetch: 25 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 4000 },
-  can: { upload: false, remove: true, react: false, typing: false, reply: true, choose: true, fields: true },
+  can: { upload: false, remove: true, react: false, typing: false, choose: true, fields: true },
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {

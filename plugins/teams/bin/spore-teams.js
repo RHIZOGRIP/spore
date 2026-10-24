@@ -15,12 +15,12 @@ await runService({
   root: resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   open: async ({ file, credentials }) => {
     const { app, tenant, ...raw } = readBot(TEAMS, file)
-    const { host, port } = listenOf(raw, file)
+    const { host, port, shown } = listenOf(raw, file)
     const token = createToken({ app, tenant, secret: credentials.secret })
     await token()
     const verify = createVerifier({ app })
     const trace = () => readBot(TEAMS, file).trace === true
     const receive = ({ onActivity, signal, log }) => serve({ host, port, verify, onActivity, signal, log, trace })
-    return { adapter: createAdapter({ connector: createConnector({ token }), receive, app, tenant }), who: `app ${app} on ${host}:${port}` }
+    return { adapter: createAdapter({ connector: createConnector({ token }), receive, app, tenant }), who: `app ${app} on ${shown}` }
   }
 })

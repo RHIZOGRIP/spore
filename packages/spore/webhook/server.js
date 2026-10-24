@@ -5,6 +5,7 @@ import { CONFIG_FILE, loadEnvironment, paused } from '../src/index.js'
 import { createHookDelivery } from './deliveries.js'
 import { acceptRefusal, hooksPath, loadHooks } from './hooks.js'
 import { verify } from './verify.js'
+import { readBody } from '../src/infra/http.js'
 
 const ROUTE = /^\/hook\/([^/]+)(?:\/([^/]+))?\/?$/
 const SECRET_HEADER = /authorization|cookie|token|signature|secret/i
@@ -19,24 +20,6 @@ const PAYLOAD_NAMES = [
 ]
 
 const payloadName = (mime) => PAYLOAD_NAMES.find(([pattern]) => pattern.test(mime))?.[1] ?? 'payload.bin'
-
-function readBody (request, maxBytes) {
-  return new Promise((resolve, reject) => {
-    const chunks = []
-    let bytes = 0
-    request.on('data', chunk => {
-      bytes += chunk.length
-      if (bytes > maxBytes) {
-        request.destroy()
-        resolve(null)
-        return
-      }
-      chunks.push(chunk)
-    })
-    request.on('end', () => resolve(Buffer.concat(chunks)))
-    request.on('error', reject)
-  })
-}
 
 export function keptHeaders (headers, check) {
   return Object.fromEntries(Object.entries(headers)
@@ -85,13 +68,9 @@ export function createWebhookServer ({ env, log, configFile = CONFIG_FILE, pause
     }
     if (request.method !== 'POST') return answer(response, 405)
 
-    if (Number(request.headers['content-length']) > hook.maxBytes) {
-      log(`hook ${name} · refused — ${request.headers['content-length']} bytes, more than ${hook.maxBytes}`)
-      return answer(response, 413)
-    }
-    const body = await readBody(request, hook.maxBytes)
+    const body = await readBody(request, response, hook.maxBytes)
     if (body === null) {
-      log(`hook ${name} · refused — the body passed ${hook.maxBytes} bytes`)
+      log(`hook ${name} · refused — the body passes ${hook.maxBytes} bytes`)
       return answer(response, 413)
     }
 

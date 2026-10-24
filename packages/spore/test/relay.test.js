@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
 import {
-  announce, backoff, botNames, botPath, createDelivery, credentialOf, credentialVariables,
+  announce, backoff, botNames, botPath, createDelivery, credentialOf,
   loadState, pieces, reactionsOf, reply, routesOf, saveState, statePath, waiting
 } from '../src/relay/index.js'
 
@@ -122,13 +122,10 @@ describe('a bot file', () => {
     expect(() => credentialOf(SPEC, botPath(SPEC, 'ops', CONFIG), 'token', {})).toThrow(expect.objectContaining({ type: 'CHAT_NO_TOKEN', message: expect.stringMatching(/\$OPS_TOKEN, which is not set/) }))
   })
 
-  it('knows every bot beside the configuration and every variable their credentials are in, refusing one it cannot read', () => {
+  it('knows every bot beside the configuration', () => {
     write('ops', { token: '${OPS_TOKEN}', rooms: {} }) // eslint-disable-line no-template-curly-in-string
     write('review', { token: '${REVIEW_TOKEN}', rooms: {} }) // eslint-disable-line no-template-curly-in-string
     expect(botNames(SPEC, CONFIG)).toEqual(['ops', 'review'])
-    expect(credentialVariables(SPEC, CONFIG)).toEqual(['OPS_TOKEN', 'REVIEW_TOKEN'])
-    write('broken', '{')
-    expect(() => credentialVariables(SPEC, CONFIG)).toThrow(/not readable JSON/)
   })
 
   it('refuses a name that is not a bot\'s', () => {

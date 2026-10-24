@@ -7,26 +7,18 @@
 import { statSync } from 'node:fs'
 
 import { SporeError } from '@rhizogrip/spore'
-import { commandOf } from '@rhizogrip/spore/relay'
+import { commandOf, listenOf as listening } from '@rhizogrip/spore/relay'
 
 const FIELDS = ['listen', 'token', 'people']
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/
-const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
-const SHAPE = '{ "listen": "127.0.0.1:8790", "token": "${LAB_CONSOLE_TOKEN}", "people": { "<person>": "<spore>" } }' // eslint-disable-line no-template-curly-in-string
+const SHAPE = '{ "token": "${LAB_CONSOLE_TOKEN}", "people": { "<person>": "<spore>" } }' // eslint-disable-line no-template-curly-in-string
 
 const invalid = (path, problem, detail = `a console is ${SHAPE}`) => new SporeError(`${path} ${problem}`, { type: 'CONSOLE_BOT_INVALID', detail })
 
 export const isPerson = (id) => typeof id === 'string' && PERSON.test(id)
 
-/** Where the service listens, `<loopback host>:<port>`: a program on another machine reaches it through a proxy of the operator's. */
-export function listenOf (raw, path) {
-  const found = /^(.+):(\d+)$/.exec(raw.listen ?? '')
-  const host = found?.[1].replace(/^\[(.*)\]$/, '$1')
-  if (!found || !LOOPBACK.has(host) || Number(found[2]) > 65535) {
-    throw invalid(path, `listens on ${JSON.stringify(raw.listen)}`, 'listen is a loopback address and a port, as 127.0.0.1:8790')
-  }
-  return { host, port: Number(found[2]) }
-}
+/** Where the service listens, 127.0.0.1:8790 unless the console file says. */
+export const listenOf = (raw, path) => listening(raw.listen, { port: 8790, refused: (problem, detail) => invalid(path, problem, detail) })
 
 /**
  * The console's people, each by the id the host chose for them against the spore they reach —
@@ -59,7 +51,7 @@ export const CONSOLE = {
   check: listenOf,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 1_000_000, file: Infinity, fetch: 25 * 1024 * 1024, editEveryMs: 1000, typingEveryMs: 0 },
-  can: { upload: true, remove: true, react: false, typing: false, reply: true, choose: true, fields: true },
+  can: { upload: true, remove: true, react: false, typing: false, choose: true, fields: true },
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {

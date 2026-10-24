@@ -151,9 +151,6 @@ export function askApproval (ws, request, { configFile = CONFIG_FILE, now = Date
   return { approval: id, until }
 }
 
-/** The variables the approval hooks of `config` keep their secrets in: none of them reaches a turn. */
-export const approvalHookVariables = (config) => Object.values(config.approvals ?? {}).map(hook => variableOf(hook.secret))
-
 const hookFailed = (name, why) => new SporeError(`the approval hook "${name}" failed`, { type: 'APPROVAL_HOOK_FAILED', detail: why })
 
 async function answerOf (name, response) {

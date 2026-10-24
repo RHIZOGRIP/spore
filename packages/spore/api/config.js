@@ -10,13 +10,13 @@ import { dirname, isAbsolute, resolve } from 'node:path'
 
 import { API_FILE, CONFIG_FILE } from '../src/library/config.js'
 import { SporeError } from '../src/observability/errors.js'
+import { listenOf } from '../src/infra/http.js'
 import { deliveryBounds } from '../src/core/route.js'
 import { NAMES } from '../src/core/names.js'
 import { variableOf } from '../src/core/variables.js'
 
 export const apiPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), API_FILE)
 
-const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
 const PATTERN = /^[A-Za-z0-9*][A-Za-z0-9._*-]{0,63}$/
 
 const refuse = (path, problem, detail) => new SporeError(`${path} ${problem}`, { type: 'API_CONFIG_INVALID', detail })
@@ -26,7 +26,7 @@ const digest = (text) => createHash('sha256').update(text).digest()
 const matcher = (pattern) => new RegExp(`^${pattern.replace(/[.]/g, '\\.').replace(/\*/g, '[^/]*')}$`)
 
 /**
- * `{ socket, listen, callers }`: `listen` as `{ host, port }`, each caller `{ name, spores,
+ * `{ socket, listen, callers }`: `listen` as `listenOf` reads it, or null, each caller `{ name, spores,
  * maxWait }` with its token kept only as a digest and `maxWait` the longest a spore's router may
  * hold its deliveries, or null.
  */
@@ -41,16 +41,10 @@ export function loadApi (path = apiPath(), env = process.env) {
   const known = ['socket', 'listen', 'callers']
   const unknown = Object.keys(raw).filter(key => !known.includes(key))
   if (unknown.length) throw refuse(path, `has ${unknown.join(', ')}, which the API does not read`, `it takes ${known.join(', ')}`)
-  if (raw.socket === undefined && raw.listen === undefined) throw refuse(path, 'says neither a socket nor an address to listen on', 'socket: an absolute path, listen: <loopback host>:<port>')
+  if (raw.socket === undefined && raw.listen === undefined) throw refuse(path, 'says neither a socket nor an address to listen on', 'socket: an absolute path, listen: <host>:<port>, as 127.0.0.1:8787')
   if (raw.socket !== undefined && !(typeof raw.socket === 'string' && isAbsolute(raw.socket))) throw refuse(path, 'has a socket that is not an absolute path', `got ${JSON.stringify(raw.socket)}`)
 
-  let listen = null
-  if (raw.listen !== undefined) {
-    const found = typeof raw.listen === 'string' ? /^\[?([^\]]+?)\]?:(\d+)$/.exec(raw.listen) : null
-    if (!found || !(Number(found[2]) > 0 && Number(found[2]) < 65536)) throw refuse(path, `has a listen it cannot read — got ${JSON.stringify(raw.listen)}`, 'expected <host>:<port>, as 127.0.0.1:8787')
-    if (!LOOPBACK.has(found[1])) throw refuse(path, `listens on ${found[1]}, which is not this machine's loopback`, 'listen on 127.0.0.1 and expose it through a reverse proxy you choose')
-    listen = { host: found[1], port: Number(found[2]) }
-  }
+  const listen = raw.listen === undefined ? null : listenOf(raw.listen, { port: 8787, refused: (problem, detail) => refuse(path, problem, detail) })
 
   if (!(raw.callers && typeof raw.callers === 'object' && !Array.isArray(raw.callers) && Object.keys(raw.callers).length)) {
     throw refuse(path, 'names no callers', 'callers: { "<name>": { "token": "${VAR}", "spores": ["*"] } }') // eslint-disable-line no-template-curly-in-string

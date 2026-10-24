@@ -1598,8 +1598,8 @@ adds nothing a verb does not do: no `define`, no `rm`, no scheduling between cal
 configuration is `api.json`
 ([docs/operating.md §The HTTP API service](docs/operating.md#the-http-api-service)).
 
-**Where and who.** It listens on a unix socket, a loopback address, or both; exposure is a
-reverse proxy the operator chooses. Each caller is a token, named as `${VAR}` and read from
+**Where and who.** It listens on a unix socket, an address — loopback unless told another — or
+both; exposure is a reverse proxy the operator chooses. Each caller is a token, named as `${VAR}` and read from
 `environment` so the file holds no secret, with the spore names it reaches. Every request carries
 its token, on the socket too, since every agent can `connect()` to a socket it sees
 (`SECURITY.md`); tokens are kept as digests and compared in constant time, and a spore outside a
@@ -1632,7 +1632,7 @@ webhook service only.
 
 **A webhook is a message a program says**, through `send()`, as a schedule's firing is the
 clock's. `spore-webhook` (`bin/spore-webhook.js`, `webhook/`) is a service like the Telegram one,
-on a loopback address; reaching it from elsewhere is a reverse proxy's job. Each hook in
+on a loopback address unless told another; reaching it from elsewhere is a reverse proxy's job. Each hook in
 `hooks.json` (`docs/operating.md`) has one URL, `POST /hook/<name>`, names the spore it reaches —
 or several, each of which gets every delivery it keeps — and says how a request proves it is the
 sender's; a hook that says nothing is refused. `hooks.json` and `environment` are read again for

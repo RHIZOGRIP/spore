@@ -454,15 +454,6 @@ Why what a press filled in does not fit an approval's `fields`, as the person is
 it does not declare, anything but text of at most 2000 characters, a required field left empty —
 or null.
 
-### `approvalHookVariables`
-
-```
-approvalHookVariables(config) → string[]
-```
-
-The variables the approval hooks of a read `config.json` keep their secrets in, which no turn is
-given.
-
 ---
 
 ## Reading a spore

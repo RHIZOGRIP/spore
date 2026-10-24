@@ -34,7 +34,7 @@ try {
   refuse(err)
 }
 
-const where = [api.socket, api.listen && `${api.listen.host}:${api.listen.port}`].filter(Boolean).join(' and ')
+const where = [api.socket, api.listen?.shown].filter(Boolean).join(' and ')
 const summary = `spore-api · ${where} · ${apiPath()} · ${api.callers.map(c => c.name).join(', ')}`
 
 if (process.argv.includes('--check')) {
@@ -67,7 +67,7 @@ if (api.socket) {
 if (api.listen) {
   const server = createApiServer({ api, env: process.env, log })
   await new Promise((resolve, reject) => server.once('error', reject).listen(api.listen.port, api.listen.host, resolve))
-    .catch(err => refuse(err, err.code === 'EADDRINUSE' ? `something already listens on ${api.listen.host}:${api.listen.port}` : null))
+    .catch(err => refuse(err, err.code === 'EADDRINUSE' ? `something already listens on ${api.listen.text}` : null))
   servers.push(server)
 }
 

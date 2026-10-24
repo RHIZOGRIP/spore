@@ -8,7 +8,7 @@ import { botPath, routesOf } from '@rhizogrip/spore/relay'
 
 import { createConnector } from '../src/api.js'
 import { createToken, createVerifier } from '../src/auth.js'
-import { TEAMS, createAdapter, normalize } from '../src/adapter.js'
+import { TEAMS, createAdapter, listenOf, normalize } from '../src/adapter.js'
 import { serve } from '../src/server.js'
 
 const APP = '00000000-aaaa-4000-8000-000000000001'
@@ -51,17 +51,19 @@ describe('a bot\'s people and channels', () => {
     expect(TEAMS.routeOf(ALICE)).toBe(ALICE)
   })
 
-  it('refuse a bot without its app, its tenant, or a loopback address to listen on', () => {
+  it('refuse a bot without its app or its tenant, or with an address it cannot listen on', () => {
     bot({ app: undefined, people: {} })
     expect(() => routesOf(TEAMS, path)).toThrow(/has no app/)
     bot({ tenant: '', people: {} })
     expect(() => routesOf(TEAMS, path)).toThrow(/has no tenant/)
-    for (const listen of ['0.0.0.0:3978', '10.0.0.4:3978', '3978', '127.0.0.1:99999']) {
+    for (const listen of ['3978', '127.0.0.1:99999', ':3978']) {
       bot({ listen, people: {} })
-      expect(() => routesOf(TEAMS, path), listen).toThrow(expect.objectContaining({ message: expect.stringMatching(/listens on/), detail: expect.stringMatching(/^listen is a loopback address and a port/) }))
+      expect(() => routesOf(TEAMS, path), listen).toThrow(expect.objectContaining({ message: expect.stringMatching(/listens on/), detail: expect.stringMatching(/^listen is <host>:<port> — 127\.0\.0\.1:3978 when unsaid/) }))
     }
     bot({ listen: '[::1]:3978', people: {} })
     expect(routesOf(TEAMS, path)).toEqual(new Map())
+    expect(listenOf({}, path).text).toBe('127.0.0.1:3978')
+    expect(listenOf({ listen: '10.0.0.4:3978' }, path).shown).toBe('10.0.0.4:3978 (plain HTTP, reachable beyond this machine)')
     bot({ secret: 'in-clear', people: {} })
     expect(() => routesOf(TEAMS, path)).toThrow(/no secret spore can read/)
   })

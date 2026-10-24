@@ -338,8 +338,8 @@ spore service define webhook && spore service enable webhook && spore service st
 ```
 
 The webhook service (`bin/spore-webhook.js`) listens on `127.0.0.1:8742`, or on the
-`<host>:<port>` that `SPORE_WEBHOOK_LISTEN` names in `~/.config/spore/environment`. Exposing it is
-a reverse proxy's job. Each hook is one URL, `POST /hook/<name>`, configured in
+`<host>:<port>` that `SPORE_WEBHOOK_LISTEN` names in `~/.config/spore/environment`
+([§Where a service listens](#where-a-service-listens)). Exposing it is a reverse proxy's job. Each hook is one URL, `POST /hook/<name>`, configured in
 `~/.config/spore/hooks.json`. The service reads that file and `environment` again for every
 request, so a change needs no restart. `--check` reads them and exits.
 
@@ -413,8 +413,8 @@ node bin/spore-api.js --check     # read api.json and the environment, print whe
 }
 ```
 
-- `listen` must be a loopback host (`127.0.0.1`, `::1` or `localhost`) and a port; any other host
-  is refused. `socket` is an absolute path; the service makes its directory `0700` and the socket
+- `listen` is `<host>:<port>` ([§Where a service listens](#where-a-service-listens)); there is no
+  default port, since the file says `socket`, `listen` or both. `socket` is an absolute path; the service makes its directory `0700` and the socket
   `0600`, and refuses to start when something already answers on it.
 - Each caller's name is letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most
   64: it is the origin `api:<caller>` a spore's `prepare:` and router name.
@@ -436,6 +436,17 @@ node bin/spore-api.js --check     # read api.json and the environment, print whe
 
 The routes, the token a request carries, the errors and `traceparent` are in
 [INTEGRATION.md §The HTTP API](../INTEGRATION.md#the-http-api).
+
+## Where a service listens
+
+Every service that listens — the webhook, the API, each Teams bot, each console — takes its address
+the same way: `<host>:<port>`, or `[<v6>]:<port>`, and `127.0.0.1` on its own port when it says
+none (the webhook 8742, a Teams bot 3978, a console 8790). Any host is taken. None of them speaks
+TLS, so `--check` and the line a service logs at start add `(plain HTTP, reachable beyond this
+machine)` to an address beyond loopback: putting one there is for a network you trust, and a
+reverse proxy holding the certificate is the usual way to reach one from elsewhere.
+
+A request body past a service's bound is answered `413` and the connection closed.
 
 ## Services spore ships
 
