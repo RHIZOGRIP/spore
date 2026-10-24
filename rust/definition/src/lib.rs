@@ -395,6 +395,50 @@ fn scalar<'a>(fields: &'a Fields, key: &str) -> Result<Option<&'a str>, String> 
     }
 }
 
+/// The fields of a family, `<head>.<key>`, in the order `FIELDS` lists them.
+fn family(head: &str) -> impl Iterator<Item = &'static str> + '_ {
+    FIELDS
+        .into_iter()
+        .filter(move |field| field.split_once('.').is_some_and(|(of, _)| of == head))
+}
+
+/// The first of `keys` the definition declares.
+fn first_declared<'a>(fields: &Fields, keys: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
+    keys.into_iter().find(|key| fields.has(key))
+}
+
+/// A field written as two values, as `[count, bound]`; anything else is refused saying what they are.
+fn pair_of<'a>(
+    value: &'a Value,
+    key: &str,
+    parts: &str,
+    example: &str,
+) -> Result<&'a [String], String> {
+    match value {
+        Value::List(raw) if raw.len() == 2 => Ok(raw),
+        _ => Err(format!("needs {key} as {parts}, {key}: {example}")),
+    }
+}
+
+/// One of the values of a field written as several, read by `read`; one it cannot read is refused
+/// saying what it should be.
+fn part<T>(
+    key: &str,
+    part: &str,
+    text: &str,
+    read: impl FnOnce(&str) -> Option<T>,
+    expected: &str,
+) -> Result<T, String> {
+    read(text).ok_or_else(|| {
+        let article = if key.starts_with(['a', 'e', 'i', 'o', 'u']) {
+            "an"
+        } else {
+            "a"
+        };
+        format!("has {article} {key} {part} it cannot read — got \"{text}\", expected {expected}")
+    })
+}
+
 fn basename(p: &str) -> &str {
     let t = p.trim_end_matches('/');
     match t.rfind('/') {
@@ -773,17 +817,12 @@ fn parse_extend(fields: &Fields, limits: &Limits, cell: bool) -> Result<Option<E
     let mut any = false;
     for (dimension, read, pair, shape) in dimensions {
         let key = format!("extend.{dimension}");
-        let Some(raw) = fields.get(&key) else {
+        let Some(text) = scalar(fields, &key)? else {
             continue;
         };
         if cell {
             return Err(format!("declares {key}, which is the root definition's — a cell's limits are its parent's to give, and nobody extends a cell's turn"));
         }
-        let Value::Scalar(text) = raw else {
-            return Err(format!(
-                "has a {key} it cannot read — expected one ceiling, as {shape}"
-            ));
-        };
         let Some(ceiling) = read(text) else {
             return Err(format!(
                 "has a {key} it cannot read — got \"{text}\", expected {shape}"
@@ -805,71 +844,50 @@ fn parse_extend(fields: &Fields, limits: &Limits, cell: bool) -> Result<Option<E
 // Absent means everything a turn starts ends with it. The owner's alone, as a turn's limits are:
 // a job runs past every limit of the turn that started it.
 fn parse_jobs(fields: &Fields, cell: bool, granted: &[Grant]) -> Result<Option<Jobs>, String> {
-    let max_wait = fields.get("jobs.maxWait");
-    let per_day = fields.get("jobs.perDay");
     let job_writes = fields.get("jobs.writes");
     let raw = match fields.get("jobs") {
-        None if max_wait.is_some() || per_day.is_some() => {
-            return Err("declares jobs.maxWait or jobs.perDay without jobs — they bound the deliveries of jobs this spore may start, as jobs: [2, 2h]".into());
+        None => {
+            if let Some(key) = first_declared(fields, ["jobs.maxWait", "jobs.perDay"]) {
+                return Err(format!("declares {key} without jobs — it bounds the deliveries of jobs this spore may start, as jobs: [2, 2h]"));
+            }
+            if job_writes.is_some() {
+                return Err("declares jobs.writes without jobs — it names which of writes the jobs this spore may start can write, as jobs: [2, 2h]".into());
+            }
+            return Ok(None);
         }
-        None if job_writes.is_some() => {
-            return Err("declares jobs.writes without jobs — it names which of writes the jobs this spore may start can write, as jobs: [2, 2h]".into());
-        }
-        None => return Ok(None),
         Some(_) if cell => {
             return Err("declares jobs, which are the root definition's — a cell's work ends with it, so nothing of it outlives a turn".into());
         }
-        Some(Value::List(raw)) if raw.len() == 2 => raw,
-        Some(_) => return Err("needs jobs as a count and a wall, jobs: [2, 2h]".into()),
+        Some(value) => pair_of(value, "jobs", "a count and a wall", "[2, 2h]")?,
     };
-    let Some(count) = whole_number(&raw[0], 1) else {
-        return Err(format!(
-            "has a jobs count it cannot read — got \"{}\", expected how many jobs may run at once, at least 1",
-            raw[0]
-        ));
-    };
-    let wall = match duration_ms(&raw[1]) {
-        Some(ms) if ms > 0.0 => ms,
-        _ => {
-            return Err(format!(
-                "has a jobs wall it cannot read — got \"{}\", expected how long one job may run, as 2h",
-                raw[1]
-            ));
-        }
-    };
-    let max_wait = match max_wait {
-        None => None,
-        Some(Value::Scalar(text)) => match duration_ms(text) {
-            Some(ms) if ms > 0.0 => Some(ms),
-            _ => {
-                return Err(format!(
-                    "has a jobs.maxWait it cannot read — got \"{text}\", expected the longest a job's delivery may be held, as 30m"
-                ));
-            }
-        },
-        Some(_) => {
-            return Err(
-                "has a jobs.maxWait it cannot read — expected one duration, as jobs.maxWait: 30m"
-                    .into(),
-            );
-        }
-    };
-    let per_day = match per_day {
-        None => None,
-        Some(value) => {
-            let read = match value {
-                Value::Scalar(text) => whole_number(text, 1),
-                Value::List(_) => None,
-            };
-            let Some(n) = read else {
-                return Err(format!(
-                    "has a jobs.perDay it cannot read — got \"{}\", expected how many triage cells a job's deliveries may start a day, a whole number from 1",
-                    value.text()
-                ));
-            };
-            Some(n)
-        }
-    };
+    let count = part(
+        "jobs",
+        "count",
+        &raw[0],
+        |t| whole_number(t, 1),
+        "how many jobs may run at once, at least 1",
+    )?;
+    let wall = part(
+        "jobs",
+        "wall",
+        &raw[1],
+        |t| duration_ms(t).filter(|ms| *ms > 0.0),
+        "how long one job may run, as 2h",
+    )?;
+    let max_wait = scalar(fields, "jobs.maxWait")?
+        .map(|text| {
+            duration_ms(text).filter(|ms| *ms > 0.0).ok_or_else(|| {
+                format!("has a jobs.maxWait it cannot read — got \"{text}\", expected the longest a job's delivery may be held, as 30m")
+            })
+        })
+        .transpose()?;
+    let per_day = scalar(fields, "jobs.perDay")?
+        .map(|text| {
+            whole_number(text, 1).ok_or_else(|| {
+                format!("has a jobs.perDay it cannot read — got \"{text}\", expected how many triage cells a job's deliveries may start a day, a whole number from 1")
+            })
+        })
+        .transpose()?;
     let writes = match job_writes {
         None => Vec::new(),
         Some(Value::List(names)) => names.clone(),
@@ -898,10 +916,7 @@ fn parse_jobs(fields: &Fields, cell: bool, granted: &[Grant]) -> Result<Option<J
 fn parse_dream(fields: &Fields, cell: bool) -> Result<Option<Dream>, String> {
     let raw = match fields.get("dream") {
         None => {
-            return match ["dream.cost", "dream.wall", "dream.precursor"]
-                .into_iter()
-                .find(|key| fields.get(key).is_some())
-            {
+            return match first_declared(fields, family("dream")) {
                 Some(key) => Err(format!("declares {key} without dream — it bounds or names the dream this spore may have, as dream: [50, 1h]")),
                 None => Ok(None),
             };
@@ -909,24 +924,22 @@ fn parse_dream(fields: &Fields, cell: bool) -> Result<Option<Dream>, String> {
         Some(_) if cell => {
             return Err("declares dream, which is the root definition's — a dream reorganizes the spore, and a cell is not one".into());
         }
-        Some(Value::List(raw)) if raw.len() == 2 => raw,
-        Some(_) => return Err("needs dream as turns and a quiet, dream: [50, 1h]".into()),
+        Some(value) => pair_of(value, "dream", "turns and a quiet", "[50, 1h]")?,
     };
-    let Some(turns) = whole_number(&raw[0], 1) else {
-        return Err(format!(
-            "has a dream turns it cannot read — got \"{}\", expected how many turns make a dream due after the quiet, at least 1",
-            raw[0]
-        ));
-    };
-    let quiet = match duration_ms(&raw[1]) {
-        Some(ms) if ms > 0.0 => ms,
-        _ => {
-            return Err(format!(
-                "has a dream quiet it cannot read — got \"{}\", expected how long without a turn makes a dream due after the turns, as 1h",
-                raw[1]
-            ));
-        }
-    };
+    let turns = part(
+        "dream",
+        "turns",
+        &raw[0],
+        |t| whole_number(t, 1),
+        "how many turns make a dream due after the quiet, at least 1",
+    )?;
+    let quiet = part(
+        "dream",
+        "quiet",
+        &raw[1],
+        |t| duration_ms(t).filter(|ms| *ms > 0.0),
+        "how long without a turn makes a dream due after the turns, as 1h",
+    )?;
     for (key, shape) in [
         ("dream.cost", "dream.cost: [0.50, 1.00]"),
         ("dream.wall", "dream.wall: [10m, 15m]"),
@@ -961,10 +974,7 @@ fn parse_dream(fields: &Fields, cell: bool) -> Result<Option<Dream>, String> {
 fn parse_prepare(fields: &Fields, cell: bool) -> Result<Option<Prepare>, String> {
     let raw = match fields.get("prepare") {
         None => {
-            return match ["prepare.timeout", "prepare.attach"]
-                .into_iter()
-                .find(|key| fields.get(key).is_some())
-            {
+            return match first_declared(fields, family("prepare")) {
                 Some(key) => Err(format!("declares {key} without prepare — it bounds the programs that prepare this spore's deliveries, as prepare: [hook:scans=pdf/SPORE_PDF_PAGES]")),
                 None => Ok(None),
             };
@@ -1011,8 +1021,8 @@ fn parse_prepare(fields: &Fields, cell: bool) -> Result<Option<Prepare>, String>
             program: program.into(),
         });
     }
-    let timeout = match fields.get("prepare.timeout") {
-        Some(Value::Scalar(text)) => match duration_ms(text) {
+    let timeout = match scalar(fields, "prepare.timeout")? {
+        Some(text) => match duration_ms(text) {
             Some(ms) if ms > 0.0 && ms <= PREPARE_MOST_MS => ms,
             _ => {
                 return Err(format!(
@@ -1021,11 +1031,11 @@ fn parse_prepare(fields: &Fields, cell: bool) -> Result<Option<Prepare>, String>
                 ));
             }
         },
-        Some(_) => return Err("has a prepare.timeout it cannot read — expected one duration, as prepare.timeout: 45s".into()),
         None => return Err("declares prepare without prepare.timeout — how long one program may run, as prepare.timeout: 45s".into()),
     };
     let attach = match fields.get("prepare.attach") {
-        Some(Value::List(pair)) if pair.len() == 2 => {
+        Some(value) => {
+            let pair = pair_of(value, "prepare.attach", "a count and a size", "[20, 200MB]")?;
             let files = whole_number(&pair[0], 1).filter(|n| *n <= PREPARE_MOST_FILES);
             let bytes = size_bytes(&pair[1]).filter(|b| *b >= 1.0 && *b <= PREPARE_MOST_BYTES as f64);
             let (Some(files), Some(bytes)) = (files, bytes) else {
@@ -1037,7 +1047,6 @@ fn parse_prepare(fields: &Fields, cell: bool) -> Result<Option<Prepare>, String>
             };
             Attach { files, bytes: bytes as u64 }
         }
-        Some(_) => return Err("needs prepare.attach as a count and a size, prepare.attach: [20, 200MB]".into()),
         None => return Err("declares prepare without prepare.attach — how many files and bytes a program may attach, as prepare.attach: [20, 200MB]".into()),
     };
     Ok(Some(Prepare {
@@ -1240,17 +1249,12 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         if !TOOL_NAME.is_match(source) {
             return Err(format!("grants a source named \"{source}\" it cannot use — expected letters, digits, - and _"));
         }
-        if source == "extend" {
-            return Err("grants a source named \"extend\" — extend.<limit> is the field that lets a turn's limits be raised, so rename the source".into());
-        }
-        if source == "jobs" {
-            return Err("grants a source named \"jobs\" — jobs.maxWait is the field that bounds how long a job's deliveries wait, so rename the source".into());
-        }
-        if source == "dream" {
-            return Err("grants a source named \"dream\" — dream.cost is the field that bounds what a dream spends, so rename the source".into());
-        }
-        if source == "prepare" {
-            return Err("grants a source named \"prepare\" — prepare.timeout is the field that bounds what prepares a delivery, so rename the source".into());
+        let own: Vec<&str> = family(source).collect();
+        if !own.is_empty() {
+            return Err(format!(
+                "grants a source named \"{source}\" — {} are fields of the definition, which its scopes would be read as, so rename the source",
+                own.join(", ")
+            ));
         }
     }
 
@@ -1454,10 +1458,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
             })
         }
         None => {
-            if ["push", "pull", "floor", "embedding"]
-                .iter()
-                .any(|k| fields.has(k))
-            {
+            if first_declared(&fields, ["push", "pull", "floor", "embedding"]).is_some() {
                 return Err("declares push, pull, floor or embedding without memory — they are how a store is read, so there is nothing for them to mean".into());
             }
             None
@@ -1468,28 +1469,27 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
     // and hard: `read` takes one path, so a per-call count would always be one.
     let images = match fields.get("images") {
         None => None,
-        Some(Value::List(raw)) if raw.len() == 2 => {
-            let Some(count) = whole_number(&raw[0], 1) else {
-                return Err(format!(
-                    "has an images count it cannot read — got \"{}\", expected a whole number of images a turn may look at, at least 1",
-                    raw[0]
-                ));
-            };
-            let bytes = match size_bytes(&raw[1]) {
-                Some(b) if b >= 1.0 => b,
-                _ => {
-                    return Err(format!(
-                        "has an images size it cannot read — got \"{}\", expected bytes as 10MB, 512KB or a bare number",
-                        raw[1]
-                    ));
-                }
-            };
+        Some(value) => {
+            let raw = pair_of(value, "images", "a count and a size", "[4, 10MB]")?;
+            let count = part(
+                "images",
+                "count",
+                &raw[0],
+                |t| whole_number(t, 1),
+                "a whole number of images a turn may look at, at least 1",
+            )?;
+            let bytes = part(
+                "images",
+                "size",
+                &raw[1],
+                |t| size_bytes(t).filter(|b| *b >= 1.0),
+                "bytes as 10MB, 512KB or a bare number",
+            )?;
             Some(Images {
                 count,
                 bytes: bytes as u64,
             })
         }
-        Some(_) => return Err("needs images as a count and a size, images: [4, 10MB]".into()),
     };
 
     // Absent means the agent cannot touch its schedules and only its operator writes them.
@@ -1500,26 +1500,23 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         Some(_) if opts.cell => {
             return Err("declares schedules, which are the root definition's — a cell runs once, so nothing of it recurs".into());
         }
-        Some(Value::List(raw)) if raw.len() == 2 => {
-            let Some(count) = whole_number(&raw[0], 1) else {
-                return Err(format!(
-                    "has a schedules count it cannot read — got \"{}\", expected a whole number of schedule files, at least 1",
-                    raw[0]
-                ));
-            };
-            let interval = match duration_ms(&raw[1]) {
-                Some(ms) if ms >= 60_000.0 => ms,
-                _ => {
-                    return Err(format!(
-                        "has a schedules interval it cannot read — got \"{}\", expected the shortest time between two firings of one schedule, at least a minute, as 1h",
-                        raw[1]
-                    ));
-                }
-            };
+        Some(value) => {
+            let raw = pair_of(value, "schedules", "a count and an interval", "[4, 1h]")?;
+            let count = part(
+                "schedules",
+                "count",
+                &raw[0],
+                |t| whole_number(t, 1),
+                "a whole number of schedule files, at least 1",
+            )?;
+            let interval = part(
+                "schedules",
+                "interval",
+                &raw[1],
+                |t| duration_ms(t).filter(|ms| *ms >= 60_000.0),
+                "the shortest time between two firings of one schedule, at least a minute, as 1h",
+            )?;
             Some(Schedules { count, interval })
-        }
-        Some(_) => {
-            return Err("needs schedules as a count and an interval, schedules: [4, 1h]".into())
         }
     };
 
@@ -1686,7 +1683,7 @@ mod tests {
             .contains("extend.wall it cannot read"));
         assert!(with("extend.wall: [3h, 4h]")
             .unwrap_err()
-            .contains("expected one ceiling"));
+            .contains("takes one value"));
         assert!(with("extend.time: 3h")
             .unwrap_err()
             .contains("without granting the source"));
@@ -2158,6 +2155,12 @@ mod tests {
         assert!(with("jobs: [2, 2h]\nsources: [jobs]\n")
             .unwrap_err()
             .contains("source named \"jobs\""));
+        assert!(with("sources: [extend]\n")
+            .unwrap_err()
+            .contains("extend.rounds, extend.cost, extend.wall are fields of the definition"));
+        assert!(with("jobs: [2, 2h]\njobs.perDay: [1, 2]\n")
+            .unwrap_err()
+            .contains("\"jobs.perDay\" takes one value"));
         assert!(
             cell(&CHART.replace("on-wrap: keep\n", "on-wrap: keep\njobs: [1, 1h]\n"))
                 .unwrap_err()
