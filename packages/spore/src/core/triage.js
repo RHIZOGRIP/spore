@@ -37,10 +37,10 @@ export function triageIn (ws, origin) {
  * expects is the capability's. `perDay` bounds the cells `origin` starts in a day. `started(wallMs)` is told before the cell
  * starts, so whoever holds the delivery keeps it held for as long as the cell may take.
  */
-export async function triage ({ ws, origin, ref, files, briefing, perDay, env, started = () => {}, launch = launchStandalone, now = Date.now }) {
+export async function triage ({ ws, origin, ref, files, briefing, perDay, env, configFile, started = () => {}, launch = launchStandalone, now = Date.now }) {
   const today = cellsSince(ws, { since: new Date(now() - DAY_MS).toISOString(), origin }).runs
   if (today >= perDay) return { failed: `has started ${today} triage cells in a day, its perDay` }
-  const ran = await runCell({ ws, precursor: precursorFor(origin), origin, ref, files, briefing: briefing + CONTRACT, env, starting: started, launch, now })
+  const ran = await runCell({ ws, precursor: precursorFor(origin), origin, ref, files, briefing: briefing + CONTRACT, env, configFile, starting: started, launch, now })
   if (ran.failed) return { failed: ran.started ? `the cell ${ran.failed}` : ran.failed }
   const read = answerOf(ran.answer)
   return read.ask ? { failed: 'the cell asked for a cell' } : read

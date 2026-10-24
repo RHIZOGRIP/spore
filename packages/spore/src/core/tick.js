@@ -49,16 +49,16 @@ export function tick ({ now = Date.now(), configFile, lock = TICK_LOCK, env = pr
   try {
     const pause = paused()
     if (pause) return { ran: true, paused: pause, lines: [] }
-    const lines = list({ configFile }).workspaces.flatMap(spore => [...interruptedIn(spore, { env }), ...releaseIn(spore, { now, env }), ...fireIn(spore, { now, env }), ...dreamIn(spore, { now, env })])
+    const lines = list({ configFile }).workspaces.flatMap(spore => [...interruptedIn(spore, { env, configFile }), ...releaseIn(spore, { now, env, configFile }), ...fireIn(spore, { now, env, configFile }), ...dreamIn(spore, { now, env, configFile })])
     return { ran: true, lines }
   } finally {
     closeSync(fd)
   }
 }
 
-function interruptedIn ({ ws }, { env }) {
+function interruptedIn ({ ws }, { env, configFile }) {
   try {
-    return reportInterrupted(ws, { env, log: () => {} }).map(job => ({ ws, state: 'interrupted', job: job.name, run: job.run }))
+    return reportInterrupted(ws, { env, configFile, log: () => {} }).map(job => ({ ws, state: 'interrupted', job: job.name, run: job.run }))
   } catch (err) {
     return [{ ws, state: 'failed', why: err.detail ? `${err.message} — ${err.detail}` : err.message }]
   }
@@ -69,10 +69,10 @@ const HELD_BY = {
   SPEND_LIMIT: 'the spend limit is reached'
 }
 
-function releaseIn ({ ws }, { now, env }) {
+function releaseIn ({ ws }, { now, env, configFile }) {
   if (!heldIn(ws).length) return []
   try {
-    const { released, started } = release(ws, { now, env })
+    const { released, started } = release(ws, { now, env, configFile })
     return released.length ? [{ ws, state: 'released', deliveries: released.length, started }] : []
   } catch (err) {
     if (HELD_BY[err.type]) return [{ ws, state: 'held', why: HELD_BY[err.type] }]
@@ -80,7 +80,7 @@ function releaseIn ({ ws }, { now, env }) {
   }
 }
 
-function fireIn (spore, { now, env }) {
+function fireIn (spore, { now, env, configFile }) {
   const { ws } = spore
   if (!existsSync(scheduleDir(ws))) return []
   const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
@@ -94,7 +94,7 @@ function fireIn (spore, { now, env }) {
     if (row.state !== 'due') return line
     if (started) return { ...line, state: 'held', why: 'running' }
     try {
-      send(ws, message, { schedule: { name: row.name, due: row.slot }, env })
+      send(ws, message, { schedule: { name: row.name, due: row.slot }, env, configFile })
       started = true
       return { ...line, state: 'fired' }
     } catch (err) {
@@ -106,12 +106,12 @@ function fireIn (spore, { now, env }) {
 
 // After the schedules and the releases, so a turn either started takes the spore first: the state
 // is read again, and a running spore is due no dream.
-function dreamIn ({ ws }, { now, env }) {
+function dreamIn ({ ws }, { now, env, configFile }) {
   const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
   if (definition.error || !definition.dream) return []
   if (!dreamDue(ws, { dream: definition.dream, spore: stateOf(ws), now }).due) return []
   try {
-    const { started } = startDream(ws, { env })
+    const { started } = startDream(ws, { env, configFile })
     return started ? [{ ws, state: 'dreaming' }] : []
   } catch (err) {
     if (HELD_BY[err.type]) return [{ ws, state: 'held', why: HELD_BY[err.type] }]

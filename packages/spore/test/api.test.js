@@ -301,7 +301,6 @@ describe('api.json', () => {
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'] } } }), {})).toThrow(/\$T for a, which is not set/)
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'] } } }), { T: 'short' })).toThrow(/shorter than 32/)
     const read = loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['ops', 'support-*'] } } }), env)
-    expect(read.secrets).toEqual(new Set(['T']))
     const caller = callerOf(read.callers, env.T)
     expect(caller.name).toBe('a')
     expect(callerOf(read.callers, 'u'.repeat(40))).toBe(null)

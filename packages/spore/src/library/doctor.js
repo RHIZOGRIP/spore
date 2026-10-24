@@ -235,7 +235,7 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
       problem('plugins', plugin.name, plugin.problem, `spore plugin allow ${plugin.name}`)
       continue
     }
-    const unset = showPlugin(plugin.name, { configFile }).secrets.filter(variable => env[variable] === undefined)
+    const unset = showPlugin(plugin.name, { configFile }).secrets.filter(variable => !env[variable])
     if (unset.length) problem('plugins', plugin.name, `its sources want ${are(unset)} — a spore using it cannot start a turn`, `add ${unset.join(', ')} to ${environment}`)
   }
 

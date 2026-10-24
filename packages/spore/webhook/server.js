@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 
 import { CONFIG_FILE, loadEnvironment, paused } from '../src/index.js'
-import { createHookDelivery, without } from './deliveries.js'
+import { createHookDelivery } from './deliveries.js'
 import { acceptRefusal, hooksPath, loadHooks } from './hooks.js'
 import { verify } from './verify.js'
 
@@ -74,7 +74,6 @@ export function createWebhookServer ({ env, log, configFile = CONFIG_FILE, pause
     }
     const fresh = freshEnv()
     const hooks = loadHooks(hooksPath(configFile), fresh)
-    const hidden = new Set([...hooks.values()].flatMap(each => each.secrets))
     const hook = hooks.get(name)
     if (!hook) {
       log(`hook ${name} · refused — no such hook; ${hooks.size ? `the hooks are ${[...hooks.keys()].join(', ')}` : 'hooks.json names none'}`)
@@ -124,7 +123,7 @@ export function createWebhookServer ({ env, log, configFile = CONFIG_FILE, pause
       options,
       stdin: body.length ? payloadName(mime) : null,
       unwanted: (accept) => acceptRefusal(accept, request.headers, body),
-      envOf: () => without(freshEnv(), hidden)
+      env
     })
     return answer(response, outcomes.some(one => one.failed) ? 500 : 202)
   }

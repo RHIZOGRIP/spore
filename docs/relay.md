@@ -84,9 +84,9 @@ import { runService } from '@rhizogrip/spore/relay'
   acknowledged at once; then the host's hook is told, the question closed and the spore told. One
   it cannot post is refused, the hook told. All of it is read from the spore's database each
   second, so a restart carries on.
-- **Credentials stay with the service.** Every bot's credential variables, and the approval
-  hooks' secrets, are removed from the environment a turn's runner starts with, except one a
-  source of the plugin's own needs.
+- **Credentials stay with the service.** A turn's runner starts without any service's secrets —
+  every bot's credential variables and the approval hooks' among them — except one a source it
+  may fill names (ARCHITECTURE §Where workspaces live).
 
 ## The bot file
 
@@ -109,10 +109,9 @@ The static part, which the relay reads before the service starts:
 | `kind` | the place prefix (`<kind>:<bot>/<conversation>`), the outbox kind, the state directory, the bot files' folder, the prefix of error types (`CHAT_NO_BOT`) |
 | `label`, `noun` | the platform's name and what it calls a conversation (`chat`, `channel`), for what people and the log are told |
 | `fields`, `credentials`, `example` | the bot file's fields, those holding a `${VAR}`, and a first file to show |
-| `conversations` | the sections of the bot file its routing is written in, by field: each `{ kind, id, says, fix, fields }` — what a conversation there is called (`person`, `channel`), the pattern its id matches, why one that does not is refused (`which is not a member id`) and how to find a right one, and the fields an entry takes; `not`, ids refused though they match, each `{ id, says, fix }`; `flags`, the platform's own true-or-false fields, carried into the routing. A section of conversations many people share has `people`, `{ id, says, example }`, who may be named there besides `*`, and `one` when a conversation there has one spore; its entry is `{ "spores": [...], "people": [...] }`. Any other section is people's own conversations, an entry the spore's name or `{ "spore": … }`, with `called`, how a person there is identified (`their member id`). `routesOf` reads them into a `Map` of conversation → `{ spores: [name], details, show, brief, overhear, people, …flags }`, `show` null where the file names none, `brief` null where the entry leaves it to the bot's, `people` null for a person's own |
+| `conversations` | the sections of the bot file its routing is written in, by field: each `{ noun, id, says, fix, fields }` — what a conversation there is called (`person`, `channel`), the pattern its id matches, why one that does not is refused (`which is not a member id`) and how to find a right one, and the fields an entry takes; `not`, ids refused though they match, each `{ id, says, fix }`; `flags`, the platform's own true-or-false fields, carried into the routing. A section of conversations many people share has `people`, `{ id, says, example }`, who may be named there besides `*`, and `one` when a conversation there has one spore; its entry is `{ "spores": [...], "people": [...] }`. Any other section is people's own conversations, an entry the spore's name or `{ "spore": … }`, with `called`, how a person there is identified (`their member id`). `routesOf` reads them into a `Map` of conversation → `{ spores: [name], details, show, brief, overhear, people, …flags }`, `show` null where the file names none, `brief` null where the entry leaves it to the bot's, `people` null for a person's own |
 | `check(raw, path)` | optional: refuses what the platform's own fields of the bot file hold (a workspace id, a listen address), before the routing is read |
 | `stateFields` | the adapter's own fields in the state file, handed to its `restore` |
-| `sourceVariables` | credential variables a source of the plugin needs in a turn's environment |
 | `usage` | `{ help, briefHelp, extend }`: the commands as this platform types them — `briefHelp` without `extend`, for a brief conversation |
 | `limits` | `{ message, file, fetch, editEveryMs, typingEveryMs }`: the longest message, the largest upload, the largest file the platform lets a bot fetch, how often `working…` is edited, how often typing is renewed |
 | `can` | `{ upload, remove, react, typing, reply, choose, fields }`: `reply` false where a post cannot reply to a message, and opens with whom it answers instead; `choose` where it carries approvals, and beside it `fields`, true or false, whether it shows an approval's fields to fill in — where false, the relay refuses an approval with a required field and posts one without its optional ones |

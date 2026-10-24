@@ -229,8 +229,8 @@ describe('the service', () => {
       log: line => logs.push(line),
       configFile,
       sporeOf: name => (SPORES.includes(name) ? wsOf(name) : null),
-      release: (ws, { env }) => {
-        released.push({ ws, env })
+      release: (ws, { env, configFile }) => {
+        released.push({ ws, env, configFile })
         if (full) throw new SporeError('no slot', { type: 'ADMISSION_FULL' })
         return { released: [1], started: true }
       },
@@ -278,8 +278,7 @@ describe('the service', () => {
     const headers = JSON.parse(readFileSync(join(one.ws, one.files[1].path), 'utf8'))
     expect(headers['x-forgejo-event']).toBe('issues')
     expect(headers['x-forgejo-signature']).toBeUndefined()
-    expect(released[0].env).not.toHaveProperty('FORGE_SECRET')
-    expect(released[0].env.OPENAI_API_SK).toBe('sk-test')
+    expect(released[0]).toEqual({ ws: wsOf('main'), env: {}, configFile })
   })
 
   it('takes a captured delivery sent again under a new delivery id as the same message', async () => {

@@ -34,7 +34,7 @@ export function listenOf (raw, path) {
  */
 const CONVERSATIONS = {
   people: {
-    kind: 'person',
+    noun: 'person',
     id: PERSON,
     says: 'which is not a person\'s id',
     fix: 'a person is an id of letters, digits, ., _, @ and -, at most 128',
@@ -53,7 +53,6 @@ export const CONSOLE = {
   fields: FIELDS,
   credentials: ['token'],
   stateFields: [],
-  sourceVariables: [],
   refusals: ['CONSOLE_LISTEN_REFUSED'],
   example: SHAPE,
   conversations: CONVERSATIONS,

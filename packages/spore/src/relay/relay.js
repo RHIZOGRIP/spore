@@ -13,9 +13,9 @@
 import { existsSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
-import { approvalHookVariables, attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf } from '../index.js'
+import { attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf } from '../index.js'
 import { createApprovals } from './approvals.js'
-import { credentialVariables, filesOf, reactionsOf, routesOf } from './bot-file.js'
+import { filesOf, reactionsOf, routesOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
 import { announce, endingOf, leftOut, notCome, originOf, pieces, reply, sizeOf, statusText, waiting } from './render.js'
 import { applyEvent, createLive, renderLive } from '../library/live.js'
@@ -69,16 +69,9 @@ const operates = (message, routed) =>
 export function createRelay ({ adapter, botFile, statePath, env, log, configFile = CONFIG_FILE, sleep = pause, editEveryMs = adapter.limits.editEveryMs, typingEveryMs = adapter.limits.typingEveryMs, followEveryMs = 1000, approveEveryMs = 1000 }) {
   const { kind, noun } = adapter
   const prefix = `${kind}:${basename(botFile, '.json')}/`
-  const kept = new Set(adapter.sourceVariables)
   const environment = () => {
     const fresh = { ...env }
     loadEnvironment(configFile, fresh)
-    return fresh
-  }
-  const sendEnv = () => {
-    const fresh = environment()
-    const secrets = [...credentialVariables(adapter, configFile), ...approvalHookVariables(readConfig(configFile))]
-    for (const variable of secrets) if (!kept.has(variable)) delete fresh[variable]
     return fresh
   }
   const state = loadState(statePath, adapter)
@@ -111,7 +104,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     followed: () => followed,
     delivery,
     environment,
-    sendEnv,
+    env,
     log,
     sleep: (ms) => sleep(ms, stopping.signal),
     signal: stopping.signal
@@ -259,7 +252,8 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         replyTo: `${prefix}${conversation}`,
         from: fromOf(message),
         ...(message.traceparent ? { traceparent: message.traceparent } : {}),
-        env: sendEnv()
+        env,
+        configFile
       })
     } catch (err) {
       log(`${where(conversation)}: send to ${name} refused — ${err.type} ${said(err)}`)

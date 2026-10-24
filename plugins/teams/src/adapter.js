@@ -45,7 +45,7 @@ export function listenOf (raw, path) {
  */
 const CONVERSATIONS = {
   people: {
-    kind: 'person',
+    noun: 'person',
     id: PERSON,
     says: 'which is not an Entra object id',
     fix: 'a person is their object id in Entra ID; a channel\'s id begins 19: and goes under channels',
@@ -53,7 +53,7 @@ const CONVERSATIONS = {
     fields: ['spore', 'details', 'brief']
   },
   channels: {
-    kind: 'channel',
+    noun: 'channel',
     id: CHANNEL,
     says: 'which is not a channel id',
     fix: 'a channel id is 19:…@thread.tacv2, from the channel\'s link in Teams',
@@ -81,7 +81,6 @@ export const TEAMS = {
   fields: FIELDS,
   credentials: ['secret'],
   stateFields: ['chats', 'channels'],
-  sourceVariables: [],
   refusals: ['TEAMS_REFUSED', 'TEAMS_LISTEN_REFUSED'],
   example: SHAPE,
   conversations: CONVERSATIONS,

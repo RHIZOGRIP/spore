@@ -8,13 +8,12 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 
-import { CONFIG_FILE } from '../src/library/config.js'
+import { API_FILE, CONFIG_FILE } from '../src/library/config.js'
 import { SporeError } from '../src/observability/errors.js'
 import { deliveryBounds } from '../src/core/route.js'
 import { NAMES } from '../src/core/names.js'
 import { variableOf } from '../src/core/variables.js'
 
-export const API_FILE = 'api.json'
 export const apiPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), API_FILE)
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
@@ -27,10 +26,9 @@ const digest = (text) => createHash('sha256').update(text).digest()
 const matcher = (pattern) => new RegExp(`^${pattern.replace(/[.]/g, '\\.').replace(/\*/g, '[^/]*')}$`)
 
 /**
- * `{ socket, listen, callers, secrets }`: `listen` as `{ host, port }`, each caller `{ name,
- * spores, maxWait }` with its token kept only as a digest and `maxWait` the longest a spore's
- * router may hold its deliveries, or null, and `secrets` the variables the tokens came from,
- * which nothing the API starts is given.
+ * `{ socket, listen, callers }`: `listen` as `{ host, port }`, each caller `{ name, spores,
+ * maxWait }` with its token kept only as a digest and `maxWait` the longest a spore's router may
+ * hold its deliveries, or null.
  */
 export function loadApi (path = apiPath(), env = process.env) {
   if (!existsSync(path)) throw new SporeError(`no ${path}`, { type: 'API_NO_CONFIG', detail: 'it says where the API listens and who may call it — see docs/operating.md, "The HTTP API service"' })
@@ -57,7 +55,6 @@ export function loadApi (path = apiPath(), env = process.env) {
   if (!(raw.callers && typeof raw.callers === 'object' && !Array.isArray(raw.callers) && Object.keys(raw.callers).length)) {
     throw refuse(path, 'names no callers', 'callers: { "<name>": { "token": "${VAR}", "spores": ["*"] } }') // eslint-disable-line no-template-curly-in-string
   }
-  const secrets = new Set()
   const callers = Object.entries(raw.callers).map(([name, caller]) => {
     if (!NAMES.caller.pattern.test(name)) throw refuse(path, `has a caller named ${JSON.stringify(name)}`, `a caller is named with ${NAMES.caller.says}: the name is its origin, api:<caller>`)
     const variable = variableOf(caller?.token)
@@ -71,10 +68,9 @@ export function loadApi (path = apiPath(), env = process.env) {
     }
     if (caller.router !== undefined) throw refuse(path, `has a router for ${name}, which api.json no longer binds`, 'what prepares a delivery is the spore\'s: prepare: [api:<caller>=<plugin>/<program>] in its spore.cmk')
     const { maxWait, perDay, perHour } = deliveryBounds(caller, (problem, detail) => refuse(path, `caller ${JSON.stringify(name)} ${problem}`, detail))
-    secrets.add(variable)
     return { name, digest: digest(token), spores: patterns.map(matcher), maxWait, perDay, perHour }
   })
-  return { socket: raw.socket ?? null, listen, callers, secrets }
+  return { socket: raw.socket ?? null, listen, callers }
 }
 
 /** The caller whose token `presented` is, compared in constant time against every one; null for none. */

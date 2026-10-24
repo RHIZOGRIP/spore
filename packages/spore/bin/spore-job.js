@@ -10,7 +10,6 @@ import { closeSync, writeSync } from 'node:fs'
 
 import minimist from 'minimist'
 
-import { loadEnvironment } from '../src/library/config.js'
 import { superviseJob } from '../src/core/job.js'
 
 const argv = minimist(process.argv.slice(2), { string: ['ws', 'name', 'count', 'wall', 'command'] })
@@ -20,12 +19,6 @@ const answer = (line) => {
   writeSync(1, JSON.stringify(line) + '\n')
   closeSync(1)
   answered = true
-}
-
-const envOf = () => {
-  const fresh = { ...process.env }
-  loadEnvironment(undefined, fresh)
-  return fresh
 }
 
 const stopping = new AbortController()
@@ -40,7 +33,6 @@ try {
     command: argv.command,
     answer,
     env: process.env,
-    envOf,
     signal: stopping.signal
   })
 } catch (err) {

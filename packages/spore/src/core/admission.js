@@ -9,6 +9,8 @@
  * descriptor, so a slot an agent could open is a slot an agent could hold.
  */
 
+import { closeSync } from 'node:fs'
+
 import { readConfig, spendLimits } from '../library/config.js'
 import { native } from '../native.js'
 import { SporeError } from '../observability/errors.js'
@@ -36,6 +38,16 @@ export function takeSlot ({ config = readConfig(), turns = config.turns ?? DEFAU
     })
   }
   return taken
+}
+
+/** `then(slot)` with a slot `takeSlot(options)` took, let go on every way out: a runner `then` starts holds its own. */
+export function withSlot (then, options) {
+  const slot = takeSlot(options)
+  try {
+    return then(slot)
+  } finally {
+    closeSync(slot.fd)
+  }
 }
 
 /**

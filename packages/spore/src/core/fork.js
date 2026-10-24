@@ -12,12 +12,12 @@
  * what a tool returns is measured — the history is the run's, and only the result differs.
  */
 
-import { closeSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 
 import { TOOL_NAMES } from './tool-names.js'
 import { callRuns, readCall, readCalls, writeCall } from './call-record.js'
-import { takeSlot } from './admission.js'
+import { withSlot } from './admission.js'
 import { preparePlugins } from './plugins.js'
 import { startRunner } from './send.js'
 import { INBOX_DIR, LIBRARIES_FILE, PLUGINS_DIR, REFERENCE_FILE, copyInbox, definitionPath, readPending, readTranscriptEntries, readTurns, writableDirs, writeTranscriptEntries, writeTurnRecords } from './spore-dir.js'
@@ -191,11 +191,8 @@ export function forkWorkspace ({ run, at, into, definition, replay = false }) {
 
 /** A fork, made and started. Like `send`, it returns once the runner is on its way. */
 export function fork ({ run, at, into, definition, replay = false, unsafe = false, debug = false, env = process.env }) {
-  const slot = takeSlot()
-  try {
+  return withSlot(slot => {
     const made = forkWorkspace({ run, at, into, definition, replay })
     return { ...made, pid: startRunner(made.ws, { slot, plugins: preparePlugins(made.ws), unsafe, debug, continuing: true, env }) }
-  } finally {
-    closeSync(slot.fd)
-  }
+  })
 }

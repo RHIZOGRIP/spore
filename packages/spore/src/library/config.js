@@ -40,6 +40,9 @@ export const SOURCES_FILE = 'sources.json'
 /** Where the vector store of `memory: vectors` is, host-side, beside `config.json`; it holds its credential like `sources.json`. */
 export const MEMORY_FILE = 'memory.json'
 
+export const HOOKS_FILE = 'hooks.json'
+export const API_FILE = 'api.json'
+
 /**
  * The process environment the operator keeps for spore, beside `config.json`: provider keys,
  * `PATH`, the Telegram bots' tokens. Read by the commands, never by the library, whose callers pass

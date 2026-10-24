@@ -15,10 +15,11 @@ import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { parseDefinition } from '../delegation/definition.js'
-import { containing, readConfig, spendLimits } from '../library/config.js'
+import { CONFIG_FILE, readConfig } from '../library/config.js'
 import { paused, spendStop } from './admission.js'
 import { containOf } from './plugins.js'
-import { CHATGPT_HELPER, SESSION } from './send.js'
+import { hostFlags } from './send.js'
+import { turnEnv } from './turn-env.js'
 import { PRECURSOR_DIR, definitionPath, readTurns, recordCell } from './spore-dir.js'
 import { TOOL_NAMES } from './tool-names.js'
 
@@ -40,13 +41,14 @@ export const cellsRoot = (env) => join(env.XDG_STATE_HOME || join(homedir(), '.l
  *
  * @returns {Promise<{ answer: string|null, costUsd: number, durationMs: number, failed: string|null }>}
  */
-export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model, auth, env, wallMs, dream = false, signal = null }) {
+export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model, auth, env, configFile = CONFIG_FILE, wallMs, dream = false, signal = null }) {
   const startedAt = Date.now()
-  const config = readConfig()
-  const spend = spendLimits(config)
+  const config = readConfig(configFile)
   let keep
+  let environment
   try {
     keep = containOf(ws, { config })
+    environment = turnEnv(env, { configFile: config.file })
   } catch (err) {
     return Promise.resolve({ answer: null, costUsd: 0, durationMs: 0, failed: `could not start — ${err.message}` })
   }
@@ -54,20 +56,13 @@ export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model
     const child = spawn(SPAWN_BIN, [
       '--standalone',
       ...(dream ? ['--super'] : []),
-      '--node', process.execPath,
-      '--session', SESSION,
-      '--chatgpt-helper', CHATGPT_HELPER,
+      ...hostFlags(config, keep),
       '--precursor', precursor,
       '--ws', cellWs,
       '--prompt', prompt,
       '--answer', answer,
-      ...(spend.day === null ? [] : ['--spend-per-day', String(spend.day)]),
-      ...(spend.month === null ? [] : ['--spend-per-month', String(spend.month)]),
-      ...(containing(config) ? [] : ['--no-contain']),
-      ...(keep.length ? ['--contain-keep', JSON.stringify(keep)] : []),
-      ...(config.gate ? ['--gate', config.gate] : []),
       ...(config.gate && auth ? ['--auth', auth] : [])
-    ], { cwd: ws, env: { ...env, MODEL: model }, stdio: ['ignore', 'ignore', 'pipe'] })
+    ], { cwd: ws, env: { ...environment, MODEL: model }, stdio: ['ignore', 'ignore', 'pipe'] })
     let stderr = ''
     child.stderr.on('data', chunk => { stderr += chunk })
     const timer = setTimeout(() => child.kill('SIGTERM'), wallMs + BEYOND_WALL_MS)
@@ -106,7 +101,7 @@ export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model
  *
  * @returns {Promise<{ answer: string|null, failed: string|null, started: boolean, costUsd: number, durationMs: number, cellWs: string|null }>}
  */
-export async function runCell ({ ws, precursor, origin, ref = null, files = {}, contents = {}, briefing, env, starting = () => {}, launch = launchStandalone, now = Date.now, dream = null, signal = null }) {
+export async function runCell ({ ws, precursor, origin, ref = null, files = {}, contents = {}, briefing, env, configFile, starting = () => {}, launch = launchStandalone, now = Date.now, dream = null, signal = null }) {
   const unstarted = (failed) => ({ answer: null, failed, started: false, costUsd: 0, durationMs: 0, cellWs: null })
   if (paused()) return unstarted('spores are paused')
   const stopped = spendStop()
@@ -132,7 +127,7 @@ export async function runCell ({ ws, precursor, origin, ref = null, files = {}, 
 
   const wallMs = dream ? Math.min(cell.limits.wall.hard, dream.wallMs) : cell.limits.wall.hard
   starting(wallMs)
-  const ran = await launch({ ws, precursor, cellWs, prompt: PROMPT, answer: ANSWER, model, auth: root.auth, env: { ...env, ...(naming ? { SPORE_CELL_MODELS: JSON.stringify(named) } : {}) }, wallMs, dream: Boolean(dream), signal })
+  const ran = await launch({ ws, precursor, cellWs, prompt: PROMPT, answer: ANSWER, model, auth: root.auth, env: { ...env, ...(naming ? { SPORE_CELL_MODELS: JSON.stringify(named) } : {}) }, configFile, wallMs, dream: Boolean(dream), signal })
   const failed = ran.failed ?? (ran.answer === null ? 'gave no answer' : null)
   recordCell(ws, {
     precursor,

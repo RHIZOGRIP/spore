@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
-import { paused, pauseSpores, spendSoFar, spendStop, takeSlot, unpauseSpores } from '../src/core/admission.js'
+import { paused, pauseSpores, spendSoFar, spendStop, takeSlot, unpauseSpores, withSlot } from '../src/core/admission.js'
 import { send } from '../src/core/send.js'
 import { CONFIG_FILE } from '../src/library/config.js'
 import { appendInbox, statePath } from '../src/core/spore-dir.js'
@@ -37,6 +37,15 @@ describe('admission slots', () => {
     const again = takeSlot({ turns: 1, dir })
     expect(again.path).toBe(one.path)
     closeSync(again.fd)
+  })
+
+  it('holds a slot for what runs with it, and lets it go however that ends', () => {
+    expect(() => withSlot(() => {
+      expect(() => takeSlot({ turns: 1, dir })).toThrow(expect.objectContaining({ type: 'ADMISSION_FULL' }))
+      throw new Error('the runner did not start')
+    }, { turns: 1, dir })).toThrow('the runner did not start')
+    expect(withSlot((slot) => slot.path, { turns: 1, dir })).toMatch(/./)
+    closeSync(takeSlot({ turns: 1, dir }).fd)
   })
 
   it('gives no slot while spores are paused, and keeps the first mark', () => {

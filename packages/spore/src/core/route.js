@@ -90,12 +90,12 @@ function decidingMs ({ router, precursor }, routeTimeoutMs) {
  * a turn in the last hour (null: no bound), it is said without starting one, its entry's
  * `startsTurn` false, and skips the spore's step. `stdin` and `headers` are the names of the attached files given to both
  * steps as the payload and the headers, either null; `briefing({ payload, headers })` is
- * what a triage cell is told; `envOf()` the environment a cell and a release start with. Answers
+ * what a triage cell is told; `env` the environment a cell and a release start from. Answers
  * `{ outcome, judged, started, prepared }`: a line for the caller's log, the steps under way,
  * whether a turn started now, and whether a prepare step runs.
  */
 export function deliver ({
-  ws, said, options: given, maxWait = null, perHour = null, stdin = null, headers = null, event, ref, perDay, briefing, envOf, log, heading,
+  ws, said, options: given, maxWait = null, perHour = null, stdin = null, headers = null, event, ref, perDay, briefing, env, configFile, log, heading,
   now = Date.now, release = releaseHeld, say = enqueue, route = runRouter, launch = launchStandalone, routeTimeoutMs = ROUTE_TIMEOUT_MS,
   prepareOf = prepareFor, programOf = pluginProgram, prepareBy = runPrepare
 }) {
@@ -125,20 +125,20 @@ export function deliver ({
   if (kept.repeated) return { outcome: `already ${kept.repeated === true ? 'received' : kept.repeated}`, judged: Promise.resolve(), started: false, prepared: false }
 
   if (!prepare && !timed) {
-    return { ...releaseNow(release, ws, { env: envOf(), now: now() }), judged: Promise.resolve(), prepared: false }
+    return { ...releaseNow(release, ws, { env, configFile, now: now() }), judged: Promise.resolve(), prepared: false }
   }
 
   const tell = (line) => log(`${heading} · ${line}`)
   const judged = (async () => {
     const prepared = prepare ? await prepareStep({ ws, kept, prepare, untold, stdin, headers, origin, event, ref, programOf, prepareBy, now, said: tell }) : []
     if (prepared === null) return
-    if (timed) return timeStep({ ws, kept, prepared, judges, stdin, headers, origin, event, ref, maxWait, perDay, briefing, envOf, now, release, route, launch, routeTimeoutMs, said: tell })
+    if (timed) return timeStep({ ws, kept, prepared, judges, stdin, headers, origin, event, ref, maxWait, perDay, briefing, env, configFile, now, release, route, launch, routeTimeoutMs, said: tell })
     rescheduleHeld(ws, kept.held, iso(now()), { urgent: true })
     if (!start) {
       releaseDue(ws, iso(now()), { due: true })
       return tell('said, not started')
     }
-    tell(releaseNow(release, ws, { env: envOf() }).outcome)
+    tell(releaseNow(release, ws, { env, configFile }).outcome)
   })().catch(err => log(`${heading} · failed — ${err.type ?? err.name} ${err.message}${err.detail ? ` — ${err.detail}` : ''}; it is released at its deadline`))
   const steps = [prepare && `prepared by ${prepare.plugin}/${prepare.program}`, timed && `timed by ${judges.router ? judges.router.split('/').pop() : `precursors/${precursorFor(origin)}.cmk`}`].filter(Boolean)
   return { outcome: `held — ${steps.join(', then ')}${past}`, judged, started: false, prepared: Boolean(prepare) }
@@ -192,7 +192,7 @@ async function prepareStep ({ ws, kept, prepare, untold, stdin, headers: headers
  * The spore's own step: its router, then its triage cell, answer how long the delivery may wait,
  * each shown what the prepare step attached.
  */
-async function timeStep ({ ws, kept, prepared, judges: { router, precursor }, stdin, headers: headersName, origin, event, ref, maxWait, perDay, briefing, envOf, now, release, route, launch, routeTimeoutMs, said }) {
+async function timeStep ({ ws, kept, prepared, judges: { router, precursor }, stdin, headers: headersName, origin, event, ref, maxWait, perDay, briefing, env, configFile, now, release, route, launch, routeTimeoutMs, said }) {
   const decided = now()
   const payload = stdin === null ? null : kept.files.find(file => file.path && file.name === stdin)
   const headers = headersName === null ? null : kept.files.find(file => file.path && file.name === headersName)
@@ -214,7 +214,8 @@ async function timeStep ({ ws, kept, prepared, judges: { router, precursor }, st
         },
         briefing: briefing({ payload: payload?.name ?? null, headers: Boolean(headers) }) + (prepared.length ? `What was prepared for it is in ${PREPARED_DIR}/: ${prepared.map(file => file.name).join(', ')}.\n` : ''),
         perDay,
-        env: envOf(),
+        env,
+        configFile,
         started: (wallMs) => rescheduleHeld(ws, kept.held, iso(now() + wallMs + routeTimeoutMs)),
         launch,
         now
@@ -224,5 +225,5 @@ async function timeStep ({ ws, kept, prepared, judges: { router, precursor }, st
   const wait = answer.failed ? 0 : Math.min(answer.wait, maxWait ?? 0)
   rescheduleHeld(ws, kept.held, iso(decided + wait), { urgent: wait === 0, summary: answer.summary ?? null, replaces: answer.replaces === true })
   said(`${answer.failed ? `${answer.failed}; delivered now` : wait === 0 ? 'routed now' : `routed to wait ${Math.round(wait / 60000)}m`}${answer.replaces ? ', replacing what was held' : ''}${answer.summary ? ` — ${answer.summary}` : ''}`)
-  if (wait === 0) said(releaseNow(release, ws, { env: envOf() }).outcome)
+  if (wait === 0) said(releaseNow(release, ws, { env, configFile }).outcome)
 }

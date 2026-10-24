@@ -34,7 +34,7 @@ const record = (value) => typeof value === 'object' && value !== null && !Array.
  */
 const CONVERSATIONS = {
   people: {
-    kind: 'person',
+    noun: 'person',
     id: /^(?!D)[A-Z0-9]+$/,
     says: 'which is not a member id',
     fix: 'a person is their member id, U… — in their profile, under ⋮, Copy member ID',
@@ -43,7 +43,7 @@ const CONVERSATIONS = {
     fields: ['spore', 'details', 'brief']
   },
   channels: {
-    kind: 'channel',
+    noun: 'channel',
     id: CHANNEL,
     says: 'which is not a channel id',
     fix: 'a channel id is C…, at the bottom of the channel\'s details',
@@ -68,7 +68,6 @@ export const SLACK = {
   fields: FIELDS,
   credentials: ['token', 'app'],
   stateFields: ['ims'],
-  sourceVariables: [],
   refusals: ['SLACK_REFUSED'],
   example: SHAPE,
   conversations: CONVERSATIONS,

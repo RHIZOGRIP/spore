@@ -47,7 +47,7 @@ const briefingOf = ({ name, event, run }) => ({ payload }) => [
  * `job.json`, through the one path for messages nobody typed (`./route.js`), bounded by the
  * spore's `jobs.maxWait`. Held before it returns; answers the judgment still under way.
  */
-export function deliverJob (ws, { name, run, event, ref, text, report }, { envOf, log, now = Date.now, route, launch, releaseHeld = release }) {
+export function deliverJob (ws, { name, run, event, ref, text, report }, { env, configFile, log, now = Date.now, route, launch, releaseHeld = release }) {
   const definition = parseDefinition(readFileSync(definitionPath(ws), 'utf8'), { knownTools: TOOL_NAMES })
   if (definition.error) throw new SporeError(`spore.cmk ${definition.error}`, { type: 'DEFINITION_INVALID', detail: definitionPath(ws) })
   const heading = `job ${name} · ${run} · ${event}`
@@ -65,7 +65,8 @@ export function deliverJob (ws, { name, run, event, ref, text, report }, { envOf
     maxWait: definition.jobs?.maxWait ?? null,
     perDay: definition.jobs?.perDay ?? TRIAGE_PER_DAY,
     briefing: briefingOf({ name, event, run }),
-    envOf,
+    env,
+    configFile,
     log,
     heading,
     now,
@@ -124,11 +125,11 @@ const jobWrites = (definition) => definition.writes.filter(grant => definition.j
 /**
  * The supervisor's whole life, in the process `bin/spore-job.js` is. `answer(line)` is told once,
  * before the command starts: the job begun, or why it was refused. Ends once the job has ended,
- * been recorded and been said. `env` is its own, which the job's is drawn from; `envOf()` the one
- * a release or a triage cell starts with, read when it is needed. Its streams, `status.json` and its log are created anew in the
+ * been recorded and been said. `env` is its own, which the job's is drawn from and a release or
+ * a triage cell starts from. Its streams, `status.json` and its log are created anew in the
  * job's directory, never through a link, and written through the descriptors it keeps.
  */
-export async function superviseJob ({ ws, name, count, wallMs, command, answer, env, envOf, signal, releaseHeld = release, contain = containing(readConfig()) }) {
+export async function superviseJob ({ ws, name, count, wallMs, command, answer, env, signal, releaseHeld = release, contain = containing(readConfig()) }) {
   if (!NAMES.job.pattern.test(name)) {
     return answer(refusal('JOB_NAME_INVALID', `a job cannot be named "${name}"`, `a name is ${NAMES.job.says}`))
   }
@@ -208,7 +209,7 @@ export async function superviseJob ({ ws, name, count, wallMs, command, answer, 
       const text = takeSaid(writable)
       if (!text) return
       said += 1
-      const judged = deliverJob(ws, { name, run, event: 'said', ref: `said:${said}`, text, report: { job: name, run, event: 'said', seq: said, text } }, { envOf, log, releaseHeld })
+      const judged = deliverJob(ws, { name, run, event: 'said', ref: `said:${said}`, text, report: { job: name, run, event: 'said', seq: said, text } }, { env, log, releaseHeld })
       judging.add(judged)
       judged.catch(err => log(`said · routing failed — ${err.type ?? err.name} ${err.message}`)).finally(() => judging.delete(judged))
     }
@@ -263,7 +264,7 @@ export async function superviseJob ({ ws, name, count, wallMs, command, answer, 
           ? `was stopped after ${durationText(took)}`
           : `exited ${ran.exit ?? ran.signal} after ${durationText(took)}`
     const report = { job: name, run, event, command, startedAt, endedAt, exit: ran.exit, signal: ran.signal, dir: `${JOBS_DIR}/${name}` }
-    await deliverJob(ws, { name, run, event, ref: event, text: `The job ${how}.`, report }, { envOf, log, releaseHeld })
+    await deliverJob(ws, { name, run, event, ref: event, text: `The job ${how}.`, report }, { env, log, releaseHeld })
     await Promise.allSettled([...judging])
   } catch (err) {
     log(`failed — ${err.type ?? err.name} ${err.message}${err.detail ? ` — ${err.detail}` : ''}`)
@@ -311,10 +312,10 @@ export function progressOf (ws, job) {
  * Each job recorded running in `ws` whose supervisor is gone — a reboot, a kill — ended as
  * `interrupted` and said so, once: ending it is the claim, so two passes never both say it.
  */
-export function reportInterrupted (ws, { env, log, releaseHeld = release }) {
+export function reportInterrupted (ws, { env, configFile, log, releaseHeld = release }) {
   return jobsIn(ws, { running: true }).filter(job => !jobAlive(job.run) && endJob(ws, job.run, 'interrupted')).map(job => {
     const report = { job: job.name, run: job.run, event: 'interrupted', command: job.command, startedAt: job.startedAt, dir: `${JOBS_DIR}/${job.name}` }
-    deliverJob(ws, { name: job.name, run: job.run, event: 'interrupted', ref: 'interrupted', text: 'The job was interrupted: its supervisor is gone — the machine restarted, or it was killed — and what it ran did not finish.', report }, { envOf: () => env, log, releaseHeld })
+    deliverJob(ws, { name: job.name, run: job.run, event: 'interrupted', ref: 'interrupted', text: 'The job was interrupted: its supervisor is gone — the machine restarted, or it was killed — and what it ran did not finish.', report }, { env, configFile, log, releaseHeld })
       .catch(err => log(`job ${job.name} · ${job.run} · interrupted · routing failed — ${err.message}`))
     return job
   })

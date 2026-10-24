@@ -6,7 +6,7 @@
  * harness:
  *   spec                                   the adapter's description
  *   credentials                            { <variable>: <value> } its bot files name, the first bot's first;
- *                                          none reaches a turn but those the spec's sourceVariables keep
+ *                                          none reaches a turn's runner, its spore granting no plugin
  *   botFile(bot, table, fields)            a bot file for { <conversation>: { spore, details, show, brief,
  *                                          shared, people } } — `shared` a conversation many people
  *                                          share, whose `people`, left out, are everyone and, by id,
@@ -210,7 +210,7 @@ export function conformance (harness, platformTests = () => {}) {
         expect(posts('1').find(one => one.text === 'hello back').answering).toBe(replyOf(asked))
         await until(() => seen('1').some(one => one.op === 'remove' && one.note === note.note))
         expect(environ).toContain('SPORE_MODEL_SOCKET=')
-        for (const variable of Object.keys(harness.credentials).filter(name => !spec.sourceVariables.includes(name))) expect(environ).not.toContain(variable)
+        for (const variable of Object.keys(harness.credentials)) expect(environ).not.toContain(variable)
       })
 
       it.runIf(harness.formats)('is answered in the platform\'s formatting, while what the relay says itself stays plain', async () => {

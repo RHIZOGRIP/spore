@@ -13,11 +13,12 @@ import { closeSync, openSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { takeSlot } from './admission.js'
+import { withSlot } from './admission.js'
 import { preparePlugins, upgradeDocs } from './plugins.js'
 import { enqueue, ERR_FILE, heldIn, inboxRequest, OUT_FILE, PLUGIN_ENV, releaseHeld } from './spore-dir.js'
 import { RUNNING, stateOf } from './state.js'
-import { bytesOf, containing, followingDocs, MEMORY_FILE, readConfig, SOURCES_FILE, spendLimits } from '../library/config.js'
+import { turnEnv } from './turn-env.js'
+import { bytesOf, CONFIG_FILE, containing, followingDocs, MEMORY_FILE, readConfig, SOURCES_FILE, spendLimits } from '../library/config.js'
 
 const RUNNER = resolve(dirname(fileURLToPath(import.meta.url)), '../../native/spore-runner')
 // mohdel's session program, resolved the way Node resolves the package this runs with.
@@ -67,34 +68,29 @@ export const CHATGPT_HELPER = createRequire(import.meta.url).resolve('mohdel/cha
  *
  * @returns {{ ws: string, started: boolean, pid: number|null, inbox: number, repeated: boolean }}
  */
-export function send (ws, message, { attach = [], schedule, hook, from, traceparent, requestId, replyTo, overheard = false, approval, start: starting = true, unsafe = false, debug = false, env = process.env } = {}) {
+export function send (ws, message, { attach = [], schedule, hook, from, traceparent, requestId, replyTo, overheard = false, approval, start: starting = true, unsafe = false, debug = false, env = process.env, configFile = CONFIG_FILE } = {}) {
   const workspace = resolve(ws)
   const known = requestId === undefined ? null : inboxRequest(workspace, requestId)
   if (known?.consumed) return { ws: workspace, started: false, pid: null, inbox: known.inboxNo, repeated: true }
   if (overheard) return { ws: workspace, started: false, pid: null, ...enqueue(workspace, message, { attach, from, traceparent, requestId, replyTo, overheard }) }
   if (!starting) return { ws: workspace, started: false, pid: null, ...enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo, approval }) }
-  // The slot is released on every path out, a failed append included: a caller that lives
-  // on — a TUI, a relay — would otherwise hold it until it exits.
-  const holding = (slot, then) => {
-    try {
-      return then()
-    } finally {
-      closeSync(slot.fd)
-    }
+  const inInbox = (err) => {
+    err.detail = `${err.detail ?? err.message} — the message is in the inbox, and the next turn reads it`
+    return err
   }
-  const start = (slot, plugins, { inbox, repeated }) => {
-    try {
-      return { ws: workspace, started: true, pid: startRunner(workspace, { slot, plugins, unsafe, debug, env }), inbox, repeated }
-    } catch (err) {
-      err.detail = `${err.detail ?? err.message} — the message is in the inbox, and the next turn reads it`
-      throw err
-    }
-  }
+  const start = (slot, plugins, { inbox, repeated }) =>
+    ({ ws: workspace, started: true, pid: startRunner(workspace, { slot, plugins, unsafe, debug, env, configFile }), inbox, repeated })
 
   if (stateOf(workspace).state !== RUNNING) {
-    const plugins = preparePlugins(workspace)
-    const slot = takeSlot()
-    return holding(slot, () => start(slot, plugins, enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo, approval })))
+    const plugins = preparePlugins(workspace, { config: readConfig(configFile) })
+    return withSlot(slot => {
+      const said = enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo, approval })
+      try {
+        return start(slot, plugins, said)
+      } catch (err) {
+        throw inInbox(err)
+      }
+    })
   }
 
   const said = enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo, approval })
@@ -102,16 +98,12 @@ export function send (ws, message, { attach = [], schedule, hook, from, tracepar
   // looks at the inbox again after it lets go, so a message is read by it or finds the
   // lock free here — never neither.
   if (stateOf(workspace).state === RUNNING) return { ws: workspace, started: false, pid: null, ...said }
-  let plugins
-  let slot
   try {
-    plugins = preparePlugins(workspace)
-    slot = takeSlot()
+    const plugins = preparePlugins(workspace, { config: readConfig(configFile) })
+    return withSlot(slot => start(slot, plugins, said))
   } catch (err) {
-    err.detail = `${err.detail} — the message is in the inbox, and the next turn reads it`
-    throw err
+    throw inInbox(err)
   }
-  return holding(slot, () => start(slot, plugins, said))
 }
 
 const startsNone = (row) => JSON.parse(row.entry).startsTurn === false
@@ -125,32 +117,24 @@ const startsNone = (row) => JSON.parse(row.entry).startsTurn === false
  *
  * @returns {{ ws: string, released: number[], started: boolean }}
  */
-export function release (ws, { now = Date.now(), env = process.env } = {}) {
+export function release (ws, { now = Date.now(), env = process.env, configFile = CONFIG_FILE } = {}) {
   const workspace = resolve(ws)
   const at = new Date(now).toISOString()
   if (stateOf(workspace).state === RUNNING) {
     const late = heldIn(workspace).filter(row => row.deadline <= at)
     const released = releaseHeld(workspace, at, { due: false })
     if (!released.length || stateOf(workspace).state === RUNNING || late.every(startsNone)) return { ws: workspace, released, started: false }
-    const plugins = preparePlugins(workspace)
-    const slot = takeSlot()
-    try {
-      return { ws: workspace, released, started: true, pid: startRunner(workspace, { slot, plugins, env }) }
-    } finally {
-      closeSync(slot.fd)
-    }
+    const plugins = preparePlugins(workspace, { config: readConfig(configFile) })
+    return withSlot(slot => ({ ws: workspace, released, started: true, pid: startRunner(workspace, { slot, plugins, env, configFile }) }))
   }
   const due = heldIn(workspace).filter(row => row.releaseAt <= at || row.deadline <= at)
   if (!due.length) return { ws: workspace, released: [], started: false }
   if (due.every(startsNone)) return { ws: workspace, released: releaseHeld(workspace, at, { due: true }), started: false }
-  const plugins = preparePlugins(workspace)
-  const slot = takeSlot()
-  try {
+  const plugins = preparePlugins(workspace, { config: readConfig(configFile) })
+  return withSlot(slot => {
     const released = releaseHeld(workspace, at, { due: true })
-    return { ws: workspace, released, started: true, pid: startRunner(workspace, { slot, plugins, env }) }
-  } finally {
-    closeSync(slot.fd)
-  }
+    return { ws: workspace, released, started: true, pid: startRunner(workspace, { slot, plugins, env, configFile }) }
+  })
 }
 
 /**
@@ -161,42 +145,37 @@ export function release (ws, { now = Date.now(), env = process.env } = {}) {
  * The slot goes to it as fd 3 and is held by the runner alone, which marks it
  * close-on-exec so the agent it starts does not inherit it. It starts the agent with the
  * Node this process runs on, and is told where the host describes its sources and what the
- * spore's plugins add to its agent's environment.
+ * spore's plugins add to its agent's environment. `env` and `configFile` are what the caller was
+ * launched with; the runner gets `env` as `turnEnv` makes it from `configFile`.
  */
-export function startRunner (workspace, { slot, plugins, unsafe = false, debug = false, continuing = false, dream = false, env = process.env }) {
-  const config = readConfig()
+export function startRunner (workspace, { slot, plugins, unsafe = false, debug = false, continuing = false, dream = false, env = process.env, configFile = CONFIG_FILE }) {
+  const config = readConfig(configFile)
   if (followingDocs(config)) upgradeDocs(workspace, { config })
   const largestFile = bytesOf(config, 'largestFile')
   const freeFloor = bytesOf(config, 'freeFloor')
-  const spend = spendLimits(config)
   const modelSessions = config.modelSessions ?? null
   const replyTo = config.replyTo?.[basename(workspace)] ?? null
+  const environment = turnEnv(env, { configFile: config.file, sources: plugins.sources })
+  if (Object.keys(plugins.env).length) environment[PLUGIN_ENV] = JSON.stringify(plugins.env)
   const out = openSync(resolve(workspace, OUT_FILE), 'a')
   const err = openSync(resolve(workspace, ERR_FILE), 'a')
   try {
     const runner = spawn(RUNNER, [
       '--ws', workspace,
       '--slot', slot.path,
-      '--node', process.execPath,
-      '--session', SESSION,
-      '--chatgpt-helper', CHATGPT_HELPER,
+      ...hostFlags(config, plugins.contain),
       '--sources', resolve(dirname(config.file), SOURCES_FILE),
       '--memory', resolve(dirname(config.file), MEMORY_FILE),
       ...(Object.keys(plugins.sources).length ? ['--plugin-sources', JSON.stringify(plugins.sources)] : []),
-      ...(plugins.contain.length ? ['--contain-keep', JSON.stringify(plugins.contain)] : []),
       ...(largestFile === null ? [] : ['--largest-file', String(largestFile)]),
       ...(freeFloor === null ? [] : ['--free-floor', String(freeFloor)]),
-      ...(spend.day === null ? [] : ['--spend-per-day', String(spend.day)]),
-      ...(spend.month === null ? [] : ['--spend-per-month', String(spend.month)]),
-      ...(containing(config) ? [] : ['--no-contain']),
       ...(modelSessions === null ? [] : ['--model-sessions', String(modelSessions)]),
-      ...(config.gate ? ['--gate', config.gate] : []),
       ...(replyTo === null ? [] : ['--reply-to', replyTo]),
       ...(unsafe ? ['--unsafe'] : []),
       ...(debug ? ['--debug'] : []),
       ...(continuing ? ['--continue'] : []),
       ...(dream ? ['--dream'] : [])
-    ], { detached: true, stdio: ['ignore', out, err, slot.fd], env: Object.keys(plugins.env).length ? { ...env, [PLUGIN_ENV]: JSON.stringify(plugins.env) } : env })
+    ], { detached: true, stdio: ['ignore', out, err, slot.fd], env: environment })
     runner.unref()
     return runner.pid
   } finally {
@@ -206,20 +185,34 @@ export function startRunner (workspace, { slot, plugins, unsafe = false, debug =
 }
 
 /**
+ * The flags the runner and a cell outside any turn are both given by the host: the Node and the
+ * mohdel helpers they run, the spend limits, whether to contain, what the spore's plugins keep in
+ * view of a contained process, and the gate.
+ */
+export function hostFlags (config, keep) {
+  const spend = spendLimits(config)
+  return [
+    '--node', process.execPath,
+    '--session', SESSION,
+    '--chatgpt-helper', CHATGPT_HELPER,
+    ...(spend.day === null ? [] : ['--spend-per-day', String(spend.day)]),
+    ...(spend.month === null ? [] : ['--spend-per-month', String(spend.month)]),
+    ...(containing(config) ? [] : ['--no-contain']),
+    ...(keep.length ? ['--contain-keep', JSON.stringify(keep)] : []),
+    ...(config.gate ? ['--gate', config.gate] : [])
+  ]
+}
+
+/**
  * The spore's dream started, through the lock race a turn uses, and refused as a turn is while the
  * spores are paused, past a spend limit, or with every slot taken. Its runner looks again under the
  * lock: a dream started a moment too late runs the turn that came first, or nothing.
  *
  * @returns {{ ws: string, started: boolean, pid?: number }}
  */
-export function startDream (ws, { env = process.env } = {}) {
+export function startDream (ws, { env = process.env, configFile = CONFIG_FILE } = {}) {
   const workspace = resolve(ws)
   if (stateOf(workspace).state === RUNNING) return { ws: workspace, started: false }
-  const plugins = preparePlugins(workspace)
-  const slot = takeSlot()
-  try {
-    return { ws: workspace, started: true, pid: startRunner(workspace, { slot, plugins, env, dream: true }) }
-  } finally {
-    closeSync(slot.fd)
-  }
+  const plugins = preparePlugins(workspace, { config: readConfig(configFile) })
+  return withSlot(slot => ({ ws: workspace, started: true, pid: startRunner(workspace, { slot, plugins, env, configFile, dream: true }) }))
 }

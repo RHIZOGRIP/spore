@@ -89,11 +89,10 @@ const attachmentsOf = (attach) => {
 }
 
 /**
- * `api` is what `loadApi` read; `env` the environment a turn starts with, the API's tokens taken
- * out of it. `delivering` is what `deliver` takes to hold a delivery and run its router, for a test to replace.
+ * `api` is what `loadApi` read; `env` the environment the service was started with, which a turn
+ * starts from. `delivering` is what `deliver` takes to hold a delivery and run its router, for a test to replace.
  */
 export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () => {}, pausedNow = paused, delivering = {} }) {
-  const turnEnv = Object.fromEntries(Object.entries(env).filter(([key]) => !api.secrets.has(key)))
   const routing = new Set()
 
   const deliveries = async ({ request, caller, ws, span }) => {
@@ -113,7 +112,7 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       api: caller.name,
       requestId: `api:${caller.name}:${delivery}`,
       traceparent: formatTraceparent(span) ?? undefined,
-      env: turnEnv
+      env
     }
     const delivered = deliver({
       ws,
@@ -126,7 +125,8 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       briefing: briefingOf(caller.name, delivery),
       ref: delivery,
       event: null,
-      envOf: () => turnEnv,
+      env,
+      configFile,
       log,
       heading: `${caller.name} → ${basename(ws)} · ${delivery}`,
       ...delivering
@@ -170,7 +170,8 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
         replyTo: asked.replyTo,
         from: asked.from,
         traceparent: formatTraceparent(span) ?? undefined,
-        env: turnEnv
+        env,
+        configFile
       })
       return { status: 202, body: { inbox: sent.inbox, started: sent.started, repeated: Boolean(sent.repeated) } }
     },

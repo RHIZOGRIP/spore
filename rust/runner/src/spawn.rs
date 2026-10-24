@@ -18,10 +18,11 @@ use std::time::Duration;
 use serde_json::json;
 use spore_runner::broker::{self, Served};
 use spore_runner::enzymes::{hash_enzyme, Enzyme, Enzymes};
+use spore_runner::host::HostArgs;
 use spore_runner::model::{self, Model};
 use spore_runner::plan::{dream_for, plan_spawn, Asked, Plan};
 use spore_runner::supervise::{
-    confined, kept_from, kept_refusal, owner_token, owners_with, supervise, Kept, GRACE, OWNERS,
+    confined, kept_refusal, owner_token, owners_with, supervise, Kept, GRACE, OWNERS,
 };
 use spore_workspace::spend::Limits;
 use spore_workspace::{
@@ -79,13 +80,7 @@ struct Args {
     help: bool,
     standalone: bool,
     dream: bool,
-    node: Option<String>,
-    session: Option<String>,
-    chatgpt_helper: Option<String>,
-    spend: Limits,
-    no_contain: bool,
-    kept: Vec<Kept>,
-    gate: Option<PathBuf>,
+    host: HostArgs,
     auth: Option<String>,
 }
 
@@ -120,6 +115,11 @@ fn parse_args(given: &[String]) -> Args {
                 .or_else(|| rest.next().cloned())
                 .unwrap_or_else(|| fail(format!("{name} needs a value")))
         };
+        match args.host.take(name, &mut value) {
+            Ok(true) => continue,
+            Ok(false) => {}
+            Err(problem) => fail(problem),
+        }
         match name {
             "--precursor" => args.precursor = Some(value()),
             "--ws" => args.ws = Some(value()),
@@ -129,19 +129,6 @@ fn parse_args(given: &[String]) -> Args {
             "--detach" => args.detach = true,
             "--standalone" => args.standalone = true,
             "--super" => args.dream = true,
-            "--node" => args.node = Some(value()),
-            "--session" => args.session = Some(value()),
-            "--chatgpt-helper" => args.chatgpt_helper = Some(value()),
-            "--spend-per-day" => args.spend.day = Some(dollars(name, &value())),
-            "--spend-per-month" => args.spend.month = Some(dollars(name, &value())),
-            "--no-contain" => args.no_contain = true,
-            "--contain-keep" => {
-                args.kept = match kept_from(&value()) {
-                    Ok(kept) => kept,
-                    Err(e) => fail(e),
-                }
-            }
-            "--gate" => args.gate = Some(PathBuf::from(value())),
             "--auth" => args.auth = Some(value()),
             "--help" | "-h" => args.help = true,
             "-m" | "--model" => fail(format!(
@@ -152,15 +139,6 @@ fn parse_args(given: &[String]) -> Args {
         }
     }
     args
-}
-
-fn dollars(name: &str, given: &str) -> f64 {
-    match given.parse::<f64>() {
-        Ok(amount) if amount > 0.0 && amount.is_finite() => amount,
-        _ => fail(format!(
-            "{name} is an amount of dollars above zero — got {given}"
-        )),
-    }
 }
 
 /// The spore root: this binary sits in `<root>/native/`.
@@ -246,10 +224,10 @@ async fn main() {
     if args.dream && !args.standalone {
         fail("--super is a dream's, run outside any turn — it needs --standalone");
     }
-    if !args.standalone && (args.gate.is_some() || args.auth.is_some()) {
+    if !args.standalone && (args.host.gate.is_some() || args.auth.is_some()) {
         fail("--gate and --auth are a cell's outside any turn — a turn's cells reach the gate through its own model socket");
     }
-    if let (Some(gate), None) = (&args.gate, &args.auth) {
+    if let (Some(gate), None) = (&args.host.gate, &args.auth) {
         fail(format!(
             "this host calls its models through the gate at {}, and the spore names no auth — add auth: <id> to its spore.cmk, whom its model calls are for",
             gate.display()
@@ -302,13 +280,14 @@ async fn main() {
             value.clone().unwrap_or_else(|| fail(format!("--standalone needs {flag} — a cell outside any turn starts its own model session")))
         };
         Standalone {
-            node: need(&args.node, "--node"),
-            session: need(&args.session, "--session"),
-            chatgpt_helper: need(&args.chatgpt_helper, "--chatgpt-helper"),
-            spend: args.spend,
-            contain: !args.no_contain,
-            kept: args.kept.clone(),
+            node: need(&args.host.node, "--node"),
+            session: need(&args.host.session, "--session"),
+            chatgpt_helper: need(&args.host.chatgpt_helper, "--chatgpt-helper"),
+            spend: args.host.spend,
+            contain: !args.host.no_contain,
+            kept: args.host.kept.clone(),
             gate: args
+                .host
                 .gate
                 .clone()
                 .map(|gate| (gate, args.auth.clone().expect("checked above"))),

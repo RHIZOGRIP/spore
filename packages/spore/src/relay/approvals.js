@@ -14,7 +14,7 @@ const TELL_AGAIN_MS = 30_000
 
 const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
-export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, where, followed, delivery, environment, sendEnv, log, sleep, signal }) {
+export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, where, followed, delivery, environment, env, log, sleep, signal }) {
   const { kind } = adapter
   if (adapter.can.choose && typeof adapter.can.fields !== 'boolean') {
     throw new SporeError(`the ${adapter.label} adapter carries approvals without saying whether it shows fields`, { type: 'ADAPTER_INVALID', detail: 'can.fields is true or false beside can.choose' })
@@ -80,7 +80,8 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
         replyTo: approval.place,
         approval: approval.id,
         ...(answered ? { from: { name: approval.answererName, id: `${kind}:${approval.answererId}`, where: `${where(conversation)} on ${adapter.label}` } } : {}),
-        env: sendEnv()
+        env,
+        configFile
       })
       untold.delete(approval.id)
     } catch (err) {

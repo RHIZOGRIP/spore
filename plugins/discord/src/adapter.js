@@ -27,7 +27,7 @@ const invalid = (path, problem, detail = `a bot is ${SHAPE}`) => new SporeError(
  */
 const CONVERSATIONS = {
   channels: {
-    kind: 'channel',
+    noun: 'channel',
     id: SNOWFLAKE,
     says: 'which is not a channel id',
     fix: 'a channel id is the number Copy Channel ID gives, with Developer Mode on',
@@ -56,7 +56,6 @@ export const DISCORD = {
   fields: FIELDS,
   credentials: ['token'],
   stateFields: ['hooks', 'roles', 'guilds', 'unheard'],
-  sourceVariables: ['DISCORD_BOT_TOKEN'],
   refusals: ['DISCORD_REFUSED'],
   example: SHAPE,
   conversations: CONVERSATIONS,

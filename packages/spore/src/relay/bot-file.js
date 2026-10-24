@@ -10,7 +10,7 @@
  * Every bot file also takes `brief`, for each conversation that does not say, and `files`, the
  * largest file it takes from a person.
  *
- * A section is `{ kind, id, says, fix, fields }`: what one of its conversations is called, the
+ * A section is `{ noun, id, says, fix, fields }`: what one of its conversations is called, the
  * pattern its id matches, why one that does not is refused (`says`, as "which is not a member
  * id") and how to find a right one (`fix`), and the fields an entry takes. `not` lists ids refused
  * though they match, each `{ id, says, fix }`, and `flags` the platform's own true-or-false fields,
@@ -100,16 +100,16 @@ function routesFrom (spec, raw, path) {
   for (const [key, section] of sections) {
     const value = raw[key] ?? {}
     if (!isRecord(value)) throw invalid(`has ${key} that is not { "<id>": … }`)
-    const { kind } = section
+    const { noun } = section
     const flags = [...RELAY_FLAGS, ...(section.flags ?? [])].filter(name => section.fields.includes(name))
     const checked = (id, entry) => {
       const extra = Object.keys(entry).filter(field => !section.fields.includes(field))
       if (extra.length) {
         const bots = extra.filter(field => spec.fields.includes(field))
-        throw invalid(`gives ${kind} ${id} ${extra.join(', ')}, which a ${kind} does not take`, `a ${kind} takes ${section.fields.join(', ')}${bots.length ? `; ${bots.join(', ')} is the bot's, beside ${named.join(' and ')}` : ''}`)
+        throw invalid(`gives ${noun} ${id} ${extra.join(', ')}, which a ${noun} does not take`, `a ${noun} takes ${section.fields.join(', ')}${bots.length ? `; ${bots.join(', ')} is the bot's, beside ${named.join(' and ')}` : ''}`)
       }
       for (const name of flags) {
-        if (entry[name] !== undefined && typeof entry[name] !== 'boolean') throw invalid(`has a ${kind} ${id} whose ${name} is not true or false`)
+        if (entry[name] !== undefined && typeof entry[name] !== 'boolean') throw invalid(`has a ${noun} ${id} whose ${name} is not true or false`)
       }
       return {
         details: entry.details === true,
@@ -126,16 +126,16 @@ function routesFrom (spec, raw, path) {
         const shaped = isRecord(entry)
         const spore = shaped ? entry.spore : entry
         const read = checked(id, shaped ? entry : {})
-        if (typeof spore !== 'string' || !spore) throw invalid(`maps ${kind} ${id} to something that is not a spore`, `each ${kind} is ${section.called} against the name of the spore they reach, or { "spore": "<name>", "details": true }`)
+        if (typeof spore !== 'string' || !spore) throw invalid(`maps ${noun} ${id} to something that is not a spore`, `each ${noun} is ${section.called} against the name of the spore they reach, or { "spore": "<name>", "details": true }`)
         table.set(id, { spores: [spore], ...read, people: null })
         continue
       }
-      if (!isRecord(entry)) throw invalid(`has a ${kind} ${id} that is not { "spores": [...], "people": [...] }`)
+      if (!isRecord(entry)) throw invalid(`has a ${noun} ${id} that is not { "spores": [...], "people": [...] }`)
       const read = checked(id, entry)
-      if (!Array.isArray(entry.spores) || !entry.spores.length || !entry.spores.every(spore => typeof spore === 'string' && spore)) throw invalid(`has a ${kind} ${id} with no spores`)
-      if (section.one && entry.spores.length > 1) throw invalid(`gives ${kind} ${id} ${entry.spores.length} spores`, `a bot speaks in a ${kind} as itself, so a ${kind} has one spore — a second spore there is a second bot`)
+      if (!Array.isArray(entry.spores) || !entry.spores.length || !entry.spores.every(spore => typeof spore === 'string' && spore)) throw invalid(`has a ${noun} ${id} with no spores`)
+      if (section.one && entry.spores.length > 1) throw invalid(`gives ${noun} ${id} ${entry.spores.length} spores`, `a bot speaks in a ${noun} as itself, so a ${noun} has one spore — a second spore there is a second bot`)
       if (!Array.isArray(entry.people) || !entry.people.every(who => who === '*' || (typeof who === 'string' && section.people.id.test(who)))) {
-        throw invalid(`has a ${kind} ${id} whose people are not ${section.people.says} or *`, `people is who may address its spores — ["<${section.people.example}>", …], or ["*"] for everyone in the ${kind}, written out`)
+        throw invalid(`has a ${noun} ${id} whose people are not ${section.people.says} or *`, `people is who may address its spores — ["<${section.people.example}>", …], or ["*"] for everyone in the ${noun}, written out`)
       }
       table.set(id, { spores: entry.spores, ...read, people: entry.people })
     }

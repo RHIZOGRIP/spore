@@ -48,7 +48,7 @@ const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
  */
 const CONVERSATIONS = {
   people: {
-    kind: 'person',
+    noun: 'person',
     id: PERSON,
     says: 'which is not a person\'s id',
     fix: 'a person\'s id is a positive number; a group\'s is negative, and goes under groups',
@@ -56,7 +56,7 @@ const CONVERSATIONS = {
     fields: ['spore', 'details', 'show', 'brief']
   },
   groups: {
-    kind: 'group',
+    noun: 'group',
     id: GROUP,
     says: 'which is not a group\'s id',
     fix: 'a group\'s id is negative (-100… for a supergroup); a person\'s goes under people',
@@ -76,7 +76,6 @@ export const TELEGRAM = {
   fields: FIELDS,
   credentials: ['token'],
   stateFields: [],
-  sourceVariables: [],
   refusals: ['TELEGRAM_CONFLICT'],
   example: SHAPE,
   conversations: CONVERSATIONS,

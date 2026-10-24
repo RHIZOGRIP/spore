@@ -18,7 +18,7 @@ const SPEC = {
   reactions: ['👨‍💻', '💔', '👀'],
   example: '{ "token": "${CHAT_TOKEN}", "rooms": {} }', // eslint-disable-line no-template-curly-in-string
   conversations: {
-    rooms: { kind: 'room', id: /^r\d+$/, says: 'which is not a room', fix: 'a room is r and a number', called: 'its number', fields: ['spore', 'details', 'show', 'brief'] }
+    rooms: { noun: 'room', id: /^r\d+$/, says: 'which is not a room', fix: 'a room is r and a number', called: 'its number', fields: ['spore', 'details', 'show', 'brief'] }
   }
 }
 
@@ -73,8 +73,8 @@ describe('a bot file', () => {
       fields: ['token', 'people', 'halls', 'region'],
       check: (raw, path) => { if (raw.region !== undefined) throw new Error(`${path} has a region`) },
       conversations: {
-        people: { kind: 'person', id: /^u\d+$/, says: 'which is not a user', fix: 'a user is u and a number', not: [{ id: /^u0$/, says: 'which is the system', fix: 'u0 is nobody' }], called: 'their number', fields: ['spore', 'details', 'brief'] },
-        halls: { kind: 'hall', id: /^h\d+$/, says: 'which is not a hall', fix: 'a hall is h and a number', fields: ['spores', 'people', 'details', 'loud'], flags: ['loud'], one: true, people: { id: /^u\d+$/, says: 'users', example: 'user' } }
+        people: { noun: 'person', id: /^u\d+$/, says: 'which is not a user', fix: 'a user is u and a number', not: [{ id: /^u0$/, says: 'which is the system', fix: 'u0 is nobody' }], called: 'their number', fields: ['spore', 'details', 'brief'] },
+        halls: { noun: 'hall', id: /^h\d+$/, says: 'which is not a hall', fix: 'a hall is h and a number', fields: ['spores', 'people', 'details', 'loud'], flags: ['loud'], one: true, people: { id: /^u\d+$/, says: 'users', example: 'user' } }
       }
     }
     const path = botPath(SHARED, 'ops', CONFIG)

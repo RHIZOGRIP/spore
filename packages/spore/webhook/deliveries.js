@@ -9,9 +9,6 @@ import { CONFIG_FILE } from '../src/library/config.js'
 
 const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
-/** What a spore is handed of an environment: everything but the hooks' secrets, which only the senders' checks use. */
-export const without = (env, hidden) => Object.fromEntries(Object.entries(env).filter(([key]) => !hidden.has(key)))
-
 const briefingOf = ({ name, event, delivery }) => ({ payload, headers }) => [
   `A delivery of the webhook "${name}"${event ? `, event ${event}` : ''}, delivery ${delivery}.`,
   payload ? `Its body is ${payload} in your directory.` : 'It has no body.',
@@ -30,7 +27,7 @@ export function createHookDelivery ({
 }) {
   const routing = new Set()
 
-  const deliverTo = (hook, ws, options, stdin, heading, envOf) => {
+  const deliverTo = (hook, ws, options, stdin, heading, env) => {
     const { event, delivery } = options.hook
     const delivered = deliver({
       ws,
@@ -44,7 +41,8 @@ export function createHookDelivery ({
       headers: 'headers.json',
       perDay: hook.perDay,
       briefing: briefingOf(options.hook),
-      envOf,
+      env,
+      configFile,
       log,
       heading,
       now,
@@ -57,11 +55,11 @@ export function createHookDelivery ({
 
   /**
    * `options` as `send` takes them, with `hook: { name, event, delivery }` and its `requestId`;
-   * `stdin` the name of the attached payload, or null for none; `unwanted(accept)` says why a spore's own `accept` drops it, or null; `envOf()` the environment
-   * a turn or a cell starts with, the hooks' secrets already out of it. Answers each spore's
+   * `stdin` the name of the attached payload, or null for none; `unwanted(accept)` says why a spore's own `accept` drops it, or null; `env` the environment
+   * the service was started with, which a turn or a cell starts from. Answers each spore's
    * outcome, `failed` for one it could not reach.
    */
-  const deliverAll = ({ hook, options, stdin, unwanted, envOf }) => hook.spores.map(spore => {
+  const deliverAll = ({ hook, options, stdin, unwanted, env }) => hook.spores.map(spore => {
     const { delivery, event } = options.hook
     const heading = `hook ${hook.name} → ${spore} · ${delivery}${event ? ` · ${event}` : ''}`
     const own = hook.accepts.get(spore)
@@ -76,7 +74,7 @@ export function createHookDelivery ({
       return { spore, outcome: `not delivered — there is no spore "${spore}"`, failed: true }
     }
     try {
-      const outcome = deliverTo(hook, ws, { ...options, env: envOf() }, stdin, heading, envOf)
+      const outcome = deliverTo(hook, ws, { ...options, env }, stdin, heading, env)
       log(`${heading} · ${outcome}`)
       return { spore, outcome }
     } catch (err) {

@@ -10,12 +10,12 @@ import { dirname, resolve } from 'node:path'
 import Ajv from 'ajv'
 
 import { CONFIG_FILE, SporeError } from '../src/index.js'
+import { HOOKS_FILE } from '../src/library/config.js'
 import { sizeBytes } from '../src/delegation/definition.js'
 import { deliveryBounds } from '../src/core/route.js'
 import { NAMES } from '../src/core/names.js'
-import { fillVariables, variablesIn } from '../src/core/variables.js'
+import { fillVariables } from '../src/core/variables.js'
 
-export const HOOKS_FILE = 'hooks.json'
 export const hooksPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), HOOKS_FILE)
 
 const DEFAULT_MAX_BYTES = 1024 * 1024
@@ -74,16 +74,15 @@ export function payloadRefusal (match, body) {
 
 const refuse = (path, name, problem, detail) => new SporeError(`${path}: hook "${name}" ${problem}`, { type: 'WEBHOOK_INVALID', detail })
 
-function fill (path, name, value, env, used) {
+function fill (path, name, value, env) {
   const { filled, missing } = fillVariables(value, env)
   if (missing !== undefined) {
     throw refuse(path, name, `wants $${missing}, which is not set`, 'a secret is read from the environment — add it to ~/.config/spore/environment')
   }
-  used.push(...variablesIn(value))
   return filled
 }
 
-function verifier (path, name, verify, env, used) {
+function verifier (path, name, verify, env) {
   if (!verify || typeof verify !== 'object') {
     throw refuse(path, name, 'says nothing about checking its sender', 'an unchecked URL starts a paid turn for anyone who finds it — give it verify: { token } at least')
   }
@@ -91,7 +90,7 @@ function verifier (path, name, verify, env, used) {
     if (typeof verify[field] !== 'string' || !verify[field]) {
       throw refuse(path, name, `needs verify.${field}`, 'the shared secret, as ${VAR} naming the variable that holds it') // eslint-disable-line no-template-curly-in-string
     }
-    return fill(path, name, verify[field], env, used)
+    return fill(path, name, verify[field], env)
   }
   const header = (value) => String(value).toLowerCase()
   if (verify.preset !== undefined) {
@@ -168,13 +167,12 @@ export function loadHooks (path = hooksPath(), env = process.env) {
     const known = ['spore', 'verify', 'accept', 'maxBytes', 'perHour', 'maxWait', 'perDay']
     const unknown = Object.keys(hook).filter(key => !known.includes(key))
     if (unknown.length) throw refuse(path, name, `has a field spore does not know — ${unknown.join(', ')}`, `a hook takes ${known.join(', ')}`)
-    const secrets = []
-    const check = verifier(path, name, hook.verify, env, secrets)
+    const check = verifier(path, name, hook.verify, env)
     const accept = hook.accept === undefined ? null : parseAccept(path, name, hook.accept)
     const maxBytes = hook.maxBytes === undefined ? DEFAULT_MAX_BYTES : sizeBytes(hook.maxBytes)
     if (!(maxBytes > 0)) throw refuse(path, name, `has a maxBytes spore cannot read — ${hook.maxBytes}`, 'a size such as 1MB or 512KB')
     const { maxWait, perDay, perHour } = deliveryBounds(hook, (problem, detail) => refuse(path, name, problem, detail), { perHour: DEFAULT_PER_HOUR })
-    hooks.set(name, { name, spores, accepts, check, accept, maxBytes, perHour, maxWait, perDay, secrets })
+    hooks.set(name, { name, spores, accepts, check, accept, maxBytes, perHour, maxWait, perDay })
   }
   return hooks
 }

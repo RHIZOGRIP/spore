@@ -46,7 +46,6 @@ const supervise = (fields = {}) => {
     command: 'true',
     answer: (line) => { answered = line },
     env: { PATH: process.env.PATH },
-    envOf: () => ({}),
     signal: stopping.signal,
     releaseHeld: () => ({ released: [], started: false }),
     ...fields
@@ -200,7 +199,7 @@ describe('what a job says', () => {
     writeFileSync(join(ws, 'data', 'routes', 'job-scan.route'), '#!/bin/sh\n')
     const asked = []
     await deliverJob(ws, { name: 'scan', run: 'r-1', event: 'ended', ref: 'ended', text: 'The job exited 0 after 3m.', report }, {
-      envOf: () => ({}),
+      env: {},
       log: (line) => logs.push(line),
       route: async (question) => { asked.push(question); return { wait: 30 * 60_000, summary: 'scan: done, 445 pages', replaces: false } },
       releaseHeld: () => { throw new Error('nothing is due') }
@@ -217,7 +216,7 @@ describe('what a job says', () => {
     writeFileSync(join(ws, 'data', 'routes', 'job-scan.route'), '#!/bin/sh\n')
     const released = []
     await deliverJob(ws, { name: 'scan', run: 'r-1', event: 'ended', ref: 'ended', text: 'The job exited 0 after 3m.', report }, {
-      envOf: () => ({}),
+      env: {},
       log: (line) => logs.push(line),
       route: async () => ({ wait: 30 * 60_000, summary: 'scan: done', replaces: false }),
       releaseHeld: (at) => { released.push(at); throw Object.assign(new Error('full'), { type: 'ADMISSION_FULL' }) }
@@ -233,7 +232,7 @@ describe('what a job says', () => {
 describe('while spores are paused', () => {
   it('keeps what a job says held, for the pass after the pause is lifted', async () => {
     await deliverJob(ws, { name: 'scan', run: 'r-9', event: 'ended', ref: 'ended', text: 'The job exited 0 after 3m.', report: { job: 'scan', run: 'r-9', event: 'ended' } }, {
-      envOf: () => ({}),
+      env: {},
       log: (line) => logs.push(line),
       releaseHeld: () => { throw Object.assign(new Error('your spores are paused'), { type: 'PAUSED' }) }
     })

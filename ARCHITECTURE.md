@@ -765,7 +765,11 @@ in [docs/operating.md](docs/operating.md).
 Telegram plugin's `telegram/<bot>.json`, one per bot — and `ssh/`, the keys the `ssh-agent`
 service holds for spores to sign with. Every spore command reads `environment` itself at start
 (`loadEnvironment`), a variable already set winning; the library never does, since its callers
-pass their own `env`. The home holds spores, one per subdirectory, and nothing else, so it can be
+pass their own `env`. A runner, and a cell run outside any turn, start from that `env` whoever
+starts them (`turnEnv`): `environment` read again for what it lacks, and none of the secrets the
+host's services keep — every `${VAR}` in `hooks.json`, `api.json`, `config.json`'s `approvals` and a
+plugin service's instance files — unless `sources.json`, `memory.json` or a granted plugin's
+sources name it, since those are the runner's to fill. The home holds spores, one per subdirectory, and nothing else, so it can be
 backed up, moved or wiped without taking configuration or credentials with it.
 `$XDG_STATE_HOME/spore/` holds what the user's spores share while they run: the admission slots,
 the spend ledger, the pause mark, `tick.lock`, each job supervisor's lock, each service's start
@@ -1668,8 +1672,8 @@ spore, which kept it and why the others did not.
 is the body's SHA-256 — what the signature covers — and the sender's delivery header, which no
 signature covers, is kept only to show; so a retried delivery is taken once by each spore, and so
 is a captured one sent again under a new delivery id. Nothing a spore is handed of the service's
-environment — a turn's runner, a triage cell — holds a hook's secrets: the service leaves out
-every variable a hook's `${VAR}` named. When one of a hook's spores could not be reached the
+environment — a turn's runner, a triage cell — holds a hook's secrets: they start without every
+service's (§Where workspaces live). When one of a hook's spores could not be reached the
 answer is `500`, and the sender's retry reaches only that one. `perHour` bounds the deliveries of
 a hook let start a turn in each spore an hour, as an API caller's does (§The HTTP API), counted
 from the spore's inbox and held deliveries, so a restart of the service forgets none. Past it a

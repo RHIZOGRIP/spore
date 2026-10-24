@@ -19,12 +19,13 @@ use std::time::Duration;
 use serde_json::json;
 use spore_definition::{parse_definition, Definition, Options, TOOL_NAMES};
 use spore_runner::broker::Served;
+use spore_runner::host::HostArgs;
 use spore_runner::supervise::{
-    confined, contain_refused, kept_from, kept_refusal, owner_token, owners_with, supervise,
-    uncontained, Kept, GRACE, OWNERS,
+    confined, contain_refused, kept_refusal, owner_token, owners_with, supervise, uncontained,
+    GRACE, OWNERS,
 };
 use spore_runner::{broker, job, model, source, store, trace, vectors};
-use spore_workspace::spend::{spend_refusal, Limits};
+use spore_workspace::spend::spend_refusal;
 use spore_workspace::{
     acquire_lock, agent_env, begin_turn, crash_at, end_channel, finalize_turn, free_bytes,
     hand_over, iso_now, leave_wal, limit_file_size, make_spore_socket_dir, prune_trail,
@@ -41,23 +42,17 @@ use tokio::sync::watch;
 struct Args {
     ws: PathBuf,
     slot: Option<String>,
-    node: Option<String>,
-    session: Option<String>,
-    chatgpt_helper: Option<String>,
+    host: HostArgs,
     sources: Option<PathBuf>,
     plugin_sources: serde_json::Map<String, serde_json::Value>,
-    kept: Vec<Kept>,
     memory: Option<PathBuf>,
     env: Vec<(String, String)>,
     largest_file: u64,
     free_floor: u64,
-    spend: Limits,
     model_sessions: usize,
-    gate: Option<PathBuf>,
     reply_to: Option<String>,
     debug: bool,
     unsafe_: bool,
-    no_contain: bool,
     continuing: bool,
     dream: bool,
 }
@@ -71,23 +66,17 @@ fn parse_args() -> Args {
     let mut args = Args {
         ws: PathBuf::from("."),
         slot: None,
-        node: None,
-        session: None,
-        chatgpt_helper: None,
+        host: HostArgs::default(),
         sources: None,
         plugin_sources: serde_json::Map::new(),
-        kept: Vec::new(),
         memory: None,
         env: Vec::new(),
         largest_file: DEFAULT_LARGEST_FILE,
         free_floor: DEFAULT_FREE_FLOOR,
-        spend: Limits::default(),
         model_sessions: DEFAULT_MODEL_SESSIONS as usize,
-        gate: None,
         reply_to: None,
         debug: false,
         unsafe_: false,
-        no_contain: false,
         continuing: false,
         dream: false,
     };
@@ -98,12 +87,14 @@ fn parse_args() -> Args {
                 .next()
                 .unwrap_or_else(|| fail(format!("{name} needs a value")))
         };
+        match args.host.take(&arg, || value(&arg)) {
+            Ok(true) => continue,
+            Ok(false) => {}
+            Err(problem) => fail(problem),
+        }
         match arg.as_str() {
             "--ws" => args.ws = PathBuf::from(value("--ws")),
             "--slot" => args.slot = Some(value("--slot")),
-            "--node" => args.node = Some(value("--node")),
-            "--session" => args.session = Some(value("--session")),
-            "--chatgpt-helper" => args.chatgpt_helper = Some(value("--chatgpt-helper")),
             "--sources" => args.sources = Some(PathBuf::from(value("--sources"))),
             "--plugin-sources" => {
                 let given = value("--plugin-sources");
@@ -114,23 +105,11 @@ fn parse_args() -> Args {
                     )),
                 }
             }
-            "--contain-keep" => {
-                args.kept = match kept_from(&value("--contain-keep")) {
-                    Ok(kept) => kept,
-                    Err(e) => fail(e),
-                }
-            }
             "--memory" => args.memory = Some(PathBuf::from(value("--memory"))),
             "--largest-file" => {
                 args.largest_file = bytes("--largest-file", &value("--largest-file"))
             }
             "--free-floor" => args.free_floor = bytes("--free-floor", &value("--free-floor")),
-            "--spend-per-day" => {
-                args.spend.day = Some(dollars("--spend-per-day", &value("--spend-per-day")))
-            }
-            "--spend-per-month" => {
-                args.spend.month = Some(dollars("--spend-per-month", &value("--spend-per-month")))
-            }
             "--model-sessions" => {
                 let given = value("--model-sessions");
                 args.model_sessions = match given.parse::<usize>() {
@@ -138,11 +117,9 @@ fn parse_args() -> Args {
                     _ => fail(format!("--model-sessions is a count from 1 — got {given}")),
                 }
             }
-            "--gate" => args.gate = Some(PathBuf::from(value("--gate"))),
             "--reply-to" => args.reply_to = Some(value("--reply-to")),
             "--debug" => args.debug = true,
             "--unsafe" => args.unsafe_ = true,
-            "--no-contain" => args.no_contain = true,
             "--continue" => args.continuing = true,
             "--dream" => args.dream = true,
             other => fail(format!("unknown argument {other}")),
@@ -158,15 +135,6 @@ fn parse_args() -> Args {
         std::env::remove_var(PLUGIN_ENV);
     }
     args
-}
-
-fn dollars(name: &str, given: &str) -> f64 {
-    match given.parse::<f64>() {
-        Ok(amount) if amount > 0.0 && amount.is_finite() => amount,
-        _ => fail(format!(
-            "{name} is an amount of dollars above zero — got {given}"
-        )),
-    }
 }
 
 fn bytes(name: &str, given: &str) -> u64 {
@@ -355,11 +323,11 @@ async fn main() {
         .parent()
         .expect("a slot lives in a directory")
         .to_path_buf();
-    let node = args.node.clone().unwrap_or_else(|| fail("a runner is told which node to start the agent with — start it through send() or fork()"));
+    let node = args.host.node.clone().unwrap_or_else(|| fail("a runner is told which node to start the agent with — start it through send() or fork()"));
     let ws = std::path::absolute(&args.ws)
         .unwrap_or_else(|e| fail(format!("{} — {e}", args.ws.display())));
     let given = std::env::var("SPORE_MODEL_SOCKET").ok();
-    if given.is_none() && (args.session.is_none() || args.chatgpt_helper.is_none()) {
+    if given.is_none() && (args.host.session.is_none() || args.host.chatgpt_helper.is_none()) {
         fail("a runner is told mohdel's session program and its ChatGPT helper — start it through send() or fork()")
     }
     if !ws.is_dir() {
@@ -540,7 +508,7 @@ async fn main() {
             .chain(def.cell_models.iter().map(|named| &named.model))
             .cloned()
             .collect();
-        let upstream = match (&given, &args.gate) {
+        let upstream = match (&given, &args.host.gate) {
             (Some(_), _) => None,
             (None, Some(gate)) => {
                 let Some(auth) = def.auth.clone() else {
@@ -562,8 +530,8 @@ async fn main() {
             }
             (None, None) => {
                 std::env::set_var("MOHDEL_MEDIA_ROOTS", media_roots(&ws, &def));
-                let session = args.session.clone().expect("checked above");
-                let helper = args.chatgpt_helper.clone().expect("checked above");
+                let session = args.host.session.clone().expect("checked above");
+                let helper = args.host.chatgpt_helper.clone().expect("checked above");
                 Some(model::Upstream::Pool(model::start_pool(
                     node.clone(),
                     session,
@@ -662,7 +630,7 @@ async fn main() {
             Some(upstream) => {
                 let spending = model::Spending {
                     slots: slots.clone(),
-                    limits: args.spend,
+                    limits: args.host.spend,
                 };
                 let model = model::Model::new(key.clone(), def.limits.cost.hard, Some(spending), upstream.clone());
                 let path = socket(&sockets, "model")?;
@@ -704,7 +672,7 @@ async fn main() {
         let mut command = if args.unsafe_ {
             Command::new(&node)
         } else {
-            confined(&root(), &node, !args.no_contain, &args.kept)
+            confined(&root(), &node, !args.host.no_contain, &args.host.kept)
         };
         command
             .arg(root().join("bin").join("spore-agent.js"))
@@ -787,7 +755,7 @@ async fn main() {
                 break 2;
             }
         }
-        if !args.unsafe_ && !args.no_contain {
+        if !args.unsafe_ && !args.host.no_contain {
             if let Some(why) = contain_refused(&root()) {
                 let problem = uncontained(&why);
                 eprintln!("spore: {problem}");
@@ -795,12 +763,13 @@ async fn main() {
                 break 2;
             }
         }
-        if let Some(problem) = kept_refusal(&args.kept, !args.unsafe_ && !args.no_contain) {
+        if let Some(problem) = kept_refusal(&args.host.kept, !args.unsafe_ && !args.host.no_contain)
+        {
             eprintln!("spore: {problem}");
             record(&ws, &iso_now(), "error", "CONTAIN_FAILED", &problem, 0.0);
             break 2;
         }
-        match spend_refusal(&slots, &args.spend) {
+        match spend_refusal(&slots, &args.host.spend) {
             Ok(None) => {}
             Ok(Some(refused)) => {
                 let problem = format!("{} — {}", refused.message, refused.detail);

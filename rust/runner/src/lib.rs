@@ -4,6 +4,7 @@
 pub mod broker;
 pub mod dial;
 pub mod enzymes;
+pub mod host;
 pub mod job;
 pub mod model;
 pub mod plan;
