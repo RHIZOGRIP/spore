@@ -4,7 +4,7 @@
  */
 
 import { randomBytes } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readSync, rmSync, symlinkSync, writeFileSync, writeSync } from 'node:fs'
 import { basename, relative, resolve } from 'node:path'
 
 import { headAndTail } from './preview.js'
@@ -114,12 +114,6 @@ export function diskUsage (ws) {
     : name === CALLS_DIR ? 'calls' : name === INBOX_DIR ? 'inbox' : name === DATA_DIR ? 'data' : 'other')
   for (const name of readdirSync(ws)) areas[areaOf(name)] += bytesUnder(resolve(ws, name))
   return { ...areas, total: Object.values(areas).reduce((a, b) => a + b, 0) }
-}
-
-/** What the records take on disk, file by file. */
-export function recordBytes (ws) {
-  return Object.fromEntries(STATE_FILES
-    .map(name => [name, existsSync(resolve(ws, name)) ? statSync(resolve(ws, name)).size : 0]))
 }
 
 export function statePath (ws) {

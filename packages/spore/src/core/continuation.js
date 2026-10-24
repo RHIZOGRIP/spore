@@ -35,7 +35,7 @@ function produced (ws) {
 const describe = (m) =>
   m.command
     ? m.command.replace(/\s+/g, ' ').slice(0, 90)
-    : m.path || m.url || m.query || m.files?.out?.path || ''
+    : m.path || m.files?.out?.path || ''
 
 /**
  * Assembled from the record on disk and nothing else — no model call, because the

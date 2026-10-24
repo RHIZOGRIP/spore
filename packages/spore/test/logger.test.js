@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { silent, cliLogger } from '../src/observability/logger.js'
+import { describe, it, expect, vi } from 'vitest'
+import { silent, cliLogger, jsonLogger } from '../src/observability/logger.js'
 
 describe('silent logger', () => {
   it('has all level methods', () => {
@@ -61,5 +61,24 @@ describe('logger compatibility for span binding', () => {
     const fakeSpan = { spanContext: () => ({ traceId: 'abc', spanId: '123' }) }
     expect(() => { logger = logger.child({ span: fakeSpan }) }).not.toThrow()
     expect(typeof logger.info).toBe('function')
+  })
+})
+
+describe('jsonLogger', () => {
+  it('writes the line without its fields when one cannot be serialized, and says so', () => {
+    const written = []
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((line) => { written.push(String(line)); return true })
+    const cyclic = {}
+    cyclic.self = cyclic
+    try {
+      jsonLogger({ level: 'info' }).child({ cyclic }).warn({ round: 2 }, 'recall failed')
+    } finally {
+      spy.mockRestore()
+    }
+    expect(written).toHaveLength(1)
+    const line = JSON.parse(written[0])
+    expect(line).toMatchObject({ level: 40, msg: 'recall failed' })
+    expect(line.unlogged).toMatch(/^its fields could not be written: .*circular/i)
+    expect(line.round).toBeUndefined()
   })
 })

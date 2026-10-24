@@ -10,7 +10,7 @@ import { effectiveContextLimit } from 'mohdel'
 import { sandbox } from '../isolation/sandbox.js'
 import { silent } from '../observability/logger.js'
 import { SporeError } from '../observability/errors.js'
-import { startSpan, endSpanOk, endSpanError, formatTraceparent } from '../observability/tracing.js'
+import { startSpan, endSpanOk, endSpanError, formatTraceparent, serializeSpanContext } from '../observability/tracing.js'
 import { createEmitter } from '../observability/emitter.js'
 import { attachEventLog } from '../observability/event-log.js'
 import { createLedger, micros, totalSpend, workUnits } from '../infra/ledger.js'
@@ -165,7 +165,7 @@ export async function runSpore ({
     'spore.workspace': WS,
     'spore.model': modelId
   }, parentSpan)
-  if (logger.child) logger = logger.child({ span: sporeDispatchSpan })
+  if (logger.child) logger = logger.child({ span: serializeSpanContext(sporeDispatchSpan) })
 
   logger.debug({ workspace: WS, cwd: process.cwd() }, '[spore] workspace')
   const systemBlocks = composeSystem({

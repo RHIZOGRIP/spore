@@ -87,7 +87,7 @@ export async function hashFile (path) {
   return hash.digest('hex').slice(0, HASH_LEN)
 }
 
-export async function fileRecord (absPath, { workspace, inlineBudget = INLINE_BUDGET } = {}) {
+export async function fileRecord (absPath, { workspace } = {}) {
   if (!existsSync(absPath)) return null
   const st = statSync(absPath)
   const record = {
@@ -97,7 +97,7 @@ export async function fileRecord (absPath, { workspace, inlineBudget = INLINE_BU
     mime: mimeOf(absPath),
     hash: await hashFile(absPath)
   }
-  if (st.size <= inlineBudget) {
+  if (st.size <= INLINE_BUDGET) {
     const text = decodeText(readFileSync(absPath))
     if (text !== null) {
       record.content = text
@@ -245,15 +245,10 @@ export function createCallTrail (workspace, { runId = Date.now().toString(36), s
   // A continued turn numbers on from where its calls stopped, so the paths its transcript
   // already names stay the right ones.
   let seq = from
-  let finished = 0
 
   return {
     runId,
     root,
-    // How many calls have been written down.
-    get finished () {
-      return finished
-    },
     get round () {
       return round
     },
@@ -292,7 +287,6 @@ export function createCallTrail (workspace, { runId = Date.now().toString(36), s
     finish (call, observed) {
       const meta = this.preview(call, observed)
       recordCall(state, callRow(runId, meta))
-      finished += 1
       return meta
     },
     /**

@@ -71,8 +71,15 @@ function safeStringify (obj) {
   try { return JSON.stringify(obj) } catch { return String(obj) }
 }
 
+// A field nobody can serialize costs the fields, never the line: what happened is still said.
 function write (entry) {
-  try { process.stderr.write(JSON.stringify(entry) + '\n') } catch {}
+  let line
+  try {
+    line = JSON.stringify(entry)
+  } catch (err) {
+    line = JSON.stringify({ level: entry.level, time: entry.time, msg: entry.msg, unlogged: `its fields could not be written: ${err.message.split('\n')[0]}` })
+  }
+  process.stderr.write(line + '\n')
 }
 
 export function jsonLogger ({ level = 'debug', bindings = {} } = {}) {

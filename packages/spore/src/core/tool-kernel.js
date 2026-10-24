@@ -84,14 +84,6 @@ async function executeSingle (tc, { toolFns, describe, emitter, signal, logger }
     return refusedResult(tc.id, tc.name, `there is no tool called "${tc.name}" here — you have ${available.join(', ') || 'none'}`)
   }
 
-  // Per-tool abort controller linked to parent
-  const child = new AbortController()
-  let onParentAbort
-  if (signal) {
-    onParentAbort = () => child.abort()
-    signal.addEventListener('abort', onParentAbort, { once: true })
-  }
-
   // A tool can hold the turn for minutes with nothing else emitted, so the heartbeat is
   // what tells a watcher the difference between working and hung.
   const heartbeatTimer = setInterval(() => {
@@ -101,12 +93,11 @@ async function executeSingle (tc, { toolFns, describe, emitter, signal, logger }
 
   let raw
   try {
-    raw = await fn(args, { signal: child.signal })
+    raw = await fn(args, { signal })
   } catch (e) {
     raw = refuse(e.message)
   } finally {
     clearInterval(heartbeatTimer)
-    if (onParentAbort) signal.removeEventListener('abort', onParentAbort)
   }
   const result = resultOf(raw)
   const message = toolMessage(tc, result)

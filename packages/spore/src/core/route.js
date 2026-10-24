@@ -71,11 +71,11 @@ export function judgesOf (ws, origin) {
 }
 
 /** The longest the spore's own step may take to decide: its router's timeout, then its cell's hard wall. */
-function decidingMs ({ router, precursor }, routeTimeoutMs) {
+function decidingMs ({ router, precursor }) {
   const cell = precursor ? parseDefinition(readFileSync(precursor, 'utf8'), { knownTools: TOOL_NAMES, cell: true }) : null
   // A precursor the agent wrote may not parse; its cell then fails at once, so deciding takes no longer.
   const cellMs = cell && !cell.error ? cell.limits.wall.hard : 0
-  return (router ? routeTimeoutMs : 0) + (precursor ? cellMs + routeTimeoutMs : 0)
+  return (router ? ROUTE_TIMEOUT_MS : 0) + (precursor ? cellMs + ROUTE_TIMEOUT_MS : 0)
 }
 
 /**
@@ -95,15 +95,15 @@ function decidingMs ({ router, precursor }, routeTimeoutMs) {
  */
 export function deliver ({
   ws, said, options: given, maxWait = null, perHour = null, stdin = null, headers = null, event, ref, perDay, briefing, env, configFile, log, heading,
-  now = Date.now, release = releaseHeld, say = enqueue, route = runRouter, launch = launchStandalone, routeTimeoutMs = ROUTE_TIMEOUT_MS,
-  prepareOf = prepareFor, programOf = pluginProgram, prepareBy = runPrepare
+  now = Date.now, release = releaseHeld, say = enqueue, route = runRouter, launch = launchStandalone,
+  programOf = pluginProgram, prepareBy = runPrepare
 }) {
   const origin = originOfOptions(given)
   if (origin === null) throw new SporeError('a message a person typed is said, never delivered', { type: 'DELIVERY_INVALID', detail: 'deliver takes a webhook\'s, a job\'s or an API caller\'s message; send takes a person\'s' })
   const start = perHour === null || startingSince(ws, origin, iso(now() - HOUR_MS)) < perHour
   const options = start ? given : { ...given, startsTurn: false }
   const past = start ? '' : ` — ${perHour} turns started in the last hour`
-  const prepare = prepareOf(ws, origin)
+  const prepare = prepareFor(ws, origin)
   if (!start && !prepare) {
     const sent = say(ws, said, options)
     return { outcome: `${sent.repeated ? 'already received' : 'said, not started'}${past}`, judged: Promise.resolve(), started: false, prepared: false }
@@ -112,13 +112,13 @@ export function deliver ({
   const timed = Boolean(judges.router || judges.precursor)
   const arrived = now()
   const preparing = prepare ? prepare.timeoutMs + PREPARE_GRACE_MS : 0
-  const deciding = timed ? decidingMs(judges, routeTimeoutMs) : 0
+  const deciding = timed ? decidingMs(judges) : 0
   const label = prepare && `what "${prepare.plugin}/${prepare.program}" prepares`
   const untold = prepare && { path: null, name: label, mime: null, bytes: null, missing: 'it did not answer: what ran it stopped first' }
   const kept = holdDelivery(ws, said, {
     ...options,
     ...(prepare ? { attach: [...(options.attach ?? []), untold] } : {}),
-    releaseAt: iso(arrived + preparing + (timed ? routeTimeoutMs : 0)),
+    releaseAt: iso(arrived + preparing + (timed ? ROUTE_TIMEOUT_MS : 0)),
     deadline: iso(arrived + preparing + deciding + (timed ? maxWait ?? 0 : 0))
   })
   if (kept.repeated) return { outcome: `already ${kept.repeated === true ? 'received' : kept.repeated}`, judged: Promise.resolve(), started: false, prepared: false }
@@ -131,7 +131,7 @@ export function deliver ({
   const judged = (async () => {
     const prepared = prepare ? await prepareStep({ ws, kept, prepare, untold, stdin, headers, origin, event, ref, programOf, prepareBy, now, said: tell }) : []
     if (prepared === null) return
-    if (timed) return timeStep({ ws, kept, prepared, judges, stdin, headers, origin, event, ref, maxWait, perDay, briefing, env, configFile, now, release, route, launch, routeTimeoutMs, said: tell })
+    if (timed) return timeStep({ ws, kept, prepared, judges, stdin, headers, origin, event, ref, maxWait, perDay, briefing, env, configFile, now, release, route, launch, said: tell })
     rescheduleHeld(ws, kept.held, iso(now()), { urgent: true })
     if (!start) {
       releaseDue(ws, iso(now()), { due: true })
@@ -191,13 +191,13 @@ async function prepareStep ({ ws, kept, prepare, untold, stdin, headers: headers
  * The spore's own step: its router, then its triage cell, answer how long the delivery may wait,
  * each shown what the prepare step attached.
  */
-async function timeStep ({ ws, kept, prepared, judges: { router, precursor }, stdin, headers: headersName, origin, event, ref, maxWait, perDay, briefing, env, configFile, now, release, route, launch, routeTimeoutMs, said }) {
+async function timeStep ({ ws, kept, prepared, judges: { router, precursor }, stdin, headers: headersName, origin, event, ref, maxWait, perDay, briefing, env, configFile, now, release, route, launch, said }) {
   const decided = now()
   const payload = stdin === null ? null : kept.files.find(file => file.path && file.name === stdin)
   const headers = headersName === null ? null : kept.files.find(file => file.path && file.name === headersName)
   let answer = { ask: true }
   if (router) {
-    const routed = await route({ router, ws, payload: payload ? join(ws, payload.path) : null, headers: headers?.path ?? null, prepared: prepared.length ? dirname(prepared[0].path) : null, origin, event, ref, timeoutMs: routeTimeoutMs })
+    const routed = await route({ router, ws, payload: payload ? join(ws, payload.path) : null, headers: headers?.path ?? null, prepared: prepared.length ? dirname(prepared[0].path) : null, origin, event, ref, timeoutMs: ROUTE_TIMEOUT_MS })
     answer = routed.failed ? { failed: `the router ${routed.failed}` } : routed
   }
   if (answer.ask) {
@@ -215,7 +215,7 @@ async function timeStep ({ ws, kept, prepared, judges: { router, precursor }, st
         perDay,
         env,
         configFile,
-        started: (wallMs) => rescheduleHeld(ws, kept.held, iso(now() + wallMs + routeTimeoutMs)),
+        started: (wallMs) => rescheduleHeld(ws, kept.held, iso(now() + wallMs + ROUTE_TIMEOUT_MS)),
         launch,
         now
       })
