@@ -6,22 +6,18 @@
  * answers.
  */
 
-import { readBot } from '@rhizogrip/spore/relay'
+import { readBot, routesOf, VERBS } from '@rhizogrip/spore/relay'
 import { SporeError } from '@rhizogrip/spore'
 
 import { header, isWorkingPost, plain } from './forward.js'
 
 const FIELDS = ['token', 'channels', 'avatars', 'react']
-const CHANNEL_FIELDS = ['spores', 'people', 'sporesTalk', 'details', 'show', 'brief']
 const SNOWFLAKE = /^\d+$/
-const VERBS = new Set(['status', 'stop', 'wrap', 'extend', 'help'])
 const HOOK_NAME = 'spore'
 const NOBODY = { parse: [] }
 const SHAPE = '{ "token": "${DISCORD_BOT_TOKEN}", "channels": { "<channel id>": { "spores": ["<spore>"], "people": ["<user id>", "role:<role id>"], "sporesTalk": false } } }' // eslint-disable-line no-template-curly-in-string
 
 const invalid = (path, problem, detail = `a bot is ${SHAPE}`) => new SporeError(`${path} ${problem}`, { type: 'DISCORD_BOT_INVALID', detail })
-
-const someone = (who) => who === '*' || SNOWFLAKE.test(who.replace(/^role:/, ''))
 
 /**
  * Each channel the bot serves, by id: its spores, the people who may address them (user ids,
@@ -29,31 +25,25 @@ const someone = (who) => who === '*' || SNOWFLAKE.test(who.replace(/^role:/, '')
  * `details`, `show` and `brief`. A channel absent from the file is not the bot's: Discord shows a bot every
  * channel it can see, and most are none of spore's business.
  */
-function routes (raw, path) {
-  if (typeof raw.channels !== 'object' || raw.channels === null || Array.isArray(raw.channels)) throw invalid(path, 'has no channels')
+const CONVERSATIONS = {
+  channels: {
+    kind: 'channel',
+    id: SNOWFLAKE,
+    says: 'which is not a channel id',
+    fix: 'a channel id is the number Copy Channel ID gives, with Developer Mode on',
+    fields: ['spores', 'people', 'sporesTalk', 'details', 'show', 'brief'],
+    flags: ['sporesTalk'],
+    people: { id: /^(role:)?\d+$/, says: 'user ids, role:<role id>', example: 'user id' }
+  }
+}
+
+function check (raw, path) {
   if (raw.avatars !== undefined) {
     const avatars = typeof raw.avatars === 'object' && raw.avatars !== null && !Array.isArray(raw.avatars) ? Object.entries(raw.avatars) : null
     if (!avatars || !avatars.every(([, url]) => typeof url === 'string' && /^https:\/\/\S+$/.test(url))) {
       throw invalid(path, 'has avatars that are not { "<spore>": "https://…" }: Discord fetches each image from its address')
     }
   }
-  const names = (list) => Array.isArray(list) && list.every(item => typeof item === 'string' && item)
-  const table = new Map()
-  for (const [channel, entry] of Object.entries(raw.channels)) {
-    if (!SNOWFLAKE.test(channel)) throw invalid(path, `names a channel "${channel}" that is not a channel id`)
-    const extra = Object.keys(entry ?? {}).filter(key => !CHANNEL_FIELDS.includes(key))
-    if (extra.length) {
-      const bots = extra.filter(key => FIELDS.includes(key))
-      throw invalid(path, `gives channel ${channel} ${extra.join(', ')}, which a channel does not take`, `a channel takes ${CHANNEL_FIELDS.join(', ')}${bots.length ? `; ${bots.join(', ')} is the bot's, beside channels` : ''}`)
-    }
-    if (!names(entry.spores) || !entry.spores.length) throw invalid(path, `has a channel ${channel} with no spores`)
-    if (!names(entry.people) || !entry.people.every(someone)) throw invalid(path, `has a channel ${channel} whose people are not user ids, role:<role id> or *`)
-    for (const flag of ['sporesTalk', 'details', 'brief']) {
-      if (entry[flag] !== undefined && typeof entry[flag] !== 'boolean') throw invalid(path, `has a channel ${channel} whose ${flag} is not true or false`)
-    }
-    table.set(channel, { spores: entry.spores, details: entry.details === true, show: entry.show ?? null, brief: entry.brief ?? null, people: entry.people, overhear: false, sporesTalk: entry.sporesTalk === true })
-  }
-  return table
 }
 
 const HELP = 'Address a spore by its role — @triage — or by replying to its post. "@triage status" says what it is doing; "@triage stop" ends the turn it is running and sets aside what you sent that it had not read; "@triage wrap 10m" asks it to wrap up'
@@ -69,7 +59,8 @@ export const DISCORD = {
   sourceVariables: ['DISCORD_BOT_TOKEN'],
   refusals: ['DISCORD_REFUSED'],
   example: SHAPE,
-  routes,
+  conversations: CONVERSATIONS,
+  check,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '"@<spore> extend wall 30m", "@<spore> extend cost 1.50" or "@<spore> extend rounds 20"' },
   limits: { message: 1800, file: 20 * 1024 * 1024, fetch: 25 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 8000 },
   can: { upload: true, remove: true, react: true, typing: true, reply: false, choose: false, fields: false },
@@ -170,7 +161,7 @@ export function createAdapter ({ discord, me, botFile }) {
       return discord.connect({
         onMessage: async (d) => {
           if (d.author.id === me.id) return
-          const entry = routes(readBot(DISCORD, botFile), botFile).get(d.channel_id)
+          const entry = routesOf(DISCORD, botFile).get(d.channel_id)
           if (!entry) return
           await channelOf(d.channel_id)
           const roles = await rolesOf(d.guild_id, entry.spores)

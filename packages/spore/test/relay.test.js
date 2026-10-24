@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
 import {
-  announce, botNames, botPath, createDelivery, credentialOf, credentialVariables,
+  announce, backoff, botNames, botPath, createDelivery, credentialOf, credentialVariables,
   loadState, pieces, reactionsOf, reply, routesOf, saveState, statePath, waiting
 } from '../src/relay/index.js'
 
@@ -17,7 +17,9 @@ const SPEC = {
   can: { react: true },
   reactions: ['👨‍💻', '💔', '👀'],
   example: '{ "token": "${CHAT_TOKEN}", "rooms": {} }', // eslint-disable-line no-template-curly-in-string
-  routes: (raw) => new Map(Object.entries(raw.rooms).map(([room, entry]) => [room, { spores: [entry.spore ?? entry], details: entry.details === true, show: entry.show ?? null, brief: entry.brief ?? null, people: null }]))
+  conversations: {
+    rooms: { kind: 'room', id: /^r\d+$/, says: 'which is not a room', fix: 'a room is r and a number', called: 'its number', fields: ['spore', 'details', 'show', 'brief'] }
+  }
 }
 
 let DIR
@@ -40,7 +42,7 @@ describe('a bot file', () => {
     write('ops', { token: '${OPS_TOKEN}', rooms: {}, extra: 1 }) // eslint-disable-line no-template-curly-in-string
     expect(() => routesOf(SPEC, path)).toThrow(/a field spore does not know — extra/)
     write('ops', { token: '${OPS_TOKEN}', rooms: { r1: 'triage' } }) // eslint-disable-line no-template-curly-in-string
-    expect(routesOf(SPEC, path)).toEqual(new Map([['r1', { spores: ['triage'], details: false, show: null, brief: false, people: null }]]))
+    expect(routesOf(SPEC, path)).toEqual(new Map([['r1', { spores: ['triage'], details: false, show: null, brief: false, overhear: false, people: null }]]))
   })
 
   it('takes how a conversation is shown a turn, and refuses a way it does not know or a reaction the platform cannot make', () => {
@@ -63,6 +65,39 @@ describe('a bot file', () => {
     expect(() => routesOf(SPEC, path)).toThrow(/gives r1 both brief and details/)
     write('ops', { token: '${OPS_TOKEN}', brief: 'yes', rooms: {} }) // eslint-disable-line no-template-curly-in-string
     expect(() => routesOf(SPEC, path)).toThrow(/has a brief that is not true or false/)
+  })
+
+  it('reads conversations many people share as their section declares them, after the platform\'s own fields', () => {
+    const SHARED = {
+      ...SPEC,
+      fields: ['token', 'people', 'halls', 'region'],
+      check: (raw, path) => { if (raw.region !== undefined) throw new Error(`${path} has a region`) },
+      conversations: {
+        people: { kind: 'person', id: /^u\d+$/, says: 'which is not a user', fix: 'a user is u and a number', not: [{ id: /^u0$/, says: 'which is the system', fix: 'u0 is nobody' }], called: 'their number', fields: ['spore', 'details', 'brief'] },
+        halls: { kind: 'hall', id: /^h\d+$/, says: 'which is not a hall', fix: 'a hall is h and a number', fields: ['spores', 'people', 'details', 'loud'], flags: ['loud'], one: true, people: { id: /^u\d+$/, says: 'users', example: 'user' } }
+      }
+    }
+    const path = botPath(SHARED, 'ops', CONFIG)
+    const token = '${OPS_TOKEN}' // eslint-disable-line no-template-curly-in-string
+    write('ops', { token, people: { u1: 'triage' }, halls: { h1: { spores: ['ops'], people: ['*', 'u2'], loud: true } } })
+    expect(routesOf(SHARED, path)).toEqual(new Map([
+      ['u1', { spores: ['triage'], details: false, show: null, brief: false, overhear: false, people: null }],
+      ['h1', { spores: ['ops'], details: false, show: null, brief: false, overhear: false, loud: true, people: ['*', 'u2'] }]
+    ]))
+    write('ops', { token, region: 'eu', people: {} })
+    expect(() => routesOf(SHARED, path)).toThrow(/has a region/)
+    write('ops', { token })
+    expect(() => routesOf(SHARED, path)).toThrow(/has no people and no halls/)
+    write('ops', { token, people: { u0: 'triage' } })
+    expect(() => routesOf(SHARED, path)).toThrow(expect.objectContaining({ message: expect.stringMatching(/names "u0" among its people, which is the system/), detail: 'u0 is nobody' }))
+    write('ops', { token, people: { u1: { spore: 'triage', token } } })
+    expect(() => routesOf(SHARED, path)).toThrow(expect.objectContaining({ detail: 'a person takes spore, details, brief; token is the bot\'s, beside people and halls' }))
+    write('ops', { token, halls: { h1: { spores: ['ops', 'qa'], people: ['*'] } } })
+    expect(() => routesOf(SHARED, path)).toThrow(/gives hall h1 2 spores/)
+    write('ops', { token, halls: { h1: { spores: ['ops'], people: ['bob'] } } })
+    expect(() => routesOf(SHARED, path)).toThrow(/has a hall h1 whose people are not users or \*/)
+    write('ops', { token, halls: { h1: { spores: ['ops'], people: ['*'], loud: 'yes' } } })
+    expect(() => routesOf(SHARED, path)).toThrow(/has a hall h1 whose loud is not true or false/)
   })
 
   it('reacts with the emoji it names, the others as they come, and refuses one the platform does not take', () => {
@@ -191,6 +226,14 @@ describe('delivery', () => {
     await expect(first).rejects.toThrow('lost')
     await second
     expect(order).toEqual(['first', 'second'])
+  })
+
+  it('backs off from a second, doubling to a minute, unless the platform names a wait, and starts over once a try worked', () => {
+    const retry = backoff()
+    const waits = [retry.after(), retry.after(), retry.after(retryable(5)), ...Array.from({ length: 5 }, () => retry.after())]
+    expect(waits).toEqual([1000, 2000, 5000, 8000, 16_000, 32_000, 60_000, 60_000])
+    retry.reset()
+    expect(retry.after(new Error('lost'))).toBe(1000)
   })
 })
 

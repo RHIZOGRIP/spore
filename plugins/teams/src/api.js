@@ -5,8 +5,7 @@
  * when Microsoft said how long to wait).
  */
 
-import { SporeError } from '@rhizogrip/spore'
-import { download } from '@rhizogrip/spore/relay'
+import { download, platformFailed, retryAfterOf } from '@rhizogrip/spore/relay'
 
 const RETRYABLE = new Set([412, 429, 502, 503, 504])
 
@@ -24,16 +23,16 @@ export function createConnector ({ token, fetchImpl = fetch }) {
         signal: AbortSignal.timeout(60_000)
       })
     } catch (err) {
-      throw new SporeError(`teams ${method} failed`, { type: 'TEAMS_FAILED', detail: err.message, retryable: true, context: { status: null, code: null, retryAfter: null } })
+      throw platformFailed('teams', method, { detail: err.message, retryable: true })
     }
     const answer = await response.json().catch(() => null)
     if (!response.ok) {
-      const after = Number(response.headers.get('retry-after'))
-      throw new SporeError(`teams ${method} failed`, {
-        type: 'TEAMS_FAILED',
+      throw platformFailed('teams', method, {
         detail: answer?.error?.message ?? answer?.message ?? `HTTP ${response.status}`,
         retryable: RETRYABLE.has(response.status),
-        context: { status: response.status, code: answer?.error?.code ?? null, retryAfter: Number.isFinite(after) && after > 0 ? after : null }
+        status: response.status,
+        code: answer?.error?.code ?? null,
+        retryAfter: retryAfterOf(response)
       })
     }
     return answer

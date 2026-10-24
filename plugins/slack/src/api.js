@@ -6,8 +6,7 @@
  * wait); a token Slack will not have at all is a `SLACK_REFUSED`.
  */
 
-import { SporeError } from '@rhizogrip/spore'
-import { download } from '@rhizogrip/spore/relay'
+import { download, platformFailed, retryAfterOf } from '@rhizogrip/spore/relay'
 
 const BASE = 'https://slack.com/api/'
 const RETRYABLE = new Set(['ratelimited', 'internal_error', 'fatal_error', 'service_unavailable', 'request_timeout'])
@@ -19,13 +18,12 @@ const HINTS = {
   missing_scope: 'add it to the app\'s bot token scopes at api.slack.com/apps, then reinstall the app — the manifest in the plugin\'s README lists every scope'
 }
 
-const failed = (method, { detail, retryable, status = null, code = null, retryAfter = null }) =>
-  new SporeError(`slack ${method} failed`, {
-    type: REFUSED.has(code) ? 'SLACK_REFUSED' : 'SLACK_FAILED',
-    detail: HINTS[code] ? `${detail} — ${HINTS[code]}` : detail,
-    retryable,
-    context: { status, code, retryAfter }
-  })
+const failed = (method, { detail, code = null, ...rest }) => platformFailed('slack', method, {
+  ...rest,
+  code,
+  detail: HINTS[code] ? `${detail} — ${HINTS[code]}` : detail,
+  ...(REFUSED.has(code) ? { type: 'SLACK_REFUSED' } : {})
+})
 
 export function createSlack ({ token, app, fetchImpl = fetch, base = BASE }) {
   const call = async (method, args = {}, bearer = token) => {
@@ -46,8 +44,7 @@ export function createSlack ({ token, app, fetchImpl = fetch, base = BASE }) {
     }
     if (response.status === 429) {
       await response.body?.cancel()
-      const after = Number(response.headers.get('retry-after'))
-      throw failed(method, { detail: 'ratelimited', retryable: true, status: 429, code: 'ratelimited', retryAfter: Number.isFinite(after) && after > 0 ? after : null })
+      throw failed(method, { detail: 'ratelimited', retryable: true, status: 429, code: 'ratelimited', retryAfter: retryAfterOf(response) })
     }
     const answer = await response.json().catch(() => null)
     if (!response.ok || answer === null) throw failed(method, { detail: `HTTP ${response.status}`, retryable: response.status >= 500, status: response.status })

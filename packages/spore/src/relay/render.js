@@ -17,6 +17,9 @@ import { show } from '../library/verbs.js'
 
 const PLAIN_ENDINGS = new Set(['answer', 'question'])
 
+/** `text` with `&`, `<` and `>` as entities, which HTML and Slack's mrkdwn both take literally. */
+export const escapeHtml = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
 const ending = (record) => [record.stopReason, record.error].filter(Boolean).join(' · ')
 
 /** How the turn ended, where a conversation is told it beside the answer — null for an answer, a question or quiet. */

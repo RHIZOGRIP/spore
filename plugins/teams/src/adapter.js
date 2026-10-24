@@ -6,15 +6,13 @@
  */
 
 import { SporeError } from '@rhizogrip/spore'
+import { commandOf, escapeHtml } from '@rhizogrip/spore/relay'
 
 const FIELDS = ['app', 'tenant', 'secret', 'listen', 'people', 'channels', 'trace']
-const PERSON_FIELDS = ['spore', 'details', 'brief']
-const CHANNEL_FIELDS = ['spores', 'people', 'details', 'brief']
 const PERSON = /^[0-9a-f][0-9a-f-]*$/i
 const CHANNEL = /^19:[^\s;]+@thread\.[a-z0-9]+$/i
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
 const THREAD = ';messageid='
-const COMMAND = /^\/([a-z]+)(?:\s+(.+))?$/is
 const SERVICE_URL = 'https://smba.trafficmanager.net/teams/'
 const CARD = 'application/vnd.microsoft.card.adaptive'
 const DOWNLOAD_INFO = 'application/vnd.microsoft.teams.file.download.info'
@@ -27,19 +25,6 @@ const SHAPE = '{ "app": "<app id>", "tenant": "<tenant id>", "secret": "${OPS_TE
 const invalid = (path, problem, detail = `a bot is ${SHAPE}`) => new SporeError(`${path} ${problem}`, { type: 'TEAMS_BOT_INVALID', detail })
 
 const record = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const flags = (path, kind, id, entry) => {
-  for (const name of ['details', 'brief']) {
-    if (entry[name] !== undefined && typeof entry[name] !== 'boolean') throw invalid(path, `has a ${kind} ${id} whose ${name} is not true or false`)
-  }
-}
-
-const strays = (path, kind, id, entry, takes) => {
-  const extra = Object.keys(entry).filter(key => !takes.includes(key))
-  if (!extra.length) return
-  const bots = extra.filter(key => FIELDS.includes(key))
-  throw invalid(path, `gives ${kind} ${id} ${extra.join(', ')}, which a ${kind} does not take`, `a ${kind} takes ${takes.join(', ')}${bots.length ? `; ${bots.join(', ')} is the bot's, beside people and channels` : ''}`)
-}
 
 /** Where the service listens, `<loopback host>:<port>`: the operator's proxy is what faces Microsoft. */
 export function listenOf (raw, path) {
@@ -58,44 +43,32 @@ export function listenOf (raw, path) {
  * `*` for everyone in the channel. `details` shows the calls themselves rather than their kinds;
  * `brief` is the bot's own, for this conversation.
  */
-function routes (raw, path) {
+const CONVERSATIONS = {
+  people: {
+    kind: 'person',
+    id: PERSON,
+    says: 'which is not an Entra object id',
+    fix: 'a person is their object id in Entra ID; a channel\'s id begins 19: and goes under channels',
+    called: 'their object id',
+    fields: ['spore', 'details', 'brief']
+  },
+  channels: {
+    kind: 'channel',
+    id: CHANNEL,
+    says: 'which is not a channel id',
+    fix: 'a channel id is 19:…@thread.tacv2, from the channel\'s link in Teams',
+    fields: ['spores', 'people', 'details', 'brief'],
+    one: true,
+    people: { id: PERSON, says: 'object ids', example: 'object id' }
+  }
+}
+
+function check (raw, path) {
   for (const field of ['app', 'tenant']) {
     if (typeof raw[field] !== 'string' || !raw[field]) throw invalid(path, `has no ${field}`, `${field} is the Azure Bot's ${field === 'app' ? 'Microsoft App ID' : 'app tenant ID'}`)
   }
   listenOf(raw, path)
   if (raw.trace !== undefined && typeof raw.trace !== 'boolean') throw invalid(path, 'has a trace that is not true or false', 'trace: true writes every activity Teams delivers to the log, as it came')
-  if (raw.people === undefined && raw.channels === undefined) {
-    throw invalid(path, 'has no people and no channels', `a bot is ${SHAPE} — "people": {} while you learn the ids: the log names everyone it refuses`)
-  }
-  const entries = (field) => {
-    const value = raw[field] ?? {}
-    if (!record(value)) throw invalid(path, `has ${field} that is not { "<id>": … }`)
-    return Object.entries(value)
-  }
-  const table = new Map()
-  for (const [person, entry] of entries('people')) {
-    if (!PERSON.test(person)) throw invalid(path, `names "${person}" among its people, which is not an Entra object id`, 'a person is their object id in Entra ID; a channel\'s id begins 19: and goes under channels')
-    if (record(entry)) {
-      strays(path, 'person', person, entry, PERSON_FIELDS)
-      flags(path, 'person', person, entry)
-    }
-    const spore = record(entry) ? entry.spore : entry
-    if (typeof spore !== 'string' || !spore) throw invalid(path, `maps person ${person} to something that is not a spore`, 'each person is their object id against the name of the spore they reach, or { "spore": "<name>", "details": true }')
-    table.set(person, { spores: [spore], details: record(entry) && entry.details === true, show: null, brief: record(entry) ? entry.brief ?? null : null, people: null, overhear: false })
-  }
-  for (const [channel, entry] of entries('channels')) {
-    if (!CHANNEL.test(channel)) throw invalid(path, `names "${channel}" among its channels, which is not a channel id`, 'a channel id is 19:…@thread.tacv2, from the channel\'s link in Teams')
-    if (!record(entry)) throw invalid(path, `has a channel ${channel} that is not { "spores": [...], "people": [...] }`)
-    strays(path, 'channel', channel, entry, CHANNEL_FIELDS)
-    flags(path, 'channel', channel, entry)
-    if (!Array.isArray(entry.spores) || !entry.spores.length || !entry.spores.every(spore => typeof spore === 'string' && spore)) throw invalid(path, `has a channel ${channel} with no spores`)
-    if (entry.spores.length > 1) throw invalid(path, `gives channel ${channel} ${entry.spores.length} spores`, 'a bot speaks in a channel as itself, so a channel has one spore — a second spore there is a second bot')
-    if (!Array.isArray(entry.people) || !entry.people.every(who => who === '*' || (typeof who === 'string' && PERSON.test(who)))) {
-      throw invalid(path, `has a channel ${channel} whose people are not object ids or *`, 'people is who may address its spore — ["<object id>", …], or ["*"] for everyone in the channel, written out')
-    }
-    table.set(channel, { spores: entry.spores, details: entry.details === true, show: null, brief: entry.brief ?? null, people: entry.people, overhear: false })
-  }
-  return table
 }
 
 const HELP = 'Anything you write to me in a personal chat goes to the spore; in a channel, mention me. /status says what it is doing; /stop ends the turn it is running and sets aside what you sent that it had not read; /wrap [10m] asks it to wrap up'
@@ -111,7 +84,8 @@ export const TEAMS = {
   sourceVariables: [],
   refusals: ['TEAMS_REFUSED', 'TEAMS_LISTEN_REFUSED'],
   example: SHAPE,
-  routes,
+  conversations: CONVERSATIONS,
+  check,
   routeOf: (conversation) => conversation.split(THREAD)[0],
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 40000, file: 0, fetch: 25 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 4000 },
@@ -119,7 +93,6 @@ export const TEAMS = {
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {
-    if (err.type === 'TEAMS_NO_BOT') return `mkdir -p ${file.slice(0, file.lastIndexOf('/'))} — then ${file} as ${SHAPE}`
     if (err.type === 'TEAMS_REFUSED') return 'the app id, its tenant and a client secret come from the Azure Bot\'s app registration in Entra ID; the secret goes in environment beside config.json'
     if (err.type === 'TEAMS_LISTEN_REFUSED') return `another process holds that address — change listen in ${file}`
     return null
@@ -192,7 +165,6 @@ export function normalize (activity) {
   const personal = activity.conversation.conversationType === 'personal'
   const own = (activity.entities ?? []).filter(entity => entity.type === 'mention' && entity.mentioned?.id === activity.recipient.id).map(entity => entity.text)
   const text = plain(activity.text ?? '', own) || null
-  const command = text?.match(COMMAND)
   const channel = activity.channelData?.channel
   return {
     id: `${activity.conversation.id}:${activity.id}`,
@@ -203,13 +175,11 @@ export function normalize (activity) {
     where: personal ? 'a personal chat in Teams' : channel?.name ? `the Teams channel "${channel.name}"` : 'a Teams channel',
     shared: !personal,
     text,
-    command: command ? { verb: command[1].toLowerCase(), args: command[2] ?? '' } : null,
+    command: commandOf(text),
     addresses: personal || own.length ? null : [],
     files: filesOf(activity, personal)
   }
 }
-
-const escapeHtml = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 const tenantOf = (activity) => activity.conversation?.tenantId ?? activity.channelData?.tenant?.id
 

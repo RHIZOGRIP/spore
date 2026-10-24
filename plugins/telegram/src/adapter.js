@@ -5,14 +5,14 @@
  */
 
 import { SporeError } from '@rhizogrip/spore'
+import { backoff, escapeHtml, VERBS } from '@rhizogrip/spore/relay'
 
-import { escape, toHtml } from './format.js'
+import { toHtml } from './format.js'
 
 const COMMAND = /^\/([a-z]+)(@\w+)?(?:\s+(.+))?$/is
 const NOT_MODIFIED = /message is not modified/
 const CANNOT_PARSE = /can't parse entities/i
 const SHAPE = '{ "token": "${TRIAGE_BOT_TOKEN}", "people": { "<your user id>": "<spore>" }, "groups": { "<group id>": { "spores": ["<spore>"], "people": ["<user id>"] } } }' // eslint-disable-line no-template-curly-in-string
-const VERBS = new Set(['status', 'stop', 'wrap', 'extend', 'help'])
 
 /** What a bot may react with: `ReactionTypeEmoji` in the Bot API. */
 const REACTIONS = [
@@ -27,8 +27,6 @@ const REACTIONS = [
 ]
 
 const FIELDS = ['token', 'people', 'groups', 'react']
-const PERSON_FIELDS = ['spore', 'details', 'show', 'brief']
-const GROUP_FIELDS = ['spores', 'people', 'details', 'show', 'overhear', 'brief']
 const PERSON = /^\d+$/
 const GROUP = /^-\d+$/
 const STYLES = { positive: 'success', destructive: 'danger' }
@@ -37,23 +35,6 @@ const ALBUM_QUIET_MS = 1000
 const BODY = 'a Telegram body is { "html": "<Telegram\'s HTML, at most 4096 characters>" }'
 
 const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
-
-const invalid = (path, problem, detail = `a bot is ${SHAPE}`) => new SporeError(`${path} ${problem}`, { type: 'TELEGRAM_BOT_INVALID', detail })
-
-const strays = (path, kind, id, entry, takes) => {
-  const extra = Object.keys(entry).filter(key => !takes.includes(key))
-  if (!extra.length) return
-  const bots = extra.filter(key => FIELDS.includes(key))
-  throw invalid(path, `gives ${kind} ${id} ${extra.join(', ')}, which a ${kind} does not take`, `a ${kind} takes ${takes.join(', ')}${bots.length ? `; ${bots.join(', ')} is the bot's, beside people and groups` : ''}`)
-}
-
-const briefOf = (entry) => typeof entry.brief === 'boolean' ? entry.brief : null
-
-const flags = (path, kind, id, entry, names) => {
-  for (const name of names) {
-    if (entry[name] !== undefined && typeof entry[name] !== 'boolean') throw invalid(path, `has a ${kind} ${id} whose ${name} is not true or false`)
-  }
-}
 
 /**
  * The private chats, `people: { "<person id>": "<spore>" }` or `{ "spore", "details", "show",
@@ -65,40 +46,24 @@ const flags = (path, kind, id, entry, names) => {
  * bot speaks as itself, so a second spore is a second bot. `overhear` gives the spore what they say
  * there that is not to it.
  */
-function routes (raw, path) {
-  if (raw.people === undefined && raw.groups === undefined) {
-    throw invalid(path, 'has no people and no groups', `a bot is ${SHAPE} — "people": {} while you learn your user id: the log names every chat it refuses`)
+const CONVERSATIONS = {
+  people: {
+    kind: 'person',
+    id: PERSON,
+    says: 'which is not a person\'s id',
+    fix: 'a person\'s id is a positive number; a group\'s is negative, and goes under groups',
+    called: 'their id',
+    fields: ['spore', 'details', 'show', 'brief']
+  },
+  groups: {
+    kind: 'group',
+    id: GROUP,
+    says: 'which is not a group\'s id',
+    fix: 'a group\'s id is negative (-100… for a supergroup); a person\'s goes under people',
+    fields: ['spores', 'people', 'details', 'show', 'overhear', 'brief'],
+    one: true,
+    people: { id: PERSON, says: 'user ids', example: 'user id' }
   }
-  const entries = (field) => {
-    const value = raw[field] ?? {}
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) throw invalid(path, `has ${field} that is not { "<id>": … }`)
-    return Object.entries(value)
-  }
-  const table = new Map()
-  for (const [person, entry] of entries('people')) {
-    if (!PERSON.test(person)) throw invalid(path, `names "${person}" among its people, which is not a person's id`, 'a person\'s id is a positive number; a group\'s is negative, and goes under groups')
-    const shaped = typeof entry === 'object' && entry !== null && !Array.isArray(entry)
-    if (shaped) {
-      strays(path, 'person', person, entry, PERSON_FIELDS)
-      flags(path, 'person', person, entry, ['details', 'brief'])
-    }
-    const spore = shaped ? entry.spore : entry
-    if (typeof spore !== 'string' || !spore) throw invalid(path, `maps person ${person} to something that is not a spore`, 'each person is their id against the name of the spore they reach, or { "spore": "<name>", "details": true, "show": "react" }')
-    table.set(person, { spores: [spore], details: shaped && entry.details === true, show: shaped ? entry.show ?? null : null, brief: shaped ? briefOf(entry) : null, people: null, overhear: false })
-  }
-  for (const [group, entry] of entries('groups')) {
-    if (!GROUP.test(group)) throw invalid(path, `names "${group}" among its groups, which is not a group's id`, 'a group\'s id is negative (-100… for a supergroup); a person\'s goes under people')
-    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) throw invalid(path, `has a group ${group} that is not { "spores": [...], "people": [...] }`)
-    strays(path, 'group', group, entry, GROUP_FIELDS)
-    flags(path, 'group', group, entry, ['details', 'overhear', 'brief'])
-    if (!Array.isArray(entry.spores) || !entry.spores.length || !entry.spores.every(spore => typeof spore === 'string' && spore)) throw invalid(path, `has a group ${group} with no spores`)
-    if (entry.spores.length > 1) throw invalid(path, `gives group ${group} ${entry.spores.length} spores`, 'a bot speaks in a group as itself, so a group has one spore — a second spore there is a second bot')
-    if (!Array.isArray(entry.people) || !entry.people.every(who => who === '*' || (typeof who === 'string' && PERSON.test(who)))) {
-      throw invalid(path, `has a group ${group} whose people are not user ids or *`, 'people is who may address its spore — ["<user id>", …], or ["*"] for everyone in the group, written out')
-    }
-    table.set(group, { spores: entry.spores, details: entry.details === true, show: entry.show ?? null, brief: briefOf(entry), people: entry.people, overhear: entry.overhear === true })
-  }
-  return table
 }
 
 const HELP = 'Anything you write to me in private goes to the spore; in a group, mention me or reply to me. /status says what it is doing; /stop ends the turn it is running and sets aside what you sent that it had not read; /wrap [10m] asks it to wrap up'
@@ -114,7 +79,7 @@ export const TELEGRAM = {
   sourceVariables: [],
   refusals: ['TELEGRAM_CONFLICT'],
   example: SHAPE,
-  routes,
+  conversations: CONVERSATIONS,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 4096, file: 50 * 1024 * 1024, fetch: FETCH_MOST, editEveryMs: 2500, typingEveryMs: 4000 },
   can: { upload: true, remove: true, react: true, typing: true, reply: true, choose: true, fields: false },
@@ -180,7 +145,7 @@ const htmlOf = ({ native, fallback }) => native
   ? native.html
   : [
       fallback.text ? toHtml(fallback.text) : null,
-      fallback.facts?.length ? fallback.facts.map(([label, value]) => `<b>${escape(label)}</b>: ${escape(value)}`).join('\n') : null
+      fallback.facts?.length ? fallback.facts.map(([label, value]) => `<b>${escapeHtml(label)}</b>: ${escapeHtml(value)}`).join('\n') : null
     ].filter(Boolean).join('\n\n')
 
 /** A press on one of the bot's buttons as the relay takes it, or null for one on a message Telegram no longer shows. */
@@ -260,7 +225,7 @@ export function createAdapter ({ telegram, bot, me }) {
       let offset
       let seen = -1
       let album = null
-      let backoff = 1000
+      const retry = backoff()
       const take = async (update) => {
         const query = update.callback_query
         if (query) {
@@ -284,7 +249,7 @@ export function createAdapter ({ telegram, bot, me }) {
         let updates
         try {
           updates = await telegram.updates(offset, { seconds: album ? 0 : 30, signal })
-          backoff = 1000
+          retry.reset()
         } catch (err) {
           if (signal.aborted) break
           if (err.context?.status === 409) {
@@ -292,8 +257,7 @@ export function createAdapter ({ telegram, bot, me }) {
           }
           if (!err.retryable) throw err
           log(`poll failed — ${said(err)}`)
-          await sleep(err.context?.retryAfter ? err.context.retryAfter * 1000 : backoff)
-          backoff = Math.min(backoff * 2, 60_000)
+          await sleep(retry.after(err))
           continue
         }
         const fresh = updates.filter(update => update.update_id > seen)
@@ -359,7 +323,7 @@ export function createAdapter ({ telegram, bot, me }) {
 
     /** The question closed: replaced by `native` or `fallback`, or kept as `shown` with how it ended below. */
     settle: async (conversation, note, replacement) => {
-      const text = replacement.shown ? `${replacement.shown.text}\n\n<b>${escape(replacement.outcome)}</b>` : htmlOf(replacement)
+      const text = replacement.shown ? `${replacement.shown.text}\n\n<b>${escapeHtml(replacement.outcome)}</b>` : htmlOf(replacement)
       try {
         await telegram.close(Number(conversation), Number(note), text)
       } catch (err) {

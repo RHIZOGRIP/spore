@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 
 import { SporeError } from '@rhizogrip/spore'
-import { download } from '@rhizogrip/spore/relay'
+import { download, platformFailed } from '@rhizogrip/spore/relay'
 
 const BASE = 'https://api.telegram.org'
 
@@ -33,15 +33,15 @@ export function createTelegram (token, { fetchImpl = fetch, base = BASE } = {}) 
       })
     } catch (err) {
       if (signal?.aborted) throw err
-      throw new SporeError(`telegram ${method} failed`, { type: 'TELEGRAM_FAILED', detail: err.message, retryable: true, context: { status: null, retryAfter: null } })
+      throw platformFailed('telegram', method, { detail: err.message, retryable: true })
     }
     const answer = await response.json().catch(() => null)
     if (!answer?.ok) {
-      throw new SporeError(`telegram ${method} failed`, {
-        type: 'TELEGRAM_FAILED',
+      throw platformFailed('telegram', method, {
         detail: answer?.description || `HTTP ${response.status}`,
         retryable: response.status >= 500 || response.status === 429,
-        context: { status: response.status, retryAfter: answer?.parameters?.retry_after ?? null }
+        status: response.status,
+        retryAfter: answer?.parameters?.retry_after ?? null
       })
     }
     return answer.result

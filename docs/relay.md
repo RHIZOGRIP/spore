@@ -109,7 +109,8 @@ The static part, which the relay reads before the service starts:
 | `kind` | the place prefix (`<kind>:<bot>/<conversation>`), the outbox kind, the state directory, the bot files' folder, the prefix of error types (`CHAT_NO_BOT`) |
 | `label`, `noun` | the platform's name and what it calls a conversation (`chat`, `channel`), for what people and the log are told |
 | `fields`, `credentials`, `example` | the bot file's fields, those holding a `${VAR}`, and a first file to show |
-| `routes(raw, path)` | the routing read into a `Map` of conversation → `{ spores: [name], details, show, brief, people, overhear }`, `show` null where the file names none, `brief` null where the entry leaves it to the bot's, `people` null where it names no one, and `overhear` true where what is not said to the spores reaches them overheard — refusing what it cannot read |
+| `conversations` | the sections of the bot file its routing is written in, by field: each `{ kind, id, says, fix, fields }` — what a conversation there is called (`person`, `channel`), the pattern its id matches, why one that does not is refused (`which is not a member id`) and how to find a right one, and the fields an entry takes; `not`, ids refused though they match, each `{ id, says, fix }`; `flags`, the platform's own true-or-false fields, carried into the routing. A section of conversations many people share has `people`, `{ id, says, example }`, who may be named there besides `*`, and `one` when a conversation there has one spore; its entry is `{ "spores": [...], "people": [...] }`. Any other section is people's own conversations, an entry the spore's name or `{ "spore": … }`, with `called`, how a person there is identified (`their member id`). `routesOf` reads them into a `Map` of conversation → `{ spores: [name], details, show, brief, overhear, people, …flags }`, `show` null where the file names none, `brief` null where the entry leaves it to the bot's, `people` null for a person's own |
+| `check(raw, path)` | optional: refuses what the platform's own fields of the bot file hold (a workspace id, a listen address), before the routing is read |
 | `stateFields` | the adapter's own fields in the state file, handed to its `restore` |
 | `sourceVariables` | credential variables a source of the plugin needs in a turn's environment |
 | `usage` | `{ help, briefHelp, extend }`: the commands as this platform types them — `briefHelp` without `extend`, for a brief conversation |
@@ -118,7 +119,7 @@ The static part, which the relay reads before the service starts:
 | `showShared` | how a turn shows itself in a conversation many people share when the routing says nothing: `react` or `working` |
 | `reactions` | the emoji the platform lets a bot react with, or null for any |
 | `refusals` | error types that mean the platform will not have this bot at all: the service exits 2 and is not restarted |
-| `hint(err, { file, bot })` | the line to fix an error, or null |
+| `hint(err, { file, bot })` | the line to fix an error, or null — for a bot file that is not there, the relay then says to make one as `example` |
 | `refusal(message, botFile)` | the log line for a message from a conversation the routing does not name — or null where the platform shows the bot conversations that are none of its business: then nothing is logged, and the owner is not told |
 
 The live part, made once the credentials are proved:
@@ -143,7 +144,11 @@ The live part, made once the credentials are proved:
 | `quiet(conversation, { turnNo, origin })` | optional: a turn nobody in a conversation asked — a schedule, a webhook, a job, `origin` saying which — that ended quiet, shown in the spore's default conversation (`replyTo` in `config.json`) where that is this bot's. The core owes no conversation anything for it, so without this member nothing reaches one; for a platform whose reader is a program |
 
 Every failure is a `SporeError` with `retryable` (a refusal is not) and `context.retryAfter` in
-seconds when the platform said how long to wait. A platform that refuses the formatting of a
+seconds when the platform said how long to wait — `platformFailed(kind, what, { detail, retryable,
+status, code, retryAfter, type })` from `@rhizogrip/spore/relay` makes one, `<KIND>_FAILED` unless
+`type` says otherwise, and `retryAfterOf(response)` reads a `retry-after` header. A transport that
+connects again waits as `backoff()` says: `after(err)`, 1 s doubled to a minute or the `retryAfter`
+the error names, and `reset()` once connected. A platform that refuses the formatting of a
 `markdown` post says so with `context.formatRefused`: the relay logs it and posts the same text plain.
 
 What `onMessage` gets, the platform normalised:
@@ -157,7 +162,7 @@ What `onMessage` gets, the platform normalised:
 | `where` | the conversation as a person would name it (`a private chat on Telegram`) |
 | `shared` | whether many people share the conversation |
 | `text` | what was written, the platform's markup made plain; null when nothing was |
-| `command` | `{ verb, args }` when the text is a command, else null |
+| `command` | `{ verb, args }` when the text is a command, else null — `commandOf(text)` reads `/<verb> [args]`; `VERBS` are the ones the relay obeys, any other answered with the help. `escapeHtml(text)` escapes `&`, `<` and `>` for a platform whose posts take HTML or Slack's mrkdwn |
 | `addresses` | the spores the message names; `[]` for one that names none — in a conversation many people share, what was not said to a spore, which the relay drops or, where the routing says `overhear`, gives the spores as overheard; or null where it reaches the conversation's spores without naming them |
 | `traceparent` | optional: the W3C trace context the platform carried the message under, which the turn answering it is parented on |
 | `files` | what came with it, `[{ name, mime, bytes, ref, why }]`: `mime` and `bytes` null where the platform does not say, `ref` the adapter's own handle for `fetch` — or null, with `why`, for one the platform will not hand the bot |

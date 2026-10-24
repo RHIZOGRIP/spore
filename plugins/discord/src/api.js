@@ -10,7 +10,7 @@ import { createRequire } from 'node:module'
 import { basename } from 'node:path'
 
 import { SporeError } from '@rhizogrip/spore'
-import { download } from '@rhizogrip/spore/relay'
+import { backoff, download, platformFailed } from '@rhizogrip/spore/relay'
 
 const BASE = 'https://discord.com/api/v10'
 export const USER_AGENT = `DiscordBot (https://github.com/RHIZOGRIP/spore, ${createRequire(import.meta.url)('../package.json').version})`
@@ -51,16 +51,17 @@ export function createDiscord (token, { fetchImpl = fetch, base = BASE, WebSocke
       })
     } catch (err) {
       if (signal?.aborted) throw err
-      throw new SporeError(`discord ${method} ${path} failed`, { type: 'DISCORD_FAILED', detail: err.message, retryable: true, context: { status: null, code: null, retryAfter: null } })
+      throw platformFailed('discord', `${method} ${path}`, { detail: err.message, retryable: true })
     }
     if (response.status === 204) return null
     const answer = await response.json().catch(() => null)
     if (!response.ok) {
-      throw new SporeError(`discord ${method} ${path} failed`, {
-        type: 'DISCORD_FAILED',
+      throw platformFailed('discord', `${method} ${path}`, {
         detail: answer?.message ? `${answer.message}${answer.code ? ` (${answer.code})` : ''}` : `HTTP ${response.status}`,
         retryable: response.status >= 500 || response.status === 429,
-        context: { status: response.status, code: answer?.code ?? null, retryAfter: answer?.retry_after ?? null }
+        status: response.status,
+        code: answer?.code ?? null,
+        retryAfter: answer?.retry_after ?? null
       })
     }
     return answer
@@ -82,7 +83,7 @@ export function createDiscord (token, { fetchImpl = fetch, base = BASE, WebSocke
    */
   const connect = async ({ onMessage, onReady = () => {}, signal, log = () => {}, sleep }) => {
     let session = null
-    let backoff = 1000
+    const retry = backoff()
     while (!signal.aborted) {
       const url = session?.resumeUrl ?? (await call('GET', '/gateway/bot', { signal })).url
       const ended = await new Promise((resolve) => {
@@ -121,10 +122,10 @@ export function createDiscord (token, { fetchImpl = fetch, base = BASE, WebSocke
           } else if (op === DISPATCH) {
             if (t === 'READY') {
               session = { id: d.session_id, resumeUrl: d.resume_gateway_url, seq: s }
-              backoff = 1000
+              retry.reset()
               onReady(d)
             }
-            if (t === 'RESUMED') backoff = 1000
+            if (t === 'RESUMED') retry.reset()
             if (t === 'MESSAGE_CREATE') {
               handled = handled.then(() => onMessage(d)).catch(err => log(`message ${d.id}: ${err.message}${err.detail ? ` — ${err.detail}` : ''}`))
             }
@@ -146,8 +147,7 @@ export function createDiscord (token, { fetchImpl = fetch, base = BASE, WebSocke
         })
       }
       log(`gateway closed (${ended.code}${ended.reason ? ` ${ended.reason}` : ''}) — ${session ? 'resuming' : 'connecting again'}`)
-      await sleep(backoff)
-      backoff = Math.min(backoff * 2, 60_000)
+      await sleep(retry.after())
     }
   }
 

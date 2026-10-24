@@ -1,3 +1,5 @@
+import { dirname } from 'node:path'
+
 import { loadEnvironment, recordStarted } from '../index.js'
 import { botNames, botPath, botsDir, credentialOf, reactionsOf, routesOf } from './bot-file.js'
 import { createRelay } from './relay.js'
@@ -11,8 +13,9 @@ const REFUSED = 2
  * the live adapter, then the relay until a signal. A refusal is exit 2, with the line to fix,
  * since systemd does not restart after it; `--check` stops once everything has been proved.
  *
- * `spec.hint(err, { file, bot })` is the platform's line to fix for an error, or null;
- * `spec.refusals` the error types that mean the platform will not have this bot at all.
+ * `spec.hint(err, { file, bot })` is the platform's line to fix for an error, or null — and for a
+ * bot file that is not there, the relay's own when the platform has none; `spec.refusals` the error
+ * types that mean the platform will not have this bot at all.
  */
 export async function runService ({ spec, program, root, open }) {
   const log = (line) => console.error(`${new Date().toISOString()} ${line}`)
@@ -38,6 +41,8 @@ export async function runService ({ spec, program, root, open }) {
 
   let file
   let opened
+  const hint = (err) => spec.hint(err, { file, bot }) ??
+    (err.type === `${spec.kind.toUpperCase()}_NO_BOT` ? `mkdir -p ${dirname(file)} — then ${file} as ${spec.example}` : null)
   try {
     file = botPath(spec, bot)
     routesOf(spec, file)
@@ -45,7 +50,7 @@ export async function runService ({ spec, program, root, open }) {
     const credentials = Object.fromEntries(spec.credentials.map(field => [field, credentialOf(spec, file, field, process.env)]))
     opened = await open({ bot, file, credentials })
   } catch (err) {
-    refuse(err, spec.hint(err, { file, bot }))
+    refuse(err, hint(err))
   }
 
   const state = statePath(spec.kind, bot)
@@ -69,7 +74,7 @@ export async function runService ({ spec, program, root, open }) {
   try {
     await relay.run(controller.signal)
   } catch (err) {
-    if (spec.refusals.includes(err.type)) refuse(err, spec.hint(err, { file, bot }))
+    if (spec.refusals.includes(err.type)) refuse(err, hint(err))
     log(`stopped — ${said(err)}`)
     process.exit(1)
   }

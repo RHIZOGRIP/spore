@@ -9,11 +9,12 @@
 import WebSocket from 'ws'
 
 import { SporeError } from '@rhizogrip/spore'
+import { backoff } from '@rhizogrip/spore/relay'
 
 const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
 export async function connect ({ open, onEnvelope, signal, log, sleep, WebSocketImpl = WebSocket, pingEveryMs = 5000, quietMs = 30_000 }) {
-  let backoff = 1000
+  const retry = backoff()
   let refused = null
   const sockets = new Set()
   const stopAll = () => { for (const socket of sockets) socket.close(1000, 'stopping') }
@@ -27,8 +28,7 @@ export async function connect ({ open, onEnvelope, signal, log, sleep, WebSocket
       } catch (err) {
         if (!err.retryable) throw err
         log(`no Socket Mode connection — ${said(err)}`)
-        await sleep(err.context?.retryAfter ? err.context.retryAfter * 1000 : backoff)
-        backoff = Math.min(backoff * 2, 60_000)
+        await sleep(retry.after(err))
         continue
       }
       const ended = await new Promise((resolve) => {
@@ -57,10 +57,7 @@ export async function connect ({ open, onEnvelope, signal, log, sleep, WebSocket
           } catch {
             return log('Slack sent something that is not JSON')
           }
-          if (envelope.type === 'hello') {
-            backoff = 1000
-            return
-          }
+          if (envelope.type === 'hello') return retry.reset()
           if (envelope.type === 'disconnect') {
             if (envelope.reason === 'link_disabled') {
               refused = new SporeError('Slack turned Socket Mode off for this app', { type: 'SLACK_REFUSED', detail: 'link_disabled' })
@@ -88,10 +85,7 @@ export async function connect ({ open, onEnvelope, signal, log, sleep, WebSocket
       if (signal.aborted) return
       if (refused) throw refused
       log(`Socket Mode connection ${ended.why} — connecting again`)
-      if (!ended.early) {
-        await sleep(backoff)
-        backoff = Math.min(backoff * 2, 60_000)
-      }
+      if (!ended.early) await sleep(retry.after())
     }
   } finally {
     signal.removeEventListener('abort', stopAll)

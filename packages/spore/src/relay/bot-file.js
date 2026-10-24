@@ -5,11 +5,19 @@
  * that. Read on every message, so a change is an edited line.
  *
  * `spec` is the adapter's description of its file: `kind`, the `fields` it takes, which of them
- * are `credentials`, an `example` of a first file, and `routes(raw, path)`, which reads the routing
- * into conversation → `{ spores, details, show, brief, people, overhear }` and refuses what it
- * cannot read — `brief` null where the entry leaves it to the bot's. Every bot file also takes
- * `brief`, for each conversation that does not say, and `files`, the largest file it takes from a
- * person.
+ * are `credentials`, an `example` of a first file, `conversations`, the sections its routing is
+ * written in, and `check(raw, path)`, if any, which refuses what the platform's own fields hold.
+ * Every bot file also takes `brief`, for each conversation that does not say, and `files`, the
+ * largest file it takes from a person.
+ *
+ * A section is `{ kind, id, says, fix, fields }`: what one of its conversations is called, the
+ * pattern its id matches, why one that does not is refused (`says`, as "which is not a member
+ * id") and how to find a right one (`fix`), and the fields an entry takes. `not` lists ids refused
+ * though they match, each `{ id, says, fix }`, and `flags` the platform's own true-or-false fields,
+ * carried into the routing. A section of conversations many people share also has `people`,
+ * `{ id, says, example }`, who may address its spores — and `one` when it has one spore; an entry
+ * there is `{ spores, people, … }`. Any other is a person's own conversation, its entry the spore's
+ * name or `{ spore, … }`, and `called` how that person is identified, as "their member id".
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
@@ -80,6 +88,61 @@ export function readBot (spec, path) {
   return raw
 }
 
+const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
+const RELAY_FLAGS = ['details', 'brief', 'overhear']
+
+function routesFrom (spec, raw, path) {
+  const invalid = (problem, detail = `a bot is ${spec.example}`) => new SporeError(`${path} ${problem}`, { type: typeOf(spec, 'BOT_INVALID'), detail })
+  const sections = Object.entries(spec.conversations)
+  const named = sections.map(([key]) => key)
+  if (sections.every(([key]) => raw[key] === undefined)) throw invalid(`has no ${named.join(' and no ')}`)
+  const table = new Map()
+  for (const [key, section] of sections) {
+    const value = raw[key] ?? {}
+    if (!isRecord(value)) throw invalid(`has ${key} that is not { "<id>": … }`)
+    const { kind } = section
+    const flags = [...RELAY_FLAGS, ...(section.flags ?? [])].filter(name => section.fields.includes(name))
+    const checked = (id, entry) => {
+      const extra = Object.keys(entry).filter(field => !section.fields.includes(field))
+      if (extra.length) {
+        const bots = extra.filter(field => spec.fields.includes(field))
+        throw invalid(`gives ${kind} ${id} ${extra.join(', ')}, which a ${kind} does not take`, `a ${kind} takes ${section.fields.join(', ')}${bots.length ? `; ${bots.join(', ')} is the bot's, beside ${named.join(' and ')}` : ''}`)
+      }
+      for (const name of flags) {
+        if (entry[name] !== undefined && typeof entry[name] !== 'boolean') throw invalid(`has a ${kind} ${id} whose ${name} is not true or false`)
+      }
+      return {
+        details: entry.details === true,
+        show: entry.show ?? null,
+        brief: typeof entry.brief === 'boolean' ? entry.brief : null,
+        overhear: entry.overhear === true,
+        ...Object.fromEntries((section.flags ?? []).map(name => [name, entry[name] === true]))
+      }
+    }
+    for (const [id, entry] of Object.entries(value)) {
+      const wrong = (section.not ?? []).find(rule => rule.id.test(id)) ?? (section.id.test(id) ? null : section)
+      if (wrong) throw invalid(`names "${id}" among its ${key}, ${wrong.says}`, wrong.fix)
+      if (!section.people) {
+        const shaped = isRecord(entry)
+        const spore = shaped ? entry.spore : entry
+        const read = checked(id, shaped ? entry : {})
+        if (typeof spore !== 'string' || !spore) throw invalid(`maps ${kind} ${id} to something that is not a spore`, `each ${kind} is ${section.called} against the name of the spore they reach, or { "spore": "<name>", "details": true }`)
+        table.set(id, { spores: [spore], ...read, people: null })
+        continue
+      }
+      if (!isRecord(entry)) throw invalid(`has a ${kind} ${id} that is not { "spores": [...], "people": [...] }`)
+      const read = checked(id, entry)
+      if (!Array.isArray(entry.spores) || !entry.spores.length || !entry.spores.every(spore => typeof spore === 'string' && spore)) throw invalid(`has a ${kind} ${id} with no spores`)
+      if (section.one && entry.spores.length > 1) throw invalid(`gives ${kind} ${id} ${entry.spores.length} spores`, `a bot speaks in a ${kind} as itself, so a ${kind} has one spore — a second spore there is a second bot`)
+      if (!Array.isArray(entry.people) || !entry.people.every(who => who === '*' || (typeof who === 'string' && section.people.id.test(who)))) {
+        throw invalid(`has a ${kind} ${id} whose people are not ${section.people.says} or *`, `people is who may address its spores — ["<${section.people.example}>", …], or ["*"] for everyone in the ${kind}, written out`)
+      }
+      table.set(id, { spores: entry.spores, ...read, people: entry.people })
+    }
+  }
+  return table
+}
+
 /**
  * The routing, each conversation's `show` checked: how a turn shows itself there — `working`, the
  * `working…` message edited as it goes; `react`, a reaction on the message and the platform's
@@ -89,7 +152,8 @@ export function readBot (spec, path) {
  */
 export function routesOf (spec, path) {
   const raw = readBot(spec, path)
-  const table = spec.routes(raw, path)
+  spec.check?.(raw, path)
+  const table = routesFrom(spec, raw, path)
   for (const [conversation, routed] of table) {
     routed.brief = routed.brief ?? raw.brief === true
     if (routed.brief && routed.details) {

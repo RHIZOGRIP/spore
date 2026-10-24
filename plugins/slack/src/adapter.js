@@ -6,15 +6,13 @@
  */
 
 import { SporeError } from '@rhizogrip/spore'
+import { commandOf as commandIn, escapeHtml } from '@rhizogrip/spore/relay'
 
 const FIELDS = ['token', 'app', 'team', 'people', 'channels', 'trace']
-const PERSON_FIELDS = ['spore', 'details', 'brief']
-const CHANNEL_FIELDS = ['spores', 'people', 'details', 'brief']
 const ID = /^[A-Z0-9]+$/
 const CHANNEL = /^[CG][A-Z0-9]+$/
 const TEAM = /^T[A-Z0-9]+$/
 const THREAD = '/'
-const COMMAND = /^\/([a-z]+)(?:\s+(.+))?$/is
 const SLASH = '/spore'
 const PRESSED = 'spore'
 const TAKEN_SUBTYPES = new Set([undefined, 'file_share', 'thread_broadcast'])
@@ -27,19 +25,6 @@ const invalid = (path, problem, detail = `a bot is ${SHAPE}`) => new SporeError(
 
 const record = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const flags = (path, kind, id, entry) => {
-  for (const name of ['details', 'brief']) {
-    if (entry[name] !== undefined && typeof entry[name] !== 'boolean') throw invalid(path, `has a ${kind} ${id} whose ${name} is not true or false`)
-  }
-}
-
-const strays = (path, kind, id, entry, takes) => {
-  const extra = Object.keys(entry).filter(key => !takes.includes(key))
-  if (!extra.length) return
-  const bots = extra.filter(key => FIELDS.includes(key))
-  throw invalid(path, `gives ${kind} ${id} ${extra.join(', ')}, which a ${kind} does not take`, `a ${kind} takes ${takes.join(', ')}${bots.length ? `; ${bots.join(', ')} is the bot's, beside people and channels` : ''}`)
-}
-
 /**
  * The bot's workspace and its routing: `people`, each person's direct message with the bot by
  * their member id — `"<spore>"` or `{ "spore", "details", "brief" }` — and `channels`, each by its
@@ -47,42 +32,30 @@ const strays = (path, kind, id, entry, takes) => {
  * channel. `details` shows the calls themselves rather than their kinds; `brief` is the bot's own,
  * for this conversation.
  */
-function routes (raw, path) {
+const CONVERSATIONS = {
+  people: {
+    kind: 'person',
+    id: /^(?!D)[A-Z0-9]+$/,
+    says: 'which is not a member id',
+    fix: 'a person is their member id, U… — in their profile, under ⋮, Copy member ID',
+    not: [{ id: CHANNEL, says: 'which is a channel id', fix: 'a channel goes under channels' }],
+    called: 'their member id',
+    fields: ['spore', 'details', 'brief']
+  },
+  channels: {
+    kind: 'channel',
+    id: CHANNEL,
+    says: 'which is not a channel id',
+    fix: 'a channel id is C…, at the bottom of the channel\'s details',
+    fields: ['spores', 'people', 'details', 'brief'],
+    one: true,
+    people: { id: ID, says: 'member ids', example: 'member id' }
+  }
+}
+
+function check (raw, path) {
   if (typeof raw.team !== 'string' || !TEAM.test(raw.team)) throw invalid(path, 'has no team', 'team is the workspace\'s id, T…, which auth.test answers for the bot\'s token')
   if (raw.trace !== undefined && typeof raw.trace !== 'boolean') throw invalid(path, 'has a trace that is not true or false', 'trace: true writes every envelope Slack delivers to the log, as it came')
-  if (raw.people === undefined && raw.channels === undefined) {
-    throw invalid(path, 'has no people and no channels', `a bot is ${SHAPE} — "people": {} while you learn the ids: the log names everyone it refuses`)
-  }
-  const entries = (field) => {
-    const value = raw[field] ?? {}
-    if (!record(value)) throw invalid(path, `has ${field} that is not { "<id>": … }`)
-    return Object.entries(value)
-  }
-  const table = new Map()
-  for (const [person, entry] of entries('people')) {
-    if (CHANNEL.test(person)) throw invalid(path, `names "${person}" among its people, which is a channel id`, 'a channel goes under channels')
-    if (person.startsWith('D') || !ID.test(person)) throw invalid(path, `names "${person}" among its people, which is not a member id`, 'a person is their member id, U… — in their profile, under ⋮, Copy member ID')
-    if (record(entry)) {
-      strays(path, 'person', person, entry, PERSON_FIELDS)
-      flags(path, 'person', person, entry)
-    }
-    const spore = record(entry) ? entry.spore : entry
-    if (typeof spore !== 'string' || !spore) throw invalid(path, `maps person ${person} to something that is not a spore`, 'each person is their member id against the name of the spore they reach, or { "spore": "<name>", "details": true }')
-    table.set(person, { spores: [spore], details: record(entry) && entry.details === true, show: null, brief: record(entry) ? entry.brief ?? null : null, people: null, overhear: false })
-  }
-  for (const [channel, entry] of entries('channels')) {
-    if (!CHANNEL.test(channel)) throw invalid(path, `names "${channel}" among its channels, which is not a channel id`, 'a channel id is C…, at the bottom of the channel\'s details')
-    if (!record(entry)) throw invalid(path, `has a channel ${channel} that is not { "spores": [...], "people": [...] }`)
-    strays(path, 'channel', channel, entry, CHANNEL_FIELDS)
-    flags(path, 'channel', channel, entry)
-    if (!Array.isArray(entry.spores) || !entry.spores.length || !entry.spores.every(spore => typeof spore === 'string' && spore)) throw invalid(path, `has a channel ${channel} with no spores`)
-    if (entry.spores.length > 1) throw invalid(path, `gives channel ${channel} ${entry.spores.length} spores`, 'a bot speaks in a channel as itself, so a channel has one spore — a second spore there is a second bot')
-    if (!Array.isArray(entry.people) || !entry.people.every(who => who === '*' || (typeof who === 'string' && ID.test(who)))) {
-      throw invalid(path, `has a channel ${channel} whose people are not member ids or *`, 'people is who may address its spore — ["<member id>", …], or ["*"] for everyone in the channel, written out')
-    }
-    table.set(channel, { spores: entry.spores, details: entry.details === true, show: null, brief: entry.brief ?? null, people: entry.people, overhear: false })
-  }
-  return table
 }
 
 const HELP = 'Anything you write to me in a direct message goes to the spore; in a channel, mention me. /spore status says what it is doing; /spore stop ends the turn it is running and sets aside what you sent that it had not read; /spore wrap [10m] asks it to wrap up. In a thread, where Slack takes no /spore, mention me and write /status, /stop or /wrap'
@@ -98,7 +71,8 @@ export const SLACK = {
   sourceVariables: [],
   refusals: ['SLACK_REFUSED'],
   example: SHAPE,
-  routes,
+  conversations: CONVERSATIONS,
+  check,
   routeOf: (conversation) => conversation.split(THREAD)[0],
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/spore extend wall 30m, /spore extend cost 1.50 or /spore extend rounds 20' },
   limits: { message: 12000, file: 0, fetch: 25 * 1024 * 1024, editEveryMs: 5000, typingEveryMs: 0 },
@@ -106,7 +80,6 @@ export const SLACK = {
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {
-    if (err.type === 'SLACK_NO_BOT') return `mkdir -p ${file.slice(0, file.lastIndexOf('/'))} — then ${file} as ${SHAPE}`
     if (err.type === 'SLACK_REFUSED') return 'the bot token (xoxb-) is under OAuth & Permissions of your app at api.slack.com/apps, the app-level token (xapp-, with connections:write) under Basic Information, and Socket Mode is on under Socket Mode; both tokens go in environment beside config.json'
     return null
   },
@@ -116,8 +89,6 @@ export const SLACK = {
 }
 
 const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>' }
-
-const escape = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 /** Slack's mentions in what a spore wrote — a person, a group, a whole channel — broken so they ping no one. */
 const harmless = (text) => text
@@ -165,7 +136,6 @@ const filesOf = (event) => (event.files ?? []).map((file, i) => {
 export async function normalize (event, { team, me, nameOf, zoneOf, channelOf }) {
   const direct = event.type === 'message'
   const text = (await plain(event.text ?? '', me, nameOf, channelOf)) || null
-  const command = text?.match(COMMAND)
   return {
     id: `${team}/${event.channel}/${event.ts}`,
     conversation: direct ? event.user : `${event.channel}${THREAD}${event.thread_ts ?? event.ts}`,
@@ -175,7 +145,7 @@ export async function normalize (event, { team, me, nameOf, zoneOf, channelOf })
     where: await whereOf(event.channel, channelOf),
     shared: !direct,
     text,
-    command: command ? { verb: command[1].toLowerCase(), args: command[2] ?? '' } : null,
+    command: commandIn(text),
     addresses: null,
     files: filesOf(event)
   }
@@ -234,7 +204,7 @@ const blocksOf = ({ native, fallback }) => {
   const facts = fallback.facts ?? []
   const sections = []
   for (let i = 0; i < facts.length; i += FIELDS_PER_SECTION) {
-    sections.push({ type: 'section', fields: facts.slice(i, i + FIELDS_PER_SECTION).map(([title, value]) => ({ type: 'mrkdwn', text: `*${escape(title)}*\n${escape(value)}` })) })
+    sections.push({ type: 'section', fields: facts.slice(i, i + FIELDS_PER_SECTION).map(([title, value]) => ({ type: 'mrkdwn', text: `*${escapeHtml(title)}*\n${escapeHtml(value)}` })) })
   }
   return {
     blocks: [...(fallback.text ? [{ type: 'markdown', text: fallback.text }] : []), ...sections],
@@ -311,7 +281,7 @@ export function createAdapter ({ slack, receive, team, me }) {
     await onChoice({
       ...choice,
       acknowledge: async (text) => {
-        if (text) await slack.ephemeral({ channel: payload.channel.id, user: payload.user.id, text: escape(text), ...(thread ? { thread_ts: thread } : {}) })
+        if (text) await slack.ephemeral({ channel: payload.channel.id, user: payload.user.id, text: escapeHtml(text), ...(thread ? { thread_ts: thread } : {}) })
       }
     })
   }
@@ -365,11 +335,11 @@ export function createAdapter ({ slack, receive, team, me }) {
     }),
 
     post: (conversation, text, { markdown = false } = {}) =>
-      into(conversation, markdown ? { markdown_text: harmless(text) } : { text: escape(text) }),
+      into(conversation, markdown ? { markdown_text: harmless(text) } : { text: escapeHtml(text) }),
 
     edit: async (conversation, note, text) => {
       const { channel, ts } = placeOf(note)
-      await slack.update({ channel, ts, text: escape(text) })
+      await slack.update({ channel, ts, text: escapeHtml(text) })
     },
 
     remove: async (conversation, note) => {
@@ -403,7 +373,7 @@ export function createAdapter ({ slack, receive, team, me }) {
     /** The question closed: replaced by `native` or `fallback`, or kept as `shown` with its buttons gone and how it ended below. */
     settle: async (conversation, note, replacement) => {
       const shown = replacement.shown
-        ? { blocks: [...replacement.shown.blocks.filter(block => block.block_id !== PRESSED), { type: 'context', elements: [{ type: 'mrkdwn', text: `*${escape(replacement.outcome)}*` }] }], text: replacement.shown.text }
+        ? { blocks: [...replacement.shown.blocks.filter(block => block.block_id !== PRESSED), { type: 'context', elements: [{ type: 'mrkdwn', text: `*${escapeHtml(replacement.outcome)}*` }] }], text: replacement.shown.text }
         : blocksOf(replacement)
       const { channel, ts } = placeOf(note)
       await slack.update({ channel, ts, ...shown })

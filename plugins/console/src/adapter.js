@@ -7,17 +7,14 @@
 import { statSync } from 'node:fs'
 
 import { SporeError } from '@rhizogrip/spore'
+import { commandOf } from '@rhizogrip/spore/relay'
 
 const FIELDS = ['listen', 'token', 'people']
-const PERSON_FIELDS = ['spore', 'details', 'brief']
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
-const COMMAND = /^\/([a-z]+)(?:\s+(.+))?$/is
 const SHAPE = '{ "listen": "127.0.0.1:8790", "token": "${LAB_CONSOLE_TOKEN}", "people": { "<person>": "<spore>" } }' // eslint-disable-line no-template-curly-in-string
 
 const invalid = (path, problem, detail = `a console is ${SHAPE}`) => new SporeError(`${path} ${problem}`, { type: 'CONSOLE_BOT_INVALID', detail })
-
-const record = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
 
 export const isPerson = (id) => typeof id === 'string' && PERSON.test(id)
 
@@ -35,24 +32,15 @@ export function listenOf (raw, path) {
  * The console's people, each by the id the host chose for them against the spore they reach —
  * `"<spore>"` or `{ "spore", "details", "brief" }`. A console has no conversation many people share.
  */
-function routes (raw, path) {
-  listenOf(raw, path)
-  if (!record(raw.people)) throw invalid(path, 'has no people', `a console is ${SHAPE} — map only test people and their spores`)
-  const table = new Map()
-  for (const [person, entry] of Object.entries(raw.people)) {
-    if (!isPerson(person)) throw invalid(path, `names "${person}" among its people`, 'a person is an id of letters, digits, ., _, @ and -, at most 128')
-    if (record(entry)) {
-      const extra = Object.keys(entry).filter(key => !PERSON_FIELDS.includes(key))
-      if (extra.length) throw invalid(path, `gives person ${person} ${extra.join(', ')}, which a person does not take`, `a person takes ${PERSON_FIELDS.join(', ')}`)
-      for (const name of ['details', 'brief']) {
-        if (entry[name] !== undefined && typeof entry[name] !== 'boolean') throw invalid(path, `has a person ${person} whose ${name} is not true or false`)
-      }
-    }
-    const spore = record(entry) ? entry.spore : entry
-    if (typeof spore !== 'string' || !spore) throw invalid(path, `maps person ${person} to something that is not a spore`, 'each person is their id against the name of the spore they reach, or { "spore": "<name>", "details": true }')
-    table.set(person, { spores: [spore], details: record(entry) && entry.details === true, show: null, brief: record(entry) ? entry.brief ?? null : null, people: null, overhear: false })
+const CONVERSATIONS = {
+  people: {
+    kind: 'person',
+    id: PERSON,
+    says: 'which is not a person\'s id',
+    fix: 'a person is an id of letters, digits, ., _, @ and -, at most 128',
+    called: 'their id',
+    fields: ['spore', 'details', 'brief']
   }
-  return table
 }
 
 const HELP = 'Anything said to me as a person goes to their spore. /status says what it is doing; /stop ends the turn it is running and sets aside what was sent that it had not read; /wrap [10m] asks it to wrap up'
@@ -68,14 +56,14 @@ export const CONSOLE = {
   sourceVariables: [],
   refusals: ['CONSOLE_LISTEN_REFUSED'],
   example: SHAPE,
-  routes,
+  conversations: CONVERSATIONS,
+  check: listenOf,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 1_000_000, file: Infinity, fetch: 25 * 1024 * 1024, editEveryMs: 1000, typingEveryMs: 0 },
   can: { upload: true, remove: true, react: false, typing: false, reply: true, choose: true, fields: true },
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {
-    if (err.type === 'CONSOLE_NO_BOT') return `mkdir -p ${file.slice(0, file.lastIndexOf('/'))} — then ${file} as ${SHAPE}`
     if (err.type === 'CONSOLE_LISTEN_REFUSED') return `another process holds that address — change listen in ${file}`
     return null
   },
@@ -84,7 +72,6 @@ export const CONSOLE = {
 
 /** What a person said, as the relay takes a message: `files` are the bytes the request carried, which the log does not keep. */
 export function messageOf (name, event, files) {
-  const command = event.text?.match(COMMAND)
   return {
     id: `${name}:${event.id}`,
     conversation: event.person,
@@ -94,7 +81,7 @@ export function messageOf (name, event, files) {
     where: `the console "${name}"`,
     shared: false,
     text: event.text,
-    command: command ? { verb: command[1].toLowerCase(), args: command[2] ?? '' } : null,
+    command: commandOf(event.text),
     addresses: null,
     files: files.map(file => ({ name: file.name, mime: file.mime, bytes: file.data.length, ref: file.data })),
     ...(event.traceparent ? { traceparent: event.traceparent } : {})
