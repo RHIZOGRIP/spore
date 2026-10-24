@@ -26,6 +26,7 @@ import { historyOver } from '../resilience/compaction.js'
 import { paused, pauseSpores, spendSoFar, unpauseSpores } from '../core/admission.js'
 import { dropSchedule, survey, writeSchedule } from '../core/schedule.js'
 import { DIMENSIONS, extendTurn, limitText, wrapTurn } from '../core/limits.js'
+import { durationSpelling } from '../core/units.js'
 import { annotateTurn } from './live.js'
 import { progressOf, stopSupervisor } from '../core/job.js'
 import { DEFAULT_DEFINITION_PATH } from '../core/identity-defaults.js'
@@ -33,7 +34,7 @@ import { DEFAULT_SPORANGIUM, SPORANGIUM_RECORD, knownSporangia, operatorSporangi
 import { copyAbsent } from '../delegation/precursor-catalog.js'
 import { workUnits } from '../infra/ledger.js'
 import { differingDocs, pluginRoots, preparePlugins, upgradeDocs } from '../core/plugins.js'
-import { SporeError } from '../observability/errors.js'
+import { errorText, SporeError } from '../observability/errors.js'
 import { billingFor } from '../core/billing.js'
 import { usage as usageOver } from '../core/usage.js'
 
@@ -160,7 +161,10 @@ function install (source, ws) {
   return definition.name
 }
 
-const pairText = (dimension, pair) => `[${limitText(dimension, pair.soft)}, ${limitText(dimension, pair.hard)}]`
+const pairText = (dimension, pair) => {
+  const text = dimension === 'wall' ? durationSpelling : (value) => limitText(dimension, value)
+  return `[${text(pair.soft)}, ${text(pair.hard)}]`
+}
 
 function changesOf (was, now) {
   if (was.error) return ['replaces a definition that did not parse']
@@ -443,7 +447,7 @@ export function sporangia ({ configFile = CONFIG_FILE } = {}) {
     try {
       file = sporangiumTree(name, { configFile }).get(DEFINITION_FILE)
     } catch (err) {
-      return { name, description: null, error: err.detail ? `${err.message} — ${err.detail}` : err.message }
+      return { name, description: null, error: errorText(err) }
     }
     const parsed = parseDefinition(readFileSync(file, 'utf8'), { knownTools: TOOL_NAMES, seed: true })
     if (parsed.error) return { name, description: null, error: `${file} ${parsed.error}` }

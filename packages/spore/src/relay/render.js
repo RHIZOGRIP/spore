@@ -9,7 +9,7 @@
  * service's log.
  */
 
-import { durationText } from '../core/job.js'
+import { durationText } from '../core/units.js'
 import { runningLines } from '../core/limits.js'
 import { originLabel } from '../core/spore-dir.js'
 import { RUNNING } from '../core/state.js'
@@ -55,7 +55,6 @@ export function waiting ({ record }, { brief = false } = {}) {
 export const leftOut = (more) => `and ${more} more file${more === 1 ? '' : 's'} in data/out/, in the spore's workspace`
 
 /** A size as a person reads it: whole kilobytes under a megabyte, whole megabytes from there. */
-export const sizeOf = (bytes) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${Math.round(bytes / 1024 / 1024)} MB`
 
 /** What a person is told of the files that did not reach the spore, a line each with why. */
 export const notCome = (files) => files.map(file => `${file.name} did not reach the spore: ${file.missing}`).join('\n')

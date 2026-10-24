@@ -9,7 +9,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { createServer } from 'node:http'
 
-import { SporeError, parseTraceparent } from '@rhizogrip/spore'
+import { SporeError, parseTraceparent, errorText } from '@rhizogrip/spore'
 import { readBody } from '@rhizogrip/spore/relay'
 
 import { isPerson } from './adapter.js'
@@ -185,8 +185,8 @@ export function serve ({ host, port, token, file, events, people, deliver, press
       json(done.status, done.body)
     } catch (err) {
       if (err instanceof Refused) return json(err.status, { error: err.message })
-      log(`${request.method} ${request.url} failed — ${[err.message, err.detail].filter(Boolean).join(' — ')}`)
-      json(err.type?.endsWith('_INVALID') ? 503 : 500, { error: [err.message, err.detail].filter(Boolean).join(' — ') })
+      log(`${request.method} ${request.url} failed — ${errorText(err)}`)
+      json(err.type?.endsWith('_INVALID') ? 503 : 500, { error: errorText(err) })
     }
   })
 

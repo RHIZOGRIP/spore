@@ -7,7 +7,7 @@
 
 import { createServer } from 'node:http'
 
-import { SporeError } from '@rhizogrip/spore'
+import { errorText, SporeError } from '@rhizogrip/spore'
 import { readBody } from '@rhizogrip/spore/relay'
 
 const PATH = '/api/messages'
@@ -33,7 +33,7 @@ export function serve ({ host, port, verify, onActivity, signal, log, trace = ()
     try {
       refused = await verify(request.headers.authorization, activity)
     } catch (err) {
-      log(`could not check an activity — ${err.message}${err.detail ? ` — ${err.detail}` : ''}`)
+      log(`could not check an activity — ${errorText(err)}`)
       return answer(503)
     }
     if (refused) {
@@ -45,7 +45,7 @@ export function serve ({ host, port, verify, onActivity, signal, log, trace = ()
       if (trace()) log(`activity ${activity.id}: ${JSON.stringify(activity)}`)
       reply = await onActivity(activity)
     } catch (err) {
-      log(`activity ${activity.id} not taken — ${err.message}${err.detail ? ` — ${err.detail}` : ''}`)
+      log(`activity ${activity.id} not taken — ${errorText(err)}`)
       return answer(500)
     }
     if (typeof reply === 'object' && reply !== null) return response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(reply))

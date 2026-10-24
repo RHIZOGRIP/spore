@@ -16,8 +16,10 @@ import { fileURLToPath } from 'node:url'
 
 import { parsedDefinition, parseDefinition } from '../delegation/definition.js'
 import { CONFIG_FILE, readConfig } from '../library/config.js'
+import { errorText } from '../observability/errors.js'
 import { paused, spendStop } from './admission.js'
 import { containOf } from './plugins.js'
+import { exitText } from './command.js'
 import { hostFlags } from './send.js'
 import { turnEnv } from './turn-env.js'
 import { PRECURSOR_DIR, readTurns, recordCell } from './spore-dir.js'
@@ -50,7 +52,7 @@ export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model
     keep = containOf(ws, { config })
     environment = turnEnv(env, { configFile: config.file })
   } catch (err) {
-    return Promise.resolve({ answer: null, costUsd: 0, durationMs: 0, failed: `could not start — ${err.message}` })
+    return Promise.resolve({ answer: null, costUsd: 0, durationMs: 0, failed: `could not start — ${errorText(err)}` })
   }
   return new Promise(resolve => {
     const child = spawn(SPAWN_BIN, [
@@ -81,10 +83,7 @@ export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model
       })
     }
     child.on('error', err => done(`could not start — ${err.message}`))
-    child.on('close', (code, signal) => {
-      const said = stderr.trim().split('\n').at(-1)
-      done(code === 0 ? null : `ended ${code ?? signal}${said ? ` — ${said}` : ''}`)
-    })
+    child.on('close', (code, signal) => done(code === 0 ? null : exitText({ exit: code, signal, stderr })))
   })
 }
 

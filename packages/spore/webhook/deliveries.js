@@ -3,11 +3,9 @@
  * `maxWait` and `perDay` — which `deliver` keeps.
  */
 
-import { isWorkspace, readConfig, workspaceFor } from '../src/index.js'
+import { errorText, isWorkspace, readConfig, workspaceFor } from '../src/index.js'
 import { deliver } from '../src/core/route.js'
 import { CONFIG_FILE } from '../src/library/config.js'
-
-const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
 const briefingOf = ({ name, event, delivery }) => ({ payload, headers }) => [
   `A delivery of the webhook "${name}"${event ? `, event ${event}` : ''}, delivery ${delivery}.`,
@@ -78,8 +76,8 @@ export function createHookDelivery ({
       log(`${heading} · ${outcome}`)
       return { spore, outcome }
     } catch (err) {
-      log(`${heading} · not delivered — ${err.type ?? err.name} ${said(err)}`)
-      return { spore, outcome: `not delivered — ${err.type ?? err.name} ${said(err)}`, failed: true }
+      log(`${heading} · not delivered — ${err.type ?? err.name} ${errorText(err)}`)
+      return { spore, outcome: `not delivered — ${err.type ?? err.name} ${errorText(err)}`, failed: true }
     }
   })
 

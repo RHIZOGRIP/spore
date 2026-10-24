@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto'
 import { readFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import { SporeError } from '../observability/errors.js'
+import { errorText, SporeError } from '../observability/errors.js'
 import { launchStandalone } from './cell.js'
 import { release as releaseHeld } from './send.js'
 import { pluginProgram } from './plugins.js'
@@ -139,7 +139,7 @@ export function deliver ({
       return tell('said, not started')
     }
     tell(releaseNow(release, ws, { env, configFile }).outcome)
-  })().catch(err => log(`${heading} · failed — ${err.type ?? err.name} ${err.message}${err.detail ? ` — ${err.detail}` : ''}; it is released at its deadline`))
+  })().catch(err => log(`${heading} · failed — ${err.type ?? err.name} ${errorText(err)}; it is released at its deadline`))
   const steps = [prepare && `prepared by ${prepare.plugin}/${prepare.program}`, timed && `timed by ${judges.router ? judges.router.split('/').pop() : `precursors/${precursorFor(origin)}.cmk`}`].filter(Boolean)
   return { outcome: `held — ${steps.join(', then ')}${past}`, judged, started: false, prepared: Boolean(prepare) }
 }
@@ -176,7 +176,7 @@ async function prepareStep ({ ws, kept, prepare, untold, stdin, headers: headers
       reads: prepare.reads
     })
   } catch (err) {
-    attached = { failed: `could not start — ${err.message}${err.detail ? ` — ${err.detail}` : ''}` }
+    attached = { failed: `could not start — ${errorText(err)}` }
   }
   const told = attached.failed ? [{ ...untold, missing: `it ${attached.failed}` }] : attached.files
   if (!attachHeld(ws, kept.held, [...files, ...told])) {

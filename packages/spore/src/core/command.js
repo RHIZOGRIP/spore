@@ -5,8 +5,18 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { systemReadPaths } from '../isolation/sandbox.js'
 import { native } from '../native.js'
+import { durationText } from './units.js'
 
 export const CONFINE_BIN = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'build', 'Release', 'confine')
+
+/**
+ * How a program that did not exit 0 ended: `exited <code or signal>`, for how long when `took` is
+ * given, and the last line of `stderr`.
+ */
+export function exitText ({ exit, signal, took = null, stderr = '' }) {
+  const last = stderr.trim().split('\n').at(-1)
+  return `exited ${exit ?? signal}${took === null ? '' : ` after ${durationText(took)}`}${last ? ` — ${last}` : ''}`
+}
 
 /**
  * Whether `confine --contain` gets namespaces of its own on this host, so a turn sees only the

@@ -8,10 +8,8 @@
 
 import WebSocket from 'ws'
 
-import { SporeError } from '@rhizogrip/spore'
+import { errorText, SporeError } from '@rhizogrip/spore'
 import { backoff } from '@rhizogrip/spore/relay'
-
-const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
 export async function connect ({ open, onEnvelope, signal, log, sleep, WebSocketImpl = WebSocket, pingEveryMs = 5000, quietMs = 30_000 }) {
   const retry = backoff()
@@ -27,7 +25,7 @@ export async function connect ({ open, onEnvelope, signal, log, sleep, WebSocket
         url = await open()
       } catch (err) {
         if (!err.retryable) throw err
-        log(`no Socket Mode connection — ${said(err)}`)
+        log(`no Socket Mode connection — ${errorText(err)}`)
         await sleep(retry.after(err))
         continue
       }
@@ -73,7 +71,7 @@ export async function connect ({ open, onEnvelope, signal, log, sleep, WebSocket
           }
           handled = handled
             .then(() => onEnvelope({ type: envelope.type, payload: envelope.payload, ack }))
-            .catch(err => log(`envelope ${envelope.envelope_id} not taken — ${said(err)}`))
+            .catch(err => log(`envelope ${envelope.envelope_id} not taken — ${errorText(err)}`))
         })
         socket.on('error', (err) => log(`Socket Mode connection — ${err.message}`))
         socket.on('close', (code) => {

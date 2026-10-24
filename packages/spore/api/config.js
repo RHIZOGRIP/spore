@@ -5,10 +5,10 @@
  */
 
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 
-import { API_FILE, CONFIG_FILE } from '../src/library/config.js'
+import { API_FILE, CONFIG_FILE, readJson } from '../src/library/config.js'
 import { SporeError } from '../src/observability/errors.js'
 import { listenOf } from '../src/infra/http.js'
 import { deliveryBounds } from '../src/core/route.js'
@@ -32,12 +32,7 @@ const matcher = (pattern) => new RegExp(`^${pattern.replace(/[.]/g, '\\.').repla
  */
 export function loadApi (path = apiPath(), env = process.env) {
   if (!existsSync(path)) throw new SporeError(`no ${path}`, { type: 'API_NO_CONFIG', detail: 'it says where the API listens and who may call it — see docs/operating.md, "The HTTP API service"' })
-  let raw
-  try {
-    raw = JSON.parse(readFileSync(path, 'utf8'))
-  } catch (err) {
-    throw refuse(path, 'is not readable JSON', err.message)
-  }
+  const raw = readJson(path, 'API_CONFIG_INVALID')
   const known = ['socket', 'listen', 'callers']
   const unknown = Object.keys(raw).filter(key => !known.includes(key))
   if (unknown.length) throw refuse(path, `has ${unknown.join(', ')}, which the API does not read`, `it takes ${known.join(', ')}`)

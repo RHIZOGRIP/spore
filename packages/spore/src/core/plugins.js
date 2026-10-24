@@ -18,7 +18,7 @@ import { readConfig, setPlugin, unsetPlugin, CONFIG_FILE } from '../library/conf
 import { parsedDefinition, parseDefinition, PRECURSOR_DIR, PRECURSOR_EXT } from '../delegation/definition.js'
 import { PROVISIONED_MODULES } from '../delegation/agent-env.js'
 import { copyAbsent } from '../delegation/precursor-catalog.js'
-import { SporeError } from '../observability/errors.js'
+import { errorText, SporeError } from '../observability/errors.js'
 import { native } from '../native.js'
 import { systemReadPaths } from '../isolation/sandbox.js'
 import { sporangiumOf, sporangiumTree } from './sporangia.js'
@@ -683,7 +683,7 @@ export function pluginServices (roots = pluginRoots()) {
     try {
       plugin = checkPlugin(found)
     } catch (err) {
-      if (declaresServices(found)) problems.push({ plugin: found.name, package: found.package, problem: err.detail ? `${err.message} — ${err.detail}` : err.message })
+      if (declaresServices(found)) problems.push({ plugin: found.name, package: found.package, problem: errorText(err) })
       continue
     }
     for (const [name, service] of Object.entries(plugin.services)) {
@@ -703,7 +703,7 @@ export function listPlugins ({ configFile = CONFIG_FILE, roots = pluginRoots() }
     try {
       version = (record ? allowedPlugin(found.name, record, roots) : checkPlugin(found)).version
     } catch (err) {
-      problem = err.detail ? `${err.message} — ${err.detail}` : err.message
+      problem = errorText(err)
     }
     return { name: found.name, package: found.package, version, dir: found.dir, allowed: Boolean(record), settings: record?.settings ?? null, problem }
   })

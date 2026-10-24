@@ -10,6 +10,7 @@ import { dreamDue, runDream } from '../src/core/dream.js'
 import { turnSummary } from '../src/core/spore-dir.js'
 import { endedIn } from '../src/core/state.js'
 import { parsedDefinition } from '../src/delegation/definition.js'
+import { errorText } from '../src/observability/errors.js'
 
 const { values: { ws } } = parseArgs({ options: { ws: { type: 'string' } } })
 
@@ -32,6 +33,6 @@ try {
   }
   console.error(`spore: dreamt — ${ran.changed.removed.length} removed, ${ran.changed.added.length} added, $${ran.costUsd.toFixed(4)}`)
 } catch (err) {
-  console.error(`spore: the dream did not start — ${err.detail ? `${err.message} — ${err.detail}` : err.message}`)
+  console.error(`spore: the dream did not start — ${errorText(err)}`)
   process.exit(1)
 }

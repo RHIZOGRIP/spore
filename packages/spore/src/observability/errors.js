@@ -17,6 +17,9 @@ export const SEVERITY_TAGS = Object.freeze([
   'trace', 'debug', 'info', 'warn', 'error', 'fatal'
 ])
 
+/** An error as one line: its message, then its detail when it has one. */
+export const errorText = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
+
 export class SporeError extends Error {
   /**
    * @param {string} message  Short human-readable label. Not a machine key.

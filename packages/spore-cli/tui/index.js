@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
 import { CombinedAutocompleteProvider, Input, isKeyRelease, Markdown, matchesKey, ProcessTerminal, ScrollView, SelectList, truncateToWidth, TuiAltScreen, visibleWidth, VStack, wrapTextWithAnsi } from '@earendil-works/pi-tui'
-import { applyEvent, changeText, createLive, curate, durationText, extendTurn, grantOf, list, liveIn, loadMohdelEnvironment, outbox, pause, paused, readInbox, readTurns, RUNNING, send, SERVICE_STATE_DIR, show, sporePaths, stateOf, stop, switchModel, unpause, upstream, watchAll, wrapTurn } from '@rhizogrip/spore'
+import { applyEvent, changeText, createLive, curate, durationText, errorText, extendTurn, grantOf, list, liveIn, loadMohdelEnvironment, outbox, pause, paused, readInbox, readTurns, RUNNING, send, SERVICE_STATE_DIR, show, sporePaths, stateOf, stop, switchModel, unpause, upstream, watchAll, wrapTurn } from '@rhizogrip/spore'
 import chalk from 'chalk'
 
 import { runningJob, scheduleLine } from '../src/dispatch.js'
@@ -421,7 +421,7 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
     try {
       sent = send(state.ws, text, { replyTo: 'terminal' })
     } catch (err) {
-      return notice(err.detail ? `${err.message} — ${err.detail}` : err.message)
+      return notice(errorText(err))
     }
     editor.addToHistory(text)
     notice(sent.started ? 'started a turn' : 'heard — the running turn reads it next')
@@ -435,7 +435,7 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
       state.limits = show({ ws: state.ws }).turnLimits
       refresh()
     } catch (err) {
-      notice(err.detail ? `${err.message} — ${err.detail}` : err.message)
+      notice(errorText(err))
     }
   }
 
@@ -453,7 +453,7 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
           notice(switched.was === switched.model ? `already runs on ${switched.model}` : `runs on ${switched.model} from the next turn`)
           refresh()
         } catch (err) {
-          notice(err.detail ? `${err.message} — ${err.detail}` : err.message)
+          notice(errorText(err))
         }
       }
       if (args.length) return switchTo(args[0])

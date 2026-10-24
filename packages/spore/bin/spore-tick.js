@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { loadEnvironment, tick, tickReport } from '../src/index.js'
+import { errorText, loadEnvironment, tick, tickReport } from '../src/index.js'
 
 try {
   loadEnvironment()
@@ -7,6 +7,6 @@ try {
   for (const line of lines) console.log(line)
   process.exit(exit)
 } catch (err) {
-  console.error(`spore-tick: ${err.detail ? `${err.message} — ${err.detail}` : err.message}`)
+  console.error(`spore-tick: ${errorText(err)}`)
   process.exit(2)
 }

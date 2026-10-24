@@ -13,11 +13,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:f
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { runShell } from './command.js'
+import { exitText, runShell } from './command.js'
 import { slugOf } from './cell.js'
 import { containOf } from './plugins.js'
+import { durationText } from './units.js'
 import { durationMs } from '../delegation/definition.js'
 import { containing, readConfig } from '../library/config.js'
+import { errorText } from '../observability/errors.js'
 
 export const ROUTE_TIMEOUT_MS = 10_000
 const SUMMARY_CHARS = 300
@@ -83,7 +85,7 @@ export async function runStep ({ argv, ws, cwd = null, payload, reads, timeoutMs
   try {
     keep = containOf(ws)
   } catch (err) {
-    return { failed: `could not start — ${err.message}` }
+    return { failed: `could not start — ${errorText(err)}` }
   }
   const scratch = mkdtempSync(join(tmpdir(), 'spore-step-'))
   try {
@@ -91,6 +93,7 @@ export async function runStep ({ argv, ws, cwd = null, payload, reads, timeoutMs
     mkdirSync(out)
     const printedAbs = join(scratch, 'printed')
     const errAbs = join(scratch, 'err')
+    const started = Date.now()
     const ran = await runShell({
       command: argv.map(quote).join(' '),
       cwd: cwd ?? scratch,
@@ -103,11 +106,8 @@ export async function runStep ({ argv, ws, cwd = null, payload, reads, timeoutMs
       idleMs: timeoutMs
     })
     if (ran.spawnError) return { failed: `could not start — ${ran.spawnError}` }
-    if (ran.killed) return { failed: `was stopped after ${timeoutMs / 1000} s` }
-    if (ran.exit !== 0) {
-      const said = readFileSync(errAbs, 'utf8').trim().split('\n').at(-1)
-      return { failed: `exited ${ran.exit ?? ran.signal}${said ? ` — ${said}` : ''}` }
-    }
+    if (ran.killed) return { failed: `was stopped after ${durationText(Date.now() - started)}` }
+    if (ran.exit !== 0) return { failed: exitText({ exit: ran.exit, signal: ran.signal, stderr: readFileSync(errAbs, 'utf8') }) }
     return answer({ printed: readFileSync(printedAbs, 'utf8'), out })
   } finally {
     rmSync(scratch, { recursive: true, force: true })

@@ -13,14 +13,16 @@ import { fileURLToPath } from 'node:url'
 
 import { containing, readConfig } from '../library/config.js'
 import { native } from '../native.js'
-import { runShell } from './command.js'
+import { exitText, runShell } from './command.js'
 import { containOf } from './plugins.js'
 import { deliver } from './route.js'
 import { TRIAGE_PER_DAY } from './triage.js'
 import { release } from './send.js'
 import { beginJob, endJob, jobsIn, saidUnread } from './spore-dir.js'
 import { NAMES } from './names.js'
+import { durationText } from './units.js'
 import { parsedDefinition, sporeDefinition } from '../delegation/definition.js'
+import { errorText } from '../observability/errors.js'
 
 const BIN = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin')
 export const JOB_BIN = join(BIN, 'job.js')
@@ -31,8 +33,6 @@ const LOG_FILE = 'supervisor.log'
 export const PROGRESS_FILE = 'progress'
 
 export const jobDir = (ws, name) => resolve(ws, JOBS_DIR, name)
-
-export const durationText = (ms) => ms < 60_000 ? `${Math.round(ms / 1000)}s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)}m` : `${(ms / 3_600_000).toFixed(1)}h`
 
 const briefingOf = ({ name, event, run }) => ({ payload }) => [
   `What the job "${name}" reported: ${event}, run ${run}.`,
@@ -259,12 +259,12 @@ export async function superviseJob ({ ws, name, count, wallMs, command, answer, 
         ? `was stopped at its wall, ${durationText(wallMs)}`
         : event === 'stopped'
           ? `was stopped after ${durationText(took)}`
-          : `exited ${ran.exit ?? ran.signal} after ${durationText(took)}`
+          : exitText({ exit: ran.exit, signal: ran.signal, took })
     const report = { job: name, run, event, command, startedAt, endedAt, exit: ran.exit, signal: ran.signal, dir: `${JOBS_DIR}/${name}` }
     await deliverJob(ws, { name, run, event, ref: event, text: `The job ${how}.`, report }, { env, log, releaseHeld })
     await Promise.allSettled([...judging])
   } catch (err) {
-    log(`failed — ${err.type ?? err.name} ${err.message}${err.detail ? ` — ${err.detail}` : ''}`)
+    log(`failed — ${err.type ?? err.name} ${errorText(err)}`)
     throw err
   } finally {
     letGo()

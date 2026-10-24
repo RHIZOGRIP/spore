@@ -689,11 +689,11 @@ describe('the service', () => {
     })
 
     it('delivers now once perDay cells have run, and when the cell fails', async () => {
-      cellAnswer = { answer: null, costUsd: 0.02, durationMs: 120_000, failed: 'ended 1 — past its wall' }
+      cellAnswer = { answer: null, costUsd: 0.02, durationMs: 120_000, failed: 'exited 1 — past its wall' }
       await withJudges({ hookFields: { perDay: 1 } })
       await fetch(`${base}/hook/forge`, signed('{}'))
       await server.routed()
-      expect(logs.join('\n')).toMatch(/the cell ended 1 — past its wall; delivered now/)
+      expect(logs.join('\n')).toMatch(/the cell exited 1 — past its wall; delivered now/)
       await fetch(`${base}/hook/forge`, signed('{"n":2}', { 'x-forgejo-delivery': 'd-2' }))
       await server.routed()
       expect(cells).toHaveLength(1)
@@ -799,10 +799,10 @@ describe('a prepare step, run confined', () => {
   it('attaches nothing past its bounds, from a directory, or when it fails', async () => {
     const failed = async (body, extra = {}) => (await runPrepare({ ...setup(body), ...extra })).failed
     expect(await failed("for (const n of [1, 2, 3]) require('node:fs').writeFileSync('out/' + n, 'x')")).toBe('wrote 3 files, more than the 2 its spore allows')
-    expect(await failed("require('node:fs').writeFileSync('out/big', 'x'.repeat(2048))")).toBe('wrote 2 KB, more than the 1 KB its spore allows')
+    expect(await failed("require('node:fs').writeFileSync('out/big', 'x'.repeat(2048))")).toBe('wrote 2.0KB, more than the 1KB its spore allows')
     expect(await failed("require('node:fs').mkdirSync('out/pages')")).toBe('wrote out/pages, which is not a plain file')
     expect(await failed("console.error('no pdf'); process.exit(2)")).toBe('exited 2 — no pdf')
-    expect(await failed('setTimeout(() => {}, 5000)', { timeoutMs: 300 })).toMatch(/^was stopped after 0.3 s$/)
+    expect(await failed('setTimeout(() => {}, 5000)', { timeoutMs: 300 })).toMatch(/^was stopped after \d+s$/)
     expect(await failed('', { reads: [join(dir, 'nowhere')] })).toMatch(/nowhere, which it is let read, is not there/)
     expect(existsSync(join(dir, 'spore', 'inbox.d', 'd1', 'pages'))).toBe(false)
   })

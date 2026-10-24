@@ -465,13 +465,13 @@ export function conformance (harness, platformTests = () => {}) {
         start()
         say({ conversation: '1', text: 'both', files: [file('small.txt', 'fits'), file('big.bin', 'x'.repeat(2048), 'application/octet-stream')] })
         await until(() => posted('1', 'hello back'))
-        expect(posts('1').some(one => /^big\.bin did not reach the spore: (2 KB, )?over the 1 KB this bot takes$/.test(one.text))).toBe(true)
+        expect(posts('1').some(one => /^big\.bin did not reach the spore: (2\.0KB, )?over the 1KB this bot takes$/.test(one.text))).toBe(true)
         const [entry] = readInbox(ws)
         const [small, big] = kept(entry)
         expect(small).toEqual({ name: 'small.txt', bytes: 4, read: 'fits', missing: null })
-        expect(big).toMatchObject({ name: 'big.bin', read: null, missing: expect.stringMatching(/over the 1 KB this bot takes$/) })
+        expect(big).toMatchObject({ name: 'big.bin', read: null, missing: expect.stringMatching(/over the 1KB this bot takes$/) })
         expect([2048, null]).toContain(big.bytes)
-        expect(saidOf(entry)).toMatch(/big\.bin did not come: .*over the 1 KB this bot takes\]$/)
+        expect(saidOf(entry)).toMatch(/big\.bin did not come: .*over the 1KB this bot takes\]$/)
       })
 
       it('the bot takes none of are told so, and what was written still reaches the spore', async () => {

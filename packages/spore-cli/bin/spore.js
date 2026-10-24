@@ -14,7 +14,7 @@ import { basename, resolve } from 'node:path'
 
 import minimist from 'minimist'
 
-import { differingDocs, fork, follow, followingDocs, grantOf, isWorkspace, lastEventSeq, loadEnvironment, mimeOf, readConfig, readInbox, RUNNING, send, stateOf, stop, turnOfMessage, turnSummary, watch, workspaceFor } from '@rhizogrip/spore'
+import { differingDocs, fork, follow, followingDocs, grantOf, isWorkspace, lastEventSeq, loadEnvironment, mimeOf, readConfig, readInbox, RUNNING, send, stateOf, stop, turnOfMessage, turnSummary, watch, workspaceFor, errorText } from '@rhizogrip/spore'
 import { renderHeader } from '../src/dispatch.js'
 
 // Detaching is neither success nor failure: the turn is still going, and 0 would claim it
@@ -240,7 +240,7 @@ if (shape) {
 try {
   loadEnvironment()
 } catch (err) {
-  if (verb !== 'doctor') fail(`${err.message} — ${err.detail}`)
+  if (verb !== 'doctor') fail(errorText(err))
 }
 
 if (verb === 'tui') {
@@ -261,7 +261,7 @@ if (verb === 'setup') {
     process.exit(await setup())
   } catch (err) {
     if (!err.type) throw err
-    fail(err.detail ? `${err.message} — ${err.detail}` : err.message)
+    fail(errorText(err))
   }
 }
 
@@ -271,7 +271,7 @@ if (verb === 'here') {
     process.exit(await here({ dir: argv._[1], sporangium: argv.sporangium, model: argv.model, git: argv.git !== false }))
   } catch (err) {
     if (!err.type) throw err
-    fail(err.detail ? `${err.message} — ${err.detail}` : err.message)
+    fail(errorText(err))
   }
 }
 
@@ -338,7 +338,7 @@ function spore (name, { needed = true } = {}) {
   try {
     target = workspaceFor(name)
   } catch (err) {
-    fail(`${err.message} — ${err.detail}`)
+    fail(errorText(err))
   }
   if (needed && !isWorkspace(target.path)) {
     fail(target.named
@@ -372,7 +372,7 @@ if (verb === 'fork') {
   try {
     made = fork({ run: spore(asked), at: argv.at, into: workspaceFor(into).path, definition: argv.definition, replay: argv.replay, unsafe: argv.unsafe, debug: argv.debug })
   } catch (err) {
-    fail(err.detail ? `${err.message} — ${err.detail}` : err.message)
+    fail(errorText(err))
   }
   console.error(`spore: forked ${made.from} at ${made.at}, round ${made.rounds} — carrying it on in ${made.ws}`)
   renderHeader(made.ws, grantOf(made.ws))
@@ -423,7 +423,7 @@ try {
   differs = differingDocs(ws)
   followed = followingDocs(readConfig())
 } catch (err) {
-  fail(err.detail ? `${err.message} — ${err.detail}` : err.message)
+  fail(errorText(err))
 }
 if (differs.length && !followed) console.error(`spore: ${differs.map(d => d.file).join(', ')} differ from what is installed — spore upgrade ${asked}`)
 
@@ -436,7 +436,7 @@ try {
   grant = grantOf(ws)
   sent = send(ws, message, { attach, requestId, replyTo: 'terminal', unsafe: argv.unsafe, debug: argv.debug })
 } catch (err) {
-  fail(err.detail ? `${err.message} — ${err.detail}` : err.message)
+  fail(errorText(err))
 }
 
 // Sent before under this request id and already ended: nothing runs, and what it got is on

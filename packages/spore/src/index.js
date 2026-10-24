@@ -56,7 +56,7 @@ export { listPlugins, showPlugin, allowPlugin, disallowPlugin, differingDocs, pl
 // Turns the clock starts: one pass fires what is due, and a schedule is a file.
 export { tick, tickReport, TICK_LOCK } from './core/tick.js'
 export { paused, spendSoFar } from './core/admission.js'
-export { durationText } from './core/job.js'
+export { bytesText, durationSpelling, durationText, sizeSpelling } from './core/units.js'
 export { parseSchedule, survey, SCHEDULE_DIR } from './core/schedule.js'
 
 // What a definition says and what a spore can carry to another, read without running it.
@@ -75,4 +75,4 @@ export { SCHEMA as EVENT_SCHEMA, EVENTS, PROMISED } from './observability/event-
 
 export { cliLogger, silent } from './observability/logger.js'
 export { formatTraceparent, parseTraceparent } from './observability/tracing.js'
-export { SporeError, SEVERITY_TAGS, toWireError } from './observability/errors.js'
+export { errorText, SporeError, SEVERITY_TAGS, toWireError } from './observability/errors.js'

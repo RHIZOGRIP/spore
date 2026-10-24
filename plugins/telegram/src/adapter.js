@@ -4,7 +4,7 @@
  * a private chat's is its person's, under `people`, and a group's is negative, under `groups`.
  */
 
-import { SporeError } from '@rhizogrip/spore'
+import { errorText, SporeError } from '@rhizogrip/spore'
 import { backoff, escapeHtml, VERBS } from '@rhizogrip/spore/relay'
 
 import { toHtml } from './format.js'
@@ -33,8 +33,6 @@ const STYLES = { positive: 'success', destructive: 'danger' }
 const FETCH_MOST = 20 * 1024 * 1024
 const ALBUM_QUIET_MS = 1000
 const BODY = 'a Telegram body is { "html": "<Telegram\'s HTML, at most 4096 characters>" }'
-
-const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
 /**
  * The private chats, `people: { "<person id>": "<spore>" }` or `{ "spore", "details", "show",
@@ -231,7 +229,7 @@ export function createAdapter ({ telegram, bot, me }) {
           const acknowledge = (text) => telegram.answer(query.id, text)
           const choice = choiceOf(query)
           if (choice) await onChoice({ ...choice, acknowledge })
-          else await acknowledge(null).catch(err => log(`a press was not answered — ${said(err)}`))
+          else await acknowledge(null).catch(err => log(`a press was not answered — ${errorText(err)}`))
           return
         }
         const message = normalize(update, bot, me)
@@ -255,7 +253,7 @@ export function createAdapter ({ telegram, bot, me }) {
             throw new SporeError('another process is taking this bot\'s updates', { type: 'TELEGRAM_CONFLICT', detail: err.detail })
           }
           if (!err.retryable) throw err
-          log(`poll failed — ${said(err)}`)
+          log(`poll failed — ${errorText(err)}`)
           await sleep(retry.after(err))
           continue
         }
@@ -276,7 +274,7 @@ export function createAdapter ({ telegram, bot, me }) {
         if (album) await sleep(ALBUM_QUIET_MS)
       }
       if (offset !== undefined) {
-        await telegram.updates(offset, { seconds: 0 }).catch(err => log(`could not confirm the last updates — ${said(err)}`))
+        await telegram.updates(offset, { seconds: 0 }).catch(err => log(`could not confirm the last updates — ${errorText(err)}`))
       }
     },
 

@@ -33,6 +33,22 @@ const MARKER = 'X-Spore-Service'
 
 const quoted = (path) => `"${path}"`
 
+/** A Node program's unit, restarted when it fails and never after it refuses with exit 2. */
+const nodeUnit = ({ description, marker, node, program, args = '' }) => [
+  '[Unit]',
+  `Description=${description}`,
+  `${MARKER}=${marker}`,
+  '',
+  '[Service]',
+  `ExecStart=${quoted(node)} ${quoted(program)}${args}`,
+  'Restart=on-failure',
+  'RestartPreventExitStatus=2',
+  'KillMode=process',
+  '',
+  '[Install]',
+  'WantedBy=default.target'
+]
+
 /**
  * The keys the ssh-agent service loads: every private key in this folder beside `config.json`,
  * never inside a workspace, so no spore can read one. Adding or retiring a key is putting it in
@@ -83,20 +99,7 @@ export const SERVICES = Object.freeze({
     check: ({ node, root }) => [node, [join(root, 'bin', 'spore-webhook.js'), '--check']],
     next: () => 'give each sender http://<host>/hook/<name> through your reverse proxy — it listens on 127.0.0.1:8742, or SPORE_WEBHOOK_LISTEN in environment',
     units: ({ node, root }) => ({
-      'spore-webhook.service': [
-        '[Unit]',
-        'Description=spore-webhook: webhooks as messages to spores',
-        `${MARKER}=webhook`,
-        '',
-        '[Service]',
-        `ExecStart=${quoted(node)} ${quoted(join(root, 'bin', 'spore-webhook.js'))}`,
-        'Restart=on-failure',
-        'RestartPreventExitStatus=2',
-        'KillMode=process',
-        '',
-        '[Install]',
-        'WantedBy=default.target'
-      ]
+      'spore-webhook.service': nodeUnit({ description: 'spore-webhook: webhooks as messages to spores', marker: 'webhook', node, program: join(root, 'bin', 'spore-webhook.js') })
     })
   },
   api: {
@@ -107,20 +110,7 @@ export const SERVICES = Object.freeze({
     check: ({ node, root }) => [node, [join(root, 'bin', 'spore-api.js'), '--check']],
     next: () => 'give each caller its token and the socket or address api.json names',
     units: ({ node, root }) => ({
-      'spore-api.service': [
-        '[Unit]',
-        'Description=spore-api: the library\'s verbs over HTTP',
-        `${MARKER}=api`,
-        '',
-        '[Service]',
-        `ExecStart=${quoted(node)} ${quoted(join(root, 'bin', 'spore-api.js'))}`,
-        'Restart=on-failure',
-        'RestartPreventExitStatus=2',
-        'KillMode=process',
-        '',
-        '[Install]',
-        'WantedBy=default.target'
-      ]
+      'spore-api.service': nodeUnit({ description: 'spore-api: the library\'s verbs over HTTP', marker: 'api', node, program: join(root, 'bin', 'spore-api.js') })
     })
   },
   'ssh-agent': {
@@ -218,20 +208,7 @@ function fromPlugin (found) {
     runs: named,
     check: found.check && (({ node, instance }) => [node, [found.program, ...(instance === null ? [] : [instance]), ...found.check]]),
     units: ({ node }) => ({
-      [unit]: [
-        '[Unit]',
-        `Description=spore-${found.name}${instance}: ${found.what.replaceAll('%', '%%')}`,
-        `${MARKER}=${found.name}`,
-        '',
-        '[Service]',
-        `ExecStart=${quoted(node)} ${quoted(found.program)}${instance}`,
-        'Restart=on-failure',
-        'RestartPreventExitStatus=2',
-        'KillMode=process',
-        '',
-        '[Install]',
-        'WantedBy=default.target'
-      ]
+      [unit]: nodeUnit({ description: `spore-${found.name}${instance}: ${found.what.replaceAll('%', '%%')}`, marker: found.name, node, program: found.program, args: instance })
     })
   }
 }

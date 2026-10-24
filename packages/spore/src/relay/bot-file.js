@@ -20,10 +20,10 @@
  * name or `{ spore, … }`, and `called` how that person is identified, as "their member id".
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 
-import { CONFIG_FILE } from '../library/config.js'
+import { CONFIG_FILE, readJson } from '../library/config.js'
 import { native } from '../native.js'
 import { NAMES } from '../core/names.js'
 import { variableOf } from '../core/variables.js'
@@ -57,12 +57,7 @@ export function readBot (spec, path) {
       detail: `it names the bot's ${spec.credentials.join(' and ')} and who may reach which spore, as ${spec.example} — a bot reaching no one is refused rather than left open`
     })
   }
-  let raw
-  try {
-    raw = JSON.parse(readFileSync(path, 'utf8'))
-  } catch (err) {
-    throw new SporeError(`${path} is not readable JSON`, { type: typeOf(spec, 'BOT_INVALID'), detail: err.message })
-  }
+  const raw = readJson(path, typeOf(spec, 'BOT_INVALID'))
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     throw new SporeError(`${path} is not a bot`, { type: typeOf(spec, 'BOT_INVALID'), detail: `a bot is ${spec.example}` })
   }

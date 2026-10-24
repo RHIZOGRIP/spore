@@ -12,6 +12,7 @@ import { SporeError } from '../observability/errors.js'
 import { mimeOf } from './call-record.js'
 import { runStep } from './router.js'
 import { definitionPath } from './spore-dir.js'
+import { bytesText, sizeSpelling } from './units.js'
 import { containing, readConfig } from '../library/config.js'
 import { parsedDefinition } from '../delegation/definition.js'
 
@@ -29,8 +30,6 @@ export function prepareFor (ws, origin) {
   return { plugin: step.plugin, program: step.program, timeoutMs: definition.prepare.timeout, attach: definition.prepare.attach, reads: definition.reads.map(grant => grant.path) }
 }
 
-const sizeText = (bytes) => bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${Math.round(bytes / 1024 / 1024 * 10) / 10} MB`
-
 /** What `out/` holds, checked against `attach`: `{ found: [{ name, path, bytes }] }` or `{ failed }`. */
 function attachedIn (out, attach) {
   const found = []
@@ -43,7 +42,7 @@ function attachedIn (out, attach) {
   }
   if (found.length > attach.files) return { failed: `wrote ${found.length} files, more than the ${attach.files} its spore allows` }
   const bytes = found.reduce((total, file) => total + file.bytes, 0)
-  if (bytes > attach.bytes) return { failed: `wrote ${sizeText(bytes)}, more than the ${sizeText(attach.bytes)} its spore allows` }
+  if (bytes > attach.bytes) return { failed: `wrote ${bytesText(bytes)}, more than the ${sizeSpelling(attach.bytes)} its spore allows` }
   return { found }
 }
 

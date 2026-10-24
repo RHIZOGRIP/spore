@@ -1,11 +1,10 @@
 import { dirname } from 'node:path'
 
-import { loadEnvironment, recordStarted } from '../index.js'
+import { errorText, recordStarted } from '../index.js'
+import { serviceProcess } from '../infra/service.js'
 import { botNames, botPath, botsDir, credentialOf, reactionsOf, routesOf } from './bot-file.js'
 import { createRelay } from './relay.js'
 import { statePath } from './state.js'
-
-const REFUSED = 2
 
 /**
  * A connector's service, `<program> <bot> [--check]`, run by `spore service` as `<kind>@<bot>`:
@@ -18,25 +17,12 @@ const REFUSED = 2
  * types that mean the platform will not have this bot at all.
  */
 export async function runService ({ spec, program, root, open }) {
-  const log = (line) => console.error(`${new Date().toISOString()} ${line}`)
-  const refuse = (err, hint) => {
-    console.error(`${program}: ${err.message}`)
-    if (err.detail) console.error(`  ${err.detail}`)
-    if (hint) console.error(`  ${hint}`)
-    process.exit(REFUSED)
-  }
+  const { log, refuse, launched } = serviceProcess(program)
 
   const bot = process.argv.slice(2).find(arg => !arg.startsWith('--'))
   if (!bot) {
     const here = botNames(spec)
     refuse(new Error('which bot?'), `${program} <bot> runs ${botsDir(spec)}/<bot>.json${here.length ? ` — here: ${here.join(', ')}` : ''}`)
-  }
-
-  const launched = { ...process.env }
-  try {
-    loadEnvironment()
-  } catch (err) {
-    refuse(err)
   }
 
   let file
@@ -75,11 +61,9 @@ export async function runService ({ spec, program, root, open }) {
     await relay.run(controller.signal)
   } catch (err) {
     if (spec.refusals.includes(err.type)) refuse(err, hint(err))
-    log(`stopped — ${said(err)}`)
+    log(`stopped — ${errorText(err)}`)
     process.exit(1)
   }
   log('stopped')
   process.exit(0)
 }
-
-const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')

@@ -9,6 +9,7 @@
  */
 
 import { sqlLines } from '../src/library/sql.js'
+import { errorText } from '../src/observability/errors.js'
 
 const args = process.argv.slice(2)
 const json = args.includes('--json')
@@ -22,6 +23,6 @@ if (!path || !query) {
 try {
   for (const line of sqlLines(path, query, { json })) console.log(line)
 } catch (err) {
-  console.error(`sql: ${err.message}${err.detail ? ` — ${err.detail}` : ''}`)
+  console.error(`sql: ${errorText(err)}`)
   process.exit(1)
 }

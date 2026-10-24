@@ -22,6 +22,7 @@ import { dirname, resolve, join } from 'node:path'
 import { isWorkspace, sporesInHome } from './discover.js'
 import { native } from '../native.js'
 import { NAMES } from '../core/names.js'
+import { sizeSpelling } from '../core/units.js'
 import { variableOf } from '../core/variables.js'
 import { SporeError } from '../observability/errors.js'
 
@@ -52,18 +53,19 @@ export const ENVIRONMENT_FILE = 'environment'
 
 const expand = (path) => (path.startsWith('~') ? join(homedir(), path.slice(1)) : resolve(path))
 
+/** What an operator's JSON file at `path` holds; one that does not parse is refused as `type`. */
+export function readJson (path, type) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'))
+  } catch (err) {
+    throw new SporeError(`${path} is not readable JSON`, { type, detail: err.message })
+  }
+}
+
 export function readConfig (file = CONFIG_FILE) {
   if (!existsSync(file)) return { home: null, workspaces: [], file, exists: false }
 
-  let raw
-  try {
-    raw = JSON.parse(readFileSync(file, 'utf8'))
-  } catch (err) {
-    throw new SporeError(`${file} is not readable JSON`, {
-      type: 'CONFIG_UNREADABLE',
-      detail: err.message
-    })
-  }
+  const raw = readJson(file, 'CONFIG_UNREADABLE')
   validate(raw, file)
   const home = raw.home ? expand(raw.home) : null
   if (home) checkLayout(home, raw.homeSplit ?? null, file)
@@ -431,12 +433,6 @@ export const DEFAULTS = Object.freeze({
   hereSnapshots: 20
 })
 
-const UNITS = [['GB', 1024 ** 3], ['MB', 1024 ** 2], ['KB', 1024]]
-const sizeText = (bytes) => {
-  const [unit, scale] = UNITS.find(([, scale]) => bytes % scale === 0) ?? ['B', 1]
-  return `${bytes / scale}${unit}`
-}
-
 /**
  * Every setting with the value in effect and where it comes from: `set` in this file, the
  * runtime's `default`, or `unset` when nothing stands in for it.
@@ -445,7 +441,7 @@ export function settings (file = CONFIG_FILE) {
   const current = raw(file)
   return [...KEYS].map(key => {
     if (current[key] !== undefined) return { key, value: current[key], from: 'set' }
-    if (key in DEFAULTS) return { key, value: SIZES.has(key) ? sizeText(DEFAULTS[key]) : DEFAULTS[key], from: 'default' }
+    if (key in DEFAULTS) return { key, value: SIZES.has(key) ? sizeSpelling(DEFAULTS[key]) : DEFAULTS[key], from: 'default' }
     return { key, value: LISTS.has(key) ? [] : null, from: 'unset' }
   }).concat(current.plugins === undefined ? [] : [{ key: 'plugins', value: Object.keys(current.plugins), from: 'set' }])
     .concat(current.replyTo === undefined ? [] : [{ key: 'replyTo', value: current.replyTo, from: 'set' }])

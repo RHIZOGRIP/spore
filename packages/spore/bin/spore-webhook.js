@@ -1,27 +1,11 @@
 #!/usr/bin/env node
-import { loadEnvironment } from '../src/index.js'
 import { recordStarted } from '../src/library/service-record.js'
 import { hooksPath, loadHooks } from '../webhook/hooks.js'
 import { createWebhookServer } from '../webhook/server.js'
 import { listenOf } from '../src/infra/http.js'
+import { serviceProcess, stopOn } from '../src/infra/service.js'
 
-const REFUSED = 2
-
-const log = (line) => console.error(`${new Date().toISOString()} ${line}`)
-
-const refuse = (err, hint) => {
-  console.error(`spore-webhook: ${err.message}`)
-  if (err.detail) console.error(`  ${err.detail}`)
-  if (hint) console.error(`  ${hint}`)
-  process.exit(REFUSED)
-}
-
-const launched = { ...process.env }
-try {
-  loadEnvironment()
-} catch (err) {
-  refuse(err)
-}
+const { log, refuse, launched } = serviceProcess('spore-webhook')
 
 let address
 try {
@@ -53,9 +37,4 @@ server.listen(address.port, address.host, () => {
   log(`spore-webhook · ${address.shown} · ${hooksPath()} · ${hooks.size} hook(s)`)
 })
 
-for (const signal of ['SIGTERM', 'SIGINT']) {
-  process.on(signal, () => server.close(() => {
-    log('stopped')
-    process.exit(0)
-  }))
-}
+stopOn(log, () => new Promise(resolve => server.close(resolve)))

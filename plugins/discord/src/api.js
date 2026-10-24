@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { basename } from 'node:path'
 
-import { SporeError } from '@rhizogrip/spore'
+import { errorText, SporeError } from '@rhizogrip/spore'
 import { backoff, download, platformFailed } from '@rhizogrip/spore/relay'
 
 const BASE = 'https://discord.com/api/v10'
@@ -127,7 +127,7 @@ export function createDiscord (token, { fetchImpl = fetch, base = BASE, WebSocke
             }
             if (t === 'RESUMED') retry.reset()
             if (t === 'MESSAGE_CREATE') {
-              handled = handled.then(() => onMessage(d)).catch(err => log(`message ${d.id}: ${err.message}${err.detail ? ` — ${err.detail}` : ''}`))
+              handled = handled.then(() => onMessage(d)).catch(err => log(`message ${d.id}: ${errorText(err)}`))
             }
           }
         })

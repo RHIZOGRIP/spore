@@ -164,7 +164,7 @@ describe('runDream', () => {
 
   it('leaves the conversation alone when a dream said and changed nothing', async () => {
     const entries = readTranscriptEntries(ws).length
-    await runDream(ws, { env, launch: async () => ({ answer: null, costUsd: 0.01, durationMs: 1000, failed: 'ended 1 — past its wall' }) })
+    await runDream(ws, { env, launch: async () => ({ answer: null, costUsd: 0.01, durationMs: 1000, failed: 'exited 1 — past its wall' }) })
     expect(readTranscriptEntries(ws)).toHaveLength(entries)
   })
 })

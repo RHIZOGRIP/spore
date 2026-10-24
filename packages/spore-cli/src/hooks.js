@@ -1,12 +1,10 @@
-import { durationText, listHooks, showHook } from '@rhizogrip/spore'
+import { durationText, listHooks, showHook, sizeSpelling } from '@rhizogrip/spore'
 
 import { createServices } from './services.js'
 
 const JOURNAL_LINES = 20
 const ANSWER_CHARS = 120
 const UNAVAILABLE = new Set(['SERVICE_NO_SYSTEMD', 'SERVICE_NOT_DEFINED'])
-
-const kb = (bytes) => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)}MB` : `${Math.round(bytes / 1024)}KB`
 
 const verifyText = ({ method, header }) => header ? `${method} on ${header}` : method
 
@@ -46,7 +44,7 @@ function renderHook (hook) {
   console.log(`${hook.name} — ${hook.path}`)
   console.log(`  verify   ${verifyText(hook.verify)}`)
   if (hook.accept) console.log(`  accepts  ${acceptText(hook.accept)}`)
-  console.log(`  bounds   ${kb(hook.maxBytes)} a request · ${hook.perHour} turns an hour · ${hook.maxWait ? `waits up to ${durationText(hook.maxWait)}` : 'never waits'} · ${hook.perDay} triage cells a day`)
+  console.log(`  bounds   ${sizeSpelling(hook.maxBytes)} a request · ${hook.perHour} turns an hour · ${hook.maxWait ? `waits up to ${durationText(hook.maxWait)}` : 'never waits'} · ${hook.perDay} triage cells a day`)
   for (const spore of hook.spores) {
     console.log(`\n${sporeLine(spore, spore.name.length)}`)
     if (!spore.ws) continue

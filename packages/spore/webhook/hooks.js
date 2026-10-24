@@ -4,13 +4,13 @@
  * nothing a confined agent can read may say that. Secrets are `${VAR}`, from the environment.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 import Ajv from 'ajv'
 
 import { CONFIG_FILE, SporeError } from '../src/index.js'
-import { HOOKS_FILE } from '../src/library/config.js'
+import { HOOKS_FILE, readJson } from '../src/library/config.js'
 import { sizeBytes } from '../src/delegation/definition.js'
 import { deliveryBounds } from '../src/core/route.js'
 import { NAMES } from '../src/core/names.js'
@@ -140,12 +140,7 @@ export function loadHooks (path = hooksPath(), env = process.env) {
       detail: 'it names each hook, the spore it reaches and how its sender is checked, as { "<name>": { "spore": "<spore>", "verify": { … } } }'
     })
   }
-  let raw
-  try {
-    raw = JSON.parse(readFileSync(path, 'utf8'))
-  } catch (err) {
-    throw new SporeError(`${path} is not readable JSON`, { type: 'WEBHOOK_INVALID', detail: err.message })
-  }
+  const raw = readJson(path, 'WEBHOOK_INVALID')
   const hooks = new Map()
   for (const [name, hook] of Object.entries(raw)) {
     if (!NAMES.hook.pattern.test(name)) throw refuse(path, name, 'has a name that cannot be part of a URL', NAMES.hook.says)

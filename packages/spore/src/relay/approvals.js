@@ -7,12 +7,10 @@
  * last run stopped.
  */
 
-import { answerApproval, approvalOf, approvalsIn, callApprovalHook, expireApproval, inputsProblem, postApproval, refuseApproval, send, settleApproval, SporeError } from '../index.js'
+import { answerApproval, approvalOf, approvalsIn, callApprovalHook, errorText, expireApproval, inputsProblem, postApproval, refuseApproval, send, settleApproval, SporeError } from '../index.js'
 
 const PRESS = /^ap:([0-9a-f]{12}):([A-Za-z0-9_-]{1,32})$/
 const TELL_AGAIN_MS = 30_000
-
-const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
 export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, where, followed, delivery, environment, env, log, sleep, signal }) {
   const { kind } = adapter
@@ -37,7 +35,7 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     if (busy.has(approval.id)) return
     busy.add(approval.id)
     work()
-      .catch(err => logged(approval, name, said(err)))
+      .catch(err => logged(approval, name, errorText(err)))
       .finally(() => busy.delete(approval.id))
   }
 
@@ -86,7 +84,7 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
       untold.delete(approval.id)
     } catch (err) {
       untold.set(approval.id, Date.now() + TELL_AGAIN_MS)
-      logged(approval, name, `the spore was not told how it ended yet — ${[err.type, said(err)].filter(Boolean).join(' ')}`)
+      logged(approval, name, `the spore was not told how it ended yet — ${[err.type, errorText(err)].filter(Boolean).join(' ')}`)
     }
   }
 
@@ -106,10 +104,10 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
         if (approval.state === 'answered') outcome = 'confirmed'
       } catch (err) {
         if (signal.aborted) return
-        logged(approval, name, said(err))
+        logged(approval, name, errorText(err))
         if (approval.state === 'answered') {
           outcome = 'failed'
-          reason = said(err)
+          reason = errorText(err)
         }
       }
     }
@@ -129,7 +127,7 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
         replaced = await delivery.to(conversation, attempt => attempt(() => adapter.settle(conversation, approval.note, replacement, { ended })))
       } catch (err) {
         if (signal.aborted) return
-        logged(approval, name, `the question in ${where(conversation)} was not closed — ${said(err)}`)
+        logged(approval, name, `the question in ${where(conversation)} was not closed — ${errorText(err)}`)
       }
     }
     if (!settleApproval(ws, approval.id, { outcome, reason, replaced, tell: answer.tell ?? null })) return
@@ -158,8 +156,8 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     try {
       posted = await delivery.to(conversation, attempt => attempt(() => adapter.ask(conversation, shown, choices, { as: name, fields: adapter.can.fields ? fields : [], approval: { id: approval.id, by: approval.approvers, until: approval.until } })))
     } catch (err) {
-      if (err.retryable || signal.aborted) return logged(approval, name, `not posted yet — ${said(err)}`)
-      return refuse(name, ws, approval, `${adapter.label} refused it — ${said(err)}`)
+      if (err.retryable || signal.aborted) return logged(approval, name, `not posted yet — ${errorText(err)}`)
+      return refuse(name, ws, approval, `${adapter.label} refused it — ${errorText(err)}`)
     }
     postApproval(ws, approval.id, posted)
   }
@@ -171,7 +169,7 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
       try {
         open = approvalsIn(ws, { open: true })
       } catch (err) {
-        log(`${ws}: its approvals could not be read — ${said(err)}`)
+        log(`${ws}: its approvals could not be read — ${errorText(err)}`)
         continue
       }
       for (const approval of open) {
@@ -233,10 +231,10 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     try {
       await acknowledge(`${option.label} — recorded`, { taken: true })
     } catch (err) {
-      logged(approval, name, `the press was not acknowledged — ${said(err)}`)
+      logged(approval, name, `the press was not acknowledged — ${errorText(err)}`)
     }
     seeThrough(name, ws, approvalOf(ws, id))
-      .catch(err => logged(approval, name, said(err)))
+      .catch(err => logged(approval, name, errorText(err)))
       .finally(() => busy.delete(id))
   }
 

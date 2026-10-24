@@ -13,29 +13,13 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
-import {
-  addTo, allowPlugin, annotate, billingFor, changeText, define, defaultModel, disallowPlugin, durationText,
-  edit, extend, getKey, jobs, list, listApprovals, listPlugins, log, pause, precursors, remake, remove,
-  removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings,
-  show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM
-} from '@rhizogrip/spore'
+import { addTo, allowPlugin, annotate, billingFor, bytesText, changeText, define, defaultModel, disallowPlugin, durationText, edit, extend, getKey, jobs, list, listApprovals, listPlugins, log, pause, precursors, remake, remove, removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings, show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM, errorText } from '@rhizogrip/spore'
 import { diagnose, renderDoctor } from './doctor.js'
 import { hook } from './hooks.js'
 import { createServices } from './services.js'
 import { saidBy, saidText } from '../tui/conversation.js'
 
 const STATE_WIDTH = 9
-
-const size = (bytes) => {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let value = bytes
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit++
-  }
-  return `${unit ? value.toFixed(1) : value}${units[unit]}`
-}
 
 const tilde = (path) => (path === homedir() || path.startsWith(homedir() + '/') ? `~${path.slice(homedir().length)}` : path)
 
@@ -44,7 +28,7 @@ const line = (row, under) => {
   const spend = row.treeUsd ? `$${row.treeUsd.toFixed(4)}` : ''
   const works = row.definitionError ? '  (its spore.cmk does not parse)' : row.writes.map(path => `  → ${tilde(path)}`).join('')
   const over = row.historyOver ? '  (history over its bound)' : ''
-  return `  ${stateWord(row).padEnd(STATE_WIDTH)} ${String(row.lastTurnNo).padStart(4)} turns ${spend.padStart(9)} ${size(row.bytes).padStart(8)}  ${where}${works}${over}`
+  return `  ${stateWord(row).padEnd(STATE_WIDTH)} ${String(row.lastTurnNo).padStart(4)} turns ${spend.padStart(9)} ${bytesText(row.bytes).padStart(8)}  ${where}${works}${over}`
 }
 
 const block = (title, rows, under) => {
@@ -186,7 +170,7 @@ function renderShow (result) {
   if (result.plugins.length) line('plugins', result.plugins.join(', '))
   if (result.differs.length) line('docs', `${result.differs.join(', ')} differ from what is installed — spore upgrade ${basename(result.ws)}`)
   const { disk } = result
-  line('disk', `${size(disk.total)} — data ${size(disk.data)} · records ${size(disk.state)} · streams ${size(disk.calls)} · sent ${size(disk.inbox)} · other ${size(disk.other)}`)
+  line('disk', `${bytesText(disk.total)} — data ${bytesText(disk.data)} · records ${bytesText(disk.state)} · streams ${bytesText(disk.calls)} · sent ${bytesText(disk.inbox)} · other ${bytesText(disk.other)}`)
   for (const [i, one] of result.schedules.entries()) line(i ? '' : 'schedules', scheduleLine(one))
   if (result.scheduleBound) {
     const b = result.scheduleBound
@@ -724,7 +708,7 @@ export async function manage (verb, argv) {
         stopped = stopJob({ ws, name })
       } catch (err) {
         if (err.type !== 'JOB_NOT_RUNNING') throw err
-        console.error(`spore: ${err.message} — ${err.detail}`)
+        console.error(`spore: ${errorText(err)}`)
         return 1
       }
       return emit(stopped, (r) => { console.log(`asked the supervisor of ${r.name} (pid ${r.pid}) to stop it — how it ended is said to the spore`) })
@@ -774,7 +758,7 @@ export async function manage (verb, argv) {
         return 2
       }
       return emit(remove({ ws: name, yes: argv.yes }), (r) => {
-        console.log(`removed ${r.ws} — ${r.turns} turn(s), $${r.treeUsd.toFixed(4)}, ${size(r.bytes)}`)
+        console.log(`removed ${r.ws} — ${r.turns} turn(s), $${r.treeUsd.toFixed(4)}, ${bytesText(r.bytes)}`)
       })
     }
     if (verb === 'usage') {
@@ -798,7 +782,7 @@ export async function manage (verb, argv) {
       })
     }
   } catch (err) {
-    console.error(`spore: ${err.detail ? `${err.message} — ${err.detail}` : err.message}`)
+    console.error(`spore: ${errorText(err)}`)
     return 2
   }
 }

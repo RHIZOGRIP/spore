@@ -5,7 +5,7 @@
  */
 
 import { describeCall } from '../core/call-table.js'
-import { durationText } from '../core/job.js'
+import { durationText } from '../core/units.js'
 import { appendAnnotation, readEvents, runningLimits, storable } from '../core/spore-dir.js'
 import { RUNNING, stateOf } from '../core/state.js'
 import { SporeError } from '../observability/errors.js'

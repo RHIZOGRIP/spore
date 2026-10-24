@@ -7,7 +7,7 @@
  */
 
 import { readBot, routesOf, VERBS } from '@rhizogrip/spore/relay'
-import { SporeError } from '@rhizogrip/spore'
+import { errorText, SporeError } from '@rhizogrip/spore'
 
 import { header, isWorkingPost, plain } from './forward.js'
 
@@ -147,7 +147,7 @@ export function createAdapter ({ discord, me, botFile }) {
           await rolesOf(kept.guilds[channel], spores)
           await hookOf(channel)
         } catch (err) {
-          log(`channel ${channel}: not ready — ${err.message}${err.detail ? ` — ${err.detail}` : ''}`)
+          log(`channel ${channel}: not ready — ${errorText(err)}`)
         }
       }
     },

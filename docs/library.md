@@ -1569,7 +1569,33 @@ there. Throws a plain `Error` with `code` when `target` cannot be resolved.
 durationText(ms) → string
 ```
 
-A duration as `45s`, `12m` or `1.5h`.
+A measured duration, rounded for reading: `45s`, `12m` or `1.5h`.
+
+### `bytesText`
+
+```
+bytesText(bytes) → string
+```
+
+A measured size, rounded for reading: `512B`, `2.0KB`, `1.5MB`.
+
+### `durationSpelling`
+
+```
+durationSpelling(ms) → string
+```
+
+A declared duration in the largest unit that holds it whole, as a `.cmk` writes it: `90m`, `2h`,
+`45s`.
+
+### `sizeSpelling`
+
+```
+sizeSpelling(bytes) → string
+```
+
+A declared size in the largest unit that holds it whole, as a `.cmk` or `config.json` writes it:
+`512MB`, `1GB`, `1500B`.
 
 ---
 
@@ -1602,6 +1628,14 @@ Spore's error class. Branch on `type`, never on `message`. `toJSON()` leaves out
 returns `{ message, severity, retryable, detail?, type?, retryAfterMs? }`, and
 `SporeError.fromJSON(data, context)` makes one back. The refusals:
 [INTEGRATION §Refusals](../INTEGRATION.md#refusals).
+
+### `errorText`
+
+```
+errorText(err) → string
+```
+
+An error as one line: its `message`, then ` — ` and its `detail` when it has one.
 
 ### `SEVERITY_TAGS`
 

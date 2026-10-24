@@ -24,6 +24,7 @@ import { heldIn } from './spore-dir.js'
 import { release, send, startDream } from './send.js'
 import { stateOf } from './state.js'
 import { parsedDefinition } from '../delegation/definition.js'
+import { errorText } from '../observability/errors.js'
 
 export const TICK_LOCK = native.tickLockPath()
 
@@ -59,7 +60,7 @@ function interruptedIn ({ ws }, { env, configFile }) {
   try {
     return reportInterrupted(ws, { env, configFile, log: () => {} }).map(job => ({ ws, state: 'interrupted', job: job.name, run: job.run }))
   } catch (err) {
-    return [{ ws, state: 'failed', why: err.detail ? `${err.message} — ${err.detail}` : err.message }]
+    return [{ ws, state: 'failed', why: errorText(err) }]
   }
 }
 
@@ -75,7 +76,7 @@ function releaseIn ({ ws }, { now, env, configFile }) {
     return released.length ? [{ ws, state: 'released', deliveries: released.length, started }] : []
   } catch (err) {
     if (HELD_BY[err.type]) return [{ ws, state: 'held', why: HELD_BY[err.type] }]
-    return [{ ws, state: 'failed', why: err.detail ? `${err.message} — ${err.detail}` : err.message }]
+    return [{ ws, state: 'failed', why: errorText(err) }]
   }
 }
 
@@ -98,7 +99,7 @@ function fireIn (spore, { now, env, configFile }) {
       return { ...line, state: 'fired' }
     } catch (err) {
       if (HELD_BY[err.type]) return { ...line, state: 'held', why: HELD_BY[err.type] }
-      return { ...line, state: 'failed', why: err.detail ? `${err.message} — ${err.detail}` : err.message }
+      return { ...line, state: 'failed', why: errorText(err) }
     }
   })
 }
@@ -114,7 +115,7 @@ function dreamIn ({ ws }, { now, env, configFile }) {
     return started ? [{ ws, state: 'dreaming' }] : []
   } catch (err) {
     if (HELD_BY[err.type]) return [{ ws, state: 'held', why: HELD_BY[err.type] }]
-    return [{ ws, state: 'failed', why: err.detail ? `${err.message} — ${err.detail}` : err.message }]
+    return [{ ws, state: 'failed', why: errorText(err) }]
   }
 }
 

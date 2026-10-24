@@ -3,29 +3,16 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync } from 'node:fs
 import { connect } from 'node:net'
 import { dirname } from 'node:path'
 
-import { loadEnvironment, tick, tickReport } from '../src/index.js'
+import { errorText, tick, tickReport } from '../src/index.js'
 import { recordStarted } from '../src/library/service-record.js'
+import { serviceProcess, stopOn } from '../src/infra/service.js'
 import { ensureOtelInitialized, shutdownOtel } from '../src/observability/tracing.js'
 import { apiPath, loadApi } from '../api/config.js'
 import { createApiServer } from '../api/server.js'
 
-const REFUSED = 2
 const TICK_EVERY_MS = 60_000
 
-const log = (line) => console.error(`${new Date().toISOString()} ${line}`)
-
-const refuse = (err, hint) => {
-  console.error(`spore-api: ${err.message}`)
-  if (err.detail) console.error(`  ${err.detail}`)
-  if (hint) console.error(`  ${hint}`)
-  process.exit(REFUSED)
-}
-
-try {
-  loadEnvironment()
-} catch (err) {
-  refuse(err)
-}
+const { log, refuse, launched } = serviceProcess('spore-api')
 
 let api
 try {
@@ -59,13 +46,13 @@ if (api.socket) {
     if (await answers(api.socket)) refuse(new Error(`something already answers on ${api.socket}`), 'another spore-api runs — stop it first')
     unlinkSync(api.socket)
   }
-  const server = createApiServer({ api, env: process.env, log })
+  const server = createApiServer({ api, env: launched, log })
   await new Promise((resolve, reject) => server.once('error', reject).listen(api.socket, resolve)).catch(err => refuse(err))
   chmodSync(api.socket, 0o600)
   servers.push(server)
 }
 if (api.listen) {
-  const server = createApiServer({ api, env: process.env, log })
+  const server = createApiServer({ api, env: launched, log })
   await new Promise((resolve, reject) => server.once('error', reject).listen(api.listen.port, api.listen.host, resolve))
     .catch(err => refuse(err, err.code === 'EADDRINUSE' ? `something already listens on ${api.listen.text}` : null))
   servers.push(server)
@@ -80,18 +67,14 @@ if (process.argv.includes('--tick')) {
     try {
       for (const line of tickReport(tick()).lines) log(`tick ${line}`)
     } catch (err) {
-      log(`tick failed — ${err.detail ? `${err.message} — ${err.detail}` : err.message}`)
+      log(`tick failed — ${errorText(err)}`)
     }
   }
   ticking = setInterval(pass, TICK_EVERY_MS)
 }
 
-for (const signal of ['SIGTERM', 'SIGINT']) {
-  process.on(signal, async () => {
-    clearInterval(ticking)
-    await Promise.all(servers.map(server => new Promise(resolve => server.close(resolve))))
-    await shutdownOtel()
-    log('stopped')
-    process.exit(0)
-  })
-}
+stopOn(log, async () => {
+  clearInterval(ticking)
+  await Promise.all(servers.map(server => new Promise(resolve => server.close(resolve))))
+  await shutdownOtel()
+})

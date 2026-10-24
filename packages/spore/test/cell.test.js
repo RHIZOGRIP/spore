@@ -97,12 +97,12 @@ describe('a cell outside any turn', () => {
   })
 
   it('records a run that failed or gave nothing, and none that never started', async () => {
-    await runCell({ ws, precursor: 'digest', origin: 'command', ref: 'r-1', briefing: 'x\n', env, launch: async () => ({ answer: null, costUsd: 0.01, durationMs: 120_000, failed: 'ended 1 — past its wall' }) })
+    await runCell({ ws, precursor: 'digest', origin: 'command', ref: 'r-1', briefing: 'x\n', env, launch: async () => ({ answer: null, costUsd: 0.01, durationMs: 120_000, failed: 'exited 1 — past its wall' }) })
     await runCell({ ws, precursor: 'digest', origin: 'command', briefing: 'x\n', env, launch: async () => ({ answer: null, costUsd: 0, durationMs: 50, failed: null }) })
     writeFileSync(join(ws, 'precursors', 'digest.cmk'), DIGEST.replace('on-wrap: discard\n', ''))
     const unstarted = await runCell({ ws, precursor: 'digest', origin: 'command', briefing: 'x\n', env, launch: async () => { throw new Error('never launched') } })
     expect(unstarted).toMatchObject({ started: false, failed: expect.stringMatching(/precursors\/digest\.cmk .*on-wrap/) })
-    expect(rows().map(row => [row.ref, row.error])).toEqual([['r-1', 'ended 1 — past its wall'], [null, 'gave no answer']])
+    expect(rows().map(row => [row.ref, row.error])).toEqual([['r-1', 'exited 1 — past its wall'], [null, 'gave no answer']])
     expect(existsSync(join(dir, 'state', 'spore', 'cells', 'watcher', 'command'))).toBe(true)
   })
 })

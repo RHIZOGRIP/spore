@@ -13,11 +13,12 @@
 import { existsSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
-import { attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf } from '../index.js'
+import { attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf, errorText } from '../index.js'
 import { createApprovals } from './approvals.js'
 import { filesOf, reactionsOf, routesOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
-import { announce, endingOf, leftOut, notCome, originOf, pieces, reply, sizeOf, statusText, waiting } from './render.js'
+import { announce, endingOf, leftOut, notCome, originOf, pieces, reply, statusText, waiting } from './render.js'
+import { bytesText, sizeSpelling } from '../core/units.js'
 import { applyEvent, createLive, renderLive } from '../library/live.js'
 import { isZone, runningLimits } from '../core/spore-dir.js'
 import { loadState, saveState } from './state.js'
@@ -37,8 +38,6 @@ const pause = (ms, signal) => new Promise(resolve => {
   const timer = setTimeout(resolve, ms)
   signal.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
 })
-
-const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
 const firstLine = (text) => text.split('\n')[0].slice(0, 200)
 
@@ -117,7 +116,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
   /** What the relay says itself, under the spore `as` names, or the bot's own name for null. */
   const tell = (conversation, text, as = null) => delivery.to(conversation, async (attempt) => {
     for (const part of pieces(text, adapter.limits.message)) await attempt(() => adapter.post(conversation, part, { as }))
-  }).catch(err => log(`${where(conversation)}: not delivered — ${said(err)}`))
+  }).catch(err => log(`${where(conversation)}: not delivered — ${errorText(err)}`))
 
   /** Whom a post about `entries` answers: each person and the first line of what they said. */
   const forOf = (entries) => entries.map(entry => ({ person: entry.person, said: entry.said }))
@@ -127,7 +126,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     try {
       answer = act()
     } catch (err) {
-      return tell(conversation, said(err), as)
+      return tell(conversation, errorText(err), as)
     }
     return tell(conversation, changeText(answer, { brief }), as)
   }
@@ -167,8 +166,8 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       if (!stopped) return tell(conversation, marked.length ? `nothing is running — set aside ${messages(marked.length)} that waited` : 'nothing is running', name)
       if (marked.length) tell(conversation, `set aside ${messages(marked.length)} you sent that no turn had read`, name)
     } catch (err) {
-      log(`${where(conversation)}: nothing set aside — ${said(err)}`)
-      tell(conversation, `nothing set aside — ${said(err)}`, name)
+      log(`${where(conversation)}: nothing set aside — ${errorText(err)}`)
+      tell(conversation, `nothing set aside — ${errorText(err)}`, name)
     }
   }
 
@@ -199,16 +198,16 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     } catch (err) {
       if (!err.retryable) throw err
       if (err.context?.retryAfter) limitedUntil.set(conversation, Date.now() + err.context.retryAfter * 1000)
-      log(`${where(conversation)}: ${what} dropped — ${said(err)}`)
+      log(`${where(conversation)}: ${what} dropped — ${errorText(err)}`)
     }
-  }).catch(err => log(`${where(conversation)}: ${what} not shown — ${said(err)}`))
+  }).catch(err => log(`${where(conversation)}: ${what} not shown — ${errorText(err)}`))
 
   /**
    * The bot's reaction on a person's message changed — `pick()` answers `[emoji, was]`, the one to
    * put or null for none and the one it put before — or logged when it cannot be.
    */
   const mark = (attempt, conversation, message, pick) => attempt(() => adapter.react(conversation, message, ...pick()))
-    .catch(err => log(`${where(conversation)}: the reaction on message ${message} not changed — ${said(err)}`))
+    .catch(err => log(`${where(conversation)}: the reaction on message ${message} not changed — ${errorText(err)}`))
 
   const follows = (ws) => {
     if (state.cursors[ws]) return false
@@ -256,11 +255,11 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         configFile
       })
     } catch (err) {
-      log(`${where(conversation)}: send to ${name} refused — ${err.type} ${said(err)}`)
+      log(`${where(conversation)}: send to ${name} refused — ${err.type} ${errorText(err)}`)
       if (taken) delivery.to(conversation, attempt => mark(attempt, conversation, message.message, () => [react.failed, null]))
       const busy = err.type === 'ADMISSION_FULL'
       if (routed.brief) return tell(conversation, busy ? 'busy — try again in a while' : 'not delivered — tell whoever runs me', name)
-      return tell(conversation, busy ? `busy — ${said(err)}` : `not delivered — ${said(err)}`, name)
+      return tell(conversation, busy ? `busy — ${errorText(err)}` : `not delivered — ${errorText(err)}`, name)
     }
     if (sent.repeated) return log(`${where(conversation)}: message ${message.id} was already said to ${name}, as inbox ${sent.inbox}`)
 
@@ -271,7 +270,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     if (show === 'react') return
     notes.set(entry, delivery.to(conversation, attempt => attempt(() => adapter.post(conversation, sent.started ? WORKING : STILL_WORKING, { as: name, for: forOf([entry]) })))
       .then(note => note, err => {
-        log(`${where(conversation)}: no working message — ${said(err)}`)
+        log(`${where(conversation)}: no working message — ${errorText(err)}`)
         return null
       })
       .then(note => {
@@ -291,7 +290,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     try {
       send(ws, message.text ?? '', { attach, requestId: requestOf(message, name), from: fromOf(message), overheard: true })
     } catch (err) {
-      log(`${where(message.conversation)}: what ${message.person.name} said was not given to ${name} — ${err.type} ${said(err)}`)
+      log(`${where(message.conversation)}: what ${message.person.name} said was not given to ${name} — ${err.type} ${errorText(err)}`)
     }
   }
 
@@ -343,7 +342,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     const attach = []
     for (const [i, file] of message.files.entries()) {
       const missing = (why) => attach.push({ name: file.name, mime: file.mime, bytes: file.bytes, missing: why })
-      const over = (bytes) => `${bytes ? `${sizeOf(bytes)}, ` : ''}over the ${sizeOf(most)} this bot takes`
+      const over = (bytes) => `${bytes ? `${bytesText(bytes)}, ` : ''}over the ${sizeSpelling(most)} this bot takes`
       if (i >= FILES_MOST) missing(`only ${FILES_MOST} files of a message reach a spore`)
       else if (most === 0) missing('this bot takes no files')
       else if (file.ref === null) missing(file.why)
@@ -352,7 +351,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         try {
           attach.push({ name: file.name, mime: file.mime, data: await fetchFile(file.ref, most) })
         } catch (err) {
-          log(`${where(message.conversation)}: ${file.name} from message ${message.id} not fetched — ${said(err)}`)
+          log(`${where(message.conversation)}: ${file.name} from message ${message.id} not fetched — ${errorText(err)}`)
           missing(err.type === 'FILE_TOO_LARGE' ? over(err.context?.bytes) : `it could not be fetched — ${err.detail ?? err.message}`)
         }
       }
@@ -368,7 +367,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     try {
       read = route()
     } catch (err) {
-      return log(`refused ${where(conversation)}: the bot file is unreadable — ${said(err)}`)
+      return log(`refused ${where(conversation)}: the bot file is unreadable — ${errorText(err)}`)
     }
     const routed = read.table.get(keyOf(conversation))
     if (!routed) return unnamed(message, read)
@@ -383,7 +382,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       try {
         ws = sporeOf(name, read.config)
       } catch (err) {
-        log(`${where(conversation)}: "${name}" — ${said(err)}`)
+        log(`${where(conversation)}: "${name}" — ${errorText(err)}`)
         if (gate === 'pass') tell(conversation, `this ${noun} points at "${name}", which is not a spore name — tell whoever runs me`, name)
         continue
       }
@@ -416,7 +415,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       try {
         await handle(message)
       } catch (err) {
-        log(`${where(message.conversation)}: message ${message.id} — ${said(err)}`)
+        log(`${where(message.conversation)}: message ${message.id} — ${errorText(err)}`)
         tell(message.conversation, `that failed — ${err.message}`)
       }
     },
@@ -424,7 +423,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       try {
         await approvals.choose(choice)
       } catch (err) {
-        log(`${where(choice.conversation)}: a press — ${said(err)}`)
+        log(`${where(choice.conversation)}: a press — ${errorText(err)}`)
       }
     },
     signal: stopping.signal,
@@ -438,7 +437,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       read = route()
       routeFailure = null
     } catch (err) {
-      if (routeFailure !== err.message) log(`bot file: ${said(err)} — following the spores it last named`)
+      if (routeFailure !== err.message) log(`bot file: ${errorText(err)} — following the spores it last named`)
       routeFailure = err.message
       return [...followed.keys()]
     }
@@ -498,7 +497,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     try {
       return runningLimits(ws)?.startedAt ?? null
     } catch (err) {
-      log(`${ws}: when its turn started is not known, so its working message shows no time — ${said(err)}`)
+      log(`${ws}: when its turn started is not known, so its working message shows no time — ${errorText(err)}`)
       return null
     }
   }
@@ -515,7 +514,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       try {
         if (stateOf(ws).state !== RUNNING) continue
       } catch (err) {
-        log(`${ws}: not known to be running — ${said(err)}`)
+        log(`${ws}: not known to be running — ${errorText(err)}`)
         continue
       }
       for (const conversation of reacting) {
@@ -584,11 +583,11 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       try {
         return await attempt(() => adapter.remove(conversation, note))
       } catch (err) {
-        log(`${where(conversation)}: working message ${note} not removed — ${said(err)}`)
+        log(`${where(conversation)}: working message ${note} not removed — ${errorText(err)}`)
       }
     }
     await attempt(() => adapter.edit(conversation, note, text, { for: answered }))
-      .catch(err => log(`${where(conversation)}: working message ${note} not marked ${text} — ${said(err)}`))
+      .catch(err => log(`${where(conversation)}: working message ${note} not marked ${text} — ${errorText(err)}`))
   }
 
   /**
@@ -627,7 +626,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         return await adapter.post(conversation, part, { ...options, markdown: true })
       } catch (err) {
         if (!err.context?.formatRefused) throw err
-        log(`${where(conversation)}: ${adapter.label} refused the formatting (${said(err)}), sent as plain text`)
+        log(`${where(conversation)}: ${adapter.label} refused the formatting (${errorText(err)}), sent as plain text`)
         return adapter.post(conversation, part, options)
       }
     }
@@ -645,11 +644,11 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       })
     } catch (err) {
       if (err.retryable || stopping.signal.aborted) {
-        log(`turn ${entry.turnNo} of ${ws}: not delivered to ${where(conversation)} yet — ${said(err)}`)
+        log(`turn ${entry.turnNo} of ${ws}: not delivered to ${where(conversation)} yet — ${errorText(err)}`)
         return false
       }
-      settleOutbox(ws, entry.outboxNo, { refused: said(err) })
-      log(`turn ${entry.turnNo} of ${ws}: ${where(conversation)} refused it — ${said(err)}`)
+      settleOutbox(ws, entry.outboxNo, { refused: errorText(err) })
+      log(`turn ${entry.turnNo} of ${ws}: ${where(conversation)} refused it — ${errorText(err)}`)
       forget(ws, mine)
       return true
     }
@@ -672,7 +671,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         if (stopping.signal.aborted || !(await deliver(ws, entry))) entry.answers.forEach(inboxNo => owed.add(inboxNo))
       }
     } catch (err) {
-      log(`${ws}: its outbox could not be read or settled — ${said(err)}`)
+      log(`${ws}: its outbox could not be read or settled — ${errorText(err)}`)
       return null
     }
     return owed
@@ -691,7 +690,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       await attempt(() => adapter.edit(entry.conversation, note, text, { for: forOf([entry]) }))
     } catch (err) {
       if (err.retryable) throw err
-      log(`${where(entry.conversation)}: working message ${note} cannot be edited (${said(err)}), saying it anew`)
+      log(`${where(entry.conversation)}: working message ${note} cannot be edited (${errorText(err)}), saying it anew`)
       await attempt(() => adapter.post(entry.conversation, text, { as, for: forOf([entry]) }))
     }
   }
@@ -710,7 +709,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         return delivery.to(entry.conversation, attempt => tellWaiting(attempt, entry, waiting(turn, { brief }), name))
       })
       for (const outcome of await Promise.allSettled(work)) {
-        if (outcome.status === 'rejected') log(`turn ${turn.record.turnNo} of ${ws}: not told it is waiting — ${said(outcome.reason)}`)
+        if (outcome.status === 'rejected') log(`turn ${turn.record.turnNo} of ${ws}: not told it is waiting — ${errorText(outcome.reason)}`)
       }
     }
 
@@ -733,7 +732,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     const conversation = place.slice(prefix.length)
     if (!conversations.has(keyOf(conversation))) return
     await delivery.to(conversation, attempt => attempt(() => adapter.quiet(conversation, { turnNo: turn.record.turnNo, origin: originOf(unprompted) })))
-      .catch(err => log(`turn ${turn.record.turnNo} of ${ws}: its quiet end not shown in ${where(conversation)} — ${said(err)}`))
+      .catch(err => log(`turn ${turn.record.turnNo} of ${ws}: its quiet end not shown in ${where(conversation)} — ${errorText(err)}`))
   }
 
   const follow = async () => {
@@ -757,7 +756,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     try {
       table = routesOf(adapter, botFile)
     } catch (err) {
-      return log(`bot file: ${said(err)}`)
+      return log(`bot file: ${errorText(err)}`)
     }
     await adapter.prepare(table, log)
   }

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 
-import { CONFIG_FILE, loadEnvironment, paused } from '../src/index.js'
+import { CONFIG_FILE, errorText, loadEnvironment, paused } from '../src/index.js'
 import { createHookDelivery } from './deliveries.js'
 import { acceptRefusal, hooksPath, loadHooks } from './hooks.js'
 import { verify } from './verify.js'
@@ -9,8 +9,6 @@ import { readBody } from '../src/infra/http.js'
 
 const ROUTE = /^\/hook\/([^/]+)(?:\/([^/]+))?\/?$/
 const SECRET_HEADER = /authorization|cookie|token|signature|secret/i
-
-const said = (err) => [err.message, err.detail].filter(Boolean).join(' — ')
 
 const PAYLOAD_NAMES = [
   [/json/, 'payload.json'],
@@ -109,7 +107,7 @@ export function createWebhookServer ({ env, log, configFile = CONFIG_FILE, pause
 
   const server = createServer((request, response) => {
     handle(request, response).catch(err => {
-      log(`${request.method} ${request.url} · failed — ${err.type ?? err.name} ${said(err)}`)
+      log(`${request.method} ${request.url} · failed — ${err.type ?? err.name} ${errorText(err)}`)
       if (!response.headersSent) answer(response, 500)
     })
   })
