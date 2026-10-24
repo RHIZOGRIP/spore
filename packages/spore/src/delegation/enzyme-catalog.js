@@ -1,7 +1,7 @@
 /**
  * What a cell is told about the enzymes its precursor granted.
  *
- * The mirror of `precursorRules`: the spore's `domainRules` lists the sub-agents it can
+ * The mirror of `precursorRules`: the spore's `rules` lists the sub-agents it can
  * spawn, a cell's lists the enzymes it can call. Both answer the same question — what
  * can I reach beyond my built-ins — and both go in the slot that is concatenated
  * into the cached foundation block, which for a cell is stable by construction:

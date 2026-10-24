@@ -49,10 +49,10 @@ function nowLine (now = new Date()) {
  * @param {object} opts
  * @param {string} opts.prompt
  * @param {string} opts.identity        — the definition's body: what the agent is told it is
- * @param {string} [opts.domainRules]   — pipeline-specific protocol
+ * @param {string} [opts.rules]         — what the agent can reach here, written by the runtime
  * @param {'5m'|'1h'} [opts.cacheTtl='5m']
  * @param {string} opts.workspace
- * @param {string} opts.modelId        — the model the turn runs on, as the definition's `model:`
+ * @param {string} opts.modelId         — the model the turn runs on, as the definition's `model:`
  * @param {boolean} [opts.unsafe=false]
  * @param {object} [opts.logger]
  * @returns {{ output, messages, rounds, usage, stopReason, spent }}
@@ -63,7 +63,7 @@ export async function runSpore ({
   // to hear from and its directory is used once.
   prompt,
   identity,
-  domainRules,
+  rules,
   cacheTtl = '5m',
   // Long-term memory: `{ backend, push, pull }`, declared in the definition and absent by
   // default. Every number in it came from one sweep over one dataset, so none of them is
@@ -171,8 +171,8 @@ export async function runSpore ({
   logger.debug({ workspace: WS, cwd: process.cwd() }, '[spore] workspace')
   const systemBlocks = composeSystem({
     identity,
-    domainRules,
-    dynamic: TURN_NOTE
+    rules,
+    note: TURN_NOTE
   }, { cacheTtl })
 
   // Everything said to this spore that no turn has answered yet. How far it was read is

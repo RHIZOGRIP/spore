@@ -1059,7 +1059,7 @@ describe('writes, as a directory the spore works in', () => {
     expect(openWorkspace(ws).writes).toEqual([{ name: 'here', path: proj, missing: false }])
     expect(openWorkspace(ws).writes).toEqual([{ name: 'here', path: proj, missing: false }])
     expect(readFileSync(resolve(ws, 'here', 'README'), 'utf8')).toBe('project')
-    expect(openWorkspace(ws).domainRules).toMatch(/^here\/ is the directory you were opened on/)
+    expect(openWorkspace(ws).rules).toMatch(/^here\/ is the directory you were opened on/)
   })
 
   it('refuses to open a spore whose directory cannot be staged', () => {

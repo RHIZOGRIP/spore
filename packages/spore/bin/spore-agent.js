@@ -56,7 +56,7 @@ try {
 
   const result = await runSpore({
     identity: opened.identity,
-    domainRules: opened.domainRules,
+    rules: opened.rules,
     workspace: opened.ws,
     modelId: opened.model,
     mo,

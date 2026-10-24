@@ -23,7 +23,7 @@ import { dataDir, definitionPath, DEFINITION_FILE, LIBRARIES_FILE, PLUGINS_DIR, 
  * were still being seeded. Measured on a benchmark run: agents guessed `context/` and
  * `data/`, and nine `read` calls went looking for a file sitting at the workspace root.
  *
- * It belongs in `domainRules` because that slot already means *what you can reach here*,
+ * It belongs in `rules` because that slot already means *what you can reach here*,
  * and it is what the runtime knows and an identity's author may not.
  */
 /**
@@ -223,6 +223,6 @@ export function openWorkspace (dir, { cwd = process.cwd(), definition: given, al
     plugins: definition.plugins,
     calls: definition.calls ?? [],
     reasoning: definition.reasoning ?? [],
-    domainRules: [workRules(writes), readRules(reachable), ANSWER_RULES, seededRules(ws), pluginRules(ws, definition.plugins), precursorRules(describePrecursors(ws), definition.dream?.precursor), cellModelRules(definition.cellModels ?? [], definition.model)].filter(Boolean).join('\n\n')
+    rules: [workRules(writes), readRules(reachable), ANSWER_RULES, seededRules(ws), pluginRules(ws, definition.plugins), precursorRules(describePrecursors(ws), definition.dream?.precursor), cellModelRules(definition.cellModels ?? [], definition.model)].filter(Boolean).join('\n\n')
   }
 }

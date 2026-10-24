@@ -16,7 +16,7 @@ const noEmit = { emit () {}, on () {}, has: () => false }
 /**
  * The transcript as it goes out, with the conversation opted into prefix caching.
  *
- * `composeSystem` opens breakpoints on the system blocks — about 1,450 tokens — and
+ * `composeSystem` opens one breakpoint, on the system prompt — about 1,450 tokens — and
  * nothing opened one on the history, so a conversation was re-sent at full price on
  * every round however long it grew. mohdel takes the opt-in from a `cache` marker on any
  * message part and places the breakpoints itself, trailing plus a milestone every

@@ -228,7 +228,7 @@ parsing the answer for file names.
 holds its notes: a conventional directory it writes and the runtime reads. The rest of `data/`
 is working space and is not listed; it stays in the workspace for whoever looks. The reader of an
 answer is not assumed to be one who looks: whatever the identity, the runtime's rules
-(`domainRules`) tell the agent that its reader — in a chat, at a terminal or through the API —
+(`rules`) tell the agent that its reader — in a chat, at a terminal or through the API —
 gets the answer and `data/out/`, never the workspace, so a path into it is no answer; an identity
 whose person works in the workspace says so. Where a chat gets no file from its bot, the relay's
 `from` says so, and the answer is all the reader gets.
@@ -403,7 +403,7 @@ precursor does not grant, nor a grant of enzymes without `exec` or `wsexec` to r
 There is no schema entry for them: `spawn` copies `enzyme.js` into the cell's workspace and sets
 `SPORE_ENZYME` to it and `SPORE_ENZYMES` to the broker's socket, and the cell runs
 `node "$SPORE_ENZYME" <name>`, which it only knows to do because it was told. The blocks become
-the cell's `domainRules`, the slot that already means *what you can reach beyond your
+the cell's `rules`, the slot that already means *what you can reach beyond your
 built-ins*: the spore fills it with the precursor catalog, a cell with this.
 
 **An enzyme is a filter.** The wire carries stdin, stdout, stderr and an exit code, and
@@ -457,7 +457,7 @@ precursor someone else wrote arrives with the sporangium a spore is made from (`
 `security` and `perennial` carry theirs) or from a plugin the spore uses (§Plugins), **copied into the
 workspace** when absent and never overwritten.
 
-The list reaches the agent through **`domainRules`** — each precursor's name, first line, the
+The list reaches the agent through **`rules`** — each precursor's name, first line, the
 tools it grants and its model. That slot is concatenated with the identity *inside* the cached
 foundation block, so writing a precursor invalidates the cache once. Anything
 that changes from turn to turn stays out of the system prompt: the `dynamic` tail is a constant
@@ -525,7 +525,7 @@ does the same for a spore it makes, so a new spore lists what its plugins give b
 turn, and one naming a plugin that is not allowed is not made. A plugin may not set what the runtime
 sets — anything in `RUNTIME_ENV` or `PASSED_THROUGH` (`rust/workspace`), and any `SPORE_*` but its
 own `SPORE_<NAME>` and `SPORE_<NAME>_*` — and two plugins setting one variable are refused together.
-`domainRules` names each used plugin's file with its first line, and only the ones the definition
+`rules` names each used plugin's file with its first line, and only the ones the definition
 names.
 
 **A service is the one thing a plugin runs on the host.** `services` names each by `what` it
@@ -1299,9 +1299,9 @@ split with the identity is by cost: the identity is the cached prefix, paid on e
 every turn, so it carries the ordinary path and one line pointing here, while the reference —
 about 30 KB — costs nothing until the agent reads the part it needs.
 
-**The runtime names it in `domainRules`** (`src/core/workspace.js`), together with
+**The runtime names it in `rules`** (`src/core/workspace.js`), together with
 `libraries.md`, whenever they are seeded: `--definition` replaces the identity wholesale, so a
-custom identity may carry no pointer, and `domainRules` already means *what you can reach
+custom identity may carry no pointer, and `rules` already means *what you can reach
 here*.
 
 **Only the spore gets one.** `openWorkspace()` seeds it; a cell reaches `runSpore` through

@@ -76,7 +76,7 @@ try {
   const result = await runSpore({
     prompt: readFileSync(plan.promptPath, 'utf8'),
     identity: plan.precursor.identity,
-    domainRules: enzymeRules(plan.precursor.enzymes),
+    rules: enzymeRules(plan.precursor.enzymes),
     workspace: plan.ws,
     modelId: modelIds[0],
     mo,

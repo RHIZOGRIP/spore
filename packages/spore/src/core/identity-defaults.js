@@ -3,9 +3,9 @@
  * definition and the default one go through the same parse.
  *
  * Byte-stable on purpose: no interpolation, no timestamps, no workspace paths.
- * It shares one cache breakpoint with `domainRules`, so per-call content here
+ * It shares one cache breakpoint with `rules`, so per-call content here
  * would force a fresh prefix write every turn. Anything that changes per call
- * belongs in composeSystem's uncached `dynamic` tail instead.
+ * belongs in the turn's own message instead (ARCHITECTURE §Prompt caching).
  */
 
 import { readFileSync } from 'node:fs'

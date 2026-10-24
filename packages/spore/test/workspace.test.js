@@ -84,11 +84,11 @@ describe('openWorkspace', () => {
 
   it('tells the agent which precursors it can spawn, and seeds none of its own', () => {
     writeFileSync(definitionPath(WS), definitionWith(MODEL))
-    expect(open().domainRules).not.toMatch(/Sub-agents you can spawn/)
+    expect(open().rules).not.toMatch(/Sub-agents you can spawn/)
     expect(readdirSync(resolve(WS, 'precursors'))).toEqual(['README.md'])
 
     copyFileSync(resolve(__dirname, 'fixtures/plugins/docs/precursors/summarize.cmk'), resolve(WS, 'precursors/summarize.cmk'))
-    expect(open().domainRules).toMatch(/- summarize \(precursors\/summarize\.cmk\)/)
+    expect(open().rules).toMatch(/- summarize \(precursors\/summarize\.cmk\)/)
   })
 
   it('hands over how its calls are described, from its :::call blocks, and keeps them out of the identity', () => {
@@ -107,8 +107,8 @@ describe('openWorkspace', () => {
     writeFileSync(resolve(WS, 'plugins/old.md'), '# A plugin it no longer uses\n')
     const opened = open()
     expect(opened.plugins).toEqual(['browser'])
-    expect(opened.domainRules).toMatch(/- plugins\/browser\.md — The browser: "\$SPORE_BROWSER" drives the agents' Chrome/)
-    expect(opened.domainRules).not.toMatch(/old\.md/)
+    expect(opened.rules).toMatch(/- plugins\/browser\.md — The browser: "\$SPORE_BROWSER" drives the agents' Chrome/)
+    expect(opened.rules).not.toMatch(/old\.md/)
   })
 })
 
@@ -133,7 +133,7 @@ describe('what the runtime tells an agent it has been given', () => {
   // shipped definition — so a custom one lost the pointer while the files were still
   // being seeded. Found on a benchmark run, where nine `read` calls went hunting for
   // libraries.md in `context/` and `data/`.
-  it('names the seeded files in domainRules, whatever identity is installed', () => {
+  it('names the seeded files in rules, whatever identity is installed', () => {
     const cmk = resolve(ROOT, 'custom.cmk')
     writeFileSync(cmk, '---\nname: custom\nmodel: anthropic/claude-haiku-4-5\ntools: [read]\nrounds: [2, 3]\ncost: [1, 2]\nwall: [1m, 2m]\n---\nYou do one job.\n')
 
@@ -141,9 +141,9 @@ describe('what the runtime tells an agent it has been given', () => {
     expect(opened.error).toBeUndefined()
     expect(opened.identity).toContain('You do one job.')
     // Nothing in that identity mentions either file; the runtime says so instead.
-    expect(opened.domainRules).toContain('reference.md')
-    expect(opened.domainRules).toContain('libraries.md')
-    expect(opened.domainRules).toContain('workspace root')
+    expect(opened.rules).toContain('reference.md')
+    expect(opened.rules).toContain('libraries.md')
+    expect(opened.rules).toContain('workspace root')
   })
 
   it('tells every identity that whoever reads its answer does not see its workspace', () => {
@@ -151,8 +151,8 @@ describe('what the runtime tells an agent it has been given', () => {
     writeFileSync(cmk, '---\nname: custom\nmodel: anthropic/claude-haiku-4-5\ntools: [read]\nrounds: [2, 3]\ncost: [1, 2]\nwall: [1m, 2m]\n---\nYou do one job.\n')
 
     const opened = open({ definition: 'custom.cmk' })
-    expect(opened.domainRules).toContain('Whoever reads your answer sees the answer and the files you hand back in data/out/, never your workspace')
-    expect(opened.domainRules).toContain('Never send them to a path there')
+    expect(opened.rules).toContain('Whoever reads your answer sees the answer and the files you hand back in data/out/, never your workspace')
+    expect(opened.rules).toContain('Never send them to a path there')
   })
 })
 
@@ -161,8 +161,8 @@ describe('a corpus, as the agent is told of it', () => {
     const corpus = resolve(ROOT, 'notes')
     mkdirSync(corpus)
     writeFileSync(definitionPath(WS), `---\nname: spore\nmodel: ${MODEL}\ntools: [read]\nreads: [papers=${corpus}]\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\n---\n\nYou read.\n`)
-    expect(open().domainRules).toContain(`papers/ is ${realpathSync(corpus)}`)
-    expect(open().domainRules).toContain('read it through papers/. You cannot change it.')
+    expect(open().rules).toContain(`papers/ is ${realpathSync(corpus)}`)
+    expect(open().rules).toContain('read it through papers/. You cannot change it.')
   })
 
   it('is given in the person\'s ~ when it is under their home, and only then', () => {
