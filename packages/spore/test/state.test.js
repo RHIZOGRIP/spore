@@ -6,7 +6,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { stateOf, stateWord, stop } from '../src/core/state.js'
-import { acquireLock, hostState, releaseLock, writePendingRecord, writeTurnRecords } from '../src/core/spore-dir.js'
+import { acquireLock, hostState, releaseLock, writeOutcome, writeTurnRecords } from '../src/core/spore-dir.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '.state-workspaces')
 const SPORE_DIR = pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), '../src/core/spore-dir.js')).href
@@ -53,7 +53,7 @@ describe('what a spore is doing', () => {
     expect(stateOf(running).draining).toBeUndefined()
 
     const draining = spore('draining', { turns: [{ stopReason: 'answer', concluded: true }], running: true })
-    writePendingRecord(draining, { stopReason: 'cancelled', concluded: false })
+    writeOutcome(hostState(draining), { stopReason: 'cancelled', concluded: false })
     expect(stateOf(draining)).toMatchObject({ state: 'running', draining: true, last: { stopReason: 'cancelled' } })
   })
 

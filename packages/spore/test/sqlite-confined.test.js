@@ -15,7 +15,6 @@ import { DatabaseSync } from 'node:sqlite'
 
 import { makeTools } from '../src/tools/make-tools.js'
 import { createCallTrail } from '../src/core/call-record.js'
-import { native } from '../src/native.js'
 import { checkSqlite, nodeSqliteVersion } from '../src/core/sqlite.js'
 import { shownToModel } from './fixtures/as-shown.js'
 
@@ -53,7 +52,6 @@ afterEach(() => {
 
 describe('the SQLite on either side of a workspace database', () => {
   it('is at least the release both are held to', () => {
-    expect(native.sqliteSupported(native.bundledSqlite())).toBe(true)
     expect(checkSqlite()).toBe(nodeSqliteVersion())
     expect(() => checkSqlite('3.50.4')).toThrow(/older than 3\.51\.3/)
   })

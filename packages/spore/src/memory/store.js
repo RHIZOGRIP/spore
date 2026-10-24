@@ -123,15 +123,6 @@ export function openStore (ws, { backend = 'bm25', push = null, pull = null, flo
       return unreadable
     },
 
-    /**
-     * Forget what was indexed; the next query rebuilds it. Called when the notes change,
-     * and when turns leave short-term memory — which is when they become the store's.
-     */
-    reindex (at = horizon) {
-      horizon = at
-      indexes = null
-    },
-
     /** What the incoming turn brings to mind, unasked. */
     async push (text, take = push) {
       return fit(await rank(SENTENCE, text, take), budget)

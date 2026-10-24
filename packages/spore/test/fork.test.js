@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 import { createModelServer } from './fixtures/model-server.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
-import { acquireLock, copyInbox, readState, readTranscript, releaseLock, readTranscriptEntries, readTurns, writePendingRecord, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
+import { acquireLock, copyInbox, readState, readTranscript, releaseLock, readTranscriptEntries, readTurns, hostState, writeOutcome, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
 import { callRuns, readCall, readCalls, writeCall } from '../src/core/call-record.js'
 import { forkWorkspace, readFork } from '../src/core/fork.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
@@ -184,7 +184,7 @@ describe('spore fork', () => {
       for (const { call, record } of readCalls(original, runId)) writeCall(drained, runId, call, record)
     }
     copyInbox(original, drained, last.inboxTo)
-    writePendingRecord(drained, last)
+    writeOutcome(hostState(drained), last)
     acquireLock(drained)
     try {
       const made = forkWorkspace({ run: drained, at: '0001', into: join(root, 'draining') })

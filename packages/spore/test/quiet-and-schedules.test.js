@@ -5,9 +5,8 @@ import { fileURLToPath } from 'node:url'
 
 import { makeTools } from '../src/tools/make-tools.js'
 import { runSpore } from '../src/core/spore-run.js'
-import { DEFAULT_DEFINITION } from '../src/core/identity-defaults.js'
 import { createCallTrail, readCall } from '../src/core/call-record.js'
-import { appendInbox, hostState, readPending } from '../src/core/spore-dir.js'
+import { enqueue, hostState, readEvents, readPending } from '../src/core/spore-dir.js'
 import { textOf } from '../src/core/message.js'
 import { shownToModel } from './fixtures/as-shown.js'
 
@@ -94,7 +93,7 @@ describe('quiet when a person wrote in the turn', () => {
 
   const turn = (steps, inputs) => runSpore({
     workspace: WS,
-    identity: DEFAULT_DEFINITION.identity,
+    identity: 'You are a spore under test.',
     modelId: 'fake/model',
     limits: { rounds: { soft: 10, hard: 12 } },
     mo: scripted(steps, inputs),
@@ -107,14 +106,14 @@ describe('quiet when a person wrote in the turn', () => {
   })
 
   it('ends a turn only webhooks spoke in', async () => {
-    appendInbox(WS, '', { hook: PUSH, attach: [{ name: 'payload.json', mime: 'application/json', data: Buffer.from('{}') }] })
+    enqueue(WS, '', { hook: PUSH, attach: [{ name: 'payload.json', mime: 'application/json', data: Buffer.from('{}') }] })
     const result = await turn([() => quietCall], [])
     expect(result).toMatchObject({ stopReason: 'quiet', output: null })
   })
 
   it('is refused when a person wrote alongside a webhook, and the turn answers instead', async () => {
-    appendInbox(WS, 'scanning finished ?')
-    appendInbox(WS, '', { hook: PUSH, attach: [{ name: 'payload.json', mime: 'application/json', data: Buffer.from('{}') }] })
+    enqueue(WS, 'scanning finished ?')
+    enqueue(WS, '', { hook: PUSH, attach: [{ name: 'payload.json', mime: 'application/json', data: Buffer.from('{}') }] })
     const inputs = []
     const result = await turn([() => quietCall, () => ({ status: 'completed', output: 'not yet — page 430 of 445' })], inputs)
     expect(toolResults(inputs[1]).join('\n')).toMatch(/someone wrote to you in this turn \("scanning finished \?"\)/)
@@ -122,11 +121,11 @@ describe('quiet when a person wrote in the turn', () => {
   })
 
   it('is refused when a person writes while a webhook turn is running', async () => {
-    appendInbox(WS, '', { hook: PUSH, attach: [{ name: 'payload.json', mime: 'application/json', data: Buffer.from('{}') }] })
+    enqueue(WS, '', { hook: PUSH, attach: [{ name: 'payload.json', mime: 'application/json', data: Buffer.from('{}') }] })
     const inputs = []
     const result = await turn([
       () => {
-        appendInbox(WS, 'scanning finished ?')
+        enqueue(WS, 'scanning finished ?')
         return { status: 'tool_use', toolCalls: [{ id: 'r', name: 'read', arguments: { path: 'data/absent.txt' } }] }
       },
       () => quietCall,
@@ -144,15 +143,14 @@ describe('a turn that ends quiet', () => {
     })
   })
 
-  const run = (emitter, because = 'nothing changed') => runSpore({
+  const run = (because = 'nothing changed') => runSpore({
     prompt: 'check the queue',
     workspace: WS,
-    identity: DEFAULT_DEFINITION.identity,
+    identity: 'You are a spore under test.',
     modelId: 'fake/model',
     limits: { rounds: { soft: 10, hard: 12 } },
     mo: quietly(because),
-    state: hostState(WS),
-    emitter
+    state: hostState(WS)
   })
 
   it('has no output and says why in its record', async () => {
@@ -162,14 +160,13 @@ describe('a turn that ends quiet', () => {
   })
 
   it('ends quiet on a reason that begins "error:", which is what the model wrote and not a refusal', async () => {
-    const result = await run(undefined, 'error: none of the feeds changed since yesterday')
+    const result = await run('error: none of the feeds changed since yesterday')
     expect(result).toMatchObject({ stopReason: 'quiet', output: null, because: 'error: none of the feeds changed since yesterday' })
   })
 
   it('tells a watcher it ended quiet without handing it the reason as an answer', async () => {
-    const seen = []
-    await run({ emit: (type, data) => seen.push({ type, ...data }) })
-    const complete = seen.find(e => e.type === 'complete')
+    await run()
+    const [complete] = readEvents(WS, { event: 'complete' })
     expect(complete).toMatchObject({ stopReason: 'quiet', output: null, because: 'nothing changed', terminal: true })
   })
 })

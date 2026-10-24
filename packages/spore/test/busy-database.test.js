@@ -14,7 +14,7 @@ import { createModelServer } from './fixtures/model-server.js'
 import { answers, scriptedMo } from './fixtures/scripted-model.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
-import { appendInbox, readInbox, readTurns, statePath } from '../src/core/spore-dir.js'
+import { enqueue, readInbox, readTurns, statePath } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 import { RUNNING, stateOf } from '../src/core/state.js'
 
@@ -73,7 +73,7 @@ afterEach(async () => {
 
 describe('a database another writer holds past the timeout', () => {
   it('refuses a send, and writes nothing', async () => {
-    appendInbox(ws, 'before')
+    enqueue(ws, 'before')
     await hold()
     const started = Date.now()
     expect(() => send(ws, 'hello', { env: env() })).toThrow(expect.objectContaining({ type: 'INBOX_UNWRITABLE', detail: expect.stringMatching(/locked/) }))

@@ -219,13 +219,20 @@ export function openChannel (fd) {
 const hostRequest = (ws, turnId) => (op, body) =>
   answered(JSON.parse(native.stateRequest(ws, turnId, JSON.stringify({ id: 0, op, ...body }))), 0)
 
+export const HOST_TURNS_ENV = 'SPORE_TEST_HOST_TURNS'
+
 /**
- * The same requests from the host side, on a turn begun here the way a supervisor begins one —
- * for a caller running the confined half in its own process, which is what a test does.
+ * Not part of spore: the one hook kept for spore's own tests, refused unless `SPORE_TEST_HOST_TURNS=1`.
+ * A turn begun here the way a supervisor begins one, so a test runs the confined half in its
+ * own process: `request` answers what the agent's channel would, `finalize` makes the turn final
+ * as the runner does when no ledger settled it. In spore a turn is only ever begun by its runner.
  */
 export function hostState (ws) {
+  if (process.env[HOST_TURNS_ENV] !== '1') {
+    throw new SporeError('a turn is begun by its runner', { type: 'STATE_CHANNEL', detail: `hostState is for spore's own tests, which set ${HOST_TURNS_ENV}=1` })
+  }
   const turnId = native.beginTurn(ws)
-  return { turnId, request: hostRequest(ws, turnId) }
+  return { turnId, request: hostRequest(ws, turnId), finalize: () => native.finalizeTurn(ws, turnId) }
 }
 
 // A workspace named where a writer is expected: the host writing records that belong to no
@@ -295,32 +302,6 @@ export function appendEvents (target, events) {
 // A name from outside picks the file it lands on, so it is reduced to one path segment
 // with nothing in it that resolves anywhere else.
 const safeName = (name) => String(name || '').split(/[/\\]/).pop().replace(/^\.+/, '').slice(0, 96)
-
-/**
- * Everything said to a spore, in the order it was said, each entry at the `inboxNo` the
- * database gives it. Never rewritten: the agent reads it and could not change it, and it does
- * not need to, because how far a turn read is written down with the turn as `inboxTo`.
- *
- * `schedule` is `{ name, due }` when the clock said it: which schedule fired, for which slot,
- * kept as the entry's `schedule` and `due`. It is the only record of a firing, so what fired
- * last is read back from here.
- *
- * `traceparent` is the sender's trace context, W3C form. The runner parents the turn that
- * answers this message on it, or links it when an earlier message already did; the agent
- * never sees it.
- *
- * Answers the entry's `inboxNo`: the turn whose `inboxTo` first reaches it is the one that
- * answered it.
- *
- * `requestId` is a sender's own name for the message — a Telegram update, a request it may
- * retry. The inbox takes each once: sent again, nothing is added and nothing written, and the
- * answer is the first one's `inboxNo`, with `repeated`. `enqueue` answers both.
- *
- * @returns {number}
- */
-export function appendInbox (ws, said, options = {}) {
-  return enqueue(ws, said, options).inbox
-}
 
 /** A message said under a `requestId`, if the inbox has it: `{ inboxNo, at, consumed }`, or null. */
 export function inboxRequest (ws, requestId) {
@@ -505,7 +486,28 @@ function unused (name, taken) {
   return candidate
 }
 
-/** @returns {{ inbox: number, repeated: boolean }} */
+/**
+ * Everything said to a spore, in the order it was said, each entry at the `inboxNo` the
+ * database gives it. Never rewritten: the agent reads it and could not change it, and it does
+ * not need to, because how far a turn read is written down with the turn as `inboxTo`.
+ *
+ * `schedule` is `{ name, due }` when the clock said it: which schedule fired, for which slot,
+ * kept as the entry's `schedule` and `due`. It is the only record of a firing, so what fired
+ * last is read back from here.
+ *
+ * `traceparent` is the sender's trace context, W3C form. The runner parents the turn that
+ * answers this message on it, or links it when an earlier message already did; the agent
+ * never sees it.
+ *
+ * Answers `{ inbox, repeated }`: `inbox` is the entry's `inboxNo`, and the turn whose `inboxTo`
+ * first reaches it is the one that answered it.
+ *
+ * `requestId` is a sender's own name for the message — a Telegram update, a request it may
+ * retry. The inbox takes each once: sent again, nothing is added and nothing written, and the
+ * answer is the first one's `inboxNo`, with `repeated` true.
+ *
+ * @returns {{ inbox: number, repeated: boolean }}
+ */
 export function enqueue (ws, said, options = {}) {
   if (options.requestId !== undefined) {
     const known = inboxRequest(ws, options.requestId)
@@ -967,10 +969,6 @@ export function modelKeyPath (ws) {
  * environment to every command an agent runs, so one `env` written to a file would
  * put the key in a call record, an out file and the transcript.
  */
-export function writeModelKey (ws) {
-  return native.writeModelKey(ws)
-}
-
 export function readModelKey (ws) {
   return existsSync(modelKeyPath(ws)) ? readFileSync(modelKeyPath(ws), 'utf8').trim() : null
 }
@@ -1082,22 +1080,9 @@ export function readPending (ws) {
   })
 }
 
-/** The pending turn finalized as its agent left it, when no ledger settled it — host side. */
-export function finalizePending (ws) {
-  const row = JSON.parse(native.finalizePending(ws))
-  return row && turnRecord(row)
-}
-
 /** A workspace's turn records, replaced — host side, for a fork and for fixtures. */
 export function writeTurnRecords (ws, records) {
   native.writeTurns(ws, JSON.stringify(records))
-}
-
-/** A turn begun and left pending, as an agent leaves one — host side, for fixtures. */
-export function writePendingRecord (ws, record) {
-  const state = hostState(ws)
-  writeOutcome(state, record)
-  return state.turnId
 }
 
 /** Everything said to `from` up to `inboxNo`, copied into `to` at the same positions — a fork's inbox. */
@@ -1159,16 +1144,6 @@ export function dreamRecords (ws) {
       heldDue
     }
   })
-}
-
-/**
- * Drop all but the newest `keep` turns of trail, counting the one about to run.
- * A turn's subtree is one delete, which is the granularity the layout was given:
- * a count of calls would bound the wrong thing, since a call's streams live in
- * its directory and one of them can be a hundred megabytes.
- */
-export function pruneTrail (ws, keep) {
-  return native.pruneTrail(ws, keep)
 }
 
 // `clearTranscript` was here: it truncated the live descriptor to zero, or unlinked the

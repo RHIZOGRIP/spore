@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url'
 
 import { makeTools } from '../src/tools/make-tools.js'
 import { runSpore } from '../src/core/spore-run.js'
-import { DEFAULT_DEFINITION } from '../src/core/identity-defaults.js'
 import { callRuns, createCallTrail, readCall, readCalls } from '../src/core/call-record.js'
 import { hostState, readPending, readTranscript } from '../src/core/spore-dir.js'
 import { shownToModel } from './fixtures/as-shown.js'
@@ -68,7 +67,7 @@ const asksThenAnswers = (question = QUESTION) => {
 const run = (mo, over = {}) => runSpore({
   prompt: 'fix the build',
   workspace: WS,
-  identity: DEFAULT_DEFINITION.identity,
+  identity: 'You are a spore under test.',
   modelId: 'fake/model',
   limits: { rounds: { soft: 10, hard: 12 } },
   mo,

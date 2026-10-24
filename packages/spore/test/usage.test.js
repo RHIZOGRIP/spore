@@ -3,7 +3,7 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { appendInbox, recordCell, writeTurnRecords } from '../src/core/spore-dir.js'
+import { enqueue, recordCell, writeTurnRecords } from '../src/core/spore-dir.js'
 import { usage } from '../src/core/usage.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '.usage-workspaces')
@@ -22,9 +22,9 @@ beforeEach(() => {
   rmSync(ROOT, { recursive: true, force: true })
   for (const ws of [A, B, NEVER]) mkdirSync(ws, { recursive: true })
 
-  appendInbox(A, 'hello')
-  appendInbox(A, 'from a chat', { requestId: 'telegram:42' })
-  appendInbox(A, 'the daily one', { schedule: { name: 'daily', due: `${D1}T06:00:00.000Z` } })
+  enqueue(A, 'hello')
+  enqueue(A, 'from a chat', { requestId: 'telegram:42' })
+  enqueue(A, 'the daily one', { schedule: { name: 'daily', due: `${D1}T06:00:00.000Z` } })
   writeTurnRecords(A, [
     { startedAt: `${dayBefore(5)}T10:00:00.000Z`, stopReason: 'answer', settled: true, treeMicros: 999, inboxTo: 0 },
     {
@@ -47,7 +47,7 @@ beforeEach(() => {
   ])
   recordCell(A, { precursor: 'route-hook-forge', origin: 'hook:forge', cellWs: '/nowhere', answer: 'later', costUsd: 0.02, durationMs: 10 })
 
-  appendInbox(B, 'hi')
+  enqueue(B, 'hi')
   writeTurnRecords(B, [
     { startedAt: `${D2}T00:10:00.000Z`, stopReason: 'answer', settled: true, model: 'anthropic/some-model', treeMicros: 10_000, rounds: 1, inboxTo: 1 }
   ])
@@ -97,7 +97,7 @@ describe('usage', () => {
   })
 
   it('counts a turn whose first entry was already answered as continued', () => {
-    appendInbox(B, 'one more')
+    enqueue(B, 'one more')
     writeTurnRecords(B, [
       { startedAt: `${D2}T00:10:00.000Z`, stopReason: 'answer', settled: true, treeMicros: 10_000, inboxTo: 1 },
       { startedAt: `${D2}T00:20:00.000Z`, stopReason: 'answer', settled: true, treeMicros: 5_000, inboxTo: 1 }

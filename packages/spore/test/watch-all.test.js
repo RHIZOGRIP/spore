@@ -4,8 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
-import { appendEvents, appendInbox, appendTurn, databaseOf, pruneTrail, readEvents, readInbox, statePath } from '../src/core/spore-dir.js'
-import { writeCall } from '../src/core/call-record.js'
+import { appendEvents, appendTurn, databaseOf, enqueue, readEvents, readInbox, statePath } from '../src/core/spore-dir.js'
 import { turnsSince, watchAll } from '../src/library/watch.js'
 
 let root
@@ -62,8 +61,8 @@ describe('reading the event log from where a follower stopped', () => {
 describe('the turns a spore recorded since a cursor', () => {
   it('carries each one\'s answer and the messages it answered, with no event to read it from', () => {
     const ws = spore('a')
-    const asked = appendInbox(ws, 'summarise the tickets')
-    const clock = appendInbox(ws, 'Check the queue.', { schedule: { name: 'queue', due: '2026-09-28T07:00:00Z' } })
+    const asked = enqueue(ws, 'summarise the tickets').inbox
+    const clock = enqueue(ws, 'Check the queue.', { schedule: { name: 'queue', due: '2026-09-28T07:00:00Z' } }).inbox
     turn(ws, { runId: 'r1', stopReason: 'answer', concluded: true, output: 'three tickets, one about billing', inboxTo: clock })
 
     expect(readInbox(ws).map(e => e.inboxNo)).toEqual([asked, clock])
@@ -72,18 +71,6 @@ describe('the turns a spore recorded since a cursor', () => {
     expect(ended[0].record.output).toBe('three tickets, one about billing')
     expect(ended[0].asked.map(e => e.inboxNo)).toEqual([asked, clock])
     expect(ended[0].asked[1].schedule).toBe('queue')
-  })
-
-  it('keeps a turn\'s answer once retention has pruned its events', () => {
-    const ws = spore('a')
-    const said = appendInbox(ws, 'summarise the tickets')
-    event(ws, 1, { event: 'complete', output: 'three tickets' })
-    writeCall(ws, 'r1', '0001', { call: '0001', tool: 'read', startedAt: '2026-09-28T00:00:00.000Z' })
-    turn(ws, { runId: 'r1', stopReason: 'answer', concluded: true, output: 'three tickets', inboxTo: said })
-
-    pruneTrail(ws, 1)
-    expect(readEvents(ws)).toEqual([])
-    expect(turnsSince(ws, 0).ended[0].record.output).toBe('three tickets')
   })
 })
 
@@ -98,7 +85,7 @@ describe('following many spores', () => {
     expect(await take(1, 300)).toEqual([])
 
     event(b, 1, { event: 'stream', kind: 'message', delta: 'hel' })
-    const said = appendInbox(b, 'hello')
+    const said = enqueue(b, 'hello').inbox
     event(b, 2, { event: 'complete', output: 'hi' })
     turn(b, { runId: 'r1', stopReason: 'answer', concluded: true, output: 'hi', inboxTo: said })
 
@@ -153,7 +140,7 @@ describe('following many spores', () => {
 
   it('does not wake itself on a database left in WAL mode with no writer', async () => {
     const a = spore('a')
-    appendInbox(a, 'hello')
+    enqueue(a, 'hello')
     const writer = new DatabaseSync(statePath(a))
     writer.exec('PRAGMA journal_mode = WAL; UPDATE t_workspace SET lastSeq = lastSeq')
     const other = new DatabaseSync(statePath(a), { readOnly: true })

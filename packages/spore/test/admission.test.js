@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { paused, pauseSpores, takeSlot, unpauseSpores, withSlot } from '../src/core/admission.js'
 import { send } from '../src/core/send.js'
 import { CONFIG_FILE } from '../src/library/config.js'
-import { appendInbox, statePath } from '../src/core/spore-dir.js'
+import { enqueue, statePath } from '../src/core/spore-dir.js'
 
 const run = promisify(execFile)
 const RUNNER = resolve(dirname(fileURLToPath(import.meta.url)), '../native/spore-runner')
@@ -76,7 +76,7 @@ describe('admission slots', () => {
   it('gets its slot back from a send whose message could not be written', () => {
     const ws = resolve(dir, 'ws')
     mkdirSync(ws, { recursive: true })
-    appendInbox(ws, 'said before')
+    enqueue(ws, 'said before')
     chmodSync(statePath(ws), 0o444)
 
     mkdirSync(dirname(CONFIG_FILE), { recursive: true })

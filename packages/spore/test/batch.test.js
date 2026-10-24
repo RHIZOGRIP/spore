@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 import { runBatch } from '../src/core/batch.js'
 import { SporeError } from '../src/observability/errors.js'
-import { acquireLock, appendInbox, appendTurn, readInbox, releaseLock } from '../src/core/spore-dir.js'
+import { acquireLock, appendTurn, enqueue, readInbox, releaseLock } from '../src/core/spore-dir.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '.batch-workspaces')
 
@@ -29,7 +29,7 @@ const turn = (ws, record = {}) => appendTurn(ws, {
   ...record
 })
 
-const said = (ws, message, { requestId }) => appendInbox(ws, message, { requestId })
+const said = (ws, message, { requestId }) => enqueue(ws, message, { requestId }).inbox
 
 // What `send` answers when it started a runner for the message.
 const STARTED = { started: true }
@@ -83,7 +83,7 @@ describe('runBatch', () => {
 
   it('carries on where it stopped, sending nothing twice', async () => {
     const [a, b] = workspaces(2)
-    appendInbox(a, 'one', { requestId: 'errand:a:0' })
+    enqueue(a, 'one', { requestId: 'errand:a:0' })
     turn(a)
     const sent = []
     const deliver = (w, message, opts) => { said(w, message, opts); sent.push([w, message]); turn(w); return STARTED }
@@ -94,7 +94,7 @@ describe('runBatch', () => {
 
   it('does not take what a spore was told before as this errand\'s progress', async () => {
     const [ws] = workspaces(1)
-    appendInbox(ws, 'something earlier')
+    enqueue(ws, 'something earlier')
     turn(ws)
     const sent = []
     const deliver = (w, message, opts) => { said(w, message, opts); sent.push(message); turn(w); return STARTED }
@@ -110,7 +110,7 @@ describe('runBatch', () => {
     const deliver = (w, message, opts) => {
       said(w, message, opts)
       sent.push(message)
-      appendInbox(w, 'said from elsewhere meanwhile')
+      enqueue(w, 'said from elsewhere meanwhile')
       turn(w)
       return STARTED
     }
@@ -139,7 +139,7 @@ describe('runBatch', () => {
 
   it('starts a message an interrupted batch said and never started, without saying it twice', async () => {
     const [ws] = workspaces(1)
-    appendInbox(ws, 'one', { requestId: 'errand:x:0' })
+    enqueue(ws, 'one', { requestId: 'errand:x:0' })
     const sent = []
     const deliver = (w, message, opts) => { said(w, message, opts); sent.push(message); turn(w); return STARTED }
     const { now, wait } = clock()
@@ -273,7 +273,7 @@ describe('runBatch', () => {
     const deliver = (w, message, opts) => {
       said(w, message, opts)
       turn(w)
-      appendInbox(w, 'said from elsewhere afterwards')
+      enqueue(w, 'said from elsewhere afterwards')
       turn(w, { stopReason: 'soft:rounds' })
       return STARTED
     }
@@ -291,7 +291,7 @@ describe('runBatch', () => {
       said(w, message, opts)
       sent.push(message)
       turn(w)
-      appendInbox(w, 'said from elsewhere afterwards')
+      enqueue(w, 'said from elsewhere afterwards')
       writeFileSync(join(w, 'lock'), JSON.stringify({ pid: 2 ** 22 + 7, startedAt: 'then' }))
       return STARTED
     }

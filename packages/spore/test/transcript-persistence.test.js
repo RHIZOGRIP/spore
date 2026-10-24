@@ -4,8 +4,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { runSpore } from '../src/core/spore-run.js'
-import { DEFAULT_DEFINITION } from '../src/core/identity-defaults.js'
-import { finalizePending, hostState, readTranscript, readTranscriptEntries, readTurns, writeTranscriptEntries } from '../src/core/spore-dir.js'
+import { hostState, readTranscript, readTranscriptEntries, readTurns, writeTranscriptEntries } from '../src/core/spore-dir.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.transcript-workspace')
@@ -14,19 +13,20 @@ const answering = (text) => ({ use: () => ({ answer: async () => ({ status: 'com
 
 // The agent leaves its record for its supervisor to finalize; here the test is the supervisor.
 const run = async (over = {}) => {
+  const state = hostState(WS)
   try {
     return await runSpore({
       prompt: 'what next',
       workspace: WS,
-      identity: DEFAULT_DEFINITION.identity,
+      identity: 'You are a spore under test.',
       modelId: 'fake/model',
       limits: { rounds: { soft: 10, hard: 12 } },
       mo: answering('done'),
-      state: hostState(WS),
+      state,
       ...over
     })
   } finally {
-    finalizePending(WS)
+    state.finalize()
   }
 }
 
@@ -245,8 +245,17 @@ describe('the turn record', () => {
 // caller mistake, not a case to paper over by building a client with the environment's
 // credentials in it.
 describe('what the worker will not build for itself', () => {
-  it('refuses to run without a model client', async () => {
-    await expect(run({ mo: undefined })).rejects.toMatchObject({ type: 'MODEL_CLIENT_REQUIRED' })
+  it('refuses to run without a model client, before the turn says how it ended', async () => {
+    const state = hostState(WS)
+    await expect(runSpore({
+      prompt: 'what next',
+      workspace: WS,
+      identity: 'You are a spore under test.',
+      modelId: 'fake/model',
+      limits: { rounds: { soft: 10, hard: 12 } },
+      state
+    })).rejects.toMatchObject({ type: 'MODEL_CLIENT_REQUIRED' })
+    expect(() => state.finalize()).toThrow(/has not said how it ended/)
   })
 })
 

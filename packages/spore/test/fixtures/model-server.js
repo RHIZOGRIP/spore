@@ -11,9 +11,20 @@
  */
 
 import http from 'node:http'
-import { unlinkSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import { CALLER_HEADER, KEY_HEADER, ROOT_CALLER } from '../../src/infra/socket-request.js'
+import { MODEL_KEY_FILE } from '../../src/core/spore-dir.js'
+
+/** The key a supplier of the model socket leaves in the workspace, which the runner keeps as found. */
+export function suppliedKey (ws) {
+  const key = randomBytes(32).toString('hex')
+  mkdirSync(ws, { recursive: true })
+  writeFileSync(resolve(ws, MODEL_KEY_FILE), key)
+  return key
+}
 
 const json = (res, status, body) => {
   res.writeHead(status, { 'content-type': 'application/json' })

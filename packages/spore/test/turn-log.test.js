@@ -5,8 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { trace } from '@opentelemetry/api'
 
 import { runSpore } from '../src/core/spore-run.js'
-import { DEFAULT_DEFINITION } from '../src/core/identity-defaults.js'
-import { finalizePending, hostState } from '../src/core/spore-dir.js'
+import { hostState } from '../src/core/spore-dir.js'
 import { jsonLogger } from '../src/observability/logger.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -49,19 +48,20 @@ describe('a turn traced by a recording span', () => {
   it('still writes its log, each line naming the trace and the span it is in', async () => {
     const written = []
     vi.spyOn(process.stderr, 'write').mockImplementation((line) => { written.push(String(line)); return true })
+    const state = hostState(WS)
     try {
       await runSpore({
         prompt: 'what next',
         workspace: WS,
-        identity: DEFAULT_DEFINITION.identity,
+        identity: 'You are a spore under test.',
         modelId: 'fake/model',
         limits: { rounds: { soft: 10, hard: 12 } },
         mo: answering,
-        state: hostState(WS),
+        state,
         logger: jsonLogger({ level: 'info' })
       })
     } finally {
-      finalizePending(WS)
+      state.finalize()
     }
     const lines = written.filter(line => line.startsWith('{')).map(line => JSON.parse(line))
     const started = lines.find(line => line.msg === '[spore] loop started')

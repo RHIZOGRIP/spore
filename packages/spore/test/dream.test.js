@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { changedBetween, dreamDue, runDream } from '../src/core/dream.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
-import { appendInbox, dreamRecords, holdDelivery, readTranscriptEntries, readTurns, recordCell, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
+import { dreamRecords, enqueue, holdDelivery, readTranscriptEntries, readTurns, recordCell, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '.dream-workspace')
@@ -77,7 +77,7 @@ describe('dreamRecords', () => {
     writeTurnRecords(ws, [turn('2026-10-12T08:00:00.000Z', 100), turn('2026-10-12T09:00:00.000Z', 200), turn('2026-10-12T10:00:00.000Z', 400)])
     recordCell(ws, { precursor: 'tidy', origin: 'dream', cellWs: '/cells/dream/1', answer: 'tidied', costUsd: 0.1, durationMs: 1000, afterTurn: 1, dataBytes: 100 })
     holdDelivery(ws, 'later', { hook: { name: 'forge', event: 'push', delivery: 'd-1' }, releaseAt: '2026-10-12T13:00:00.000Z', deadline: '2026-10-12T14:00:00.000Z' })
-    appendInbox(ws, 'hello')
+    enqueue(ws, 'hello')
     expect(dreamRecords(ws)).toMatchObject({ afterTurn: 1, dreamBytes: 100, turnsSince: 2, dataBytes: 400, unread: true, heldDue: '2026-10-12T13:00:00.000Z' })
   })
 })

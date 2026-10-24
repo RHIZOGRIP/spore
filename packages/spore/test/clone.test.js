@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { callRuns, writeCall } from '../src/core/call-record.js'
 import { cloneCapability } from '../src/core/clone.js'
-import { appendEvents, appendInbox, readEvents, readInbox, readTranscriptEntries, readTurns, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
+import { appendEvents, enqueue, readEvents, readInbox, readTranscriptEntries, readTurns, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
 import { describePrecursors } from '../src/delegation/precursor-catalog.js'
 import { define } from '../src/library/verbs.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
@@ -47,7 +47,7 @@ const experienced = (ws) => {
   put(ws, 'data/scratch.json', '{}')
   writeTranscriptEntries(ws, [{ at: '2026-09-25T00:00:00.000Z', kind: 'message', role: 'user', message: { role: 'user', content: 'hi' } }])
   writeTurnRecords(ws, [{ startedAt: '2026-09-25T00:00:00.000Z', stopReason: 'answer' }])
-  appendInbox(ws, 'hi')
+  enqueue(ws, 'hi')
   writeCall(ws, 'r1', '0001', { tool: 'exec', startedAt: '2026-09-25T00:00:00.000Z' })
   appendEvents(ws, [{ v: 1, at: '2026-09-25T00:00:00.000Z', runId: 'r1', event: 'round' }])
   return ws

@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { listHooks, showHook } from '../src/library/hooks.js'
-import { appendInbox, appendTurn, holdDelivery } from '../src/core/spore-dir.js'
+import { appendTurn, enqueue, holdDelivery } from '../src/core/spore-dir.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 
 const DEFINITION = '---\nname: t\nmodel: anthropic/claude-haiku-4-5\ntools: [read]\nrounds: [2, 3]\ncost: [0.1, 0.2]\nwall: [1m, 2m]\n---\n\nyou are a test.\n'
@@ -20,7 +20,7 @@ const spore = (name) => {
   return ws
 }
 const hooks = (described) => writeFileSync(join(root, 'hooks.json'), JSON.stringify(described))
-const delivered = (ws, hook, delivery, event = 'push') => appendInbox(ws, '', { attach: [{ name: 'headers.json', mime: 'application/json', data: Buffer.from('{}') }], hook: { name: hook, event, delivery } })
+const delivered = (ws, hook, delivery, event = 'push') => enqueue(ws, '', { attach: [{ name: 'headers.json', mime: 'application/json', data: Buffer.from('{}') }], hook: { name: hook, event, delivery } }).inbox
 
 beforeEach(() => {
   root = outsideRoot('spore-hooks')

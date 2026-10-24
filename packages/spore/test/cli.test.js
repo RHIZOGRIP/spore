@@ -12,7 +12,7 @@ import { definitionWith } from '../src/core/identity-defaults.js'
 import { takeSlot } from '../src/core/admission.js'
 import { send } from '../src/core/send.js'
 import { tick } from '../src/core/tick.js'
-import { acquireLock, readInbox, appendInbox, appendTurn, releaseLock, writeTurnRecords, writeTranscriptEntries, readTranscriptEntries } from '../src/core/spore-dir.js'
+import { acquireLock, appendTurn, enqueue, readInbox, readTranscriptEntries, releaseLock, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 import { allowPlugin } from '../src/core/plugins.js'
 import { linkGrants, openWorkspace } from '../src/core/workspace.js'
@@ -767,8 +767,8 @@ describe('the read verbs', () => {
   it('counts what is waiting in the inbox, so idle and not-started-yet are not the same', () => {
     setKey('home', resolve(DIR, 'home'), CONFIG)
     const ws = workspace(resolve(DIR, 'home', 'test'))
-    const answered = appendInbox(ws, 'answered')
-    appendInbox(ws, 'still waiting')
+    const answered = enqueue(ws, 'answered').inbox
+    enqueue(ws, 'still waiting')
     writeTurnRecords(ws, [{ startedAt: 'S', stopReason: 'answer', concluded: true, ownMicros: 10_000, treeMicros: 10_000, inboxTo: answered }])
 
     expect(show({ ws: 'test', configFile: CONFIG }).waiting).toBe(1)
@@ -777,9 +777,9 @@ describe('the read verbs', () => {
   it('lines a spore up turn by turn, each with what was said to start it', () => {
     setKey('home', resolve(DIR, 'home'), CONFIG)
     const ws = workspace(resolve(DIR, 'home', 'test'))
-    const first = appendInbox(ws, 'do the first thing')
-    const second = appendInbox(ws, 'now the second')
-    appendInbox(ws, 'and one more')
+    const first = enqueue(ws, 'do the first thing').inbox
+    const second = enqueue(ws, 'now the second').inbox
+    enqueue(ws, 'and one more')
     writeTurnRecords(ws, [
       { startedAt: 'S', stopReason: 'answer', concluded: true, rounds: 4, treeMicros: 30_000, workUnits: 6, endedAt: 'A', inboxTo: first },
       { startedAt: 'S', stopReason: 'soft:cost', concluded: true, rounds: 45, treeMicros: 520_000, workUnits: 92, endedAt: 'B', inboxTo: second }
@@ -795,7 +795,7 @@ describe('the read verbs', () => {
   it('says why a turn that could not start failed, from its record', () => {
     setKey('home', resolve(DIR, 'home'), CONFIG)
     const ws = workspace(resolve(DIR, 'home', 'test'))
-    const first = appendInbox(ws, 'how many issues?')
+    const first = enqueue(ws, 'how many issues?').inbox
     writeTurnRecords(ws, [
       { startedAt: 'S', stopReason: 'error', concluded: false, rounds: 0, treeMicros: 0, workUnits: 0, endedAt: 'A', inboxTo: first - 1, error: 'START_FAILED', detail: 'source "forgejo" wants $FORGEJO_TOKEN, which is not set here' }
     ])
@@ -808,7 +808,7 @@ describe('the read verbs', () => {
   it('says what a spore takes on disk, by what holds it, and not what it only links to', () => {
     setKey('home', resolve(DIR, 'home'), CONFIG)
     const ws = workspace(resolve(DIR, 'home', 'test'))
-    appendInbox(ws, 'hello')
+    enqueue(ws, 'hello')
     mkdirSync(resolve(ws, 'data'), { recursive: true })
     writeFileSync(resolve(ws, 'data', 'report.md'), 'x'.repeat(5000))
     symlinkSync(resolve(DIR), resolve(ws, 'data', 'elsewhere'))
@@ -826,8 +826,8 @@ describe('the read verbs', () => {
   it('reads a spore\'s records with SQL, by name, as the agent does with $SPORE_SQL', () => {
     setKey('home', resolve(DIR, 'home'), CONFIG)
     const ws = workspace(resolve(DIR, 'home', 'test'))
-    appendInbox(ws, 'hello')
-    appendInbox(ws, 'again')
+    enqueue(ws, 'hello')
+    enqueue(ws, 'again')
 
     expect(sql({ ws: 'test', configFile: CONFIG }).lines).toEqual(['approvals', 'calls', 'cells', 'events', 'held', 'inbox', 'jobs', 'limits', 'outbox', 'transcript', 'turns'])
     expect(sql({ ws: 'test', query: 'SELECT inboxNo, text FROM inbox ORDER BY inboxNo', configFile: CONFIG }).lines)
@@ -840,7 +840,7 @@ describe('the read verbs', () => {
     setKey('home', resolve(DIR, 'home'), CONFIG)
     const ws = workspace(resolve(DIR, 'home', 'test'))
     expect(() => sql({ ws: 'test', configFile: CONFIG })).toThrow(expect.objectContaining({ type: 'SQL_NO_DATABASE' }))
-    appendInbox(ws, 'hello')
+    enqueue(ws, 'hello')
     expect(() => sql({ ws: 'test', query: "INSERT INTO t_inbox (at, text) VALUES ('t', 'forged')", configFile: CONFIG })).toThrow(/readonly/)
     expect(readInbox(ws)).toHaveLength(1)
   })

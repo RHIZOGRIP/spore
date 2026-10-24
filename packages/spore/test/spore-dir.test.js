@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { acquireLock, appendEvents, appendTranscript, dataDir, definitionPath, lastSent, lockPath, pruneTrail, readEvents, readLock, readTranscript, readTranscriptEntries, releaseLock, statePath, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
-import { callRuns, writeCall } from '../src/core/call-record.js'
+import { acquireLock, appendEvents, appendTranscript, dataDir, definitionPath, HOST_TURNS_ENV, hostState, lastSent, lockPath, readLock, readTranscript, readTranscriptEntries, releaseLock, statePath, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
 import { compactionSummaryMessage, createCompactionEntry } from '../src/resilience/compaction.js'
 import { COMPACTED, WRAP, mark, marked } from '../src/core/marks.js'
 
@@ -45,6 +44,18 @@ async function holdLockElsewhere (ws) {
   }
   return child
 }
+
+describe('a turn begun from the host side', () => {
+  it('is refused outside spore\'s own tests', () => {
+    const flag = process.env[HOST_TURNS_ENV]
+    delete process.env[HOST_TURNS_ENV]
+    try {
+      expect(() => hostState(WS)).toThrow(expect.objectContaining({ type: 'STATE_CHANNEL' }))
+    } finally {
+      process.env[HOST_TURNS_ENV] = flag
+    }
+  })
+})
 
 describe('layout', () => {
   it('keeps the runtime files at the workspace root, undotted', () => {
@@ -211,41 +222,6 @@ describe('lock', () => {
       holder.kill('SIGKILL')
       await once(holder, 'exit')
     }
-  })
-})
-
-describe('trail retention', () => {
-  const run = (id) => {
-    mkdirSync(resolve(WS, 'calls', id, '0001'), { recursive: true })
-    writeCall(WS, id, '0001', { tool: 'exec', startedAt: new Date().toISOString() })
-    appendEvents(WS, [{ v: 1, at: new Date().toISOString(), runId: id, event: 'round' }])
-  }
-
-  it('drops all but the newest, counting the turn about to run', () => {
-    for (const id of ['old', 'mid', 'new']) run(id)
-    // retain: 2 leaves room for one existing turn plus the one starting now.
-    expect(pruneTrail(WS, 2).sort()).toEqual(['mid', 'old'])
-    expect(readdirSync(resolve(WS, 'calls'))).toEqual(['new'])
-    expect(callRuns(WS)).toEqual(['new'])
-    expect(readEvents(WS).map(e => e.runId)).toEqual(['new'])
-  })
-
-  it('counts a run with no recorded call as the oldest', () => {
-    run('recorded')
-    mkdirSync(resolve(WS, 'calls', 'unrecorded', '0001'), { recursive: true })
-    expect(pruneTrail(WS, 2)).toEqual(['unrecorded'])
-    expect(readdirSync(resolve(WS, 'calls'))).toEqual(['recorded'])
-  })
-
-  it('keeps everything when there is room', () => {
-    run('only')
-    expect(pruneTrail(WS, 10)).toEqual([])
-    expect(readdirSync(resolve(WS, 'calls'))).toEqual(['only'])
-  })
-
-  it('says nothing has to go when a workspace has never run', () => {
-    rmSync(resolve(WS, 'calls'), { recursive: true, force: true })
-    expect(pruneTrail(WS, 3)).toEqual([])
   })
 })
 

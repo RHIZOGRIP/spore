@@ -147,10 +147,6 @@ static RUNTIME_ROWS: LazyLock<Vec<CallRow>> = LazyLock::new(|| {
     ]
 });
 
-pub fn runtime_rows() -> &'static [CallRow] {
-    &RUNTIME_ROWS
-}
-
 fn cut(text: &str, max: usize) -> String {
     let text = text.trim();
     if text.chars().count() <= max {
@@ -523,7 +519,7 @@ mod tests {
 
     #[test]
     fn every_runtime_row_holds_to_its_own_rules() {
-        for r in runtime_rows() {
+        for r in RUNTIME_ROWS.iter() {
             check_row(r).unwrap_or_else(|e| panic!("{}: {e}", r.name));
         }
     }

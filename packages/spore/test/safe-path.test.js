@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { mkdirSync, rmSync, writeFileSync, symlinkSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { safePath, hasDotSegment, resolveReadMount } from '../src/isolation/safe-path.js'
+import { safePath, hasDotSegment } from '../src/isolation/safe-path.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.safepath-workspace')
@@ -98,55 +98,6 @@ describe('safePath', () => {
     // Parent doesn't exist, but path is within workspace
     const p = safePath(WS, 'new-dir/new-file.txt')
     expect(p).toBe(resolve(WS, 'new-dir/new-file.txt'))
-  })
-})
-
-describe('resolveReadMount', () => {
-  const MOUNT_DIR = resolve(__dirname, '.safepath-mount')
-
-  beforeAll(() => {
-    mkdirSync(resolve(MOUNT_DIR, 'sub'), { recursive: true })
-    writeFileSync(resolve(MOUNT_DIR, 'readme.md'), 'hello')
-    writeFileSync(resolve(MOUNT_DIR, 'sub/detail.md'), 'detail')
-  })
-
-  afterAll(() => {
-    rmSync(MOUNT_DIR, { recursive: true, force: true })
-  })
-
-  const mounts = { docs: MOUNT_DIR }
-
-  it('resolves exact prefix to mount root', () => {
-    expect(resolveReadMount('docs', mounts)).toBe(MOUNT_DIR)
-  })
-
-  it('resolves file within mount', () => {
-    expect(resolveReadMount('docs/readme.md', mounts)).toBe(resolve(MOUNT_DIR, 'readme.md'))
-  })
-
-  it('resolves nested file within mount', () => {
-    expect(resolveReadMount('docs/sub/detail.md', mounts)).toBe(resolve(MOUNT_DIR, 'sub/detail.md'))
-  })
-
-  it('rejects traversal out of mount', () => {
-    expect(resolveReadMount('docs/../../../etc/passwd', mounts)).toBeNull()
-  })
-
-  it('rejects null bytes', () => {
-    expect(resolveReadMount('docs/file\0.txt', mounts)).toBeNull()
-  })
-
-  it('returns null for unmatched prefix', () => {
-    expect(resolveReadMount('other/file.txt', mounts)).toBeNull()
-  })
-
-  it('returns null for null/undefined input', () => {
-    expect(resolveReadMount(null, mounts)).toBeNull()
-    expect(resolveReadMount(undefined, mounts)).toBeNull()
-  })
-
-  it('returns null when mounts is null', () => {
-    expect(resolveReadMount('docs/file.txt', null)).toBeNull()
   })
 })
 

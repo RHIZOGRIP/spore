@@ -30,7 +30,6 @@ export function createLoopGuard ({ logger = silent } = {}) {
   const pending = new Map() // toolCallId → { name, argsKey }
   const failures = new Map() // name → consecutive failures, reset by any success
   let repeat = null // { name, argsKey, content, count } — the current identical run
-  let calls = 0
 
   /**
    * What was asked for, kept until the results come back so an outcome can be
@@ -39,7 +38,6 @@ export function createLoopGuard ({ logger = silent } = {}) {
   function observe (toolCalls) {
     for (const tc of toolCalls) {
       pending.set(tc.id, { name: tc.name, argsKey: JSON.stringify(tc.arguments || {}) })
-      calls++
     }
   }
 
@@ -82,9 +80,5 @@ export function createLoopGuard ({ logger = silent } = {}) {
     return null
   }
 
-  function getStats () {
-    return { totalCalls: calls, failures: Object.fromEntries(failures) }
-  }
-
-  return { observe, record, stalled, getStats }
+  return { observe, record, stalled }
 }

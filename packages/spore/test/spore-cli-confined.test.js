@@ -20,7 +20,7 @@ import { outcome } from '../src/library/watch.js'
 import { takeSlot } from '../src/core/admission.js'
 import { containCheck } from '../src/core/command.js'
 import { allowPlugin } from '../src/core/plugins.js'
-import { appendInbox, readEvents, readLock, readTranscript, readTranscriptEntries, readTurns } from '../src/core/spore-dir.js'
+import { enqueue, readEvents, readLock, readTranscript, readTranscriptEntries, readTurns } from '../src/core/spore-dir.js'
 import { callRuns, readCalls } from '../src/core/call-record.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
@@ -433,7 +433,7 @@ describe('a confined turn', () => {
       : answers('seen'))
     const slots = outsideRoot('spore-cli-env-slots')
     const slot = takeSlot({ turns: 1, dir: slots })
-    appendInbox(ws, 'look')
+    enqueue(ws, 'look')
     try {
       spawn(RUNNER, ['--ws', ws, '--slot', slot.path, '--node', process.execPath], {
         detached: true,

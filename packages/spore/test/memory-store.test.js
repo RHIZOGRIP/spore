@@ -16,9 +16,8 @@ import { fileURLToPath } from 'node:url'
 import { openStore, RECALL_BUDGET_TOKENS } from '../src/memory/store.js'
 import { chunksOf, expand, SENTENCE, TURN } from '../src/memory/chunks.js'
 import { bm25 } from '../src/memory/bm25.js'
-import { appendCompaction, appendTranscript, finalizePending, hostState, isTranscriptAnchor, readTranscript, readTranscriptEntries, readTurns } from '../src/core/spore-dir.js'
+import { appendCompaction, appendTranscript, hostState, isTranscriptAnchor, readEvents, readTranscript, readTranscriptEntries, readTurns } from '../src/core/spore-dir.js'
 import { runSpore } from '../src/core/spore-run.js'
-import { DEFAULT_DEFINITION } from '../src/core/identity-defaults.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { shownToModel } from './fixtures/as-shown.js'
 
@@ -258,30 +257,15 @@ describe('the store holds what has left the context', () => {
     expect(hits.every(hit => !hit.text.includes('Today I am asking'))).toBe(true)
   })
 
-  it('takes a new horizon when turns are evicted', async () => {
+  it('takes the new horizon when it is opened again after turns are evicted', async () => {
     conversation()
-    const store = openStore(WS, { horizon: 1 })
-    expect((await store.push('Gitzo tripod', 5)).some(hit => hit.text.includes('Gitzo'))).toBe(false)
-    store.reindex(2)
-    expect((await store.push('Gitzo tripod', 5)).some(hit => hit.text.includes('Gitzo'))).toBe(true)
+    expect((await openStore(WS, { horizon: 1 }).push('Gitzo tripod', 5)).some(hit => hit.text.includes('Gitzo'))).toBe(false)
+    expect((await openStore(WS, { horizon: 2 }).push('Gitzo tripod', 5)).some(hit => hit.text.includes('Gitzo'))).toBe(true)
   })
 
   it('holds the notes whatever the horizon, since they are never in context', async () => {
     note('data/memory/music.md', '# Music\n\nPlays the violin on Tuesday evenings with a quartet.\n')
     const [hit] = await openStore(WS, { horizon: 0 }).push('violin quartet', 3)
-    expect(hit.text).toMatch(/violin/)
-  })
-})
-
-describe('reindexing', () => {
-  it('picks up a note written after the store was opened', async () => {
-    note('data/memory/person.md', '# Person\n\nLikes photography a great deal indeed.\n')
-    const store = openStore(WS)
-    expect(await store.push('violin', 3)).toEqual([])
-
-    note('data/memory/music.md', '# Music\n\nPlays the violin on Tuesday evenings with a quartet.\n')
-    store.reindex()
-    const [hit] = await store.push('violin', 3)
     expect(hit.text).toMatch(/violin/)
   })
 })
@@ -300,19 +284,20 @@ describe('recall reaching a turn', () => {
   }
 
   const run = async (over = {}) => {
+    const state = hostState(WS)
     try {
       return await runSpore({
         prompt: 'What camera accessories would suit me?',
         workspace: WS,
-        identity: DEFAULT_DEFINITION.identity,
+        identity: 'You are a spore under test.',
         modelId: 'fake/model',
         limits: { rounds: { soft: 4, hard: 6 } },
         mo: answering,
-        state: hostState(WS),
+        state,
         ...over
       })
     } finally {
-      finalizePending(WS)
+      state.finalize()
     }
   }
 
@@ -358,14 +343,11 @@ describe('recall reaching a turn', () => {
   // would be worse than answering without recall, and a run has to be able to tell the
   // two apart rather than read a rate limit as a worse mechanism.
   it('answers the turn when the store cannot be reached, and says the recall was lost', async () => {
-    const recalls = []
-    const emitter = { emit: (name, payload) => { if (name === 'recall') recalls.push(payload) } }
-
-    const result = await run({ memory: { backend: 'vectors', push: 3, pull: 5 }, emitter })
+    const result = await run({ memory: { backend: 'vectors', push: 3, pull: 5 } })
 
     expect(result.output).toBe('done')
     expect(seen.at(-1)).toBe('What camera accessories would suit me?')
-    expect(recalls).toEqual([{ hits: 0, failed: 'STORE_UNCONFIGURED' }])
+    expect(readEvents(WS, { event: 'recall' })).toMatchObject([{ hits: 0, failed: 'STORE_UNCONFIGURED' }])
   })
 
   // A store that takes the connection and never answers, which is what a hung vector store looks
@@ -393,7 +375,6 @@ describe('recall reaching a turn', () => {
 
   it('ends a turn stuck in recall when it is cancelled, without reporting memory as failed', async () => {
     const store = await silentStore()
-    const recalls = []
     const stop = new AbortController()
     try {
       setTimeout(() => stop.abort(), 100)
@@ -401,11 +382,10 @@ describe('recall reaching a turn', () => {
         mo: embedsToo,
         memory: recalling,
         storeSocket: store.socketPath,
-        signal: stop.signal,
-        emitter: { emit: (name, payload) => { if (name === 'recall') recalls.push(payload) } }
+        signal: stop.signal
       })
       expect(result.stopReason).toBe('cancelled')
-      expect(recalls).toEqual([])
+      expect(readEvents(WS, { event: 'recall' })).toEqual([])
       expect(seen).toEqual([])
     } finally {
       await store.close()
@@ -605,17 +585,18 @@ describe('a note that cannot be read', () => {
   it('does not stop the turn, which still records how it ended', async () => {
     broken()
     const answering = { use: () => ({ answer: async () => ({ status: 'completed', output: 'answered anyway' }) }) }
+    const state = hostState(WS)
     const result = await runSpore({
       prompt: 'What camera do I own?',
       workspace: WS,
-      identity: DEFAULT_DEFINITION.identity,
+      identity: 'You are a spore under test.',
       modelId: 'fake/model',
       limits: { rounds: { soft: 4, hard: 6 } },
       mo: answering,
       memory: { push: 3 },
-      state: hostState(WS)
+      state
     })
-    finalizePending(WS)
+    state.finalize()
     expect(result.output).toBe('answered anyway')
     expect(readTurns(WS)).toHaveLength(1)
   })

@@ -214,11 +214,6 @@ pub fn sqlite_minimum() -> String {
 }
 
 #[napi]
-pub fn bundled_sqlite() -> String {
-    workspace::sqlite_version().to_string()
-}
-
-#[napi]
 pub fn sqlite_supported(version: String) -> bool {
     workspace::sqlite_supported(&version)
 }
@@ -542,8 +537,8 @@ pub fn append_turn(ws: String, turn: String) -> napi::Result<String> {
     Ok(turn.to_json())
 }
 
-/// A turn begun from the host side, as a supervisor begins one: its `turnId`. For fixtures, and
-/// for a caller running the confined half in its own process.
+/// A turn begun from the host side, as a supervisor begins one: its `turnId`. Only for
+/// `hostState`, spore's own tests' hook.
 #[napi]
 pub fn begin_turn(ws: String, reply_default: Option<String>) -> napi::Result<String> {
     workspace::begin_turn(
@@ -669,11 +664,13 @@ pub fn state_request(ws: String, turn: Option<String>, frame: String) -> napi::R
     workspace::request(Path::new(&ws), turn.as_deref(), &frame).map_err(failed)
 }
 
-/// The turn left `pending`, finalized as its agent left it: the row, or `null`.
+/// A turn `hostState` began, made final as the runner makes one no ledger settled. Only for
+/// `hostState`, spore's own tests' hook.
 #[napi]
-pub fn finalize_pending(ws: String) -> napi::Result<String> {
-    let row = workspace::finalize_pending(Path::new(&ws)).map_err(failed)?;
-    Ok(row.map_or_else(|| "null".to_string(), |row| row.to_string()))
+pub fn finalize_turn(ws: String, turn: String) -> napi::Result<()> {
+    workspace::finalize_turn(Path::new(&ws), &turn, None)
+        .map(|_| ())
+        .map_err(failed)
 }
 
 /// A workspace's transcript, replaced — host side, for a fork and for fixtures.
@@ -692,16 +689,6 @@ pub fn close_on_exec(fd: i32) -> napi::Result<()> {
 #[napi]
 pub fn work_units(own_rounds: u32, child_rounds: u32) -> u32 {
     workspace::work_units(own_rounds.into(), child_rounds.into()) as u32
-}
-
-#[napi]
-pub fn prune_trail(ws: String, keep: u32) -> napi::Result<Vec<String>> {
-    workspace::prune_trail(Path::new(&ws), keep).map_err(failed)
-}
-
-#[napi]
-pub fn write_model_key(ws: String) -> napi::Result<String> {
-    workspace::write_model_key(Path::new(&ws)).map_err(failed)
 }
 
 fn paths(list: Vec<String>) -> Vec<PathBuf> {

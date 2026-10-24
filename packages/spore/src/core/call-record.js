@@ -238,7 +238,7 @@ export function createCallTrail (workspace, { runId = Date.now().toString(36), s
   if (!state) {
     throw new SporeError('a call trail records through the turn\'s writer', {
       type: 'STATE_CHANNEL',
-      detail: 'pass the turn\'s channel, or hostState(ws) from the host side, as state'
+      detail: 'pass the turn\'s channel as state'
     })
   }
   const root = resolve(workspace, CALLS_ROOT, runId)

@@ -16,9 +16,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer } from './fixtures/model-server.js'
+import { createModelServer, suppliedKey } from './fixtures/model-server.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
-import { readTurns, writeModelKey } from '../src/core/spore-dir.js'
+import { readTurns } from '../src/core/spore-dir.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 
@@ -51,7 +51,7 @@ const until = async (condition, ms = 15_000) => {
 
 const start = async (reply) => {
   mo = scriptedMo(reply)
-  broker = createModelServer({ mo, socketPath: brokerSocketPath('cancel-turn'), limit: 10, key: writeModelKey(ws) })
+  broker = createModelServer({ mo, socketPath: brokerSocketPath('cancel-turn'), limit: 10, key: suppliedKey(ws) })
   await broker.listen()
 }
 

@@ -20,10 +20,10 @@ import { promisify } from 'node:util'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer } from './fixtures/model-server.js'
+import { createModelServer, suppliedKey } from './fixtures/model-server.js'
 import { brokerSocketPath, sporeSocketDir } from '../src/infra/broker-socket.js'
 import { KEY_HEADER } from '../src/infra/socket-request.js'
-import { readTurns, writeModelKey } from '../src/core/spore-dir.js'
+import { readTurns } from '../src/core/spore-dir.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 
@@ -64,7 +64,7 @@ const start = async (reply) => {
     mo: scriptedMo(reply),
     socketPath: brokerSocketPath('cell-test'),
     limit: 10,
-    key: writeModelKey(root)
+    key: suppliedKey(root)
   })
   await broker.listen()
 }

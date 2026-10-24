@@ -4,10 +4,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { headAndTail } from '../src/core/preview.js'
-import {
-  INLINE_MESSAGE_BYTES, appendInbox, appendTranscript, finalizePending, readInbox, readInboxFrom,
-  readTranscript, readTranscriptEntries, readTurns, storable, writePendingRecord
-} from '../src/core/spore-dir.js'
+import { appendTranscript, enqueue, hostState, INLINE_MESSAGE_BYTES, readInbox, readInboxFrom, readTranscript, readTranscriptEntries, readTurns, storable, writeOutcome } from '../src/core/spore-dir.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.jsonl-framing-workspace')
@@ -53,7 +50,7 @@ afterEach(() => {
 describe('the inbox keeps one message to one entry', () => {
   for (const [what, text] of Object.entries(HOSTILE)) {
     it(`survives ${what}`, () => {
-      appendInbox(WS, text)
+      enqueue(WS, text)
       expect(readInbox(WS)).toHaveLength(1)
       expect(readInbox(WS)[0].text).toBe(sent(text))
       expect(readInboxFrom(WS).messages).toEqual([sent(text)])
@@ -62,12 +59,12 @@ describe('the inbox keeps one message to one entry', () => {
 
   it('keeps one entry each when every one of them arrives in turn', () => {
     const all = Object.values(HOSTILE)
-    for (const text of all) appendInbox(WS, text)
+    for (const text of all) enqueue(WS, text)
     expect(readInbox(WS).map(e => e.text)).toEqual(all.map(sent))
   })
 
   it('cannot be made to look like more entries than were sent', () => {
-    appendInbox(WS, HOSTILE['a whole fake NDJSON stream'])
+    enqueue(WS, HOSTILE['a whole fake NDJSON stream'])
     expect(readInbox(WS)).toHaveLength(1)
     expect(readInbox(WS)[0].text).toContain('three')
   })
@@ -77,7 +74,7 @@ describe('a spilled body survives the same text', () => {
   for (const [what, text] of Object.entries(HOSTILE)) {
     it(`writes and reads back ${what} unchanged`, () => {
       const long = text + '\n' + 'x'.repeat(INLINE_MESSAGE_BYTES) + '\n' + text
-      appendInbox(WS, long)
+      enqueue(WS, long)
       expect(readInbox(WS)).toHaveLength(1)
       const { bodyPath } = readInbox(WS)[0]
       expect(readFileSync(resolve(WS, bodyPath), 'utf8')).toBe(sent(long))
@@ -99,8 +96,9 @@ describe('the transcript and the turn record keep the same rule', () => {
     it(`carries ${what} through a message and a turn`, () => {
       appendTranscript(WS, { role: 'user', content: text })
       appendTranscript(WS, { role: 'tool', toolName: 'read', content: [{ type: 'text', text }, { type: 'image', fileUri: 'file:///x.png', mimeType: 'image/png' }] })
-      writePendingRecord(WS, { startedAt: '2026-09-27T00:00:00.000Z', stopReason: 'quiet', because: text })
-      finalizePending(WS)
+      const state = hostState(WS)
+      writeOutcome(state, { startedAt: '2026-09-27T00:00:00.000Z', stopReason: 'quiet', because: text })
+      state.finalize()
 
       expect(readTranscriptEntries(WS)).toHaveLength(2)
 

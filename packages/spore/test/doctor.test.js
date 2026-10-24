@@ -4,7 +4,7 @@ import { constants } from 'node:os'
 import { join } from 'node:path'
 
 import { doctor, modelFindings } from '../src/library/doctor.js'
-import { appendInbox, appendTurn } from '../src/core/spore-dir.js'
+import { appendTurn, enqueue } from '../src/core/spore-dir.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 
 const DEFINITION = (extra = '') => `---\nname: t\nmodel: anthropic/claude-haiku-4-5\ntools: [read]\nrounds: [2, 3]\ncost: [0.1, 0.2]\nwall: [1m, 2m]\n${extra}---\n\nyou are a test.\n`
@@ -145,7 +145,7 @@ describe('spore doctor', () => {
     spore('main', 'jobs: [2, 1m]\n')
     spore('quiet')
     operator('config.json', { home, replyTo: { main: 'telegram:main/42', quiet: 'terminal', gone: 'discord:ops/1' } })
-    appendInbox(join(home, 'main'), 'hello', { replyTo: 'telegram:main/7' })
+    enqueue(join(home, 'main'), 'hello', { replyTo: 'telegram:main/7' })
     appendTurn(join(home, 'main'), { startedAt: 't', stopReason: 'answer', concluded: true, inboxTo: 1 })
     const { findings, replies } = examine()
     expect(findings).toEqual([

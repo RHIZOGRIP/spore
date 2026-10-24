@@ -17,7 +17,7 @@ const ABI = landlockAbi()
  * The snippet has `sandbox`, `WS`, `SPORE_ROOT` available.
  * Returns { status, stdout, stderr }.
  */
-function run (code, { applySandbox = true, sandboxCall = 'sandbox(WS)' } = {}) {
+function run (code, { applySandbox = true, sandboxCall = "sandbox(WS, { writeDir: 'out' })" } = {}) {
   const script = `
     import { sandbox } from '${SANDBOX_MODULE}';
     const WS = '${WS}';
@@ -45,6 +45,11 @@ describe('confinement that was asked for and did not happen', () => {
     // It used to log a warning, return -1, and let the caller carry on unconfined.
     expect(() => sandbox('/proc/self/not-a-workspace', { writeDir: 'data' }))
       .toThrow(expect.objectContaining({ type: 'SANDBOX_FAILED' }))
+  })
+
+  it('refuses to confine without a directory to write, rather than handing out the workspace', async () => {
+    const { sandbox } = await import('../src/isolation/sandbox.js')
+    expect(() => sandbox(WS, {})).toThrow(/writeDir/)
   })
 
   it('reads the kernel\'s Landlock ABI', async () => {
@@ -134,23 +139,32 @@ describe('landlock sandbox', () => {
     expect(stdout.trim()).toBe('hello from workspace')
   })
 
-  it('can write files inside workspace', () => {
+  it('can write files inside its writeDir', () => {
     const { status } = run(`
       import { writeFileSync } from 'node:fs';
-      writeFileSync(WS + '/written.txt', 'ok');
+      writeFileSync(WS + '/out/written.txt', 'ok');
     `)
     expect(status).toBe(0)
-    expect(readFileSync(resolve(WS, 'written.txt'), 'utf8')).toBe('ok')
+    expect(readFileSync(resolve(WS, 'out/written.txt'), 'utf8')).toBe('ok')
   })
 
-  it('can create directories inside workspace', () => {
+  it('can create directories inside its writeDir', () => {
     const { status } = run(`
       import { mkdirSync, writeFileSync } from 'node:fs';
-      mkdirSync(WS + '/sub/dir', { recursive: true });
-      writeFileSync(WS + '/sub/dir/file.txt', 'nested');
+      mkdirSync(WS + '/out/sub/dir', { recursive: true });
+      writeFileSync(WS + '/out/sub/dir/file.txt', 'nested');
     `)
     expect(status).toBe(0)
-    expect(readFileSync(resolve(WS, 'sub/dir/file.txt'), 'utf8')).toBe('nested')
+    expect(readFileSync(resolve(WS, 'out/sub/dir/file.txt'), 'utf8')).toBe('nested')
+  })
+
+  it('cannot write the workspace outside its writeDir', () => {
+    const { status, stderr } = run(`
+      import { writeFileSync } from 'node:fs';
+      writeFileSync(WS + '/blocked.txt', 'x');
+    `)
+    expect(status).not.toBe(0)
+    expect(stderr).toMatch(/EACCES|EPERM|EROFS|Permission denied/)
   })
 
   // ── Filesystem: blocked outside workspace ─────────────────────────
@@ -171,7 +185,7 @@ describe('landlock sandbox', () => {
       const { status, stderr } = run(`
         import { writeFileSync } from 'node:fs';
         writeFileSync('${given}/bound', 'ok');
-      `, { sandboxCall: `sandbox(WS, { extraWritePaths: ['${given}'] })` })
+      `, { sandboxCall: `sandbox(WS, { writeDir: 'out', extraWritePaths: ['${given}'] })` })
       expect(status, stderr).toBe(0)
       expect(readFileSync(resolve(given, 'bound'), 'utf8')).toBe('ok')
     } finally {
@@ -230,6 +244,17 @@ describe('landlock sandbox', () => {
     expect(stdout.trim()).toBe('hello from workspace')
   })
 
+  it('exec inherits sandbox — writes its writeDir and nothing else of the workspace', () => {
+    const { status, stderr } = run(`
+      import { execSync } from 'node:child_process';
+      execSync('cat ' + WS + '/hello.txt > ' + WS + '/out/copied.txt');
+      execSync('cat ' + WS + '/hello.txt > ' + WS + '/denied.txt');
+    `)
+    expect(status).not.toBe(0)
+    expect(stderr).toMatch(/Permission denied|EACCES|EPERM/)
+    expect(readFileSync(resolve(WS, 'out/copied.txt'), 'utf8').trim()).toBe('hello from workspace')
+  })
+
   it('exec inherits sandbox — cannot write outside workspace', () => {
     const { status, stderr } = run(`
       import { execSync } from 'node:child_process';
@@ -239,49 +264,7 @@ describe('landlock sandbox', () => {
     expect(stderr).toMatch(/Permission denied|EACCES|EPERM/)
   })
 
-  // ── Split root (writeDir) ─────────────────────────────────────────
-
-  const splitRoot = { sandboxCall: "sandbox(WS, { writeDir: 'out' })" }
-
-  it('split root: workspace stays readable', () => {
-    const { status, stdout } = run(`
-      import { readFileSync } from 'node:fs';
-      console.log(readFileSync(WS + '/hello.txt', 'utf8'));
-    `, splitRoot)
-    expect(status).toBe(0)
-    expect(stdout.trim()).toBe('hello from workspace')
-  })
-
-  it('split root: workspace is not writable', () => {
-    const { status, stderr } = run(`
-      import { writeFileSync } from 'node:fs';
-      writeFileSync(WS + '/blocked.txt', 'x');
-    `, splitRoot)
-    expect(status).not.toBe(0)
-    expect(stderr).toMatch(/EACCES|EPERM|EROFS|Permission denied/)
-  })
-
-  it('split root: only the writeDir is writable', () => {
-    const { status } = run(`
-      import { writeFileSync } from 'node:fs';
-      writeFileSync(WS + '/out/allowed.txt', 'ok');
-    `, splitRoot)
-    expect(status).toBe(0)
-    expect(readFileSync(resolve(WS, 'out/allowed.txt'), 'utf8')).toBe('ok')
-  })
-
-  it('split root: exec inherits the same split', () => {
-    const { status, stderr } = run(`
-      import { execSync } from 'node:child_process';
-      execSync('cat ' + WS + '/hello.txt > ' + WS + '/out/copied.txt');
-      execSync('cat ' + WS + '/hello.txt > ' + WS + '/denied.txt');
-    `, splitRoot)
-    expect(status).not.toBe(0)
-    expect(stderr).toMatch(/Permission denied|EACCES|EPERM/)
-    expect(readFileSync(resolve(WS, 'out/copied.txt'), 'utf8').trim()).toBe('hello from workspace')
-  })
-
-  it('split root: a writeDir outside the workspace is refused, not silently widened', () => {
+  it('a writeDir outside the workspace is refused, not silently widened', () => {
     const { status, stderr } = run(`
       console.log('reached');
     `, { sandboxCall: "sandbox(WS, { writeDir: '../escape' })" })

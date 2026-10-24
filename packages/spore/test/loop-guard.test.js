@@ -79,18 +79,6 @@ describe('loop guard', () => {
     expect(guard.stalled()).toBe(null)
   })
 
-  it('getStats reports calls made and runs of failure', () => {
-    const guard = createLoopGuard()
-    round(guard, 'a', 'read', {}, FAILED)
-    round(guard, 'b', 'read', {}, OK)
-    round(guard, 'c', 'write', {})
-    const stats = guard.getStats()
-    expect(stats.totalCalls).toBe(3)
-    expect(stats.failures.read).toBe(0)
-  })
-
-  // The guard used to refuse the third identical call. It reports instead, and the
-  // loop's answer is the soft wrap: the agent is told to finish, not told no.
   it('wraps the turn rather than refusing the call', async () => {
     let rounds = 0
     const m = {

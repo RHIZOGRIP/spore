@@ -5,8 +5,7 @@ import { resolve } from 'node:path'
 
 import { createEmitter } from '../src/observability/emitter.js'
 import { attachEventLog, EVENTS, PROMISED, SCHEMA } from '../src/observability/event-log.js'
-import { appendEvents, hostState, lastEventSeq, readEvents, pruneTrail } from '../src/core/spore-dir.js'
-import { writeCall } from '../src/core/call-record.js'
+import { hostState, readEvents } from '../src/core/spore-dir.js'
 
 const WS = resolve(tmpdir(), 'spore-events-test')
 
@@ -146,32 +145,5 @@ describe('the event log', () => {
     const refusing = { request () { throw new Error('the supervisor closed the channel') } }
     attachEventLog(emitter, { state: refusing, runId: 'r' })
     expect(() => emitter.emit('round', { index: 0 })).not.toThrow()
-  })
-})
-
-describe('bounding the log', () => {
-  it('drops the events of a run whose records were dropped', () => {
-    // A run is as new as its latest call.
-    for (const run of ['old', 'new']) {
-      mkdirSync(resolve(WS, 'calls', run, '0001'), { recursive: true })
-      writeCall(WS, run, '0001', { tool: 'exec', startedAt: '2026-09-27T00:00:00.000Z' })
-    }
-    const at = '2026-09-27T00:00:00.000Z'
-    appendEvents(WS, [
-      { v: 1, at, runId: 'old', event: 'round' },
-      { v: 1, at, runId: 'new', event: 'round' },
-      { v: 1, at, runId: 'old', event: 'complete' }
-    ])
-
-    // `retain` counts the run about to be written, so 2 leaves one behind it.
-    pruneTrail(WS, 2)
-
-    // The sequence still climbs, and a consumer resuming on a number it no longer has is
-    // told by its absence.
-    expect(readEvents(WS).map(e => e.runId)).toEqual(['new'])
-    expect(readEvents(WS).map(e => e.seq)).toEqual([2])
-    expect(lastEventSeq(WS)).toBe(3)
-    appendEvents(WS, [{ v: 1, at, runId: 'next', event: 'round' }])
-    expect(readEvents(WS, { after: 2 }).map(e => e.seq)).toEqual([4])
   })
 })

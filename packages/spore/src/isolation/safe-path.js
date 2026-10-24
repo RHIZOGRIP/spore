@@ -3,7 +3,7 @@
  * `rust/workspace`'s `safe_path`, shared with the Rust cell supervisor.
  */
 
-import { resolve, relative, isAbsolute } from 'node:path'
+import { resolve, isAbsolute } from 'node:path'
 import { native } from '../native.js'
 import { SporeError } from '../observability/errors.js'
 
@@ -25,31 +25,6 @@ export function safePath (workspace, userPath, { reads = [] } = {}) {
     })
   }
   return answer.path
-}
-
-/**
- * Resolve a read-only mount — maps a virtual prefix to an external directory.
- *
- * Used by read_file / list_files to serve shared content (e.g. product docs)
- * without modifying safePath or adding symlinks. Write tools never call this.
- *
- * @param {string} userPath — relative path from user/LLM (e.g. 'docs/faq.md')
- * @param {Object<string, string>} mounts — prefix → absolute target (e.g. { docs: '/shared/docs' })
- * @returns {string|null} absolute path within mount target, or null if no match / escape
- */
-export function resolveReadMount (userPath, mounts) {
-  if (!userPath || !mounts) return null
-  if (userPath.includes('\0')) return null
-  for (const [prefix, target] of Object.entries(mounts)) {
-    if (userPath === prefix || userPath.startsWith(prefix + '/')) {
-      const rest = userPath.slice(prefix.length).replace(/^\//, '')
-      const resolved = rest ? resolve(target, rest) : target
-      const rel = relative(target, resolved)
-      if (rel.startsWith('..') || isAbsolute(rel)) return null
-      return resolved
-    }
-  }
-  return null
 }
 
 /**

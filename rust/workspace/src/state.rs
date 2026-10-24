@@ -2608,26 +2608,6 @@ pub fn recover(ws: &Path) -> Result<(), String> {
     })
 }
 
-/// The turn a host left `pending`, finalized as its agent left it — host side, for fixtures.
-pub fn finalize_pending(ws: &Path) -> Result<Option<Value>, String> {
-    writing(ws, |conn| {
-        let tx = immediate(conn)?;
-        let turn: Option<String> = tx
-            .query_row(
-                "SELECT turnId FROM t_turns WHERE state = 'pending' ORDER BY startedAt DESC, rowid DESC LIMIT 1",
-                [],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(failed_to("read the pending turn"))?;
-        let Some(turn) = turn else { return Ok(None) };
-        finalize_row(&tx, &turn, None, true)?;
-        let row = turn_row(&tx, &turn)?;
-        tx.commit().map_err(failed_to("finalize the turn"))?;
-        Ok(Some(row))
-    })
-}
-
 /// A finished turn written down whole — the runner's record of a turn its agent never started,
 /// and a host's fixtures: inserted `pending` and finalized in the same transaction. A turn
 /// already final under this `turnId` is left as it is. The record comes back with what was
@@ -2751,7 +2731,8 @@ fn finalize_in(tx: &Connection, record: &mut Record, announce: bool) -> Result<(
 /// dropped: their calls, their streams under `calls/`, and the events about them — an event
 /// about a dropped run is one nobody can follow up. `seq` keeps climbing, so a consumer resuming
 /// on one it no longer has is told by its absence. A run is as new as its latest call; a
-/// directory with no call written down is older than any.
+/// directory with no call written down is older than any. Runs rather than calls, because a
+/// call's streams live in its directory and one of them can be a hundred megabytes.
 pub fn prune_trail(ws: &Path, keep: u32) -> Result<Vec<String>, String> {
     let recorded: Vec<String> = reading(ws, Vec::new(), |conn| {
         let mut statement =
@@ -4113,6 +4094,65 @@ mod tests {
             row(&ws, "SELECT count(*) AS n, max(seq) AS last FROM events"),
             json!({ "n": 3, "last": 5 })
         );
+        assert_eq!(
+            row(&ws, "SELECT count(*) AS n, runId FROM t_turns"),
+            json!({ "n": 1, "runId": "old" })
+        );
+    }
+
+    #[test]
+    fn numbers_events_on_past_the_newest_one_pruned() {
+        let ws = scratch("prune-seq");
+        let turn = begin_turn(&ws, "t", None).unwrap();
+        for (no, run) in ["old", "new"].iter().enumerate() {
+            let call = json!({ "runId": run, "callNo": no + 1, "tool": "exec", "startedAt": "a", "record": {} });
+            ask(
+                &ws,
+                Some(&turn),
+                json!({ "id": no, "op": "call.record", "call": call }),
+            );
+            std::fs::create_dir_all(ws.join(crate::CALLS_DIR).join(run)).unwrap();
+        }
+        let events = json!([
+            { "v": 1, "at": "a", "runId": "old", "event": "round" },
+            { "v": 1, "at": "a", "runId": "new", "event": "round" },
+            { "v": 1, "at": "a", "runId": "old", "event": "complete" }
+        ]);
+        ask(
+            &ws,
+            Some(&turn),
+            json!({ "id": 2, "op": "events.append", "events": events }),
+        );
+        assert_eq!(prune_trail(&ws, 2).unwrap(), ["old"]);
+        ask(
+            &ws,
+            Some(&turn),
+            json!({ "id": 3, "op": "events.append", "events": [{ "v": 1, "at": "a", "runId": "next", "event": "round" }] }),
+        );
+        assert_eq!(
+            row(
+                &ws,
+                "SELECT group_concat(seq) AS seqs FROM (SELECT seq FROM events ORDER BY seq)"
+            ),
+            json!({ "seqs": "2,4" })
+        );
+    }
+
+    #[test]
+    fn drops_nothing_with_room_or_with_no_trail() {
+        let ws = scratch("prune-room");
+        assert!(prune_trail(&ws, 3).unwrap().is_empty());
+        let turn = begin_turn(&ws, "t", None).unwrap();
+        let call =
+            json!({ "runId": "only", "callNo": 1, "tool": "exec", "startedAt": "a", "record": {} });
+        ask(
+            &ws,
+            Some(&turn),
+            json!({ "id": 0, "op": "call.record", "call": call }),
+        );
+        std::fs::create_dir_all(ws.join(crate::CALLS_DIR).join("only")).unwrap();
+        assert!(prune_trail(&ws, 10).unwrap().is_empty());
+        assert!(ws.join(crate::CALLS_DIR).join("only").exists());
     }
 
     #[test]

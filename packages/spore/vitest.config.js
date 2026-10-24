@@ -4,6 +4,7 @@
 export default {
   test: {
     testTimeout: 20_000,
+    env: { SPORE_TEST_HOST_TURNS: '1' },
     setupFiles: ['./test/fixtures/fresh-native.js', './test/fixtures/own-slots.js', './test/fixtures/own-config.js']
   }
 }

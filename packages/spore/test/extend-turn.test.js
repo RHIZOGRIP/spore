@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { createModelServer } from './fixtures/model-server.js'
+import { createModelServer, suppliedKey } from './fixtures/model-server.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
-import { readTurns, runningLimits, writeModelKey } from '../src/core/spore-dir.js'
+import { readTurns, runningLimits } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 import { RUNNING, stateOf } from '../src/core/state.js'
 import { changeText, extendTurn } from '../src/core/limits.js'
@@ -38,7 +38,7 @@ const slow = () => {
 beforeEach(async () => {
   ws = outsideWorkspace('extend-turn')
   writeFileSync(resolve(ws, 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5').replace(/^wall: .*$/m, 'wall: [1s, 4s]\nextend.wall: 1m'))
-  broker = createModelServer({ mo: slow(), socketPath: brokerSocketPath('extend-turn'), limit: 10, key: writeModelKey(ws) })
+  broker = createModelServer({ mo: slow(), socketPath: brokerSocketPath('extend-turn'), limit: 10, key: suppliedKey(ws) })
   await broker.listen()
 })
 

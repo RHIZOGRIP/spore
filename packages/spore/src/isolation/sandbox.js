@@ -1,10 +1,6 @@
 /**
- * Landlock sandbox — confines the process to the workspace.
- * Kernel-enforced, irreversible, inherited by child processes.
- *
- * Two modes:
- *   default:               workspace read-write
- *   split root (writeDir): workspace read-only, one dir beneath it read-write
+ * Landlock sandbox — confines the process to the workspace: all of it readable, one
+ * directory beneath it writable. Kernel-enforced, irreversible, inherited by child processes.
  */
 
 import { createRequire } from 'node:module'
@@ -67,38 +63,32 @@ export function landlockAbi () {
  * Apply landlock sandbox. Call once at startup, before any LLM interaction.
  *
  * @param {string} workspace — workspace path
- * @param {object} [opts]
- * @param {string} [opts.writeDir] — path relative to `workspace` that becomes the only
- *   writable location; `workspace` itself drops to read-only.
+ * @param {object} opts
+ * @param {string} opts.writeDir — path relative to `workspace` that becomes the only
+ *   writable location; `workspace` itself is read-only.
  * @param {string[]} [opts.extraWritePaths] — additional paths the child needs to write
  *   outside its workspace.
  * @param {string[]} [opts.extraReadPaths] — corpora the definition declared it may read.
  * @param {object} [opts.logger]
- * @returns {number} landlock ABI version, or -1 if unavailable
+ * @returns {number} landlock ABI version
  */
-export function sandbox (workspace, { writeDir, extraWritePaths = [], extraReadPaths = [], logger = silent } = {}) {
+export function sandbox (workspace, { writeDir, extraWritePaths = [], extraReadPaths = [], logger = silent }) {
+  if (!writeDir) throw new Error('sandbox() needs a writeDir: the workspace itself is never writable')
   const readPaths = [...systemReadPaths(), ...extraReadPaths.filter(Boolean)]
   const writePaths = ['/dev/null', ...extraWritePaths.filter(Boolean)]
 
-  // Split-root mode. Landlock resolves a path against its most nested matching
-  // rule, so handing the subdir in as the read-write root while `workspace`
-  // rides along as a read path yields exactly: read all of workspace, write
-  // only beneath writeDir. A caller that delegates this way keeps its own
-  // ruleset — restrict_self binds the calling process only.
+  // Landlock resolves a path against its most nested matching rule, so handing the
+  // subdir in as the read-write root while `workspace` rides along as a read path
+  // yields exactly: read all of workspace, write only beneath writeDir. A caller that
+  // delegates this way keeps its own ruleset — restrict_self binds the calling process only.
   // Either this process comes back confined or it does not come back: preparing the
   // write root and installing the ruleset are the same commitment, and a caller that
   // asked for confinement must not carry on without it.
   try {
-    if (writeDir) {
-      const fullWriteDir = safePath(workspace, writeDir)
-      mkdirSync(fullWriteDir, { recursive: true })
-      const abi = native.sandbox({ workspace: fullWriteDir, readPaths: [...readPaths, workspace], writePaths })
-      logger.info({ abi, workspace, writeDir: fullWriteDir }, '[sandbox] landlock — split root')
-      return abi
-    }
-
-    const abi = native.sandbox({ workspace, readPaths, writePaths })
-    logger.info({ abi, workspace }, '[sandbox] landlock — confined')
+    const fullWriteDir = safePath(workspace, writeDir)
+    mkdirSync(fullWriteDir, { recursive: true })
+    const abi = native.sandbox({ workspace: fullWriteDir, readPaths: [...readPaths, workspace], writePaths })
+    logger.info({ abi, workspace, writeDir: fullWriteDir }, '[sandbox] landlock — confined')
     return abi
   } catch (err) {
     throw unconfined(err, workspace)

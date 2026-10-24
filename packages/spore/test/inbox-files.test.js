@@ -4,7 +4,7 @@ import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { headAndTail } from '../src/core/preview.js'
-import { INLINE_MESSAGE_BYTES, appendInbox, readInbox, readInboxFrom, saidOf } from '../src/core/spore-dir.js'
+import { enqueue, INLINE_MESSAGE_BYTES, readInbox, readInboxFrom, saidOf } from '../src/core/spore-dir.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.inbox-files-workspace')
@@ -23,7 +23,7 @@ afterEach(() => {
 
 describe('a message short enough to carry', () => {
   it('stays in the entry, as it always has', () => {
-    appendInbox(WS, 'hello')
+    enqueue(WS, 'hello')
     expect(only(WS).text).toBe('hello')
     expect(only(WS).bodyPath).toBeNull()
     expect(existsSync(resolve(WS, 'inbox.d'))).toBe(false)
@@ -32,7 +32,7 @@ describe('a message short enough to carry', () => {
 
 describe('a message too long to carry', () => {
   it('goes to a file, and the entry points at it', () => {
-    appendInbox(WS, long())
+    enqueue(WS, long())
     const { bodyPath, bodyBytes, text } = only(WS)
     expect(text).toBeNull()
     expect(bodyBytes).toBe(INLINE_MESSAGE_BYTES + 1000)
@@ -41,7 +41,7 @@ describe('a message too long to carry', () => {
 
   it('carries both ends, because the ask sits at one of them', () => {
     const log = Array.from({ length: 800 }, (_, i) => `line ${i} of log`).join('\n') + '\nwhy does this fail?'
-    appendInbox(WS, log)
+    enqueue(WS, log)
     const entry = only(WS)
     expect(entry.bodyHead).toContain('line 0 of log')
     expect(entry.bodyTail).toContain('why does this fail?')
@@ -49,7 +49,7 @@ describe('a message too long to carry', () => {
   })
 
   it('is read as a pointer plus both ends, never as a silent truncation', () => {
-    appendInbox(WS, 'INSTRUCTION AT THE TOP\n' + long())
+    enqueue(WS, 'INSTRUCTION AT THE TOP\n' + long())
     const said = readInboxFrom(WS).messages[0]
     expect(said).toContain('inbox.d/')
     expect(said).toContain('INSTRUCTION AT THE TOP')
@@ -61,7 +61,7 @@ describe('a file sent with a message', () => {
   const pdf = { name: 'report.pdf', mime: 'application/pdf', data: Buffer.from('%PDF-1.4') }
 
   it('lands beside the message and is named in the entry', () => {
-    appendInbox(WS, 'have a look', { attach: [pdf] })
+    enqueue(WS, 'have a look', { attach: [pdf] })
     const entry = only(WS)
     expect(entry.text).toBe('have a look')
     expect(entry.files).toHaveLength(1)
@@ -70,7 +70,7 @@ describe('a file sent with a message', () => {
   })
 
   it('reaches the turn as its path, with the message', () => {
-    appendInbox(WS, 'have a look', { attach: [pdf] })
+    enqueue(WS, 'have a look', { attach: [pdf] })
     const said = readInboxFrom(WS).messages[0]
     expect(said).toContain('have a look')
     expect(said).toContain('Sent with this message')
@@ -79,7 +79,7 @@ describe('a file sent with a message', () => {
 
   // The name comes from outside and picks the file it lands on.
   it('cannot name a path out of the directory it lands in', () => {
-    appendInbox(WS, 'note', { attach: [{ name: '../../etc/passwd', data: Buffer.from('x') }] })
+    enqueue(WS, 'note', { attach: [{ name: '../../etc/passwd', data: Buffer.from('x') }] })
     const { files } = only(WS)
     expect(files[0].path).not.toContain('..')
     expect(resolve(WS, files[0].path).startsWith(resolve(WS, 'inbox.d'))).toBe(true)
@@ -88,7 +88,7 @@ describe('a file sent with a message', () => {
   })
 
   it('carries a body and files together when both are big enough to need it', () => {
-    appendInbox(WS, long(), { attach: [pdf] })
+    enqueue(WS, long(), { attach: [pdf] })
     const entry = only(WS)
     expect(entry.bodyPath).toBeTruthy()
     expect(entry.files).toHaveLength(1)
@@ -98,7 +98,7 @@ describe('a file sent with a message', () => {
 
 describe('two callers at once', () => {
   it('never land on the same directory', () => {
-    for (let i = 0; i < 12; i++) appendInbox(WS, long())
+    for (let i = 0; i < 12; i++) enqueue(WS, long())
     const dirs = new Set(readInbox(WS).map(e => dirname(e.bodyPath)))
     expect(dirs.size).toBe(12)
   })

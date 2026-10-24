@@ -2571,9 +2571,10 @@ turn's only writer connection and answers four operations, each one transaction:
 `turn.outcome` — how the turn ended as the agent saw it, which makes the turn `pending` and
 settles nothing. The agent waits for each answer before the next request, so the order written
 is the order committed and a refusal reaches it as a failed write. A frame is one JSON line, at
-most `MAX_FRAME` (32 MiB). A host writing fixtures, or a test running the confined half in its
-own process, sends the same requests through the addon (`hostState`), so there is one
-implementation of what each means.
+most `MAX_FRAME` (32 MiB). Host-side writes (a fork's cut, a dream's note) send the same
+requests through the addon, so there is one implementation of what each means. Spore's own
+tests run the confined half in their process on a turn begun through the addon (`hostState`),
+the one hook kept for them and refused unless `SPORE_TEST_HOST_TURNS=1`.
 
 **The runner writes every turn record, after the calls have finished.** When the agent has
 gone, the runner closes the channel, stops the turn's sockets, which take no new model call,

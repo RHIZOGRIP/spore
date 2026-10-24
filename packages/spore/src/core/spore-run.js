@@ -90,16 +90,13 @@ export async function runSpore ({
   // The turn's writer: the channel to its supervisor, which holds the workspace's only writer
   // connection. Required for the reason `mo` is — this half writes nothing of its own accord.
   state,
-  // Where a cell reaches the model, and the ledger the tree spends against — both the
-  // supervisor's to own, because both outlive this turn. Absent means this agent has
-  // no children to point anywhere.
+  // Where a cell reaches the model — the supervisor's to own, because it outlives this
+  // turn. Absent means this agent has no children to point anywhere.
   modelSocket,
   storeSocket,
   sourceSocket,
-  ledger: hostLedger,
   limits,
   sandbox: applySandbox = false,
-  emitter,
   initialMessages,
   // The suite's tools the definition does not grant, taken off what the model is offered.
   excludeTools,
@@ -227,30 +224,19 @@ export async function runSpore ({
   const carried = prompt === undefined ? historyBound(contextLimit, historyBudget) : null
   const maxOutput = maxResultSizeForContext(contextLimit)
 
-  // Whoever keeps the books says so. A brokered client reports what the host has
-  // served; an in-process host hands its broker's ledger down. Neither is built here —
-  // this half holds no keys and outlives nothing.
-  const ledger = mo.ledger || hostLedger || createLedger()
+  // Whoever keeps the books says so: a brokered client reports what the host has served.
+  // None is built here beyond a count of its own — this half holds no keys and outlives nothing.
+  const ledger = mo.ledger || createLedger()
 
-  // The log listens on an emitter of its own and forwards to the caller's, so an embedder
-  // keeps whatever shape it passed — `emit` alone was always enough — and the record is
-  // written either way: not optional and not a harness's to ask for, because what a turn did
-  // belongs to the workspace.
-  const own = createEmitter()
-  const eventLog = attachEventLog(own, { state, runId: trailRunId, logger })
-  own.on('round', ({ index }) => { trail.round = index + 1 })
+  // What a turn did belongs to the workspace, so it is written to the log, and whoever
+  // watches the turn reads it there.
+  const events = createEmitter()
+  const eventLog = attachEventLog(events, { state, runId: trailRunId, logger })
+  events.on('round', ({ index }) => { trail.round = index + 1 })
   // What the provider counted for the turn's first call is the history it carried, measured
   // rather than estimated: what the turn record holds against the bound.
   let historySent = null
-  if (carried !== null) own.on('usage', ({ input, cacheRead, cacheWrite }) => { historySent ??= input + cacheRead + cacheWrite })
-  if (emitter) own.on('*', (type, data) => emitter.emit(type, data))
-  const events = {
-    emit: own.emit,
-    on: own.on,
-    off: own.off,
-    // Both sides: the caller is who wants deltas, and the log deliberately does not.
-    has: (type) => own.has(type) || Boolean(emitter?.has?.(type))
-  }
+  if (carried !== null) events.on('usage', ({ input, cacheRead, cacheWrite }) => { historySent ??= input + cacheRead + cacheWrite })
   events.emit('inbox_read', { inboxTo: inboxAt })
   let { fns, defs } = makeTools(WS, maxOutput, trail, {
     modelId,

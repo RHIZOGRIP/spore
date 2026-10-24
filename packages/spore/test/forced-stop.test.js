@@ -5,10 +5,10 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer } from './fixtures/model-server.js'
+import { createModelServer, suppliedKey } from './fixtures/model-server.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
-import { readLock, readTurns, writeModelKey } from '../src/core/spore-dir.js'
+import { readLock, readTurns } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 import { RUNNING, stateOf, stop } from '../src/core/state.js'
 
@@ -40,7 +40,7 @@ const ticking = {
 
 beforeEach(async () => {
   ws = outsideWorkspace('forced-stop')
-  broker = createModelServer({ mo: ticking, socketPath: brokerSocketPath('forced-stop'), limit: 10, key: writeModelKey(ws) })
+  broker = createModelServer({ mo: ticking, socketPath: brokerSocketPath('forced-stop'), limit: 10, key: suppliedKey(ws) })
   await broker.listen()
 })
 

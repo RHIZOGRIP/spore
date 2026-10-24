@@ -23,8 +23,6 @@ export const DEFAULT_DEFINITION_PATH = join(SHIPPED_SPORANGIA, DEFAULT_SPORANGIU
 const parsed = parseDefinition(readFileSync(DEFAULT_DEFINITION_PATH, 'utf8'), { knownTools: TOOL_NAMES, seed: true })
 if (parsed.error) throw new Error(`${DEFAULT_DEFINITION_PATH} ${parsed.error} — the shipped default must parse`)
 
-export const DEFAULT_DEFINITION = Object.freeze(parsed)
-
 /**
  * The shipped definition with a model written into it. A `.cmk` says what an agent runs
  * on, and this file cannot: a model id baked into a package goes stale against a catalog

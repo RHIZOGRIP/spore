@@ -116,7 +116,8 @@ describe('tool-kernel scheduling', () => {
 /* ── Abort ──────────────────────────────────────────────────────── */
 
 describe('tool-kernel abort', () => {
-  it('passes child signal to tool function', async () => {
+  it('passes the turn\'s signal to the tool function', async () => {
+    const controller = new AbortController()
     let receivedSignal
     const toolFns = {
       check: async (args, { signal }) => { receivedSignal = signal; return 'ok' }
@@ -124,10 +125,10 @@ describe('tool-kernel abort', () => {
     await executeTools({
       toolCalls: [tc('1', 'check')],
       toolFns,
+      signal: controller.signal,
       logger: silent
     })
-    expect(receivedSignal).toBeDefined()
-    expect(receivedSignal.aborted).toBe(false)
+    expect(receivedSignal).toBe(controller.signal)
   })
 
   it('child signal fires when parent aborts', async () => {

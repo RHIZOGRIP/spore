@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
-import { appendInbox, readInbox, saidOf } from '../src/core/spore-dir.js'
+import { enqueue, readInbox, saidOf } from '../src/core/spore-dir.js'
 import { dueOf, lastFired, parseSchedule, refuseScheduleWrite, survey } from '../src/core/schedule.js'
 
 const EVERY_MINUTE = '---\nwhen: * * * * *\ntz: UTC\n---\n\nCheck the queue.\n'
@@ -49,8 +49,8 @@ describe('a schedule file', () => {
 
 describe('the clock on the inbox', () => {
   it('records which schedule fired, for which slot, and says so to the agent', () => {
-    appendInbox(ws, 'Check the queue.', { schedule: { name: 'queue', due: '2026-09-28T07:00:00Z' } })
-    appendInbox(ws, 'and a person says this')
+    enqueue(ws, 'Check the queue.', { schedule: { name: 'queue', due: '2026-09-28T07:00:00Z' } })
+    enqueue(ws, 'and a person says this')
     const [fired, said] = readInbox(ws)
     expect(fired).toMatchObject({ schedule: 'queue', due: '2026-09-28T07:00:00Z' })
     expect(saidOf(fired)).toMatch(/^\[Said by the clock: schedule "queue", for 2026-09-28T07:00:00Z\. No one sent this just now\.\]\n\nCheck the queue\.$/)
@@ -59,9 +59,9 @@ describe('the clock on the inbox', () => {
   })
 
   it('is where the last firing is read back from', () => {
-    appendInbox(ws, 'x', { schedule: { name: 'queue', due: '2026-09-28T06:00:00Z' } })
-    appendInbox(ws, 'x', { schedule: { name: 'other', due: '2026-09-28T06:30:00Z' } })
-    appendInbox(ws, 'x', { schedule: { name: 'queue', due: '2026-09-28T07:00:00Z' } })
+    enqueue(ws, 'x', { schedule: { name: 'queue', due: '2026-09-28T06:00:00Z' } })
+    enqueue(ws, 'x', { schedule: { name: 'other', due: '2026-09-28T06:30:00Z' } })
+    enqueue(ws, 'x', { schedule: { name: 'queue', due: '2026-09-28T07:00:00Z' } })
     expect(lastFired(ws).get('queue')).toBe('2026-09-28T07:00:00Z')
     expect(lastFired(ws).get('other')).toBe('2026-09-28T06:30:00Z')
   })
@@ -83,7 +83,7 @@ describe('where a workspace\'s schedules stand', () => {
     put('queue', EVERY_MINUTE, { ago: 10 * 60_000 })
     const now = Date.now()
     const [{ slot }] = survey(ws, { spore: IDLE, grant: null, now })
-    appendInbox(ws, 'x', { schedule: { name: 'queue', due: slot } })
+    enqueue(ws, 'x', { schedule: { name: 'queue', due: slot } })
     expect(survey(ws, { spore: IDLE, grant: null, now })[0].state).toBe('later')
   })
 
@@ -119,7 +119,7 @@ describe('where a workspace\'s schedules stand', () => {
 describe('the grant, counted on what fired', () => {
   const DAY = 24 * 3_600_000
   const oneShot = (at) => `---\nwhen: at ${new Date(at).toISOString()}\n---\n\nCheck.\n`
-  const firing = (name) => appendInbox(ws, 'Check.', { schedule: { name, due: new Date().toISOString() } })
+  const firing = (name) => enqueue(ws, 'Check.', { schedule: { name, due: new Date().toISOString() } }).inbox
 
   it('holds a one-shot that replaced a spent one inside the window, and fires it once the window has passed', () => {
     const start = Date.now()

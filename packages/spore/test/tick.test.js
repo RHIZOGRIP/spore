@@ -10,7 +10,7 @@ import { calls, answers, scriptedMo } from './fixtures/scripted-model.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { native } from '../src/native.js'
-import { acquireLock, appendInbox, heldIn, holdDelivery, readInbox, readTurns, releaseLock, writePendingRecord, writeTurnRecords } from '../src/core/spore-dir.js'
+import { acquireLock, enqueue, heldIn, holdDelivery, readInbox, readTurns, releaseLock, hostState, writeOutcome, writeTurnRecords } from '../src/core/spore-dir.js'
 import { RUNNING, stateOf } from '../src/core/state.js'
 import { tick, TICK_LOCK } from '../src/core/tick.js'
 
@@ -181,7 +181,7 @@ describe('a pass over a spore that cannot take a new turn', () => {
     ['waiting', () => turned({ stopReason: 'question', concluded: true })],
     ['failed', () => turned({ stopReason: 'error', concluded: false })],
     ['running', () => acquireLock(ws)],
-    ['draining', () => { acquireLock(ws); writePendingRecord(ws, { stopReason: 'answer' }) }],
+    ['draining', () => { acquireLock(ws); writeOutcome(hostState(ws), { stopReason: 'answer' }) }],
     ['crashed', async () => locked(await gone())]
   ])('holds its schedule while it is %s, and says so', async (why, arrange) => {
     await arrange()
@@ -225,7 +225,7 @@ describe('a dream', () => {
     await start(() => answers('still here'))
     dreaming()
     expect(pass().lines).toEqual([{ ws, state: 'dreaming' }])
-    appendInbox(ws, 'are you there?')
+    enqueue(ws, 'are you there?')
     await until(() => readTurns(ws).length === 2)
     await until(() => stateOf(ws).state !== RUNNING)
     expect(readTurns(ws)[1]).toMatchObject({ stopReason: 'answer', output: 'still here' })
@@ -234,7 +234,7 @@ describe('a dream', () => {
 
   it('is not due while something said waits unread, nor for a spore that declares none', () => {
     dreaming()
-    appendInbox(ws, 'hello')
+    enqueue(ws, 'hello')
     expect(pass().lines.filter(line => line.state === 'dreaming')).toEqual([])
     writeFileSync(resolve(ws, 'spore.cmk'), readFileSync(resolve(ws, 'spore.cmk'), 'utf8').replace(/dream[^\n]*\n/g, ''))
     expect(pass().lines.filter(line => line.state === 'dreaming')).toEqual([])

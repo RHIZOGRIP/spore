@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { callEmbedding } from 'mohdel/client'
 
 import { takeSlot } from '../src/core/admission.js'
-import { appendInbox, readLock, readModelKey, readPending, readTurns } from '../src/core/spore-dir.js'
+import { enqueue, readLock, readModelKey, readPending, readTurns } from '../src/core/spore-dir.js'
 import { stateOf, stop } from '../src/core/state.js'
 import { KEY_HEADER } from '../src/infra/socket-request.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
@@ -104,7 +104,7 @@ const startTurn = (source = session(marks), extra = []) => {
   mkdirSync(slots)
   const slot = takeSlot({ turns: 1, dir: slots })
   const err = openSync(resolve(ws, 'spore.err'), 'a')
-  appendInbox(ws, 'go')
+  enqueue(ws, 'go')
   try {
     spawn(RUNNER, ['--ws', ws, '--slot', slot.path, '--node', process.execPath, '--session', script, '--chatgpt-helper', CHATGPT_HELPER, ...extra], {
       detached: true,
