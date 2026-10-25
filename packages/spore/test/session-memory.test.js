@@ -285,26 +285,25 @@ describe('session-memory', () => {
 
   // ── Budget ────────────────────────────────────────────────────────
 
-  it('trims oldest facts when exceeding maxFacts', () => {
-    const sm = createSessionMemory({ maxFacts: 3 })
-    for (let i = 0; i < 5; i++) {
+  it('trims oldest facts past a hundred of them', () => {
+    const sm = createSessionMemory()
+    for (let i = 0; i < 102; i++) {
       sm.extract([{ role: 'user', content: `Task number ${i}` }])
     }
     const facts = sm.getFacts()
-    expect(facts).toHaveLength(3)
+    expect(facts).toHaveLength(100)
     expect(facts[0].text).toBe('Task number 2')
-    expect(facts[2].text).toBe('Task number 4')
+    expect(facts[99].text).toBe('Task number 101')
   })
 
-  it('trims oldest facts when exceeding maxChars', () => {
-    const sm = createSessionMemory({ maxChars: 100 })
-    sm.extract([
-      { role: 'user', content: 'a'.repeat(60) },
-      { role: 'user', content: 'b'.repeat(60) }
-    ])
-    // Both are 60 chars, total 120 > 100, so first should be trimmed
+  it('trims oldest facts past 8000 characters of them', () => {
+    const sm = createSessionMemory()
+    for (let i = 0; i < 50; i++) {
+      sm.extract([{ role: 'user', content: `fact ${i} ` + 'x'.repeat(300) }])
+    }
     const facts = sm.getFacts()
-    expect(facts).toHaveLength(1)
-    expect(facts[0].text).toMatch(/^b/)
+    expect(facts.reduce((total, fact) => total + fact.text.length, 0)).toBeLessThanOrEqual(8000)
+    expect(facts[0].text).not.toMatch(/^fact 0 /)
+    expect(facts.at(-1).text).toMatch(/^fact 49 /)
   })
 })

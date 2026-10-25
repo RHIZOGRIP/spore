@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -58,9 +58,16 @@ describe('the line a terminal is shown while it follows', () => {
       { event: 'tool_start', name: 'read', callId: 'a', args: { path: 'a.md' } },
       { event: 'tool_start', name: 'read', callId: 'b', args: { path: 'data/c.pdf' } }
     ], { startedAt: '2026-10-17T10:00:00.000Z' })
-    const now = Date.parse('2026-10-17T10:03:10.000Z')
-    expect(statusLine(live, { now, width: 200 })).toBe('working… · 2 calls · 3m · Found it. · reading data/c.pdf')
-    const cut = statusLine(live, { now, width: 20 })
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(Date.parse('2026-10-17T10:03:10.000Z'))
+    let shown, cut
+    try {
+      shown = statusLine(live, { width: 200 })
+      cut = statusLine(live, { width: 20 })
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(shown).toBe('working… · 2 calls · 3m · Found it. · reading data/c.pdf')
     expect(cut).toHaveLength(19)
     expect(cut.endsWith('…')).toBe(true)
   })

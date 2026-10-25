@@ -117,7 +117,6 @@ export function recordRefusals (fns, trail) {
 }
 
 export function makeTools (WS, maxOutput, trail, {
-  idleMs = EXEC_IDLE_MS,
   modelId = null,
   traceparent = null,
   modelSocket = null,
@@ -464,7 +463,7 @@ export function makeTools (WS, maxOutput, trail, {
         return refuse(`timeout must be between 1 and ${EXEC_TIMEOUT_MAX_MS / 1000} seconds`)
       }
       if (idle !== undefined && !(idle > 0)) return refuse('idle must be more than 0 seconds')
-      const callIdleMs = Math.min(idle === undefined ? idleMs : idle * 1000, timeoutMs)
+      const callIdleMs = Math.min(idle === undefined ? EXEC_IDLE_MS : idle * 1000, timeoutMs)
       return runCommand({ tool: 'exec', command, inPath, out, err, confined: true, timeoutMs, idleMs: callIdleMs, sig })
     },
     wsexec: async ({ command, in: inPath, out, err, timeout, idle, ...rest }, { signal: sig } = {}) => {
@@ -475,7 +474,7 @@ export function makeTools (WS, maxOutput, trail, {
         return refuse(`timeout must be between 1 and ${EXEC_TIMEOUT_MAX_MS / 1000} seconds`)
       }
       if (idle !== undefined && !(idle > 0)) return refuse('idle must be more than 0 seconds')
-      const callIdleMs = Math.min(idle === undefined ? idleMs : idle * 1000, timeoutMs)
+      const callIdleMs = Math.min(idle === undefined ? EXEC_IDLE_MS : idle * 1000, timeoutMs)
       return runCommand({ tool: 'wsexec', command, inPath, out, err, confined: false, timeoutMs, idleMs: callIdleMs, sig })
     },
 

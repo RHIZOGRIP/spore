@@ -78,28 +78,20 @@ describe('per-call timeout', () => {
 })
 
 describe('idle detection', () => {
-  const shortIdle = (ws, idleMs = 3000) => shownToModel(makeTools(ws, 50000, createCallTrail(ws, { runId: 'idle', state: hostState(ws) }), { idleMs }).fns).wsexec
-
-  it('kills a command that stops making progress, well before its deadline', async () => {
-    const meta = JSON.parse(await shortIdle(WS)({ command: 'sleep 30', out: 'data/o.txt', timeout: 60 }))
-    expect(meta.killed).toBe('idle')
-    expect(meta.idleMs).toBe(3000)
-  }, 20000)
-
   it('spares a command that keeps writing output', async () => {
-    const meta = JSON.parse(await shortIdle(WS)({ command: 'for i in 1 2 3 4 5 6; do echo $i; sleep 1; done', out: 'data/o.txt', timeout: 60 }))
+    const meta = JSON.parse(await wsexec({ command: 'for i in 1 2 3 4 5 6; do echo $i; sleep 1; done', out: 'data/o.txt', timeout: 60, idle: 3 }))
     expect(meta.killed).toBeUndefined()
     expect(meta.files.out.content).toBe('1\n2\n3\n4\n5\n6\n')
   }, 30000)
 
-  it('takes the idle window a call asks for', async () => {
+  it('kills a command that stops making progress in the idle window the call asks for, well before its deadline', async () => {
     const meta = JSON.parse(await wsexec({ command: 'sleep 30', out: 'data/o.txt', timeout: 60, idle: 3 }))
     expect(meta.killed).toBe('idle')
     expect(meta.idleMs).toBe(3000)
   }, 20000)
 
   it('spares a silent wait given an idle window longer than it', async () => {
-    const meta = JSON.parse(await shortIdle(WS)({ command: 'sleep 5; echo done', out: 'data/o.txt', timeout: 60, idle: 20 }))
+    const meta = JSON.parse(await wsexec({ command: 'sleep 5; echo done', out: 'data/o.txt', timeout: 60, idle: 20 }))
     expect(meta.killed).toBeUndefined()
     expect(meta.files.out.content).toBe('done\n')
   }, 20000)
@@ -116,14 +108,15 @@ describe('idle detection', () => {
   // Outlives the 2s sampler tick with an idle window shorter than it, so the
   // CPU signal is the only thing keeping it alive.
   it('spares a silent command that is burning CPU', async () => {
-    const meta = JSON.parse(await shortIdle(WS, 1500)({
+    const meta = JSON.parse(await wsexec({
       command: "awk 'BEGIN{for(i=0;i<150000000;i++)x+=i; print \"computed\"}'",
       out: 'data/o.txt',
-      timeout: 60
+      timeout: 60,
+      idle: 1.5
     }))
     expect(meta.killed).toBeUndefined()
     expect(meta.files.out.content).toBe('computed\n')
-    const trail = readCall(WS, 'idle', meta.call)
+    const trail = readCall(WS, 'test', meta.call)
     expect(new Date(trail.lastProgressAt).getTime() - new Date(trail.startedAt).getTime()).toBeGreaterThan(1500)
   }, 40000)
 })

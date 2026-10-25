@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -188,15 +188,24 @@ describe('the token the Bot Connector sends', () => {
     const body = part({ iss: 'https://api.botframework.com', aud: APP, exp: now / 1000 + 600, nbf: now / 1000 - 60, serviceurl: 'https://smba.trafficmanager.net/emea', ...claims })
     return `Bearer ${head}.${body}.${sign('RSA-SHA256', Buffer.from(`${head}.${body}`), key).toString('base64url')}`
   }
-  const keys = (published, clock = { at: now }) => {
+  const keys = (published) => {
     const asked = []
-    const fetchImpl = async (url) => {
+    vi.stubGlobal('fetch', async (url) => {
       asked.push(url)
       if (url.endsWith('openidconfiguration')) return new Response(JSON.stringify({ jwks_uri: 'https://login.botframework.com/v1/.well-known/keys' }))
       return new Response(JSON.stringify({ keys: published }))
-    }
-    return { asked, verify: createVerifier({ app: APP, fetchImpl, now: () => clock.at }) }
+    })
+    return { asked, verify: createVerifier({ app: APP }) }
   }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(now)
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
 
   it('holds when Microsoft signed it for this bot, its channel and its service', async () => {
     expect(await keys([jwk]).verify(jwt(), activity)).toBe(null)
@@ -218,35 +227,35 @@ describe('the token the Bot Connector sends', () => {
   })
 
   it('refuses a key Microsoft does not publish, reading its keys again for one at most once a minute', async () => {
-    const clock = { at: now }
-    const { asked, verify } = keys([jwk], clock)
+    const { asked, verify } = keys([jwk])
     expect(await verify(jwt({}, { kid: 'k9' }), activity)).toBe('its token names key k9, which Microsoft does not publish')
     expect(await verify(jwt({}, { kid: 'k9' }), activity)).toBe('its token names key k9, which Microsoft does not publish')
     expect(asked).toHaveLength(2)
-    clock.at += 61_000
+    vi.setSystemTime(now + 61_000)
     expect(await verify(jwt({}, { kid: 'k9' }), activity)).toBe('its token names key k9, which Microsoft does not publish')
     expect(asked).toHaveLength(4)
   })
 })
 
 describe('the bot\'s own token', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
   it('is asked of its tenant with its app id and secret, and kept until shortly before it expires', async () => {
     const asked = []
-    let at = 0
-    const token = createToken({
-      app: APP,
-      tenant: TENANT,
-      secret: 's3cret',
-      now: () => at,
-      fetchImpl: async (url, init) => {
-        asked.push({ url, body: Object.fromEntries(init.body) })
-        return new Response(JSON.stringify({ access_token: `t${asked.length}`, expires_in: 3600 }))
-      }
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(0)
+    vi.stubGlobal('fetch', async (url, init) => {
+      asked.push({ url, body: Object.fromEntries(init.body) })
+      return new Response(JSON.stringify({ access_token: `t${asked.length}`, expires_in: 3600 }))
     })
+    const token = createToken({ app: APP, tenant: TENANT, secret: 's3cret' })
     expect(await token()).toBe('t1')
-    at = 3000 * 1000
+    vi.setSystemTime(3000 * 1000)
     expect(await token()).toBe('t1')
-    at = 3301 * 1000
+    vi.setSystemTime(3301 * 1000)
     expect(await token()).toBe('t2')
     expect(asked[0]).toEqual({
       url: `https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/token`,
@@ -255,22 +264,26 @@ describe('the bot\'s own token', () => {
   })
 
   it('is refused for good when Microsoft refuses the app or its secret', async () => {
-    const token = createToken({ app: APP, tenant: TENANT, secret: 'wrong', fetchImpl: async () => new Response(JSON.stringify({ error_description: 'AADSTS7000215: Invalid client secret provided.\r\nTrace ID: x' }), { status: 401 }) })
+    vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ error_description: 'AADSTS7000215: Invalid client secret provided.\r\nTrace ID: x' }), { status: 401 }))
+    const token = createToken({ app: APP, tenant: TENANT, secret: 'wrong' })
     await expect(token()).rejects.toMatchObject({ type: 'TEAMS_REFUSED', detail: 'AADSTS7000215: Invalid client secret provided.', retryable: false })
   })
 })
 
 describe('the Bot Connector', () => {
   const answering = (status, body = {}, headers = {}) => async () => new Response(JSON.stringify(body), { status, headers })
+  const reaching = (fetch) => {
+    vi.stubGlobal('fetch', fetch)
+    return createConnector({ token: async () => 'tok' })
+  }
+
+  afterEach(() => vi.unstubAllGlobals())
 
   it('posts into a conversation under the bot\'s token, its id in the path', async () => {
     const asked = []
-    const connector = createConnector({
-      token: async () => 'tok',
-      fetchImpl: async (url, init) => {
-        asked.push({ url, method: init.method, authorization: init.headers.authorization, body: JSON.parse(init.body) })
-        return new Response(JSON.stringify({ id: '1:new' }))
-      }
+    const connector = reaching(async (url, init) => {
+      asked.push({ url, method: init.method, authorization: init.headers.authorization, body: JSON.parse(init.body) })
+      return new Response(JSON.stringify({ id: '1:new' }))
     })
     expect(await connector.send('https://smba.trafficmanager.net/emea', `${CHANNEL};messageid=1`, { type: 'message', text: 'hi' })).toBe('1:new')
     expect(asked).toEqual([{
@@ -282,7 +295,7 @@ describe('the Bot Connector', () => {
   })
 
   it('says what to try again and how long Microsoft asked to wait, and what not to', async () => {
-    const send = (fetchImpl) => createConnector({ token: async () => 'tok', fetchImpl }).send('https://s/', 'a:1', {})
+    const send = (fetch) => reaching(fetch).send('https://s/', 'a:1', {})
     await expect(send(answering(429, {}, { 'retry-after': '3' }))).rejects.toMatchObject({ type: 'TEAMS_FAILED', retryable: true, context: { status: 429, retryAfter: 3 } })
     await expect(send(answering(412))).rejects.toMatchObject({ retryable: true })
     await expect(send(answering(403, { error: { code: 'ConversationBlockedByUser', message: 'User blocked the conversation with the bot.' } })))

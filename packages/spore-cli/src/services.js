@@ -55,6 +55,8 @@ const nodeUnit = ({ description, marker, node, program, args = '' }) => [
  * or taking it out, then restarting the service.
  */
 export const SSH_KEYS_DIR = join(CONFIG_DIR, 'ssh')
+
+const INSTALL = { node: process.execPath, root: ROOT, keys: SSH_KEYS_DIR }
 export const SSH_AGENT_SOCKET = 'spore-ssh-agent.socket'
 
 const sshKeysCheck = (keys) => [
@@ -234,9 +236,9 @@ function catalogOf (roots) {
 }
 
 /** The unit files of a service, as they are written. */
-export function renderUnits (name, { node = process.execPath, root = ROOT, keys = SSH_KEYS_DIR, roots = pluginRoots() } = {}) {
+export function renderUnits (name, { roots = pluginRoots() } = {}) {
   const { base, service } = parsed(name, catalogOf(roots).services, { instanceOptional: true, verb: 'define' })
-  return Object.fromEntries(Object.entries(service.units({ node, root, keys }))
+  return Object.fromEntries(Object.entries(service.units(INSTALL))
     .map(([file, lines]) => [file, `# Written by \`spore service define ${base}\`. Change it with that command, not by hand.\n${lines.join('\n')}\n`]))
 }
 
@@ -292,15 +294,11 @@ const procCmdline = (pid) => {
   }
 }
 
-/**
- * `run(command, args)` answers `{ status, stdout, stderr }`; it is injected so the verbs can
- * be exercised without a user bus.
- */
-export function createServices ({ unitDir = UNIT_DIR, run = systemRun, cmdlineOf = procCmdline, node = process.execPath, root = ROOT, user = userInfo().username, uid = process.getuid(), keys = SSH_KEYS_DIR, stateDir = SERVICE_STATE_DIR, configDir = CONFIG_DIR, roots = pluginRoots() } = {}) {
+export function createServices ({ roots = pluginRoots() } = {}) {
   const { services: catalog, problems } = catalogOf(roots)
   const parse = (name, options) => parsed(name, catalog, options)
   const systemctl = (...args) => {
-    const ran = run('systemctl', ['--user', ...args])
+    const ran = systemRun('systemctl', ['--user', ...args])
     if (ran.status !== 0) {
       throw new SporeError(`systemctl --user ${args.join(' ')} failed`, {
         type: 'SERVICE_COMMAND_FAILED',
@@ -311,7 +309,7 @@ export function createServices ({ unitDir = UNIT_DIR, run = systemRun, cmdlineOf
   }
 
   const requireSystemd = () => {
-    const ran = run('systemctl', ['--user', 'show-environment'])
+    const ran = systemRun('systemctl', ['--user', 'show-environment'])
     if (ran.status !== 0) {
       throw new SporeError('no systemd user session to run services in', {
         type: 'SERVICE_NO_SYSTEMD',
@@ -320,17 +318,17 @@ export function createServices ({ unitDir = UNIT_DIR, run = systemRun, cmdlineOf
     }
   }
 
-  const pathOf = (file) => join(unitDir, file)
-  const unitsOf = (service) => service.units({ node, root, keys })
+  const pathOf = (file) => join(UNIT_DIR, file)
+  const unitsOf = (service) => service.units(INSTALL)
   const ours = (base, file) => {
     const path = pathOf(file)
     return existsSync(path) && readFileSync(path, 'utf8').split('\n').includes(`${MARKER}=${base}`)
   }
   const written = ({ base, service }) => Object.keys(unitsOf(service)).every(file => ours(base, file))
 
-  const instanceFile = ({ service, instance }) => join(configDir, service.instances.dir, `${instance}${service.instances.ext}`)
+  const instanceFile = ({ service, instance }) => join(CONFIG_DIR, service.instances.dir, `${instance}${service.instances.ext}`)
   const instancesOf = (service) => {
-    const dir = join(configDir, service.instances.dir)
+    const dir = join(CONFIG_DIR, service.instances.dir)
     if (!existsSync(dir)) return []
     return readdirSync(dir).filter(file => file.endsWith(service.instances.ext)).map(file => file.slice(0, -service.instances.ext.length)).sort()
   }
@@ -373,7 +371,7 @@ export function createServices ({ unitDir = UNIT_DIR, run = systemRun, cmdlineOf
 
   // A process started before its unit was last written runs what the unit used to name.
   const unitChanged = (one, pid) => {
-    const argv = pid && cmdlineOf(pid)
+    const argv = pid && procCmdline(pid)
     return Boolean(argv) && !execPaths(one).every(path => argv.includes(path))
   }
 
@@ -394,11 +392,11 @@ export function createServices ({ unitDir = UNIT_DIR, run = systemRun, cmdlineOf
   // one installed — of spore, of the plugin that offers it, or of the spore that plugin loads.
   // A service that recorded nothing, or a record left by an earlier process, says nothing either way.
   const outdated = (name, { service }, pid) => {
-    const record = join(stateDir, `${name}.json`)
+    const record = join(SERVICE_STATE_DIR, `${name}.json`)
     if (!service.records || !pid || !existsSync(record)) return null
     const started = JSON.parse(readFileSync(record, 'utf8'))
     if (started.pid !== pid) return null
-    const installed = service.plugin ? service.version : versionAt(root)
+    const installed = service.plugin ? service.version : versionAt(ROOT)
     if (started.version !== installed) return { from: service.package ?? 'spore', running: started.version, installed }
     if (!service.plugin || started.spore === undefined) return null
     const loads = versionAt(sporeOf(service.dir))
@@ -421,7 +419,7 @@ export function createServices ({ unitDir = UNIT_DIR, run = systemRun, cmdlineOf
     if (!service.instances) return [row(base)]
     const names = instancesOf(service)
     if (!names.length) {
-      return [{ name: base, what: service.what, defined: false, none: `no ${service.instances.called} yet — ${join(configDir, service.instances.dir)}/<${service.instances.called}>${service.instances.ext}, then spore service define ${base}@<${service.instances.called}>` }]
+      return [{ name: base, what: service.what, defined: false, none: `no ${service.instances.called} yet — ${join(CONFIG_DIR, service.instances.dir)}/<${service.instances.called}>${service.instances.ext}, then spore service define ${base}@<${service.instances.called}>` }]
     }
     return names.map(instance => row(`${base}@${instance}`))
   }
@@ -430,7 +428,7 @@ export function createServices ({ unitDir = UNIT_DIR, run = systemRun, cmdlineOf
     list () {
       requireSystemd()
       return {
-        linger: existsSync(join('/var/lib/systemd/linger', user)),
+        linger: existsSync(join('/var/lib/systemd/linger', userInfo().username)),
         services: Object.keys(catalog).flatMap(rows),
         problems
       }
@@ -442,7 +440,7 @@ export function createServices ({ unitDir = UNIT_DIR, run = systemRun, cmdlineOf
       const shown = row(name)
       if (!shown.defined) return shown
       const units = Object.keys(unitsOf(one.service)).map(pathOf)
-      const log = run('journalctl', ['--user', '-u', unitOf('runs', one), '-n', '10', '--no-pager', '-o', 'short-iso']).stdout.trim()
+      const log = systemRun('journalctl', ['--user', '-u', unitOf('runs', one), '-n', '10', '--no-pager', '-o', 'short-iso']).stdout.trim()
       return { ...shown, units, log }
     },
 
@@ -452,8 +450,8 @@ export function createServices ({ unitDir = UNIT_DIR, run = systemRun, cmdlineOf
       requireSystemd()
       refuseForeign(one, name)
       if (service.check) {
-        const [command, args] = service.check({ node, root, keys, instance })
-        const checked = run(command, args)
+        const [command, args] = service.check({ ...INSTALL, instance })
+        const checked = systemRun(command, args)
         if (checked.status !== 0) {
           throw new SporeError(`${name} would not start`, {
             type: 'SERVICE_NOT_READY',
@@ -461,14 +459,14 @@ export function createServices ({ unitDir = UNIT_DIR, run = systemRun, cmdlineOf
           })
         }
       }
-      mkdirSync(unitDir, { recursive: true })
+      mkdirSync(UNIT_DIR, { recursive: true })
       const units = []
-      for (const [file, text] of Object.entries(renderUnits(one.base, { node, root, keys, roots }))) {
+      for (const [file, text] of Object.entries(renderUnits(one.base, { roots }))) {
         writeFileSync(pathOf(file), text)
         units.push(pathOf(file))
       }
       systemctl('daemon-reload')
-      return { name, units, next: service.next ? service.next({ uid }) : null }
+      return { name, units, next: service.next ? service.next({ uid: process.getuid() }) : null }
     },
 
     act (verb, name) {
@@ -535,7 +533,7 @@ export function createServices ({ unitDir = UNIT_DIR, run = systemRun, cmdlineOf
     /** The last `lines` journal lines of a service matching `grep`, a PCRE2 pattern. */
     journal (name, { grep, lines }) {
       const unit = this.log(name)
-      const ran = run('journalctl', ['--user', '-u', unit, '--grep', grep, '-n', String(lines), '--no-pager', '-o', 'short-iso'])
+      const ran = systemRun('journalctl', ['--user', '-u', unit, '--grep', grep, '-n', String(lines), '--no-pager', '-o', 'short-iso'])
       const printed = ran.stdout.trim()
       if (printed === '-- No entries --') return ''
       if (ran.status !== 0) {

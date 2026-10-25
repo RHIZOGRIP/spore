@@ -10,7 +10,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { launchStandalone, runCell, slugOf } from './cell.js'
+import { runCell, slugOf } from './cell.js'
 import { answerOf } from './router.js'
 import { cellsSince } from './spore-dir.js'
 
@@ -37,10 +37,10 @@ export function triageIn (ws, origin) {
  * expects is the capability's. `perDay` bounds the cells `origin` starts in a day. `started(wallMs)` is told before the cell
  * starts, so whoever holds the delivery keeps it held for as long as the cell may take.
  */
-export async function triage ({ ws, origin, ref, files, briefing, perDay, env, configFile, started = () => {}, launch = launchStandalone, now = Date.now }) {
-  const today = cellsSince(ws, { since: new Date(now() - DAY_MS).toISOString(), origin }).runs
+export async function triage ({ ws, origin, ref, files, briefing, perDay, env, configFile, started = () => {} }) {
+  const today = cellsSince(ws, { since: new Date(Date.now() - DAY_MS).toISOString(), origin }).runs
   if (today >= perDay) return { failed: `has started ${today} triage cells in a day, its perDay` }
-  const ran = await runCell({ ws, precursor: precursorFor(origin), origin, ref, files, briefing: briefing + CONTRACT, env, configFile, starting: started, launch, now })
+  const ran = await runCell({ ws, precursor: precursorFor(origin), origin, ref, files, briefing: briefing + CONTRACT, env, configFile, starting: started })
   if (ran.failed) return { failed: ran.started ? `the cell ${ran.failed}` : ran.failed }
   const read = answerOf(ran.answer)
   return read.ask ? { failed: 'the cell asked for a cell' } : read

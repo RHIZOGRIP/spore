@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
@@ -176,41 +176,47 @@ describe('the bot API', () => {
     asked.push({ url, body: init.body instanceof FormData ? init.body : JSON.parse(init.body) })
     return new Response(JSON.stringify({ ok: true, result: { message_id: 9 } }))
   }
+  const reaching = (fetch) => {
+    vi.stubGlobal('fetch', fetch)
+    return createTelegram('t')
+  }
+
+  afterEach(() => vi.unstubAllGlobals())
 
   it('refuses to start without a token', () => {
     expect(() => createTelegram(null)).toThrow(/no bot token/)
   })
 
   it('unwraps what Telegram sends back', async () => {
-    const tg = createTelegram('t', { fetchImpl: answering({ username: 'sporebot' }) })
+    const tg = reaching(answering({ username: 'sporebot' }))
     expect(await tg.me()).toEqual({ username: 'sporebot' })
   })
 
   it('carries Telegram\'s own complaint, and does not retry a refusal', async () => {
-    const tg = createTelegram('t', { fetchImpl: answering(null, { ok: false, status: 400, description: 'chat not found' }) })
+    const tg = reaching(answering(null, { ok: false, status: 400, description: 'chat not found' }))
     await expect(tg.say(1, 'x')).rejects.toMatchObject({ type: 'TELEGRAM_FAILED', detail: 'chat not found', retryable: false, context: { status: 400 } })
   })
 
   it('says how long Telegram asked it to wait', async () => {
-    const tg = createTelegram('t', { fetchImpl: answering(null, { ok: false, status: 429, description: 'Too Many Requests', parameters: { retry_after: 7 } }) })
+    const tg = reaching(answering(null, { ok: false, status: 429, description: 'Too Many Requests', parameters: { retry_after: 7 } }))
     await expect(tg.revise(1, 2, 'x')).rejects.toMatchObject({ retryable: true, context: { status: 429, retryAfter: 7 } })
   })
 
   it('retries what never reached Telegram', async () => {
-    const tg = createTelegram('t', { fetchImpl: async () => { throw new TypeError('fetch failed') } })
+    const tg = reaching(async () => { throw new TypeError('fetch failed') })
     await expect(tg.say(1, 'x')).rejects.toMatchObject({ retryable: true, detail: 'fetch failed' })
   })
 
   it('long polls with an offset, which is what confirms what came before it', async () => {
     const asked = []
-    const tg = createTelegram('t', { fetchImpl: sending(asked) })
+    const tg = reaching(sending(asked))
     await tg.updates(17)
     expect(asked[0].body).toMatchObject({ offset: 17, timeout: 30, allowed_updates: ['message', 'callback_query'] })
   })
 
   it('asks with a keyboard under the question, closes it with an empty one, and answers a press', async () => {
     const asked = []
-    const tg = createTelegram('t', { fetchImpl: sending(asked) })
+    const tg = reaching(sending(asked))
     const keyboard = [[{ text: 'Yes', callback_data: 'ap:aaaaaaaaaaaa:yes', style: 'success' }]]
     await tg.ask(5, '<b>Ship</b> it?', keyboard)
     await tg.close(5, 41, '<b>Ship</b> it?\n\n<b>Yes — Ann</b>')
@@ -226,7 +232,7 @@ describe('the bot API', () => {
 
   it('answers a message as a reply to it, still sent when that message is gone, and removes one of its own', async () => {
     const asked = []
-    const tg = createTelegram('t', { fetchImpl: sending(asked) })
+    const tg = reaching(sending(asked))
     await tg.say(5, '<b>the answer</b>', { answering: 40, html: true })
     await tg.say(5, 'unprompted')
     await tg.remove(5, 41)
@@ -238,7 +244,7 @@ describe('the bot API', () => {
 
   it('reacts to a message with one emoji, takes it off with none, and says it is typing', async () => {
     const asked = []
-    const tg = createTelegram('t', { fetchImpl: sending(asked) })
+    const tg = reaching(sending(asked))
     await tg.react(5, 40, '🫡')
     await tg.react(5, 40, null)
     await tg.typing(5)
@@ -253,7 +259,7 @@ describe('the bot API', () => {
     const file = resolve(DIR, 'report.md')
     writeFileSync(file, '# report\n')
     const asked = []
-    const tg = createTelegram('t', { fetchImpl: sending(asked) })
+    const tg = reaching(sending(asked))
     await tg.document(5, { path: file, mime: 'text/markdown' }, 'data/out/report.md')
     expect(asked[0].url).toMatch(/sendDocument$/)
     expect(asked[0].body.get('chat_id')).toBe('5')

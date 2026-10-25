@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFile } from 'node:child_process'
 import http from 'node:http'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -140,12 +140,18 @@ describe('what a channel is told', () => {
 })
 
 const answering = (status, body) => async () => ({ ok: status < 300, status, json: async () => body })
+const reaching = (fetch) => {
+  vi.stubGlobal('fetch', fetch)
+  return createDiscord('tok')
+}
 
 describe('the REST API', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
   it('waits as long as Discord said when it is rate limited, and does not retry a refusal', async () => {
-    const limited = createDiscord('tok', { fetchImpl: answering(429, { message: 'You are being rate limited.', retry_after: 1.5 }) })
+    const limited = reaching(answering(429, { message: 'You are being rate limited.', retry_after: 1.5 }))
     await expect(limited.me()).rejects.toMatchObject({ type: 'DISCORD_FAILED', retryable: true, context: { status: 429, retryAfter: 1.5 } })
-    const refused = createDiscord('tok', { fetchImpl: answering(403, { message: 'Missing Permissions', code: 50013 }) })
+    const refused = reaching(answering(403, { message: 'Missing Permissions', code: 50013 }))
     await expect(refused.createRole('g', 'triage')).rejects.toMatchObject({ retryable: false, detail: 'Missing Permissions (50013)', context: { code: 50013 } })
   })
 
@@ -157,11 +163,9 @@ describe('the REST API', () => {
 
   it('sends the bot token, a user agent, and asks a webhook to wait for its message', async () => {
     const asked = []
-    const discord = createDiscord('tok', {
-      fetchImpl: async (url, init) => {
-        asked.push({ url, init })
-        return { ok: true, status: 200, json: async () => ({ id: 'm1' }) }
-      }
+    const discord = reaching(async (url, init) => {
+      asked.push({ url, init })
+      return { ok: true, status: 200, json: async () => ({ id: 'm1' }) }
     })
     await discord.post({ id: 'h', token: 'secret' }, { username: 'triage', content: 'hi' })
     expect(asked[0].url).toBe('https://discord.com/api/v10/webhooks/h/secret?wait=true')
@@ -171,11 +175,9 @@ describe('the REST API', () => {
 
   it('says it is typing, and puts and takes off its own reaction', async () => {
     const asked = []
-    const discord = createDiscord('tok', {
-      fetchImpl: async (url, init) => {
-        asked.push([init.method, url.replace('https://discord.com/api/v10', '')])
-        return { ok: true, status: 204, json: async () => null }
-      }
+    const discord = reaching(async (url, init) => {
+      asked.push([init.method, url.replace('https://discord.com/api/v10', '')])
+      return { ok: true, status: 204, json: async () => null }
     })
     await discord.typing('100')
     await discord.react('100', '7', '👨‍💻')
@@ -212,10 +214,14 @@ const until = async (done) => {
 }
 
 describe('the Gateway', () => {
-  beforeEach(() => { FakeSocket.opened = [] })
+  beforeEach(() => {
+    FakeSocket.opened = []
+    vi.stubGlobal('WebSocket', FakeSocket)
+  })
+  afterEach(() => vi.unstubAllGlobals())
 
   it('identifies, hands over messages in order, and resumes where Discord asks it to reconnect', async () => {
-    const discord = createDiscord('tok', { fetchImpl: answering(200, { url: 'wss://gateway.test' }), WebSocketImpl: FakeSocket, random: () => 0 })
+    const discord = reaching(answering(200, { url: 'wss://gateway.test' }))
     const controller = new AbortController()
     const messages = []
     const running = discord.connect({ onMessage: async (message) => { messages.push(message.id) }, signal: controller.signal, sleep: async () => {} })
@@ -242,7 +248,7 @@ describe('the Gateway', () => {
   })
 
   it('stops for good when Discord refuses the token or an intent', async () => {
-    const discord = createDiscord('tok', { fetchImpl: answering(200, { url: 'wss://gateway.test' }), WebSocketImpl: FakeSocket, random: () => 0 })
+    const discord = reaching(answering(200, { url: 'wss://gateway.test' }))
     const running = discord.connect({ onMessage: async () => {}, signal: new AbortController().signal, sleep: async () => {} })
     await until(() => FakeSocket.opened.length === 1)
     FakeSocket.opened[0].close(4014, 'Disallowed intent(s).')

@@ -1,12 +1,23 @@
-import { describe, it, expect, beforeEach, afterAll, afterEach } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { changedBetween, dreamDue, runDream } from '../src/core/dream.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
+import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { CONFIG_FILE } from '../src/library/config.js'
 import { dreamRecords, enqueue, holdDelivery, readTranscriptEntries, readTurns, recordCell, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
+import { createGate } from './fixtures/model-server.js'
+import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
+import { outsideRoot } from './fixtures/outside-ws.js'
+
+// What a spore's records say, for dreamDue to weigh without a workspace behind it.
+const given = vi.hoisted(() => ({ records: null }))
+vi.mock('../src/core/spore-dir.js', async (original) => {
+  const real = await original()
+  return { ...real, dreamRecords: (ws) => given.records ?? real.dreamRecords(ws) }
+})
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '.dream-workspace')
@@ -17,9 +28,15 @@ const DREAM = { turns: 50, quiet: HOUR, wall: { soft: 10 * 60_000, hard: 15 * 60
 const IDLE = { state: 'idle' }
 
 const records = (over = {}) => ({ afterTurn: 0, dreamBytes: null, turnsSince: 50, endedAt: new Date(NOW - HOUR).toISOString(), dataBytes: null, unread: false, heldDue: null, ...over })
-const after = (turnsSince, quietMs, over = {}) => dreamDue('/unused', { dream: DREAM, spore: IDLE, now: NOW, records: records({ turnsSince, endedAt: new Date(NOW - quietMs).toISOString(), ...over }) })
+const dueFor = (spore, over = {}) => {
+  given.records = records(over)
+  return dreamDue('/unused', { dream: DREAM, spore, now: NOW })
+}
+const after = (turnsSince, quietMs, over = {}) => dueFor(IDLE, { turnsSince, endedAt: new Date(NOW - quietMs).toISOString(), ...over })
 
 describe('dreamDue', () => {
+  afterEach(() => { given.records = null })
+
   it('weighs pressure against quiet: the more turns, the less quiet a dream needs', () => {
     expect(after(50, HOUR).due).toBe(true)
     expect(after(50, HOUR - 60_000).due).toBe(false)
@@ -47,14 +64,13 @@ describe('dreamDue', () => {
   })
 
   it('waits for a spore in the middle of something, for what is said, and for a release the dream would hold up', () => {
-    const due = { dream: DREAM, now: NOW, records: records() }
-    expect(dreamDue('/unused', { ...due, spore: { state: 'running' } })).toMatchObject({ due: false, why: 'running' })
-    expect(dreamDue('/unused', { ...due, spore: { state: 'waiting' } })).toMatchObject({ due: false, why: 'waiting' })
-    expect(dreamDue('/unused', { ...due, spore: { state: 'idle', draining: true } })).toMatchObject({ due: false, why: 'draining' })
-    expect(dreamDue('/unused', { ...due, spore: IDLE, records: records({ unread: true }) }).due).toBe(false)
-    expect(dreamDue('/unused', { ...due, spore: IDLE, records: records({ heldDue: new Date(NOW + 10 * 60_000).toISOString() }) }).due).toBe(false)
-    expect(dreamDue('/unused', { ...due, spore: IDLE, records: records({ heldDue: new Date(NOW + HOUR).toISOString() }) }).due).toBe(true)
-    for (const state of ['wrapped', 'halted', 'cancelled']) expect(dreamDue('/unused', { ...due, spore: { state } }).due).toBe(true)
+    expect(dueFor({ state: 'running' })).toMatchObject({ due: false, why: 'running' })
+    expect(dueFor({ state: 'waiting' })).toMatchObject({ due: false, why: 'waiting' })
+    expect(dueFor({ state: 'idle', draining: true })).toMatchObject({ due: false, why: 'draining' })
+    expect(dueFor(IDLE, { unread: true }).due).toBe(false)
+    expect(dueFor(IDLE, { heldDue: new Date(NOW + 10 * 60_000).toISOString() }).due).toBe(false)
+    expect(dueFor(IDLE, { heldDue: new Date(NOW + HOUR).toISOString() }).due).toBe(true)
+    for (const state of ['wrapped', 'halted', 'cancelled']) expect(dueFor({ state }).due).toBe(true)
   })
 })
 
@@ -98,22 +114,39 @@ describe('changedBetween', () => {
 describe('runDream', () => {
   const DREAM = 'dream: [50, 1h]\ndream.cost: [0.50, 1.00]\ndream.wall: [60s, 90s]\ndream.precursor: tidy\n'
   const TIDY = '---\nname: tidy\ntools: [read, write, wsexec]\nrounds: [20, 30]\ncost: [0.20, 0.40]\nwall: [1m, 2m]\non-wrap: keep\n---\n\nYou tidy the spore you dream for.\n'
+  let gate
+  let replies
   let dir
   let ws
   let env
+
+  const next = () => {
+    const reply = replies.shift()
+    return typeof reply === 'function' ? reply() : reply
+  }
 
   const put = (rel, body = 'x') => {
     mkdirSync(dirname(join(ws, rel)), { recursive: true })
     writeFileSync(join(ws, rel), body)
   }
 
+  beforeAll(async () => {
+    gate = createGate({ mo: scriptedMo(next), socketPath: brokerSocketPath('dream-gate') })
+    await gate.listen()
+    mkdirSync(dirname(CONFIG_FILE), { recursive: true })
+    writeFileSync(CONFIG_FILE, JSON.stringify({ gate: gate.socketPath }))
+  })
+
+  afterAll(() => gate.close())
+
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'spore-dream-'))
+    gate.envelopes.length = 0
+    dir = outsideRoot('dream')
     ws = join(dir, 'main')
     mkdirSync(join(ws, 'precursors'), { recursive: true })
-    writeFileSync(join(ws, 'spore.cmk'), definitionWith('fake/root').replace('model: fake/root\n', `model: fake/root\n${DREAM}`))
+    writeFileSync(join(ws, 'spore.cmk'), definitionWith('fake/root').replace('model: fake/root\n', `model: fake/root\nauth: main-1\n${DREAM}`))
     writeFileSync(join(ws, 'precursors', 'tidy.cmk'), TIDY)
-    env = { XDG_STATE_HOME: join(dir, 'state') }
+    env = { PATH: process.env.PATH, HOME: process.env.HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, XDG_STATE_HOME: join(dir, 'state') }
     writeTurnRecords(ws, [{ startedAt: '2026-10-12T09:00:00.000Z', endedAt: '2026-10-12T09:01:00.000Z', stopReason: 'answer', concluded: true, dataBytes: 20 }])
     writeTranscriptEntries(ws, [{ at: '2026-10-12T09:00:00.000Z', kind: 'message', role: 'user', turnId: readTurns(ws)[0].turnId, message: { role: 'user', content: 'install azure-cli for the test' } }])
     put('data/pipx/venv/az.py', '0123456789')
@@ -124,24 +157,21 @@ describe('runDream', () => {
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
   it('runs the named precursor as a super cell, hands it what was said and what is kept, and records what it changed', async () => {
-    let asked
-    const ran = await runDream(ws, {
-      env,
-      launch: async (question) => {
-        asked = { ...question, transcript: readFileSync(join(question.cellWs, 'transcript.md'), 'utf8'), facts: JSON.parse(readFileSync(join(question.cellWs, 'facts.json'), 'utf8')) }
-        rmSync(join(ws, 'data', 'pipx'), { recursive: true })
-        rmSync(join(ws, 'data', 'pip-cache'), { recursive: true })
-        rmSync(join(ws, 'data', 'run.err'))
-        put('data/memory/azure.md', 'azure-cli was installed for a test, then removed')
-        return { answer: 'Removed the Azure CLI test installs.', costUsd: 0.12, durationMs: 40_000, failed: null }
-      }
-    })
+    replies = [
+      calls('wsexec', { command: 'rm -r spore/data/pipx spore/data/pip-cache spore/data/run.err', out: 'data/rm.txt' }),
+      calls('write', { path: 'spore/data/memory/azure.md', content: 'azure-cli was installed for a test, then removed' }),
+      answers('Removed the Azure CLI test installs.', 0.12)
+    ]
+    const ran = await runDream(ws, { env })
 
-    expect(asked).toMatchObject({ precursor: 'tidy', dream: true, wallMs: 90_000 })
-    expect(asked.cellWs.startsWith(join(dir, 'state', 'spore', 'cells', 'main', 'dream'))).toBe(true)
-    expect(asked.transcript).toContain('install azure-cli for the test')
-    expect(asked.facts.directories.find(fact => fact.path === 'data/pipx')).toMatchObject({ files: 1, bytes: 10 })
-    expect(asked.facts.empty).toEqual({ files: 1, paths: ['data/run.err'] })
+    expect(ran).toMatchObject({ answer: 'Removed the Azure CLI test installs.', failed: null, started: true })
+    expect(gate.envelopes.map(envelope => envelope.authId)).toEqual(['main-1', 'main-1', 'main-1'])
+    expect(JSON.stringify(gate.envelopes[0].prompt)).toContain('You tidy the spore you dream for.')
+    expect(ran.cellWs.startsWith(join(dir, 'state', 'spore', 'cells', 'main', 'dream'))).toBe(true)
+    expect(readFileSync(join(ran.cellWs, 'transcript.md'), 'utf8')).toContain('install azure-cli for the test')
+    const facts = JSON.parse(readFileSync(join(ran.cellWs, 'facts.json'), 'utf8'))
+    expect(facts.directories.find(fact => fact.path === 'data/pipx')).toMatchObject({ files: 1, bytes: 10 })
+    expect(facts.empty).toEqual({ files: 1, paths: ['data/run.err'] })
 
     expect(ran.changed).toEqual({
       removed: [{ path: 'data/pipx', files: 1, bytes: 10 }, { path: 'data/pip-cache', files: 1, bytes: 5 }, { path: 'data/run.err', files: 1, bytes: 0 }],
@@ -157,14 +187,17 @@ describe('runDream', () => {
 
   it('refuses a dream whose precursor is not there, and starts nothing', async () => {
     rmSync(join(ws, 'precursors', 'tidy.cmk'))
-    const ran = await runDream(ws, { env, launch: async () => { throw new Error('started') } })
+    const ran = await runDream(ws, { env })
     expect(ran).toMatchObject({ started: false, failed: expect.stringContaining('precursors/tidy.cmk is not there') })
     expect(existsSync(join(dir, 'state'))).toBe(false)
+    expect(gate.envelopes).toEqual([])
   })
 
   it('leaves the conversation alone when a dream said and changed nothing', async () => {
     const entries = readTranscriptEntries(ws).length
-    await runDream(ws, { env, launch: async () => ({ answer: null, costUsd: 0.01, durationMs: 1000, failed: 'exited 1 — past its wall' }) })
+    replies = [() => { throw Object.assign(new Error('the provider is down'), { type: 'PROVIDER_ERROR', detail: 'refused for good' }) }]
+    const ran = await runDream(ws, { env })
+    expect(ran).toMatchObject({ started: true, answer: null, failed: expect.stringMatching(/^exited 1/) })
     expect(readTranscriptEntries(ws)).toHaveLength(entries)
   })
 })

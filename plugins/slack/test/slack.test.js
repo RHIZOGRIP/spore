@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
@@ -139,16 +139,18 @@ describe('a message', () => {
 
 describe('the Web API', () => {
   const answering = (status, body, headers = {}) => async () => new Response(JSON.stringify(body), { status, headers })
+  const reaching = (fetch) => {
+    vi.stubGlobal('fetch', fetch)
+    return createSlack({ token: 'xoxb-1', app: 'xapp-1' })
+  }
+
+  afterEach(() => vi.unstubAllGlobals())
 
   it('posts form-encoded under the bot\'s token, and asks for a connection under the app\'s', async () => {
     const asked = []
-    const slack = createSlack({
-      token: 'xoxb-1',
-      app: 'xapp-1',
-      fetchImpl: async (url, init) => {
-        asked.push({ url, authorization: init.headers.authorization, body: Object.fromEntries(init.body) })
-        return new Response(JSON.stringify({ ok: true, ts: '1.2', url: 'wss://wss-primary.slack.com/link' }))
-      }
+    const slack = reaching(async (url, init) => {
+      asked.push({ url, authorization: init.headers.authorization, body: Object.fromEntries(init.body) })
+      return new Response(JSON.stringify({ ok: true, ts: '1.2', url: 'wss://wss-primary.slack.com/link' }))
     })
     expect(await slack.post({ channel: 'D1', markdown_text: '**hi**', thread_ts: '1.1', reply_broadcast: true })).toBe('1.2')
     expect(await slack.connection()).toBe('wss://wss-primary.slack.com/link')
@@ -159,7 +161,7 @@ describe('the Web API', () => {
   })
 
   it('says what to try again and how long Slack asked to wait, what not to, and refuses a token for good', async () => {
-    const post = (fetchImpl) => createSlack({ token: 't', app: 'a', fetchImpl }).post({ channel: 'C1', text: 'x' })
+    const post = (fetch) => reaching(fetch).post({ channel: 'C1', text: 'x' })
     await expect(post(answering(429, {}, { 'retry-after': '30' }))).rejects.toMatchObject({ type: 'SLACK_FAILED', retryable: true, context: { status: 429, code: 'ratelimited', retryAfter: 30 } })
     await expect(post(answering(200, { ok: false, error: 'internal_error' }))).rejects.toMatchObject({ retryable: true, context: { code: 'internal_error' } })
     await expect(post(answering(200, { ok: false, error: 'not_in_channel' }))).rejects.toMatchObject({ type: 'SLACK_FAILED', retryable: false, detail: 'not_in_channel — invite the bot to the channel with /invite @<the bot>' })
@@ -290,11 +292,18 @@ describe('Socket Mode', () => {
   })
 
   it('drops a connection that goes quiet and opens another', async () => {
-    const done = run(async ({ ack }) => ack(), { pingEveryMs: 20, quietMs: 100 })
-    await until(() => connections.length === 2)
-    expect(logs.some(line => /^Socket Mode connection closed \(\d+\) — connecting again$/.test(line))).toBe(true)
-    stop()
-    await done
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'], shouldAdvanceTime: true })
+    try {
+      const done = run(async ({ ack }) => ack())
+      await until(() => connections.length === 1)
+      await vi.advanceTimersByTimeAsync(60_000)
+      await until(() => connections.length === 2)
+      expect(logs.some(line => /^Socket Mode connection closed \(\d+\) — connecting again$/.test(line))).toBe(true)
+      stop()
+      await done
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('stops for good when Slack turns Socket Mode off for the app', async () => {

@@ -20,13 +20,13 @@ const UNKNOWN_KEY_EVERY_MS = 60 * 1000
 const unreachable = (what, err) => new SporeError(`${what} failed`, { type: 'TEAMS_FAILED', detail: err.message, retryable: true, context: { status: null, retryAfter: null } })
 
 /** The bot's bearer token for the Bot Connector, asked of its tenant and kept until shortly before it expires. */
-export function createToken ({ app, tenant, secret, fetchImpl = fetch, now = Date.now, authority = AUTHORITY }) {
+export function createToken ({ app, tenant, secret }) {
   let held = null
   return async () => {
-    if (held && held.until > now()) return held.token
+    if (held && held.until > Date.now()) return held.token
     let response
     try {
-      response = await fetchImpl(`${authority}/${encodeURIComponent(tenant)}/oauth2/v2.0/token`, {
+      response = await fetch(`${AUTHORITY}/${encodeURIComponent(tenant)}/oauth2/v2.0/token`, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ grant_type: 'client_credentials', client_id: app, client_secret: secret, scope: SCOPE }),
@@ -44,7 +44,7 @@ export function createToken ({ app, tenant, secret, fetchImpl = fetch, now = Dat
         context: { status: response.status, retryAfter: null }
       })
     }
-    held = { token: answer.access_token, until: now() + (answer.expires_in - SKEW_S) * 1000 }
+    held = { token: answer.access_token, until: Date.now() + (answer.expires_in - SKEW_S) * 1000 }
     return held.token
   }
 }
@@ -61,20 +61,20 @@ const sameService = (one, other) => typeof one === 'string' && typeof other === 
  * The keys are read from Microsoft's OpenID metadata, again each day and when a token names one
  * they do not hold.
  */
-export function createVerifier ({ app, fetchImpl = fetch, now = Date.now, openid = OPENID }) {
+export function createVerifier ({ app }) {
   let keys = null
   const load = async () => {
     try {
-      const config = await (await fetchImpl(openid, { signal: AbortSignal.timeout(30_000) })).json()
-      const set = await (await fetchImpl(config.jwks_uri, { signal: AbortSignal.timeout(30_000) })).json()
-      keys = { at: now(), byKid: new Map(set.keys.map(key => [key.kid, key])) }
+      const config = await (await fetch(OPENID, { signal: AbortSignal.timeout(30_000) })).json()
+      const set = await (await fetch(config.jwks_uri, { signal: AbortSignal.timeout(30_000) })).json()
+      keys = { at: Date.now(), byKid: new Map(set.keys.map(key => [key.kid, key])) }
     } catch (err) {
       throw unreachable('reading the keys Microsoft signs activities with', err)
     }
   }
   const keyOf = async (kid) => {
-    if (!keys || now() - keys.at > KEYS_EVERY_MS) await load()
-    if (!keys.byKid.has(kid) && now() - keys.at > UNKNOWN_KEY_EVERY_MS) await load()
+    if (!keys || Date.now() - keys.at > KEYS_EVERY_MS) await load()
+    if (!keys.byKid.has(kid) && Date.now() - keys.at > UNKNOWN_KEY_EVERY_MS) await load()
     return keys.byKid.get(kid) ?? null
   }
 
@@ -98,7 +98,7 @@ export function createVerifier ({ app, fetchImpl = fetch, now = Date.now, openid
     if (!verify('RSA-SHA256', Buffer.from(`${parts[0]}.${parts[1]}`), key, Buffer.from(parts[2], 'base64url'))) return 'its token\'s signature does not hold'
     if (claims.iss !== ISSUER) return `its token was issued by ${claims.iss}`
     if (claims.aud !== app) return `its token is for ${claims.aud}, not this bot`
-    const at = now() / 1000
+    const at = Date.now() / 1000
     if (typeof claims.exp !== 'number' || claims.exp + SKEW_S < at) return 'its token has expired'
     if (typeof claims.nbf === 'number' && claims.nbf - SKEW_S > at) return 'its token is not valid yet'
     if (!sameService(claims.serviceurl, activity.serviceUrl)) return 'its token is for another serviceUrl than the activity names'

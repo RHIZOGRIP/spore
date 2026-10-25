@@ -106,23 +106,23 @@ describe('two callers at once', () => {
 
 describe('both ends of something long', () => {
   it('returns the whole thing when it is short enough for both ends to cover it', () => {
-    expect(headAndTail('brief', { each: 100 })).toEqual({ head: 'brief', tail: '', elided: 0 })
+    expect(headAndTail('brief')).toEqual({ head: 'brief', tail: '', elided: 0 })
   })
 
   it('cuts on a line boundary when one is near, so no line comes back in halves', () => {
     const lines = ('word word word word\n').repeat(200)
-    const { head, tail } = headAndTail(lines, { each: 100 })
+    const { head, tail } = headAndTail(lines)
     expect(lines.startsWith(head + '\n')).toBe(true)
     expect(lines.endsWith('\n' + tail) || lines.endsWith(tail)).toBe(true)
   })
 
   it('cuts hard when the text has no lines to cut on', () => {
-    expect(headAndTail('y'.repeat(5000), { each: 100 }).head.length).toBe(100)
+    expect(headAndTail('y'.repeat(5000)).head.length).toBe(800)
   })
 
   it('accounts for every byte exactly once, in the unit the file is measured in', () => {
     const text = 'héllo ' + 'ü'.repeat(3000)
-    const { head, tail, elided } = headAndTail(text, { each: 200 })
+    const { head, tail, elided } = headAndTail(text)
     expect(Buffer.byteLength(head) + Buffer.byteLength(tail) + elided).toBe(Buffer.byteLength(text))
   })
 })

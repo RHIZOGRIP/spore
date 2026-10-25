@@ -1,14 +1,23 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { closeSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
+import { pauseSpores, takeSlot, unpauseSpores } from '../src/core/admission.js'
 import { superviseJob, deliverJob, jobAlive, progressOf, reportInterrupted } from '../src/core/job.js'
 import { beginJob, heldIn, jobsIn, saidOf } from '../src/core/spore-dir.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
+import { CONFIG_FILE } from '../src/library/config.js'
 import { native } from '../src/native.js'
+
+// What a release does, instead of starting a turn on a spore that has no model to run on.
+const given = vi.hoisted(() => ({ release: null }))
+vi.mock('../src/core/send.js', async (original) => {
+  const real = await original()
+  return { ...real, release: (...args) => (given.release ?? real.release)(...args) }
+})
 
 const SUPERVISOR = resolve('bin', 'spore-job.js')
 
@@ -25,6 +34,7 @@ beforeEach(() => {
   mkdirSync(join(ws, 'data'), { recursive: true })
   writeFileSync(join(ws, 'spore.cmk'), grant('jobs: [2, 1m]\n'))
   logs = []
+  given.release = () => ({ released: [], started: false })
   state = process.env.XDG_STATE_HOME
   process.env.XDG_STATE_HOME = join(dir, 'state')
 })
@@ -33,6 +43,7 @@ afterEach(() => {
   if (state === undefined) delete process.env.XDG_STATE_HOME
   else process.env.XDG_STATE_HOME = state
   rmSync(dir, { recursive: true, force: true })
+  rmSync(CONFIG_FILE, { force: true })
 })
 
 const supervise = (fields = {}) => {
@@ -47,7 +58,6 @@ const supervise = (fields = {}) => {
     answer: (line) => { answered = line },
     env: { PATH: process.env.PATH },
     signal: stopping.signal,
-    releaseHeld: () => ({ released: [], started: false }),
     ...fields
   })
   return { ended, answered: () => answered, stop: () => stopping.abort() }
@@ -183,45 +193,48 @@ describe('while a job runs', () => {
 
   it('is reported once as interrupted when its supervisor is gone', () => {
     beginJob(ws, { name: 'scan', run: 'r-gone', command: 'sleep 1000', wallMs: 60_000 }, 2)
-    expect(reportInterrupted(ws, { env: {}, log: () => {}, releaseHeld: () => ({ released: [], started: false }) }).map(job => job.run)).toEqual(['r-gone'])
+    expect(reportInterrupted(ws, { env: {}, log: () => {} }).map(job => job.run)).toEqual(['r-gone'])
     expect(jobsIn(ws)[0]).toMatchObject({ status: 'interrupted' })
     expect(JSON.parse(heldIn(ws)[0].entry)).toMatchObject({ job: 'scan', jobEvent: 'interrupted', jobRun: 'r-gone' })
-    expect(reportInterrupted(ws, { env: {}, log: () => {}, releaseHeld: () => { throw new Error('nothing to say twice') } })).toEqual([])
+    given.release = () => { throw new Error('nothing to say twice') }
+    expect(reportInterrupted(ws, { env: {}, log: () => {} })).toEqual([])
   })
 })
 
 describe('what a job says', () => {
   const report = { job: 'scan', run: 'r-1', event: 'ended' }
+  const router = (summary) => {
+    mkdirSync(join(ws, 'data', 'routes'), { recursive: true })
+    writeFileSync(join(ws, 'data', 'routes', 'job-scan.route.js'), [
+      'let payload = \'\'',
+      'process.stdin.on(\'data\', chunk => { payload += chunk }).on(\'end\', () => {',
+      '  const [origin, event, ref] = process.argv.slice(2)',
+      `  console.log(JSON.stringify({ wait: '30m', summary: ${summary} }))`,
+      '})'
+    ].join('\n') + '\n')
+  }
 
   it('is routed when the spore keeps a router for it, waiting as told within jobs.maxWait', async () => {
     writeFileSync(join(ws, 'spore.cmk'), grant('jobs: [2, 1m]\njobs.maxWait: 2h\n'))
-    mkdirSync(join(ws, 'data', 'routes'), { recursive: true })
-    writeFileSync(join(ws, 'data', 'routes', 'job-scan.route'), '#!/bin/sh\n')
-    const asked = []
-    await deliverJob(ws, { name: 'scan', run: 'r-1', event: 'ended', ref: 'ended', text: 'The job exited 0 after 3m.', report }, {
-      env: {},
-      log: (line) => logs.push(line),
-      route: async (question) => { asked.push(question); return { wait: 30 * 60_000, summary: 'scan: done, 445 pages', replaces: false } },
-      releaseHeld: () => { throw new Error('nothing is due') }
-    })
-    expect(asked[0]).toMatchObject({ origin: 'job:scan', event: 'ended', ref: 'r-1' })
-    expect(JSON.parse(readFileSync(asked[0].payload, 'utf8'))).toEqual(report)
+    router('`${JSON.parse(payload).job}: done, asked as ${origin} ${event} ${ref}`') // eslint-disable-line no-template-curly-in-string
+    given.release = () => { throw new Error('nothing is due') }
+    await deliverJob(ws, { name: 'scan', run: 'r-1', event: 'ended', ref: 'ended', text: 'The job exited 0 after 3m.', report }, { env: {}, log: (line) => logs.push(line) })
     const [held] = heldIn(ws)
-    expect(held).toMatchObject({ origin: 'job:scan', summary: 'scan: done, 445 pages' })
+    expect(held).toMatchObject({ origin: 'job:scan', summary: 'scan: done, asked as job:scan ended r-1' })
     expect(Date.parse(held.releaseAt) - Date.parse(held.at)).toBeGreaterThan(29 * 60_000)
   })
 
   it('is released at once with its summary without jobs.maxWait, and kept for the tick when every slot is taken', async () => {
-    mkdirSync(join(ws, 'data', 'routes'), { recursive: true })
-    writeFileSync(join(ws, 'data', 'routes', 'job-scan.route'), '#!/bin/sh\n')
-    const released = []
-    await deliverJob(ws, { name: 'scan', run: 'r-1', event: 'ended', ref: 'ended', text: 'The job exited 0 after 3m.', report }, {
-      env: {},
-      log: (line) => logs.push(line),
-      route: async () => ({ wait: 30 * 60_000, summary: 'scan: done', replaces: false }),
-      releaseHeld: (at) => { released.push(at); throw Object.assign(new Error('full'), { type: 'ADMISSION_FULL' }) }
-    })
-    expect(released).toEqual([ws])
+    router('\'scan: done\'')
+    mkdirSync(dirname(CONFIG_FILE), { recursive: true })
+    writeFileSync(CONFIG_FILE, JSON.stringify({ turns: 1 }))
+    given.release = null
+    const taken = takeSlot()
+    try {
+      await deliverJob(ws, { name: 'scan', run: 'r-1', event: 'ended', ref: 'ended', text: 'The job exited 0 after 3m.', report }, { env: {}, log: (line) => logs.push(line) })
+    } finally {
+      closeSync(taken.fd)
+    }
     const [held] = heldIn(ws)
     expect(held.summary).toBe('scan: done')
     expect(held.releaseAt).toBe(held.deadline)
@@ -231,11 +244,13 @@ describe('what a job says', () => {
 
 describe('while spores are paused', () => {
   it('keeps what a job says held, for the pass after the pause is lifted', async () => {
-    await deliverJob(ws, { name: 'scan', run: 'r-9', event: 'ended', ref: 'ended', text: 'The job exited 0 after 3m.', report: { job: 'scan', run: 'r-9', event: 'ended' } }, {
-      env: {},
-      log: (line) => logs.push(line),
-      releaseHeld: () => { throw Object.assign(new Error('your spores are paused'), { type: 'PAUSED' }) }
-    })
+    given.release = null
+    pauseSpores()
+    try {
+      await deliverJob(ws, { name: 'scan', run: 'r-9', event: 'ended', ref: 'ended', text: 'The job exited 0 after 3m.', report: { job: 'scan', run: 'r-9', event: 'ended' } }, { env: {}, log: (line) => logs.push(line) })
+    } finally {
+      unpauseSpores()
+    }
     expect(heldIn(ws)).toHaveLength(1)
     expect(logs.join('\n')).toMatch(/held — spores are paused, the pass releases it after spore unpause/)
   })

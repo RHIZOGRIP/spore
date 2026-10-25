@@ -72,14 +72,14 @@ const attachmentsOf = (attach) => {
 
 /**
  * `api` is what `loadApi` read; `env` the environment the service was started with, which a turn
- * starts from. `delivering` is what `deliver` takes to hold a delivery and run its router, for a test to replace.
+ * starts from.
  */
-export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () => {}, pausedNow = paused, delivering = {} }) {
+export function createApiServer ({ api, env, log = () => {} }) {
   const routing = new Set()
 
   const deliveries = async ({ request, response, caller, ws, span }) => {
     const asked = await jsonOf(request, response)
-    const pause = pausedNow()
+    const pause = paused()
     if (pause) throw failure('PAUSED', 'spores are paused', `since ${pause.at ?? 'spore pause'} — spore unpause lets deliveries in again`)
     const { delivery, text = '', payload, attach, ...rest } = asked
     const shape = '{ "delivery": "<your id for it>", "text": "…", "payload": <JSON>, "attach": [{ "name", "mime", "data": "<base64>" }] }'
@@ -108,10 +108,9 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
       ref: delivery,
       event: null,
       env,
-      configFile,
+      configFile: CONFIG_FILE,
       log,
-      heading: `${caller.name} → ${basename(ws)} · ${delivery}`,
-      ...delivering
+      heading: `${caller.name} → ${basename(ws)} · ${delivery}`
     })
     routing.add(delivered.judged)
     delivered.judged.finally(() => routing.delete(delivered.judged))
@@ -121,21 +120,21 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
 
   const sporeOf = (caller, name) => {
     if (!NAME.test(name) || !reaches(caller, name)) throw failure('NOT_A_WORKSPACE', `no spore called "${name}"`)
-    const target = workspaceFor(name, { file: configFile })
+    const target = workspaceFor(name, { file: CONFIG_FILE })
     if (!isWorkspace(target.path)) throw failure('NOT_A_WORKSPACE', `no spore called "${name}"`)
     return target.path
   }
 
   const routes = {
     'GET spores': ({ caller }) => {
-      const { home } = readConfig(configFile)
-      const reached = list({ configFile }).workspaces
+      const { home } = readConfig(CONFIG_FILE)
+      const reached = list({ configFile: CONFIG_FILE }).workspaces
         .filter(row => row.from === home)
         .map(row => ({ name: basename(row.ws), state: row.state, turns: row.lastTurnNo }))
         .filter(row => reaches(caller, row.name))
       return { status: 200, body: { spores: reached } }
     },
-    'GET spore': ({ ws }) => ({ status: 200, body: show({ ws, configFile }) }),
+    'GET spore': ({ ws }) => ({ status: 200, body: show({ ws, configFile: CONFIG_FILE }) }),
     'GET live': ({ ws, url }) => {
       const level = url.searchParams.get('level') ?? 'plain'
       if (!LEVELS.includes(level)) throw failure('API_BAD_REQUEST', `level is ${LEVELS.join(', ')} — not ${level}`)
@@ -153,11 +152,11 @@ export function createApiServer ({ api, env, configFile = CONFIG_FILE, log = () 
         from: asked.from,
         traceparent: formatTraceparent(span) ?? undefined,
         env,
-        configFile
+        configFile: CONFIG_FILE
       })
       return { status: 202, body: { inbox: sent.inbox, started: sent.started, repeated: Boolean(sent.repeated) } }
     },
-    'POST approvals': async ({ request, response, ws }) => ({ status: 201, body: askApproval(ws, await jsonOf(request, response), { configFile }) }),
+    'POST approvals': async ({ request, response, ws }) => ({ status: 201, body: askApproval(ws, await jsonOf(request, response), { configFile: CONFIG_FILE }) }),
     'GET approvals': ({ ws }) => ({ status: 200, body: { approvals: approvalsIn(ws) } }),
     'GET approval': ({ ws, id }) => {
       const one = approvalOf(ws, id)

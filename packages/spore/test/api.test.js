@@ -3,7 +3,7 @@
  * scripted model: who may call, what each route does, and the trace a message carries on.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { request } from 'node:http'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -12,10 +12,27 @@ import { createModelServer } from './fixtures/model-server.js'
 import { answers, scriptedMo } from './fixtures/scripted-model.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { pauseSpores, unpauseSpores } from '../src/core/admission.js'
+import { CONFIG_DIR, CONFIG_FILE } from '../src/library/config.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
 import { heldIn, readInbox, saidOf } from '../src/core/spore-dir.js'
 import { callerOf, loadApi, reaches } from '../api/config.js'
 import { createApiServer } from '../api/server.js'
+
+// A release starts nothing, a plugin's program is named, and what it prepares is written, by the test.
+const given = vi.hoisted(() => ({ release: null, programOf: null, prepare: null }))
+vi.mock('../src/core/send.js', async (original) => {
+  const real = await original()
+  return { ...real, release: (...args) => (given.release ?? real.release)(...args) }
+})
+vi.mock('../src/core/plugins.js', async (original) => {
+  const real = await original()
+  return { ...real, pluginProgram: (...args) => (given.programOf ?? real.pluginProgram)(...args) }
+})
+vi.mock('../src/core/prepare.js', async (original) => {
+  const real = await original()
+  return { ...real, runPrepare: (...args) => (given.prepare ?? real.runPrepare)(...args) }
+})
 
 const APP = 'a'.repeat(40)
 const NARROW = 'n'.repeat(40)
@@ -27,17 +44,15 @@ let server
 let socket
 
 const configure = () => {
-  const configFile = join(root, 'config', 'config.json')
-  mkdirSync(join(root, 'config'), { recursive: true })
-  writeFileSync(configFile, JSON.stringify({ home: join(root, 'home') }))
-  writeFileSync(join(root, 'config', 'api.json'), JSON.stringify({
+  mkdirSync(CONFIG_DIR, { recursive: true })
+  writeFileSync(CONFIG_FILE, JSON.stringify({ home: join(root, 'home') }))
+  writeFileSync(join(CONFIG_DIR, 'api.json'), JSON.stringify({
     socket: join(root, 'run', 'api.sock'),
     callers: {
       app: { token: '${API_APP}', spores: ['*'] }, // eslint-disable-line no-template-curly-in-string
       narrow: { token: '${API_NARROW}', spores: ['beta*'] } // eslint-disable-line no-template-curly-in-string
     }
   }))
-  return configFile
 }
 
 const call = (method, path, { token = APP, body, headers = {} } = {}) => new Promise((resolve, reject) => {
@@ -55,22 +70,25 @@ beforeEach(async () => {
   const ws = join(root, 'home', 'alpha')
   mkdirSync(ws, { recursive: true })
   writeFileSync(join(ws, 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5'))
-  const configFile = configure()
+  configure()
   const secrets = { API_APP: APP, API_NARROW: NARROW }
-  const api = loadApi(join(root, 'config', 'api.json'), secrets)
+  const api = loadApi(join(CONFIG_DIR, 'api.json'), secrets)
   broker = createModelServer({ mo: scriptedMo(async () => answers('hello back')), socketPath: brokerSocketPath('api-test'), limit: 10 })
   await broker.listen()
   const env = { PATH: process.env.PATH, HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, MODEL: 'anthropic/claude-haiku-4-5', SPORE_MODEL_SOCKET: broker.socketPath, ...secrets }
   mkdirSync(join(root, 'run'), { recursive: true, mode: 0o700 })
   socket = api.socket
-  server = createApiServer({ api, env, configFile })
+  server = createApiServer({ api, env })
   await new Promise(resolve => server.listen(socket, resolve))
 })
 
 afterEach(async () => {
   await new Promise(resolve => server.close(resolve))
   await broker?.close()
+  Object.assign(given, { release: null, programOf: null, prepare: null })
   rmSync(root, { recursive: true, force: true })
+  rmSync(CONFIG_FILE, { force: true })
+  rmSync(join(CONFIG_DIR, 'api.json'), { force: true })
 })
 
 describe('who may call', () => {
@@ -151,9 +169,9 @@ describe('a program\'s delivery through the API', () => {
   const held = () => heldIn(alpha()).map(row => JSON.parse(row.entry))
   const sent = { delivery: 'doc-1', text: 'Analyse it.', payload: { doc: 'q3.pdf' } }
 
-  const restart = async (callers = {}, delivering = {}, extra = {}) => {
+  const restart = async (callers = {}) => {
     const secrets = { API_APP: APP, API_NARROW: NARROW }
-    writeFileSync(join(root, 'config', 'api.json'), JSON.stringify({
+    writeFileSync(join(CONFIG_DIR, 'api.json'), JSON.stringify({
       socket,
       callers: {
         app: { token: '${API_APP}', spores: ['*'], ...callers.app }, // eslint-disable-line no-template-curly-in-string
@@ -162,13 +180,8 @@ describe('a program\'s delivery through the API', () => {
     }))
     await new Promise(resolve => server.close(resolve))
     released = []
-    server = createApiServer({
-      api: loadApi(join(root, 'config', 'api.json'), secrets),
-      env: { PATH: process.env.PATH, ...secrets },
-      configFile: join(root, 'config', 'config.json'),
-      delivering: { release: (ws) => { released.push(ws); return { released: [1], started: true } }, ...delivering },
-      ...extra
-    })
+    given.release = (ws) => { released.push(ws); return { released: [1], started: true } }
+    server = createApiServer({ api: loadApi(join(CONFIG_DIR, 'api.json'), secrets), env: { PATH: process.env.PATH, ...secrets } })
     await new Promise(resolve => server.listen(socket, resolve))
   }
 
@@ -200,15 +213,14 @@ describe('a program\'s delivery through the API', () => {
     mkdirSync(docs)
     preparing(`reads: [docs=${docs}]\n`)
     const ran = []
-    await restart({}, {
-      programOf: () => ({ program: '/plugins/pdf/bin/pages', reads: [] }),
-      prepareBy: async (asked) => {
-        ran.push(asked)
-        mkdirSync(join(asked.ws, asked.into), { recursive: true })
-        writeFileSync(join(asked.ws, asked.into, 'pages.json'), readFileSync(asked.payload))
-        return { files: [{ path: `${asked.into}/pages.json`, name: 'pages.json', mime: 'application/json', bytes: 16 }] }
-      }
-    })
+    await restart()
+    given.programOf = () => ({ program: '/plugins/pdf/bin/pages', reads: [] })
+    given.prepare = async (asked) => {
+      ran.push(asked)
+      mkdirSync(join(asked.ws, asked.into), { recursive: true })
+      writeFileSync(join(asked.ws, asked.into, 'pages.json'), readFileSync(asked.payload))
+      return { files: [{ path: `${asked.into}/pages.json`, name: 'pages.json', mime: 'application/json', bytes: 16 }] }
+    }
     const body = { ...sent, attach: [{ name: 'note.txt', mime: 'text/plain', data: '' }] }
     expect((await call('POST', '/v1/spores/alpha/deliveries', { body })).json()).toMatchObject({ outcome: 'held — prepared by pdf/SPORE_PDF_PAGES', started: false })
     await server.routed()
@@ -231,10 +243,9 @@ describe('a program\'s delivery through the API', () => {
   it('gives the program an empty stdin when the delivery has no payload', async () => {
     preparing()
     const ran = []
-    await restart({}, {
-      programOf: () => ({ program: '/plugins/pdf/bin/pages', reads: [] }),
-      prepareBy: async (asked) => { ran.push(asked); return { files: [] } }
-    })
+    await restart()
+    given.programOf = () => ({ program: '/plugins/pdf/bin/pages', reads: [] })
+    given.prepare = async (asked) => { ran.push(asked); return { files: [] } }
     await call('POST', '/v1/spores/alpha/deliveries', { body: { delivery: 'doc-2', attach: [{ name: 'payload.txt', mime: 'text/plain', data: '' }] } })
     await server.routed()
     expect(ran[0]).toMatchObject({ payload: null, reads: [] })
@@ -242,14 +253,12 @@ describe('a program\'s delivery through the API', () => {
 
   it('asks the spore\'s router for the caller, and holds the delivery up to the caller\'s maxWait', async () => {
     mkdirSync(join(alpha(), 'data', 'routes'), { recursive: true })
-    writeFileSync(join(alpha(), 'data', 'routes', 'api-app.route'), '#!/bin/sh\n')
-    const asked = []
-    await restart({ app: { maxWait: '1h' } }, { route: async (question) => { asked.push(question); return { wait: 3 * 3_600_000, summary: 'report queued' } } })
-    expect((await call('POST', '/v1/spores/alpha/deliveries', { body: sent })).json()).toMatchObject({ outcome: 'held — timed by api-app.route', started: false })
+    writeFileSync(join(alpha(), 'data', 'routes', 'api-app.route.js'), 'console.log(JSON.stringify({ wait: \'3h\', summary: `report queued for ${process.argv.slice(2).join(\'|\')}` }))\n') // eslint-disable-line no-template-curly-in-string
+    await restart({ app: { maxWait: '1h' } })
+    expect((await call('POST', '/v1/spores/alpha/deliveries', { body: sent })).json()).toMatchObject({ outcome: 'held — timed by api-app.route.js', started: false })
     await server.routed()
-    expect(asked[0]).toMatchObject({ origin: 'api:app', ref: 'doc-1', prepared: null })
     const [row] = heldIn(alpha())
-    expect(row.summary).toBe('report queued')
+    expect(row.summary).toBe('report queued for api:app||doc-1||')
     expect(Date.parse(row.releaseAt) - Date.parse(row.at)).toBeGreaterThanOrEqual(3_600_000)
     expect(Date.parse(row.releaseAt) - Date.parse(row.at)).toBeLessThan(3_600_000 + 5_000)
     expect(row.releaseAt <= row.deadline).toBe(true)
@@ -277,8 +286,13 @@ describe('a program\'s delivery through the API', () => {
   })
 
   it('takes no delivery while spores are paused', async () => {
-    await restart({}, {}, { pausedNow: () => ({ at: 'now' }) })
-    expect((await call('POST', '/v1/spores/alpha/deliveries', { body: sent })).status).toBe(503)
+    await restart()
+    pauseSpores()
+    try {
+      expect((await call('POST', '/v1/spores/alpha/deliveries', { body: sent })).status).toBe(503)
+    } finally {
+      unpauseSpores()
+    }
     expect(held()).toEqual([])
   })
 
@@ -289,7 +303,7 @@ describe('a program\'s delivery through the API', () => {
 
 describe('api.json', () => {
   const write = (config) => {
-    const path = join(root, 'config', 'probe.json')
+    const path = join(root, 'probe.json')
     writeFileSync(path, JSON.stringify(config))
     return path
   }

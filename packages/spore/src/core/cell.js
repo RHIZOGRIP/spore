@@ -43,7 +43,7 @@ export const cellsRoot = (env) => join(env.XDG_STATE_HOME || join(homedir(), '.l
  *
  * @returns {Promise<{ answer: string|null, costUsd: number, durationMs: number, failed: string|null }>}
  */
-export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model, auth, env, configFile = CONFIG_FILE, wallMs, dream = false, signal = null }) {
+function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model, auth, env, configFile = CONFIG_FILE, wallMs, dream = false, signal = null }) {
   const startedAt = Date.now()
   const config = readConfig(configFile)
   let keep
@@ -100,7 +100,7 @@ export function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model
  *
  * @returns {Promise<{ answer: string|null, failed: string|null, started: boolean, costUsd: number, durationMs: number, cellWs: string|null }>}
  */
-export async function runCell ({ ws, precursor, origin, ref = null, files = {}, contents = {}, briefing, env, configFile, starting = () => {}, launch = launchStandalone, now = Date.now, dream = null, signal = null }) {
+export async function runCell ({ ws, precursor, origin, ref = null, files = {}, contents = {}, briefing, env, configFile, starting = () => {}, dream = null, signal = null }) {
   const unstarted = (failed) => ({ answer: null, failed, started: false, costUsd: 0, durationMs: 0, cellWs: null })
   if (paused()) return unstarted('spores are paused')
   const cell = parseDefinition(readFileSync(join(ws, PRECURSOR_DIR, `${precursor}.cmk`), 'utf8'), { knownTools: TOOL_NAMES, cell: true })
@@ -113,7 +113,7 @@ export async function runCell ({ ws, precursor, origin, ref = null, files = {}, 
   if (naming && !Object.hasOwn(named, cell.model)) return unstarted(`${PRECURSOR_DIR}/${precursor}.cmk runs on the cell model "${cell.model}", which this spore's cell-models does not have — it has ${Object.keys(named).join(', ')}`)
   const model = naming ? named[cell.model] : root.model
 
-  const cellWs = join(cellsRoot(env), basename(ws), slugOf(origin), `${now()}-${randomBytes(3).toString('hex')}`)
+  const cellWs = join(cellsRoot(env), basename(ws), slugOf(origin), `${Date.now()}-${randomBytes(3).toString('hex')}`)
   mkdirSync(join(cellWs, 'data'), { recursive: true })
   for (const [name, from] of Object.entries(files)) {
     mkdirSync(dirname(join(cellWs, name)), { recursive: true })
@@ -124,7 +124,7 @@ export async function runCell ({ ws, precursor, origin, ref = null, files = {}, 
 
   const wallMs = dream ? Math.min(cell.limits.wall.hard, dream.wallMs) : cell.limits.wall.hard
   starting(wallMs)
-  const ran = await launch({ ws, precursor, cellWs, prompt: PROMPT, answer: ANSWER, model, auth: root.auth, env: { ...env, ...(naming ? { SPORE_CELL_MODELS: JSON.stringify(named) } : {}) }, configFile, wallMs, dream: Boolean(dream), signal })
+  const ran = await launchStandalone({ ws, precursor, cellWs, prompt: PROMPT, answer: ANSWER, model, auth: root.auth, env: { ...env, ...(naming ? { SPORE_CELL_MODELS: JSON.stringify(named) } : {}) }, configFile, wallMs, dream: Boolean(dream), signal })
   const failed = ran.failed ?? (ran.answer === null ? 'gave no answer' : null)
   recordCell(ws, {
     precursor,

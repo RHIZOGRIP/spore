@@ -100,9 +100,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
 const startTurn = (source = session(marks), extra = []) => {
   const script = resolve(root, 'session.mjs')
   writeFileSync(script, source)
-  const slots = resolve(root, 'slots')
-  mkdirSync(slots)
-  const slot = takeSlot({ turns: 1, dir: slots })
+  const slot = takeSlot()
   const err = openSync(resolve(ws, 'spore.err'), 'a')
   enqueue(ws, 'go')
   try {

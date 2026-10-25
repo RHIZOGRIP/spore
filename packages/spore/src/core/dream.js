@@ -30,7 +30,8 @@ export const DREAM_FLOOR = 0.25
  * @param {{ turns: number, quiet: number, wall: { hard: number } }} dream
  * @param {{ state: string, draining?: boolean }} spore — `stateOf(ws)`
  */
-export function dreamDue (ws, { dream, spore, now = Date.now(), records = dreamRecords(ws) }) {
+export function dreamDue (ws, { dream, spore, now = Date.now() }) {
+  const records = dreamRecords(ws)
   const growth = records.dreamBytes && records.dataBytes ? Math.max(1, records.dataBytes / records.dreamBytes) : 1
   const pressure = records.turnsSince * growth / dream.turns
   const sinceTurn = records.endedAt === null ? 0 : now - Date.parse(records.endedAt)
@@ -168,7 +169,7 @@ function noteOf ({ answer, failed }, changed) {
  * appended to the conversation — when it said or changed anything. The caller holds the spore's
  * lock: nothing else writes it meanwhile.
  */
-export async function runDream (ws, { env, launch, now = Date.now, signal = null } = {}) {
+export async function runDream (ws, { env, signal = null } = {}) {
   const definition = parsedDefinition(ws)
   if (definition.error) return { started: false, failed: `spore.cmk ${definition.error}` }
   if (!definition.dream) return { started: false, failed: 'this spore declares no dream' }
@@ -188,13 +189,11 @@ export async function runDream (ws, { env, launch, now = Date.now, signal = null
     origin: 'dream',
     contents: {
       'transcript.md': transcriptSince(ws, records.afterTurn),
-      'facts.json': JSON.stringify(factsOf(before, { now: now() }), null, 2)
+      'facts.json': JSON.stringify(factsOf(before, { now: Date.now() }), null, 2)
     },
     briefing: BRIEFING,
     env,
-    now,
     signal,
-    ...(launch ? { launch } : {}),
     dream: {
       wallMs: wall.hard,
       recorded: () => {

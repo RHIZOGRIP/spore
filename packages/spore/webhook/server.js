@@ -28,13 +28,12 @@ export function keptHeaders (headers, check) {
  * `env` is the environment the service was started with: `environment` beside `config.json` is
  * read again for every request, so a secret added there takes effect without a restart.
  */
-export function createWebhookServer ({ env, log, configFile = CONFIG_FILE, pausedNow = paused, ...delivering }) {
-  const hooksDelivery = createHookDelivery({ log, configFile, ...delivering })
-  const now = delivering.now ?? Date.now
+export function createWebhookServer ({ env, log }) {
+  const hooksDelivery = createHookDelivery({ log })
 
   const freshEnv = () => {
     const fresh = { ...env }
-    loadEnvironment(configFile, fresh)
+    loadEnvironment(CONFIG_FILE, fresh)
     return fresh
   }
 
@@ -48,13 +47,13 @@ export function createWebhookServer ({ env, log, configFile = CONFIG_FILE, pause
     const route = ROUTE.exec(url.pathname)
     if (!route) return answer(response, 404)
     const [, name, token] = route.map(part => part === undefined ? undefined : decodeURIComponent(part))
-    const pause = pausedNow()
+    const pause = paused()
     if (pause) {
       log(`hook ${name} · refused — spores are paused${pause.at ? ` since ${pause.at}` : ''}`)
       return answer(response, 503)
     }
     const fresh = freshEnv()
-    const hooks = loadHooks(hooksPath(configFile), fresh)
+    const hooks = loadHooks(hooksPath(CONFIG_FILE), fresh)
     const hook = hooks.get(name)
     if (!hook) {
       log(`hook ${name} · refused — no such hook; ${hooks.size ? `the hooks are ${[...hooks.keys()].join(', ')}` : 'hooks.json names none'}`)
@@ -72,7 +71,7 @@ export function createWebhookServer ({ env, log, configFile = CONFIG_FILE, pause
       return answer(response, 413)
     }
 
-    const refused = verify(hook.check, { headers: request.headers, body, token, now: now() })
+    const refused = verify(hook.check, { headers: request.headers, body, token, now: Date.now() })
     if (refused) {
       log(`hook ${name} · refused — ${refused}`)
       return answer(response, 401)

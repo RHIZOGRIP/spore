@@ -20,8 +20,8 @@ const TICK_MS = 150
 const STATUS_EVERY_MS = 500
 
 /** The default rendering on one line of a terminal `width` wide, at `details`: the operator's own machine. */
-export function statusLine (live, { now = Date.now(), width = 80 } = {}) {
-  const line = renderLive(live, { level: 'details', now }).map(part => part.replace(/^· /, '')).join(' · ')
+export function statusLine (live, { width = 80 } = {}) {
+  const line = renderLive(live, { level: 'details', now: Date.now() }).map(part => part.replace(/^· /, '')).join(' · ')
   return line.length < width ? line : `${line.slice(0, Math.max(0, width - 2))}…`
 }
 

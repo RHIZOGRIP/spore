@@ -109,7 +109,7 @@ function embedderFor (mo, embedding, signal) {
   }
 }
 
-export function vectors (documents, { unit, socket, key, mo, embedding, connect = createStoreClient } = {}) {
+export function vectors (documents, { unit, socket, key, mo, embedding } = {}) {
   if (!socket) {
     throw new SporeError('the vectors backend has no store to reach', {
       type: 'STORE_UNCONFIGURED',
@@ -139,7 +139,7 @@ export function vectors (documents, { unit, socket, key, mo, embedding, connect 
       if (!documents.length) return scores
 
       const embedder = embedderFor(mo, embedding, signal)
-      const store = connect({ socketPath: socket, key, signal })
+      const store = createStoreClient({ socketPath: socket, key, signal })
 
       const pieces = entries.flatMap(entry => {
         const parts = piecesOf(entry.text, embedder.ceiling)

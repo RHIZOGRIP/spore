@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { createModelServer } from './fixtures/model-server.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { outcome } from '../src/library/watch.js'
-import { takeSlot } from '../src/core/admission.js'
+import { SLOT_DIR, takeSlot } from '../src/core/admission.js'
 import { containCheck } from '../src/core/command.js'
 import { allowPlugin } from '../src/core/plugins.js'
 import { enqueue, readEvents, readLock, readTranscript, readTranscriptEntries, readTurns } from '../src/core/spore-dir.js'
@@ -114,25 +114,18 @@ describe('a confined turn', () => {
   })
 
   it('holds its admission slot in the runner alone, and frees it when the turn ends', async () => {
-    const state = outsideRoot('spore-cli-state')
-    const dir = resolve(state, 'spore', 'slots')
-    const slot = resolve(dir, '0')
+    const slot = resolve(SLOT_DIR, '0')
     let during = null
-    try {
-      await start(async (input, round) => {
-        if (round > 0) return answers('held')
-        during = { holders: holdersOf(realpathSync(slot)), runner: readLock(ws).pid }
-        return calls('wsexec', { command: 'sleep 0.2', out: 'data/log.txt' })
-      })
+    await start(async (input, round) => {
+      if (round > 0) return answers('held')
+      during = { holders: holdersOf(realpathSync(slot)), runner: readLock(ws).pid }
+      return calls('wsexec', { command: 'sleep 0.2', out: 'data/log.txt' })
+    })
 
-      const r = await spore('hold a slot', { XDG_STATE_HOME: state })
-      expect(r.code, r.stderr).toBe(0)
-      expect(during.holders).toEqual([during.runner])
-      expect(holdersOf(realpathSync(slot))).toEqual([])
-      closeSync(takeSlot({ turns: 1, dir }).fd)
-    } finally {
-      rmSync(state, { recursive: true, force: true })
-    }
+    const r = await spore('hold a slot')
+    expect(r.code, r.stderr).toBe(0)
+    expect(during.holders).toEqual([during.runner])
+    expect(holdersOf(realpathSync(slot))).toEqual([])
   })
 
   it('cannot write outside the islands, however it tries', async () => {
@@ -431,8 +424,7 @@ describe('a confined turn', () => {
     await start(async (input, round) => round === 0
       ? calls('wsexec', { command: 'printf %s "$FIXTURE_GREETING" > data/env.txt', out: 'data/log.txt' })
       : answers('seen'))
-    const slots = outsideRoot('spore-cli-env-slots')
-    const slot = takeSlot({ turns: 1, dir: slots })
+    const slot = takeSlot()
     enqueue(ws, 'look')
     try {
       spawn(RUNNER, ['--ws', ws, '--slot', slot.path, '--node', process.execPath], {
@@ -445,7 +437,6 @@ describe('a confined turn', () => {
     }
     const deadline = Date.now() + 15000
     while (!readTurns(ws).length && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20))
-    rmSync(slots, { recursive: true, force: true })
     expect(readTurns(ws)[0]?.stopReason).toBe('answer')
     expect(readFileSync(resolve(ws, 'data/env.txt'), 'utf8')).toBe('hello = there')
   })

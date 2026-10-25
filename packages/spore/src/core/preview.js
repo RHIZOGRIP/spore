@@ -33,16 +33,16 @@ const whole = (text) => {
 const wholeFromStart = (text) => (LOW(text.charCodeAt(0)) ? text.slice(1) : text)
 
 /** Both ends, and how many **bytes** are between them — the unit the file is measured in. */
-export function headAndTail (text, { each = EACH } = {}) {
-  if (text.length <= each * 2) return { head: text, tail: '', elided: 0 }
+export function headAndTail (text) {
+  if (text.length <= EACH * 2) return { head: text, tail: '', elided: 0 }
 
-  let head = text.slice(0, each)
+  let head = text.slice(0, EACH)
   const lastBreak = head.lastIndexOf('\n')
-  head = lastBreak >= each * (1 - SLACK) ? head.slice(0, lastBreak) : whole(head)
+  head = lastBreak >= EACH * (1 - SLACK) ? head.slice(0, lastBreak) : whole(head)
 
-  let tail = text.slice(-each)
+  let tail = text.slice(-EACH)
   const firstBreak = tail.indexOf('\n')
-  tail = firstBreak !== -1 && firstBreak <= each * SLACK ? tail.slice(firstBreak + 1) : wholeFromStart(tail)
+  tail = firstBreak !== -1 && firstBreak <= EACH * SLACK ? tail.slice(firstBreak + 1) : wholeFromStart(tail)
 
   return {
     head,

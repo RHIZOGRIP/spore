@@ -11,12 +11,12 @@ const RETRYABLE = new Set([412, 429, 502, 503, 504])
 
 const base = (serviceUrl) => serviceUrl.endsWith('/') ? serviceUrl : `${serviceUrl}/`
 
-export function createConnector ({ token, fetchImpl = fetch }) {
+export function createConnector ({ token }) {
   const call = async (method, url, body) => {
     const bearer = await token()
     let response
     try {
-      response = await fetchImpl(url, {
+      response = await fetch(url, {
         method,
         headers: { authorization: `Bearer ${bearer}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -53,6 +53,6 @@ export function createConnector ({ token, fetchImpl = fetch }) {
 
     /** A file a person sent, refused past `most` — `withToken` where Teams serves it only to the bot. */
     download: async (url, { most, withToken = false }) =>
-      download(url, { most, fetchImpl, headers: withToken ? { authorization: `Bearer ${await token()}` } : {} })
+      download(url, { most, headers: withToken ? { authorization: `Bearer ${await token()}` } : {} })
   }
 }

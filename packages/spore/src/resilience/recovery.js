@@ -32,7 +32,7 @@ const BACKOFF_BASE_MS = 1000
  * @param {object} [opts.logger]
  * @returns {object} wrapped model with resilient answer()
  */
-export function withRecovery (model, { messages, sessionMemory, logger, emitter, signal, backoffMs = BACKOFF_BASE_MS } = {}) {
+export function withRecovery (model, { messages, sessionMemory, logger, emitter, signal } = {}) {
   if (!model) throw new Error('withRecovery: model is required')
   const log = logger || { debug () {}, info () {}, warn () {}, error () {} }
   const emit = (type, data) => emitter?.emit?.(type, data)
@@ -144,7 +144,7 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
           if (kind === 'retryable') {
             attempt++
             if (attempt > MAX_RETRIES) throw err
-            const delay = backoffMs * Math.pow(2, attempt - 1)
+            const delay = BACKOFF_BASE_MS * Math.pow(2, attempt - 1)
             log.warn({ err, delay, attempt, maxRetries: MAX_RETRIES }, '[recovery] retryable error, waiting')
             emit('recovery', { action: 'retry', reason: err.type || 'RETRYABLE_ERROR', attempt, delay })
             await interruptibleSleep(delay, signal)
@@ -155,8 +155,8 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
           if (attempt === 0) {
             attempt++
             log.warn({ err }, '[recovery] unexpected error, retrying once')
-            emit('recovery', { action: 'retry', reason: err.type || 'UNEXPECTED_ERROR', attempt, delay: backoffMs })
-            await interruptibleSleep(backoffMs, signal)
+            emit('recovery', { action: 'retry', reason: err.type || 'UNEXPECTED_ERROR', attempt, delay: BACKOFF_BASE_MS })
+            await interruptibleSleep(BACKOFF_BASE_MS, signal)
             continue
           }
 

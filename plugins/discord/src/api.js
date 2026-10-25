@@ -27,7 +27,7 @@ const HELLO = 10
 const HEARTBEAT_ACK = 11
 const FATAL_CLOSE = new Set([4004, 4010, 4011, 4012, 4013, 4014])
 
-export function createDiscord (token, { fetchImpl = fetch, base = BASE, WebSocketImpl = globalThis.WebSocket, random = Math.random } = {}) {
+export function createDiscord (token) {
   if (!token) {
     throw new SporeError('no bot token', {
       type: 'DISCORD_UNCONFIGURED',
@@ -39,7 +39,7 @@ export function createDiscord (token, { fetchImpl = fetch, base = BASE, WebSocke
     const timeout = AbortSignal.timeout(timeoutMs)
     let response
     try {
-      response = await fetchImpl(`${base}${path}`, {
+      response = await fetch(`${BASE}${path}`, {
         method,
         headers: {
           authorization: `Bot ${token}`,
@@ -87,7 +87,7 @@ export function createDiscord (token, { fetchImpl = fetch, base = BASE, WebSocke
     while (!signal.aborted) {
       const url = session?.resumeUrl ?? (await call('GET', '/gateway/bot', { signal })).url
       const ended = await new Promise((resolve) => {
-        const socket = new WebSocketImpl(`${url}/?v=10&encoding=json`)
+        const socket = new globalThis.WebSocket(`${url}/?v=10&encoding=json`)
         let beat = null
         let acked = true
         let handled = Promise.resolve()
@@ -106,7 +106,7 @@ export function createDiscord (token, { fetchImpl = fetch, base = BASE, WebSocke
             const first = setTimeout(() => {
               heartbeat()
               beat = setInterval(heartbeat, d.heartbeat_interval)
-            }, d.heartbeat_interval * random())
+            }, d.heartbeat_interval * Math.random())
             beat = first
             if (session?.id) send(RESUME, { token, session_id: session.id, seq: session.seq })
             else send(IDENTIFY, { token, intents: INTENTS, properties: { os: 'linux', browser: 'spore', device: 'spore' } })
@@ -166,7 +166,7 @@ export function createDiscord (token, { fetchImpl = fetch, base = BASE, WebSocke
     react: (channel, message, emoji) => call('PUT', `/channels/${channel}/messages/${message}/reactions/${encodeURIComponent(emoji)}/@me`),
     unreact: (channel, message, emoji) => call('DELETE', `/channels/${channel}/messages/${message}/reactions/${encodeURIComponent(emoji)}/@me`),
     /** An attachment's bytes by its signed URL, which needs no token and expires, refused past `most`. */
-    download: (url, { most }) => download(url, { most, fetchImpl }),
+    download: (url, { most }) => download(url, { most }),
     connect
   }
 }

@@ -1,7 +1,7 @@
 /**
  * Slack's Socket Mode: one WebSocket after another until `signal` aborts, each from a URL `open`
  * asks for. A connection Slack says it will close is replaced at once, and left to finish what it
- * holds; one that goes quiet — no ping, pong or message for `quietMs` — is dropped and replaced,
+ * holds; one that goes quiet — no ping, pong or message for 30 s — is dropped and replaced,
  * since a half-open connection otherwise looks like a quiet workspace. Each envelope is handed to
  * `onEnvelope` with its `ack`, one at a time per connection, in the order Slack sent them.
  */
@@ -11,7 +11,10 @@ import WebSocket from 'ws'
 import { errorText, SporeError } from '@rhizogrip/spore'
 import { backoff } from '@rhizogrip/spore/relay'
 
-export async function connect ({ open, onEnvelope, signal, log, sleep, WebSocketImpl = WebSocket, pingEveryMs = 5000, quietMs = 30_000 }) {
+const PING_EVERY_MS = 5000
+const QUIET_MS = 30_000
+
+export async function connect ({ open, onEnvelope, signal, log, sleep }) {
   const retry = backoff()
   let refused = null
   const sockets = new Set()
@@ -30,7 +33,7 @@ export async function connect ({ open, onEnvelope, signal, log, sleep, WebSocket
         continue
       }
       const ended = await new Promise((resolve) => {
-        const socket = new WebSocketImpl(url)
+        const socket = new WebSocket(url)
         sockets.add(socket)
         let heard = Date.now()
         let handled = Promise.resolve()
@@ -42,9 +45,9 @@ export async function connect ({ open, onEnvelope, signal, log, sleep, WebSocket
         }
         const alive = () => { heard = Date.now() }
         const beat = setInterval(() => {
-          if (Date.now() - heard > quietMs) return socket.terminate()
+          if (Date.now() - heard > QUIET_MS) return socket.terminate()
           if (socket.readyState === WebSocket.OPEN) socket.ping()
-        }, pingEveryMs)
+        }, PING_EVERY_MS)
         socket.on('ping', alive)
         socket.on('pong', alive)
         socket.on('message', (data) => {

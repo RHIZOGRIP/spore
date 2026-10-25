@@ -102,10 +102,8 @@ function segmentTurnGroups (messages) {
  * Create a session memory instance.
  *
  * @param {object} [opts]
- * @param {number} [opts.maxFacts=100]
- * @param {number} [opts.maxChars=8000]
  */
-export function createSessionMemory ({ maxFacts = DEFAULT_MAX_FACTS, maxChars = DEFAULT_MAX_CHARS, logger } = {}) {
+export function createSessionMemory ({ logger } = {}) {
   const facts = []
   const log = logger || { debug () {} }
 
@@ -165,7 +163,7 @@ export function createSessionMemory ({ maxFacts = DEFAULT_MAX_FACTS, maxChars = 
 
     const trimmed = trimFacts()
     const totalChars = facts.reduce((s, f) => s + f.text.length, 0)
-    log.debug({ extracted: facts.length - before + trimmed, kept: facts.length, chars: totalChars, maxChars }, '[session-memory] extracted new facts')
+    log.debug({ extracted: facts.length - before + trimmed, kept: facts.length, chars: totalChars, maxChars: DEFAULT_MAX_CHARS }, '[session-memory] extracted new facts')
   }
 
   /**
@@ -184,9 +182,9 @@ export function createSessionMemory ({ maxFacts = DEFAULT_MAX_FACTS, maxChars = 
 
   function trimFacts () {
     let dropped = 0
-    while (facts.length > maxFacts) { facts.shift(); dropped++ }
+    while (facts.length > DEFAULT_MAX_FACTS) { facts.shift(); dropped++ }
     let total = facts.reduce((s, f) => s + f.text.length, 0)
-    while (total > maxChars && facts.length > 0) {
+    while (total > DEFAULT_MAX_CHARS && facts.length > 0) {
       total -= facts.shift().text.length
       dropped++
     }

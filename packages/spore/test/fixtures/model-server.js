@@ -116,3 +116,46 @@ export function createModelServer ({ mo, socketPath, limit, key }) {
     })
   }
 }
+
+/**
+ * A host's mohdel gate, answering from a script: what a cell outside any turn calls through when
+ * `config.json` names a `gate` (mohdel's PROTOCOL.md §10). `POST /v1/info` answers
+ * `mo.use(model).info()`, `POST /v1/call` streams `mo.use(model).answer(prompt, { tools })`
+ * completed to the result a gate sends, or its error. Every envelope is kept, `authId` and all.
+ */
+export function createGate ({ mo, socketPath }) {
+  const envelopes = []
+
+  const call = async (req, res) => {
+    const envelope = await readBody(req)
+    envelopes.push(envelope)
+    res.writeHead(200, { 'content-type': 'application/x-ndjson', 'mohdel-gate': 'scripted' })
+    const start = String(process.hrtime.bigint())
+    try {
+      const result = await mo.use(envelope.model).answer(envelope.prompt, { tools: envelope.tools })
+      const end = String(process.hrtime.bigint())
+      res.end(JSON.stringify({ type: 'done', result: { inputTokens: 0, outputTokens: 0, thinkingTokens: 0, timestamps: { start, first: start, end }, ...result } }) + '\n')
+    } catch (err) {
+      res.end(JSON.stringify({ type: 'error', error: { message: err.message, type: err.type ?? 'PROVIDER_ERROR', detail: err.detail, retryable: false, severity: 'error' } }) + '\n')
+    }
+  }
+
+  const server = http.createServer(async (req, res) => {
+    if (req.method === 'POST' && req.url === '/v1/call') return call(req, res)
+    if (req.method === 'POST' && req.url === '/v1/info') return json(res, 200, mo.use((await readBody(req)).model).info())
+    json(res, 404, { message: 'unknown route', type: 'PROTOCOL_NOT_FOUND', severity: 'error', retryable: false })
+  })
+
+  return {
+    socketPath,
+    envelopes,
+    listen: () => new Promise(resolve => server.listen(socketPath, resolve)),
+    close: () => new Promise(resolve => {
+      server.closeAllConnections()
+      server.close(() => {
+        try { unlinkSync(socketPath) } catch {}
+        resolve()
+      })
+    })
+  }
+}

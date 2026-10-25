@@ -1,6 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 import { piecesOf, vectors } from '../src/memory/vectors.js'
+
+const reached = vi.hoisted(() => ({ store: null }))
+vi.mock('../src/infra/store-client.js', () => ({ createStoreClient: () => reached.store }))
 
 const SOCKET = '/tmp/spore/store-test.sock'
 const KEY = 'a'.repeat(64)
@@ -38,8 +41,10 @@ const fakeStore = ({ held = [], matches = () => [] } = {}) => ({
   }
 })
 
-const open = (documents, { unit = 'sentence', mo = fakeMo(), store = fakeStore() } = {}) =>
-  vectors(documents, { unit, socket: SOCKET, key: KEY, mo, embedding: EMBEDDING, connect: () => store })
+const open = (documents, { unit = 'sentence', mo = fakeMo(), store = fakeStore() } = {}) => {
+  reached.store = store
+  return vectors(documents, { unit, socket: SOCKET, key: KEY, mo, embedding: EMBEDDING })
+}
 
 describe('the vectors memory backend', () => {
   it('embeds only what the store does not already hold', async () => {

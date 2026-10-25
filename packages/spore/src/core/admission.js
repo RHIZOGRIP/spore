@@ -26,22 +26,23 @@ export const DEFAULT_TURNS = native.defaultTurns()
  *
  * @returns {{ fd: number, path: string }}
  */
-export function takeSlot ({ config = readConfig(), turns = config.turns ?? DEFAULT_TURNS, dir = SLOT_DIR } = {}) {
-  const taken = JSON.parse(native.takeSlot(turns, dir))
+export function takeSlot () {
+  const turns = readConfig().turns ?? DEFAULT_TURNS
+  const taken = JSON.parse(native.takeSlot(turns, SLOT_DIR))
   if (taken.error) {
     throw new SporeError(taken.error.message, {
       type: taken.error.type,
       retryable: true,
       detail: taken.error.detail,
-      context: { turns, dir }
+      context: { turns, dir: SLOT_DIR }
     })
   }
   return taken
 }
 
-/** `then(slot)` with a slot `takeSlot(options)` took, let go on every way out: a runner `then` starts holds its own. */
-export function withSlot (then, options) {
-  const slot = takeSlot(options)
+/** `then(slot)` with a slot `takeSlot()` took, let go on every way out: a runner `then` starts holds its own. */
+export function withSlot (then) {
+  const slot = takeSlot()
   try {
     return then(slot)
   } finally {
@@ -56,11 +57,11 @@ export function paused ({ dir = SLOT_DIR } = {}) {
 }
 
 /** Marks the user's spores paused, the first mark standing: `{ mark, already }`. */
-export function pauseSpores ({ why, dir = SLOT_DIR } = {}) {
-  return JSON.parse(native.pause(dir, why ?? null))
+export function pauseSpores ({ why } = {}) {
+  return JSON.parse(native.pause(SLOT_DIR, why ?? null))
 }
 
 /** Lifts the pause; false when there was none. */
-export function unpauseSpores ({ dir = SLOT_DIR } = {}) {
-  return native.unpause(dir)
+export function unpauseSpores () {
+  return native.unpause(SLOT_DIR)
 }

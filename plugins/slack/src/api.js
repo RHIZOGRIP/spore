@@ -25,7 +25,7 @@ const failed = (method, { detail, code = null, ...rest }) => platformFailed('sla
   ...(REFUSED.has(code) ? { type: 'SLACK_REFUSED' } : {})
 })
 
-export function createSlack ({ token, app, fetchImpl = fetch, base = BASE }) {
+export function createSlack ({ token, app }) {
   const call = async (method, args = {}, bearer = token) => {
     const form = new URLSearchParams()
     for (const [name, value] of Object.entries(args)) {
@@ -33,7 +33,7 @@ export function createSlack ({ token, app, fetchImpl = fetch, base = BASE }) {
     }
     let response
     try {
-      response = await fetchImpl(`${base}${method}`, {
+      response = await fetch(`${BASE}${method}`, {
         method: 'POST',
         headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/x-www-form-urlencoded' },
         body: form,
@@ -78,6 +78,6 @@ export function createSlack ({ token, app, fetchImpl = fetch, base = BASE }) {
     file: async (id) => (await call('files.info', { file: id })).file,
 
     /** A file a person sent, by its private URL, which Slack serves under the bot's token; refused past `most`. */
-    download: (url, { most }) => download(url, { most, fetchImpl, headers: { authorization: `Bearer ${token}` } })
+    download: (url, { most }) => download(url, { most, headers: { authorization: `Bearer ${token}` } })
   }
 }

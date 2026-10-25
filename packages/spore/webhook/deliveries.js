@@ -13,17 +13,13 @@ const briefingOf = ({ name, event, delivery }) => ({ payload, headers }) => [
   headers ? 'Its headers, without any that carry a secret, are headers.json.' : ''
 ].filter(Boolean).join('\n') + '\n'
 
-export function createHookDelivery ({
-  log,
-  configFile = CONFIG_FILE,
-  sporeOf = (name) => {
-    const ws = workspaceFor(name, { config: readConfig(configFile) }).path
-    return isWorkspace(ws) ? ws : null
-  },
-  now = Date.now,
-  ...delivering
-}) {
+export function createHookDelivery ({ log }) {
   const routing = new Set()
+
+  const sporeOf = (name) => {
+    const ws = workspaceFor(name, { config: readConfig(CONFIG_FILE) }).path
+    return isWorkspace(ws) ? ws : null
+  }
 
   const deliverTo = (hook, ws, options, stdin, heading, env) => {
     const { event, delivery } = options.hook
@@ -40,11 +36,9 @@ export function createHookDelivery ({
       perDay: hook.perDay,
       briefing: briefingOf(options.hook),
       env,
-      configFile,
+      configFile: CONFIG_FILE,
       log,
-      heading,
-      now,
-      ...delivering
+      heading
     })
     routing.add(delivered.judged)
     delivered.judged.finally(() => routing.delete(delivered.judged))

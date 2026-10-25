@@ -31,7 +31,8 @@ const SHOWN = 20
  * A pick from a numbered list on the plain terminal, so setup runs where the screen is not installed:
  * a number picks, words narrow the list, empty leaves it. The value picked, or null when left.
  */
-export async function pickFromList ({ title, header = [], items }, { prompt = ask, say = console.log } = {}) {
+export async function pickFromList ({ title, header = [], items }) {
+  const say = console.log
   say('')
   say(title)
   for (const line of header) say(`  ${line}`)
@@ -40,7 +41,7 @@ export async function pickFromList ({ title, header = [], items }, { prompt = as
     const width = String(Math.min(shown.length, SHOWN)).length
     shown.slice(0, SHOWN).forEach((item, i) => say(`  ${String(i + 1).padStart(width)}  ${item.label}${item.description ? ` — ${item.description}` : ''}`))
     if (shown.length > SHOWN) say(`  … and ${shown.length - SHOWN} more — words narrow the list`)
-    const answer = await prompt('a number, or words to narrow the list — empty to leave:')
+    const answer = await ask('a number, or words to narrow the list — empty to leave:')
     if (!answer) return null
     if (/^\d+$/.test(answer)) {
       const chosen = shown.slice(0, SHOWN)[Number(answer) - 1]
@@ -67,8 +68,6 @@ export async function ask (question, preset = '') {
 
 export const onboardWithMo = (provider) => spawnSync(process.execPath, [MO, 'onboard', ...(provider ? [provider] : [])], { stdio: 'inherit' }).status
 
-const readings = { loadKeys: loadMohdelEnvironment, modelReadiness, modelsOf, providerReadiness }
-
 const billingText = ({ billing, priced }) => billing === 'plan'
   ? 'your plan — not metered'
   : priced === false ? 'no prices: its calls count as $0 against cost' : billing
@@ -77,23 +76,15 @@ const billingText = ({ billing, priced }) => billing === 'plan'
  * Resolves with the exit code: 0 once every step is done, 1 when one stops, saying what to do
  * before running it again.
  */
-export async function setup ({
-  say = console.log,
-  prompt = ask,
-  pick = (menu) => pickFromList(menu, { prompt, say }),
-  onboard = onboardWithMo,
-  mohdel = readings,
-  services = createServices(),
-  examine = doctor,
-  report = diagnose,
-  sqlite = checkSqlite
-} = {}) {
-  const yes = async (question) => /^y(es)?$/i.test(await prompt(`${question} [y/N]`))
+export async function setup () {
+  const say = console.log
+  const services = createServices()
+  const yes = async (question) => /^y(es)?$/i.test(await ask(`${question} [y/N]`))
   const line = (label, text) => say(`${label.padEnd(10)}${text}`)
 
-  line('node', `${process.version}, SQLite ${sqlite()}`)
+  line('node', `${process.version}, SQLite ${checkSqlite()}`)
 
-  const found = examine().findings
+  const found = doctor().findings
   const config = found.find(one => one.subject === CONFIG_FILE && one.severity === 'problem')
   if (config) {
     line('config', `${config.problem} — ${config.fix}`)
@@ -124,18 +115,18 @@ export async function setup ({
   if (home) {
     line('home', home)
   } else {
-    const dir = await prompt('where should your spores live?', '~/.spore')
+    const dir = await ask('where should your spores live?', '~/.spore')
     setKey('home', dir)
     line('home', `${readConfig().home} — spore config set home <dir> moves where new ones are made`)
   }
 
-  const model = await chooseModel({ line, say, pick, onboard, mohdel })
+  const model = await chooseModel({ line, say })
   if (model === null) return 1
 
   await tickTimer({ line, yes, services })
 
   say('')
-  const diagnosed = await report({ services })
+  const diagnosed = await diagnose({ services })
   if (diagnosed.findings.length) renderDoctor(diagnosed)
   else line('checked', 'this machine, your config and your spores — nothing to fix')
   say('')
@@ -172,16 +163,16 @@ function otherModels (say, provider) {
 }
 
 /** The default model, ready to run: the one set, or a provider set up through mohdel and one of its models picked. Null stops setup. */
-async function chooseModel ({ line, say, pick, onboard, mohdel }) {
-  mohdel.loadKeys()
+async function chooseModel ({ line, say }) {
+  loadMohdelEnvironment()
   const current = defaultModel().model
   if (current) {
-    let ready = await mohdel.modelReadiness(current)
+    let ready = await modelReadiness(current)
     if (!ready.ready) {
       line('model', `${current} is not ready — mohdel sets it up`)
-      onboard(providerOf(current))
-      mohdel.loadKeys()
-      ready = await mohdel.modelReadiness(current)
+      onboardWithMo(providerOf(current))
+      loadMohdelEnvironment()
+      ready = await modelReadiness(current)
       if (!ready.ready) {
         line('model', `${current} is still not ready — ${ready.fix}, then spore setup again`)
         return null
@@ -192,15 +183,15 @@ async function chooseModel ({ line, say, pick, onboard, mohdel }) {
     return current
   }
 
-  const provider = await pick({ title: 'the models your spores run on', header: ['mohdel calls them; a provider set up here is set up for mo as well'], items: PROVIDERS })
+  const provider = await pickFromList({ title: 'the models your spores run on', header: ['mohdel calls them; a provider set up here is set up for mo as well'], items: PROVIDERS })
   if (!provider) return null
   if (provider === ANOTHER) {
-    onboard(null)
-    mohdel.loadKeys()
-  } else if (!(await mohdel.providerReadiness(provider)).ready) {
-    onboard(provider)
-    mohdel.loadKeys()
-    const ready = await mohdel.providerReadiness(provider)
+    onboardWithMo(null)
+    loadMohdelEnvironment()
+  } else if (!(await providerReadiness(provider)).ready) {
+    onboardWithMo(provider)
+    loadMohdelEnvironment()
+    const ready = await providerReadiness(provider)
     if (!ready.ready) {
       line('model', `${provider} is not ready — ${ready.fix}, then spore setup again`)
       return null
@@ -209,16 +200,16 @@ async function chooseModel ({ line, say, pick, onboard, mohdel }) {
 
   const credentials = new Map()
   const usable = []
-  for (const one of await mohdel.modelsOf(provider === ANOTHER ? null : provider)) {
+  for (const one of await modelsOf(provider === ANOTHER ? null : provider)) {
     const named = providerOf(one.model)
-    if (!credentials.has(named)) credentials.set(named, (await mohdel.providerReadiness(named)).credential)
+    if (!credentials.has(named)) credentials.set(named, (await providerReadiness(named)).credential)
     if (credentials.get(named)) usable.push(one)
   }
   if (!usable.length) {
     line('model', 'no provider has a model ready yet — mo onboard <provider>, then spore setup again')
     return null
   }
-  const model = await pick({
+  const model = await pickFromList({
     title: 'the model new spores run on',
     header: ['spore model <name> <model> changes one spore\'s later'],
     items: usable.map(one => ({ value: one.model, label: one.model, description: billingText(one) }))

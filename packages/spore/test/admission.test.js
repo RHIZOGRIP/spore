@@ -19,51 +19,63 @@ beforeEach(() => {
   dir = resolve(tmpdir(), `spore-admission-${process.pid}-${Date.now()}`)
   mkdirSync(dir, { recursive: true })
 })
-afterEach(() => rmSync(dir, { recursive: true, force: true }))
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true })
+  rmSync(CONFIG_FILE, { force: true })
+})
+
+const turns = (count) => {
+  mkdirSync(dirname(CONFIG_FILE), { recursive: true })
+  writeFileSync(CONFIG_FILE, JSON.stringify({ turns: count }))
+}
 
 describe('admission slots', () => {
   it('hands out a different slot to each holder', () => {
-    const one = takeSlot({ turns: 2, dir })
-    const two = takeSlot({ turns: 2, dir })
+    turns(2)
+    const one = takeSlot()
+    const two = takeSlot()
     expect(one.path).not.toBe(two.path)
     closeSync(one.fd)
     closeSync(two.fd)
   })
 
   it('refuses once every slot is held, and frees one when its holder lets go', () => {
-    const one = takeSlot({ turns: 1, dir })
-    expect(() => takeSlot({ turns: 1, dir })).toThrow(expect.objectContaining({ type: 'ADMISSION_FULL', retryable: true }))
+    turns(1)
+    const one = takeSlot()
+    expect(() => takeSlot()).toThrow(expect.objectContaining({ type: 'ADMISSION_FULL', retryable: true }))
     closeSync(one.fd)
-    const again = takeSlot({ turns: 1, dir })
+    const again = takeSlot()
     expect(again.path).toBe(one.path)
     closeSync(again.fd)
   })
 
   it('holds a slot for what runs with it, and lets it go however that ends', () => {
+    turns(1)
     expect(() => withSlot(() => {
-      expect(() => takeSlot({ turns: 1, dir })).toThrow(expect.objectContaining({ type: 'ADMISSION_FULL' }))
+      expect(() => takeSlot()).toThrow(expect.objectContaining({ type: 'ADMISSION_FULL' }))
       throw new Error('the runner did not start')
-    }, { turns: 1, dir })).toThrow('the runner did not start')
-    expect(withSlot((slot) => slot.path, { turns: 1, dir })).toMatch(/./)
-    closeSync(takeSlot({ turns: 1, dir }).fd)
+    })).toThrow('the runner did not start')
+    expect(withSlot((slot) => slot.path)).toMatch(/./)
+    closeSync(takeSlot().fd)
   })
 
   it('gives no slot while spores are paused, and keeps the first mark', () => {
-    const slots = resolve(dir, 'slots')
-    expect(paused({ dir: slots })).toBe(null)
-    const first = pauseSpores({ why: 'alerts storm', dir: slots })
+    expect(paused()).toBe(null)
+    const first = pauseSpores({ why: 'alerts storm' })
     expect(first).toMatchObject({ already: false, mark: { why: 'alerts storm' } })
-    expect(paused({ dir: slots })).toEqual(first.mark)
-    expect(() => takeSlot({ turns: 2, dir: slots })).toThrow(expect.objectContaining({ type: 'PAUSED', detail: expect.stringMatching(/alerts storm.*spore unpause/) }))
-    expect(pauseSpores({ why: 'again', dir: slots })).toEqual({ already: true, mark: first.mark })
-    expect(unpauseSpores({ dir: slots })).toBe(true)
-    expect(unpauseSpores({ dir: slots })).toBe(false)
-    closeSync(takeSlot({ turns: 2, dir: slots }).fd)
+    expect(paused()).toEqual(first.mark)
+    expect(() => takeSlot()).toThrow(expect.objectContaining({ type: 'PAUSED', detail: expect.stringMatching(/alerts storm.*spore unpause/) }))
+    expect(pauseSpores({ why: 'again' })).toEqual({ already: true, mark: first.mark })
+    expect(unpauseSpores()).toBe(true)
+    expect(unpauseSpores()).toBe(false)
+    closeSync(takeSlot().fd)
   })
 
   it('counts only the slots the limit names, so lowering it binds at once', () => {
-    const held = [takeSlot({ turns: 3, dir }), takeSlot({ turns: 3, dir })]
-    expect(() => takeSlot({ turns: 2, dir })).toThrow(/2 of your turns are already running/)
+    turns(3)
+    const held = [takeSlot(), takeSlot()]
+    turns(2)
+    expect(() => takeSlot()).toThrow(/2 of your turns are already running/)
     for (const slot of held) closeSync(slot.fd)
   })
 
@@ -79,14 +91,9 @@ describe('admission slots', () => {
     enqueue(ws, 'said before')
     chmodSync(statePath(ws), 0o444)
 
-    mkdirSync(dirname(CONFIG_FILE), { recursive: true })
-    writeFileSync(CONFIG_FILE, JSON.stringify({ turns: 1 }))
-    try {
-      expect(() => send(ws, 'hello')).toThrow(expect.objectContaining({ type: 'INBOX_UNWRITABLE' }))
-      const again = takeSlot()
-      closeSync(again.fd)
-    } finally {
-      rmSync(CONFIG_FILE, { force: true })
-    }
+    turns(1)
+    expect(() => send(ws, 'hello')).toThrow(expect.objectContaining({ type: 'INBOX_UNWRITABLE' }))
+    const again = takeSlot()
+    closeSync(again.fd)
   })
 })

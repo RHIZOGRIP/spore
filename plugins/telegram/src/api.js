@@ -12,7 +12,7 @@ import { download, platformFailed } from '@rhizogrip/spore/relay'
 
 const BASE = 'https://api.telegram.org'
 
-export function createTelegram (token, { fetchImpl = fetch, base = BASE } = {}) {
+export function createTelegram (token) {
   if (!token) {
     throw new SporeError('no bot token', {
       type: 'TELEGRAM_UNCONFIGURED',
@@ -25,7 +25,7 @@ export function createTelegram (token, { fetchImpl = fetch, base = BASE } = {}) 
     const form = body instanceof FormData
     let response
     try {
-      response = await fetchImpl(`${base}/bot${token}/${method}`, {
+      response = await fetch(`${BASE}/bot${token}/${method}`, {
         method: 'POST',
         ...(form ? {} : { headers: { 'content-type': 'application/json' } }),
         body: form ? body : JSON.stringify(body ?? {}),
@@ -107,6 +107,6 @@ export function createTelegram (token, { fetchImpl = fetch, base = BASE } = {}) 
     file: (id) => call('getFile', { file_id: id }),
 
     /** A file's bytes by its `file_path`, refused past `most`. */
-    download: (path, { most }) => download(`${base}/file/bot${token}/${path}`, { most, fetchImpl })
+    download: (path, { most }) => download(`${BASE}/file/bot${token}/${path}`, { most })
   }
 }

@@ -17,7 +17,6 @@ import { exitText, runShell } from './command.js'
 import { containOf } from './plugins.js'
 import { deliver } from './route.js'
 import { TRIAGE_PER_DAY } from './triage.js'
-import { release } from './send.js'
 import { beginJob, endJob, jobsIn, saidUnread } from './spore-dir.js'
 import { NAMES } from './names.js'
 import { durationText } from './units.js'
@@ -45,7 +44,7 @@ const briefingOf = ({ name, event, run }) => ({ payload }) => [
  * `job.json`, through the one path for messages nobody typed (`./route.js`), bounded by the
  * spore's `jobs.maxWait`. Held before it returns; answers the judgment still under way.
  */
-export function deliverJob (ws, { name, run, event, ref, text, report }, { env, configFile, log, now = Date.now, route, launch, releaseHeld = release }) {
+export function deliverJob (ws, { name, run, event, ref, text, report }, { env, configFile, log }) {
   const definition = sporeDefinition(ws)
   const heading = `job ${name} · ${run} · ${event}`
   const { outcome, judged } = deliver({
@@ -65,11 +64,7 @@ export function deliverJob (ws, { name, run, event, ref, text, report }, { env, 
     env,
     configFile,
     log,
-    heading,
-    now,
-    release: releaseHeld,
-    ...(route ? { route } : {}),
-    ...(launch ? { launch } : {})
+    heading
   })
   log(`${heading} · ${outcome}`)
   return judged
@@ -126,7 +121,8 @@ const jobWrites = (definition) => definition.writes.filter(grant => definition.j
  * a triage cell starts from. Its streams, `status.json` and its log are created anew in the
  * job's directory, never through a link, and written through the descriptors it keeps.
  */
-export async function superviseJob ({ ws, name, count, wallMs, command, answer, env, signal, releaseHeld = release, contain = containing(readConfig()) }) {
+export async function superviseJob ({ ws, name, count, wallMs, command, answer, env, signal }) {
+  const contain = containing(readConfig())
   if (!NAMES.job.pattern.test(name)) {
     return answer(refusal('JOB_NAME_INVALID', `a job cannot be named "${name}"`, `a name is ${NAMES.job.says}`))
   }
@@ -206,7 +202,7 @@ export async function superviseJob ({ ws, name, count, wallMs, command, answer, 
       const text = takeSaid(writable)
       if (!text) return
       said += 1
-      const judged = deliverJob(ws, { name, run, event: 'said', ref: `said:${said}`, text, report: { job: name, run, event: 'said', seq: said, text } }, { env, log, releaseHeld })
+      const judged = deliverJob(ws, { name, run, event: 'said', ref: `said:${said}`, text, report: { job: name, run, event: 'said', seq: said, text } }, { env, log })
       judging.add(judged)
       judged.catch(err => log(`said · routing failed — ${err.type ?? err.name} ${err.message}`)).finally(() => judging.delete(judged))
     }
@@ -261,7 +257,7 @@ export async function superviseJob ({ ws, name, count, wallMs, command, answer, 
           ? `was stopped after ${durationText(took)}`
           : exitText({ exit: ran.exit, signal: ran.signal, took })
     const report = { job: name, run, event, command, startedAt, endedAt, exit: ran.exit, signal: ran.signal, dir: `${JOBS_DIR}/${name}` }
-    await deliverJob(ws, { name, run, event, ref: event, text: `The job ${how}.`, report }, { env, log, releaseHeld })
+    await deliverJob(ws, { name, run, event, ref: event, text: `The job ${how}.`, report }, { env, log })
     await Promise.allSettled([...judging])
   } catch (err) {
     log(`failed — ${err.type ?? err.name} ${errorText(err)}`)
@@ -309,10 +305,10 @@ export function progressOf (ws, job) {
  * Each job recorded running in `ws` whose supervisor is gone — a reboot, a kill — ended as
  * `interrupted` and said so, once: ending it is the claim, so two passes never both say it.
  */
-export function reportInterrupted (ws, { env, configFile, log, releaseHeld = release }) {
+export function reportInterrupted (ws, { env, configFile, log }) {
   return jobsIn(ws, { running: true }).filter(job => !jobAlive(job.run) && endJob(ws, job.run, 'interrupted')).map(job => {
     const report = { job: job.name, run: job.run, event: 'interrupted', command: job.command, startedAt: job.startedAt, dir: `${JOBS_DIR}/${job.name}` }
-    deliverJob(ws, { name: job.name, run: job.run, event: 'interrupted', ref: 'interrupted', text: 'The job was interrupted: its supervisor is gone — the machine restarted, or it was killed — and what it ran did not finish.', report }, { env, configFile, log, releaseHeld })
+    deliverJob(ws, { name: job.name, run: job.run, event: 'interrupted', ref: 'interrupted', text: 'The job was interrupted: its supervisor is gone — the machine restarted, or it was killed — and what it ran did not finish.', report }, { env, configFile, log })
       .catch(err => log(`job ${job.name} · ${job.run} · interrupted · routing failed — ${err.message}`))
     return job
   })
