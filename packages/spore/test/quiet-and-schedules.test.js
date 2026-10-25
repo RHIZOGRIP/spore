@@ -82,6 +82,7 @@ describe('quiet when a person wrote in the turn', () => {
 
   const scripted = (steps, inputs) => ({
     use: () => ({
+      info: () => null,
       answer: async (input) => {
         inputs.push(input)
         return steps[inputs.length - 1]()
@@ -144,6 +145,7 @@ describe('quiet when a person wrote in the turn', () => {
 describe('a turn that ends quiet', () => {
   const quietly = (because) => ({
     use: () => ({
+      info: () => null,
       answer: async () => ({ status: 'tool_use', toolCalls: [{ id: 'q1', name: 'quiet', arguments: { because } }] })
     })
   })

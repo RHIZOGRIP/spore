@@ -83,6 +83,7 @@ describe('loop guard', () => {
   it('wraps the turn rather than refusing the call', async () => {
     let rounds = 0
     const m = {
+      info: () => null,
       // Complies with the wrap when it arrives, which is the point of wrapping: the
       // turn ends with an answer. A model that ignored it would run to hard:rounds.
       answer: async (prompt) => {

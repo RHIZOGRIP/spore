@@ -30,6 +30,10 @@ const note = (path, body) => {
   writeFileSync(resolve(WS, path), body)
 }
 
+// What `memory: bm25` in a spore.cmk gives a store, with the whole conversation behind it.
+const storeOf = (over = {}) => openStore(WS, { backend: 'bm25', push: 5, pull: 20, horizon: Infinity, ...over })
+const chunksIn = (unit) => chunksOf(WS, unit, { horizon: Infinity, unreadable: [] })
+
 beforeEach(() => {
   rmSync(WS, { recursive: true, force: true })
   mkdirSync(resolve(WS, 'data'), { recursive: true })
@@ -45,7 +49,7 @@ describe('what a workspace makes retrievable', () => {
     note('data/memory/person.md', '# Person\n\nOwns a Sony A7R IV and a 24-70mm lens for photography.\n')
     appendTranscript(WS, { role: 'user', content: 'I bought a Gitzo GT3543LS tripod last week.' })
 
-    const texts = chunksOf(WS, SENTENCE).map(chunk => chunk.text)
+    const texts = chunksIn(SENTENCE).map(chunk => chunk.text)
     expect(texts.some(t => t.includes('Sony A7R IV'))).toBe(true)
     expect(texts.some(t => t.includes('Gitzo'))).toBe(true)
   })
@@ -56,14 +60,14 @@ describe('what a workspace makes retrievable', () => {
     note('data/memory/person.md', '# Person\n\nLikes photography.\n')
     appendTranscript(WS, { role: 'user', content: 'My sister Marguerite lives in Lisbon and teaches violin.' })
 
-    const [hit] = await openStore(WS).push('where does Marguerite live', 3)
+    const [hit] = await storeOf().push('where does Marguerite live', 3)
     expect(hit.text).toMatch(/Marguerite/)
     expect(isTranscriptAnchor(hit.anchor)).toBe(true)
   })
 
   it('anchors every chunk to a path and a position', () => {
     note('data/memory/person.md', '# Person\n\nOwns a Sony A7R IV and a 24-70mm lens for photography.\n')
-    const [chunk] = chunksOf(WS, SENTENCE)
+    const [chunk] = chunksIn(SENTENCE)
     expect(chunk.anchor.path).toBe('data/memory/person.md')
     expect(Number.isInteger(chunk.anchor.line)).toBe(true)
   })
@@ -72,7 +76,7 @@ describe('what a workspace makes retrievable', () => {
   // terse note the agent is told to keep. Size cannot tell a fact from a fragment.
   it('keeps a short fact and drops what is only punctuation', () => {
     note('data/memory/person.md', '# Person\n\nCity: Oslo.\n---\n\nOwns a Sony A7R IV and a 24-70mm lens for photography.\n')
-    const texts = chunksOf(WS, SENTENCE).map(chunk => chunk.text)
+    const texts = chunksIn(SENTENCE).map(chunk => chunk.text)
     expect(texts).toContain('City: Oslo.')
     expect(texts.some(t => /^[-#*\s]+$/.test(t))).toBe(false)
     // A heading names a section rather than stating something, and as a chunk it is a
@@ -82,14 +86,14 @@ describe('what a workspace makes retrievable', () => {
 
   it('keeps a short thing the person said', () => {
     appendTranscript(WS, { role: 'user', content: 'My pet is Margot.' })
-    expect(chunksOf(WS, SENTENCE).map(c => c.text)).toContain('My pet is Margot.')
+    expect(chunksIn(SENTENCE).map(c => c.text)).toContain('My pet is Margot.')
   })
 
   // `/[a-z0-9']+/g` produced no terms at all for a query in another script, so a note
   // plainly stored was unreachable.
   it('finds a note written in a script without spaces', async () => {
     note('data/memory/travel.md', '# 旅行\n每年秋天去京都旅行。\n')
-    const [hit] = await openStore(WS).push('京都', 3)
+    const [hit] = await storeOf().push('京都', 3)
     expect(hit.text).toContain('京都')
   })
 })
@@ -97,7 +101,7 @@ describe('what a workspace makes retrievable', () => {
 describe('following an anchor out', () => {
   it('widens a note to the section it sits under', () => {
     note('data/memory/person.md', '# Gear\n\nOwns a Sony A7R IV camera body.\nUses a 24-70mm f/2.8 lens most of the time.\n\n# Travel\n\nGoes to Portugal every spring for a fortnight.\n')
-    const gear = chunksOf(WS, SENTENCE).find(chunk => chunk.text.includes('24-70mm'))
+    const gear = chunksIn(SENTENCE).find(chunk => chunk.text.includes('24-70mm'))
     const around = expand(WS, gear.anchor)
     expect(around).toContain('# Gear')
     expect(around).toContain('Sony A7R IV')
@@ -108,7 +112,7 @@ describe('following an anchor out', () => {
     for (const content of ['first thing said', 'the middle message mentioning Lisbon', 'third thing said']) {
       appendTranscript(WS, { role: 'user', content })
     }
-    const hit = chunksOf(WS, TURN).find(chunk => chunk.text.includes('Lisbon'))
+    const hit = chunksIn(TURN).find(chunk => chunk.text.includes('Lisbon'))
     const around = expand(WS, hit.anchor)
     expect(around).toContain('first thing said')
     expect(around).toContain('third thing said')
@@ -123,7 +127,7 @@ describe('push and pull', () => {
 
   it('push returns sentence-sized hits, small enough to afford unasked', async () => {
     stocked()
-    const hits = await openStore(WS).push('what camera gear do I have', 3)
+    const hits = await storeOf().push('what camera gear do I have', 3)
     expect(hits.length).toBeGreaterThan(0)
     expect(hits.length).toBeLessThanOrEqual(3)
     expect(hits[0].text).toMatch(/Sony/)
@@ -133,25 +137,25 @@ describe('push and pull', () => {
 
   it('pull returns the section around each hit', async () => {
     stocked()
-    const [first] = await openStore(WS).pull('what camera gear do I have', 5)
+    const [first] = await storeOf().pull('what camera gear do I have', 5)
     expect(first.text).toContain('# Gear')
     expect(first.anchor.path).toBe('data/memory/person.md')
   })
 
   it('takes the depth from the definition rather than from the runtime', async () => {
     stocked()
-    const store = openStore(WS, { push: 1 })
+    const store = storeOf({ push: 1 })
     expect(await store.push('Sony')).toHaveLength(1)
     expect(await store.push('Sony', 2)).toHaveLength(2)
   })
 
   it('refuses a backend it does not have', () => {
-    expect(() => openStore(WS, { backend: 'embeddings' })).toThrow(/unknown memory backend/)
+    expect(() => storeOf({ backend: 'embeddings' })).toThrow(/unknown memory backend/)
   })
 
   it('says nothing when nothing matches', async () => {
     stocked()
-    expect(await openStore(WS).push('quantum chromodynamics', 5)).toEqual([])
+    expect(await storeOf().push('quantum chromodynamics', 5)).toEqual([])
   })
 })
 
@@ -180,7 +184,7 @@ describe('what repetition does to a score', () => {
       '# Aside', '', 'The user once mentioned owning a Gitzo tripod, in passing.', ''
     ].join('\n'))
 
-    const hits = await openStore(WS).pull('Sony Gitzo', 10)
+    const hits = await storeOf().pull('Sony Gitzo', 10)
     const gitzo = hits.findIndex(hit => hit.text.includes('Gitzo'))
     const sony = hits.findIndex(hit => hit.text.includes('Sony'))
     expect(gitzo).toBeGreaterThanOrEqual(0)
@@ -199,7 +203,7 @@ describe('memory is what was said before now', () => {
     const question = 'Can you suggest some accessories for my photography setup?'
     appendTranscript(WS, { role: 'user', content: question })
 
-    const hits = await openStore(WS, { horizon: 0 }).push(question, 5)
+    const hits = await storeOf({ horizon: 0 }).push(question, 5)
     expect(hits.length).toBeGreaterThan(0)
     expect(hits.some(hit => isTranscriptAnchor(hit.anchor))).toBe(false)
     expect(hits[0].text).toMatch(/accessories/)
@@ -212,7 +216,7 @@ describe('memory is what was said before now', () => {
     // does not care.
     appendTranscript(WS, { role: 'user', content: `Today is 2023/05/30 (Tue) 05:04. ${question}` })
 
-    const hits = await openStore(WS, { horizon: 0 }).pull(question, 5)
+    const hits = await storeOf({ horizon: 0 }).pull(question, 5)
     expect(hits.some(hit => isTranscriptAnchor(hit.anchor))).toBe(false)
     expect(hits[0].text).toContain('accessories')
   })
@@ -222,13 +226,13 @@ describe('memory is what was said before now', () => {
   // prefix of the note stating it.
   it('answers a query that is a prefix of the fact it is looking for', async () => {
     note('data/memory/secrets.md', '# Ops\nProject release password is marigold.\n')
-    const [hit] = await openStore(WS).push('project release password', 3)
+    const [hit] = await storeOf().push('project release password', 3)
     expect(hit.text).toContain('marigold')
   })
 
   it('still returns an earlier turn that merely resembles the question', async () => {
     appendTranscript(WS, { role: 'user', content: 'I bought a Sony A7R IV last spring and have used it since.' })
-    const hits = await openStore(WS).push('what did I buy last spring', 5)
+    const hits = await storeOf().push('what did I buy last spring', 5)
     expect(isTranscriptAnchor(hits[0].anchor)).toBe(true)
   })
 })
@@ -245,7 +249,7 @@ describe('the store holds what has left the context', () => {
   it('indexes evicted turns and not the ones still in context', async () => {
     conversation()
     // The first two turns have been evicted; the third is live.
-    const hits = await openStore(WS, { horizon: 2 }).push('Sony tripod', 5)
+    const hits = await storeOf({ horizon: 2 }).push('Sony tripod', 5)
     const lines = hits.map(hit => hit.text)
     expect(lines.some(line => line.includes('A7R IV'))).toBe(true)
     expect(lines.some(line => line.includes('Gitzo'))).toBe(true)
@@ -255,19 +259,19 @@ describe('the store holds what has left the context', () => {
   it('cannot answer a question with the question, whatever the query', async () => {
     conversation()
     const live = 'Today I am asking about Sony accessories and tripods.'
-    const hits = await openStore(WS, { horizon: 2 }).push(live, 5)
+    const hits = await storeOf({ horizon: 2 }).push(live, 5)
     expect(hits.every(hit => !hit.text.includes('Today I am asking'))).toBe(true)
   })
 
   it('takes the new horizon when it is opened again after turns are evicted', async () => {
     conversation()
-    expect((await openStore(WS, { horizon: 1 }).push('Gitzo tripod', 5)).some(hit => hit.text.includes('Gitzo'))).toBe(false)
-    expect((await openStore(WS, { horizon: 2 }).push('Gitzo tripod', 5)).some(hit => hit.text.includes('Gitzo'))).toBe(true)
+    expect((await storeOf({ horizon: 1 }).push('Gitzo tripod', 5)).some(hit => hit.text.includes('Gitzo'))).toBe(false)
+    expect((await storeOf({ horizon: 2 }).push('Gitzo tripod', 5)).some(hit => hit.text.includes('Gitzo'))).toBe(true)
   })
 
   it('holds the notes whatever the horizon, since they are never in context', async () => {
     note('data/memory/music.md', '# Music\n\nPlays the violin on Tuesday evenings with a quartet.\n')
-    const [hit] = await openStore(WS, { horizon: 0 }).push('violin quartet', 3)
+    const [hit] = await storeOf({ horizon: 0 }).push('violin quartet', 3)
     expect(hit.text).toMatch(/violin/)
   })
 })
@@ -278,6 +282,7 @@ describe('recall reaching a turn', () => {
   const seen = []
   const answering = {
     use: () => ({
+      info: () => null,
       answer: async (input) => {
         seen.push(input.at(-1).content)
         return { status: 'completed', output: 'done' }
@@ -313,7 +318,7 @@ describe('recall reaching a turn', () => {
   })
 
   it('puts what surfaced in front of the turn, marked as not said now', async () => {
-    await run({ memory: { push: 3 } })
+    await run({ memory: { backend: 'bm25', push: 3, pull: 20 } })
     const sent = seen.at(-1)
     expect(sent).toMatch(/not said now/)
     expect(sent).toMatch(/accessories/)
@@ -325,7 +330,7 @@ describe('recall reaching a turn', () => {
   // and nothing recorded that. The turn record is where it belongs: the bench already reads
   // them, and a distribution over one run beats a run per candidate threshold.
   it('writes the scores it surfaced into the turn record', async () => {
-    await run({ memory: { push: 3 } })
+    await run({ memory: { backend: 'bm25', push: 3, pull: 20 } })
 
     const turn = readTurns(WS).at(-1)
     expect(turn.recall.length).toBeGreaterThan(0)
@@ -334,14 +339,14 @@ describe('recall reaching a turn', () => {
   })
 
   it('surfaces nothing when no hit clears the floor, and says so by staying silent', async () => {
-    await run({ memory: { push: 3, floor: 1000 } })
+    await run({ memory: { backend: 'bm25', push: 3, pull: 20, floor: 1000 } })
 
     expect(seen.at(-1)).toBe('What camera accessories would suit me?')
     expect(readTurns(WS).at(-1).recall).toEqual([])
   })
 
   it('carries the anchor, which is provenance and the way down', async () => {
-    await run({ memory: { push: 3 } })
+    await run({ memory: { backend: 'bm25', push: 3, pull: 20 } })
     expect(seen.at(-1)).toMatch(/\(data\/memory\/person\.md:\d+\)/)
   })
 
@@ -419,7 +424,7 @@ describe('recall reaching a turn', () => {
   // note is deleted, the fact returns from the record it wrote itself into, and every
   // recall of it adds another copy that outranks the original.
   it('does not write recall into the record as something the user said', async () => {
-    await run({ memory: { push: 3 } })
+    await run({ memory: { backend: 'bm25', push: 3, pull: 20 } })
     const persisted = readTranscript(WS).filter(m => m.role === 'user').map(m => m.content)
     expect(persisted).toEqual(['What camera accessories would suit me?'])
     expect(persisted.join('')).not.toMatch(/Recalled/)
@@ -428,12 +433,12 @@ describe('recall reaching a turn', () => {
   })
 
   it('cannot resurrect a note that has been deleted', async () => {
-    await run({ memory: { push: 3 } })
+    await run({ memory: { backend: 'bm25', push: 3, pull: 20 } })
     rmSync(resolve(WS, 'data/memory/person.md'), { force: true })
 
     // What the user actually said is still there and should be — that is the record
     // working. What must not be there is the note, which now exists nowhere.
-    const hits = await openStore(WS, { push: 5 }).push('camera accessories photography', 5)
+    const hits = await storeOf({ push: 5 }).push('camera accessories photography', 5)
     expect(hits.every(hit => !hit.text.includes('protecting photography gear'))).toBe(true)
     expect(hits.every(hit => !hit.text.includes('Recalled'))).toBe(true)
   })
@@ -444,7 +449,7 @@ describe('recall reaching a turn', () => {
   })
 
   it('leaves the turn alone when nothing surfaces', async () => {
-    await run({ prompt: 'quantum chromodynamics', memory: { push: 3 } })
+    await run({ prompt: 'quantum chromodynamics', memory: { backend: 'bm25', push: 3, pull: 20 } })
     expect(seen.at(-1)).toBe('quantum chromodynamics')
   })
 })
@@ -458,7 +463,7 @@ describe('memory is a place, not everything written', () => {
     note('data/scan.txt', 'data/memory/person.md:2:- Owns a Sony A7R IV and a Sony 24-70mm lens.\n')
     note('data/ls.txt', 'person.md\nscan.txt\nnotes.md\n')
 
-    const hits = await openStore(WS).push('Sony lens', 5)
+    const hits = await storeOf().push('Sony lens', 5)
     expect(hits.length).toBeGreaterThan(0)
     expect(hits.every(hit => hit.anchor.path.startsWith('data/memory/'))).toBe(true)
   })
@@ -466,7 +471,7 @@ describe('memory is a place, not everything written', () => {
   // The conversation is the second source and is indexed whatever the agent filed where.
   it('still reads the record, which is not under data/ at all', async () => {
     appendTranscript(WS, { role: 'user', content: 'My sister Marguerite teaches violin in Lisbon.' })
-    const [hit] = await openStore(WS).push('who teaches violin', 3)
+    const [hit] = await storeOf().push('who teaches violin', 3)
     expect(isTranscriptAnchor(hit.anchor)).toBe(true)
   })
 })
@@ -482,7 +487,7 @@ describe('the trail is not the conversation', () => {
       toolName: 'read',
       content: JSON.stringify({ tool: 'read', call: '0003', path: 'data/memory/person.md', content: 'I use a Gitzo tripod for landscape photography.' })
     })
-    const hits = await openStore(WS).push('Gitzo tripod', 5)
+    const hits = await storeOf().push('Gitzo tripod', 5)
     expect(hits.length).toBeGreaterThan(0)
     expect(hits.every(hit => !hit.text.includes('"tool":"read"'))).toBe(true)
   })
@@ -497,7 +502,7 @@ describe('what recall may weigh', () => {
 
   it('bounds a single enormous hit and keeps it useful', async () => {
     note('data/memory/big.md', long(5600))
-    const [hit] = await openStore(WS, { push: 1 }).push('travel holidays', 1)
+    const [hit] = await storeOf({ push: 1 }).push('travel holidays', 1)
     expect(Math.ceil(hit.text.length / 4)).toBeLessThanOrEqual(RECALL_BUDGET_TOKENS)
     expect(hit.truncated).toBe(true)
     expect(hit.text).toMatch(/travel/)
@@ -507,14 +512,14 @@ describe('what recall may weigh', () => {
 
   it('bounds the whole block, not just each hit', async () => {
     for (let n = 0; n < 6; n++) note(`data/memory/n${n}.md`, long(900))
-    const hits = await openStore(WS, { push: 6 }).push('travel holidays', 6)
+    const hits = await storeOf({ push: 6 }).push('travel holidays', 6)
     const total = hits.reduce((n, hit) => n + Math.ceil(hit.text.length / 4), 0)
     expect(total).toBeLessThanOrEqual(RECALL_BUDGET_TOKENS)
   })
 
   it('leaves ordinary hits exactly as they are', async () => {
     note('data/memory/person.md', '# Gear\nOwns a Sony A7R IV and a Sony 24-70mm lens.\n')
-    const [hit] = await openStore(WS, { push: 3 }).push('Sony lens', 3)
+    const [hit] = await storeOf({ push: 3 }).push('Sony lens', 3)
     expect(hit.truncated).toBeUndefined()
     expect(hit.text).toBe('Owns a Sony A7R IV and a Sony 24-70mm lens.')
   })
@@ -533,7 +538,7 @@ describe('anchors address what read reads', () => {
 
   it('lands on the note line the hit came from', async () => {
     note('data/memory/person.md', '# Gear\nOwns a Sony A7R IV camera body.\nUses a Gitzo GT3543LS tripod for landscapes.\n')
-    const [hit] = await openStore(WS).push('Gitzo tripod landscapes', 3)
+    const [hit] = await storeOf().push('Gitzo tripod landscapes', 3)
     const read = await reader()
     const meta = JSON.parse(await read({ path: hit.anchor.path, offset: hit.anchor.line, length: 1 }))
     expect(meta.content.trim()).toBe(hit.text)
@@ -545,7 +550,7 @@ describe('anchors address what read reads', () => {
     appendCompaction(WS, createCompactionEntry('[earlier conversations are no longer in context]', 1))
     appendTranscript(WS, { role: 'user', content: 'My sister Marguerite teaches violin in Lisbon.' })
 
-    const [hit] = await openStore(WS).push('who teaches violin', 3)
+    const [hit] = await storeOf().push('who teaches violin', 3)
     expect(isTranscriptAnchor(hit.anchor)).toBe(true)
     const entry = readTranscriptEntries(WS).find(e => e.entryNo === hit.anchor.line)
     expect(entry.kind).toBe('message')
@@ -554,7 +559,7 @@ describe('anchors address what read reads', () => {
 
   it('carries who said it and when', async () => {
     appendTranscript(WS, { role: 'user', content: 'I am flying to Oslo next Thursday.' })
-    const [hit] = await openStore(WS).push('flying to Oslo', 3)
+    const [hit] = await storeOf().push('flying to Oslo', 3)
     expect(hit.role).toBe('user')
     expect(hit.when).toMatch(/^\d{4}-\d{2}-\d{2}T/)
 
@@ -565,7 +570,7 @@ describe('anchors address what read reads', () => {
 
   it('says nothing about a speaker for a note, which has none', async () => {
     note('data/memory/person.md', '# Gear\nOwns a Sony A7R IV camera body.\n')
-    const [hit] = await openStore(WS).push('Sony camera body', 3)
+    const [hit] = await storeOf().push('Sony camera body', 3)
     const { recallBlock } = await import('../src/memory/recall.js')
     expect(recallBlock([hit])).toMatch(/^- Owns a Sony A7R IV camera body\. \(data\/memory\/person\.md:2\)$/m)
   })
@@ -582,7 +587,7 @@ describe('a note that cannot be read', () => {
 
   it('does not stop the notes that can', async () => {
     broken()
-    const store = openStore(WS, { push: 3 })
+    const store = storeOf({ push: 3 })
     const [hit] = await store.push('Sony camera', 3)
     expect(hit.text).toBe('Owns a Sony A7R IV camera body.')
     expect(store.unreadable).toEqual([{ path: 'data/memory/import.md', why: 'ENOENT' }])
@@ -590,7 +595,7 @@ describe('a note that cannot be read', () => {
 
   it('does not stop the turn, which still records how it ended', async () => {
     broken()
-    const answering = { use: () => ({ answer: async () => ({ status: 'completed', output: 'answered anyway' }) }) }
+    const answering = { use: () => ({ info: () => null, answer: async () => ({ status: 'completed', output: 'answered anyway' }) }) }
     const state = hostState(WS)
     const result = await runSpore({
       tools: TOOL_NAMES,
@@ -603,7 +608,7 @@ describe('a note that cannot be read', () => {
       modelId: 'fake/model',
       limits: { rounds: { soft: 4, hard: 6 }, cost: { soft: 100, hard: 100 }, wall: { soft: 600_000, hard: 600_000 } },
       mo: answering,
-      memory: { push: 3 },
+      memory: { backend: 'bm25', push: 3, pull: 20 },
       state
     })
     state.finalize()

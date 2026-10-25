@@ -16,6 +16,7 @@ function mockModel (responses) {
   let i = 0
   const calls = []
   return {
+    info: () => null,
     answer: async (prompt, opts) => {
       calls.push({ prompt, opts })
       if (i >= responses.length) throw new Error('Mock exhausted — unexpected extra call')
@@ -408,7 +409,7 @@ describe('tool loop', () => {
 
   it('stops on the wall clock', async () => {
     const slow = async () => { await new Promise(resolve => setTimeout(resolve, 40)); return toolUse([{ name: 'echo', args: { text: 'x' } }]) }
-    const m = { answer: slow }
+    const m = { info: () => null, answer: slow }
     const res = await run({ model: m, limits: { rounds: { soft: 90, hard: 99 }, wall: { soft: 10, hard: 60 } } })
     expect(res.stopReason).toBe('hard:wall')
   })
@@ -522,6 +523,7 @@ describe('tool loop', () => {
   it('carries what mohdel says of a silent provider as mohdel_idle', async () => {
     const m = {
       calls: [],
+      info: () => null,
       answer: async (prompt, opts) => {
         opts.idleHandler(30_000)
         return { ...completed('done'), idleEventCount: 1, idleMaxMs: 30_000 }

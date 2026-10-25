@@ -42,7 +42,7 @@ const ask = (socketPath, key, method, path, body) => request(socketPath, { key, 
  * OpenAI call carries as `prompt_cache_key`: without one, calls that share a prefix are not
  * routed to where it is cached.
  */
-export async function createModelClient ({ socketPath, modelIds = [], key, tracksTree = false, precursor = null, workspace }) {
+export async function createModelClient ({ socketPath, modelIds, key, tracksTree = false, precursor = null, workspace }) {
   const identifier = createHash('sha256').update(workspace).digest('hex').slice(0, 32)
   const info = new Map()
   for (const modelId of modelIds) info.set(modelId, await ask(socketPath, key, 'POST', '/spore/info', { model: modelId }))
@@ -64,7 +64,12 @@ export async function createModelClient ({ socketPath, modelIds = [], key, track
     use (modelId) {
       return {
         id: modelId,
-        info: () => info.get(modelId) ?? null,
+        info: () => {
+          if (!info.has(modelId)) {
+            throw new SporeError(`${modelId} was not asked about when this model client was made`, { type: 'MODEL_INFO_UNASKED', detail: 'createModelClient fetches info for its modelIds once, up front — name the model there' })
+          }
+          return info.get(modelId)
+        },
         async answer (prompt, options = {}) {
           const unknown = Object.keys(options).filter(name => !CALL_OPTIONS.has(name))
           if (unknown.length) {

@@ -30,7 +30,7 @@ const recordingSpan = () => {
   return span
 }
 
-const answering = { use: () => ({ answer: async () => ({ status: 'completed', output: 'done' }) }) }
+const answering = { use: () => ({ info: () => null, answer: async () => ({ status: 'completed', output: 'done' }) }) }
 
 beforeEach(() => {
   rmSync(WS, { recursive: true, force: true })

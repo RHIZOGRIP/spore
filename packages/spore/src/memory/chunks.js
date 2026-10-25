@@ -53,8 +53,8 @@ const sentences = (text) => String(text).split(/(?<=[.!?])\s+|\n+/).map(s => s.t
 const said = (message) => (message.role === 'tool' ? '' : textOf(message))
 
 /** Every markdown file under a directory, with the line each piece of text starts on. */
-function notesIn (ws, dir, unreadable = []) {
-  const root = resolve(ws, dir)
+function notesIn (ws, unreadable) {
+  const root = resolve(ws, MEMORY_DIR)
   if (!existsSync(root)) return []
   const out = []
   // One unreadable note is one unreadable note. A dangling symlink under `data/memory/`
@@ -106,10 +106,10 @@ function notesIn (ws, dir, unreadable = []) {
  */
 export const MEMORY_DIR = 'data/memory'
 
-export function chunksOf (ws, unit, { dir = MEMORY_DIR, horizon = Infinity, unreadable = [] } = {}) {
+export function chunksOf (ws, unit, { horizon, unreadable }) {
   const chunks = []
 
-  for (const file of notesIn(ws, dir, unreadable)) {
+  for (const file of notesIn(ws, unreadable)) {
     if (unit === SENTENCE) {
       file.lines.forEach((line, i) => {
         // A heading names a section rather than stating anything, and as a chunk it is a
@@ -159,20 +159,22 @@ export function chunksOf (ws, unit, { dir = MEMORY_DIR, horizon = Infinity, unre
   return chunks
 }
 
+const NEIGHBOURS = 1
+
 /**
  * What surrounds a hit — the section of a notes file, the neighbouring messages of a
  * transcript. Retrieving small and then following the anchor out is what reaches 80% of
  * the evidence for 8,811 tokens where retrieving whole sessions needs 15,865 for 85%.
  */
-export function expand (ws, anchor, { neighbours = 1 } = {}) {
+export function expand (ws, anchor) {
   if (isTranscriptAnchor(anchor)) {
     // Anchors are entry numbers, so find the message that has one rather than counting into
     // the array — the two differ by every compaction entry in the transcript.
     const messages = readSaidSoFar(ws)
     const at = messages.findIndex(message => message.entryNo === anchor.line)
     if (at === -1) return ''
-    const from = Math.max(0, at - neighbours)
-    return messages.slice(from, at + neighbours + 1)
+    const from = Math.max(0, at - NEIGHBOURS)
+    return messages.slice(from, at + NEIGHBOURS + 1)
       .map(message => (message.role ? `${message.role}: ${said(message)}` : said(message)))
       .filter(Boolean).join('\n').trim()
   }

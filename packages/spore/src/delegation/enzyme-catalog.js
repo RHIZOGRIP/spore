@@ -10,7 +10,7 @@
 
 const INDENT = '  '
 
-export function enzymeRules (enzymes = []) {
+export function enzymeRules (enzymes) {
   if (!enzymes.length) return ''
   const lines = [
     'Tools you can call that are not built in. Each is a program reached by name:',
@@ -21,7 +21,7 @@ export function enzymeRules (enzymes = []) {
   ]
   for (const enzyme of enzymes) {
     lines.push(`- ${enzyme.name}`)
-    for (const line of String(enzyme.description || '').split('\n')) lines.push(`${INDENT}${line}`)
+    for (const line of enzyme.description.split('\n')) lines.push(`${INDENT}${line}`)
   }
   return lines.join('\n')
 }

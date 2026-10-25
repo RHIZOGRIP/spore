@@ -92,7 +92,7 @@ describe('the model client', () => {
       for (const delta of ['hel', 'lo']) options.realtimeHandler({ type: 'message', delta })
       return answers('hello')
     })
-    const mo = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS })
+    const mo = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS })
     const chunks = []
     await mo.use(MODEL).answer(PROMPT, { realtimeHandler: (chunk) => chunks.push(chunk), bufferOpts: { maxChars: 50, maxMs: 500 } })
     expect(chunks).toEqual([{ type: 'message', delta: 'hello' }])
@@ -104,7 +104,7 @@ describe('the model client', () => {
       options.idle(60_000)
       return answers('late')
     })
-    const mo = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS })
+    const mo = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS })
     const reported = []
     const result = await mo.use(MODEL).answer(PROMPT, { idleHandler: (sinceMs) => reported.push(sinceMs) })
     expect(server.envelopes[0].envelope.idleHeartbeatMs).toBe(IDLE_HEARTBEAT_MS)
@@ -114,21 +114,21 @@ describe('the model client', () => {
 
   it('throws an error event as a typed error, so recovery can classify it', async () => {
     await serve(async () => { throw Object.assign(new Error('context length exceeded'), { type: 'CONTEXT_OVERFLOW' }) })
-    const mo = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS })
+    const mo = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS })
     await expect(mo.use(MODEL).answer(PROMPT)).rejects.toMatchObject({ type: 'CONTEXT_OVERFLOW' })
   })
 
   it('is refused once the tree has reached its hard limit', async () => {
     await serve(async () => answers('x', 0.2), { limit: 0.2 })
-    const mo = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS })
+    const mo = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS })
     await mo.use(MODEL).answer(PROMPT)
     await expect(mo.use(MODEL).answer(PROMPT)).rejects.toMatchObject({ type: 'BUDGET_EXHAUSTED' })
   })
 
   it('learns what its cells spent from what the tree spent', async () => {
     await serve(async () => answers('x', 0.01))
-    const root = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS, tracksTree: true })
-    const cell = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS })
+    const root = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS, tracksTree: true })
+    const cell = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS })
     await root.use(MODEL).answer(PROMPT)
     await cell.use(MODEL).answer(PROMPT)
     await cell.use(MODEL).answer(PROMPT)
@@ -140,7 +140,7 @@ describe('the model client', () => {
 
   it('rejects a call that was aborted, which is how the loop records a cancelled turn', async () => {
     await serve(async () => new Promise(() => {}))
-    const mo = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS })
+    const mo = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS })
     const stop = new AbortController()
     const asked = mo.use(MODEL).answer(PROMPT, { signal: stop.signal })
     setTimeout(() => stop.abort(), 50)
@@ -154,7 +154,7 @@ describe('the model client', () => {
       await new Promise(resolve => { finish = resolve })
       return answers('late', 0.03)
     })
-    const root = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS, tracksTree: true })
+    const root = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS, tracksTree: true })
     await root.use(MODEL).answer(PROMPT)
     const stop = new AbortController()
     const asked = root.use(MODEL).answer(PROMPT, { signal: stop.signal })
@@ -171,9 +171,9 @@ describe('the model client', () => {
 
   it('names each call by its id, and by who made it: the root agent, a precursor\'s cell, or nobody', async () => {
     await serve(async () => answers('x'))
-    const root = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS, tracksTree: true })
-    const cell = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS, precursor: 'summarize' })
-    const unnamed = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS })
+    const root = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL, 'openai/text-embedding-3-small'], key: KEY, workspace: WS, tracksTree: true })
+    const cell = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS, precursor: 'summarize' })
+    const unnamed = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS })
     await root.use(MODEL).answer(PROMPT)
     await cell.use(MODEL).answer(PROMPT)
     await unnamed.use(MODEL).answer(PROMPT)
@@ -192,7 +192,7 @@ describe('the model client', () => {
     const mo = { use: () => ({ embed: async (input) => ({ status: 'completed', vectors: input.map(() => [1, 0]), dimensions: 2, inputType: null, inputTokens: 3, cost: 0.002 }) }) }
     server = createModelServer({ mo, socketPath: testSocket('model-client'), key: KEY })
     await server.listen()
-    const root = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS, tracksTree: true })
+    const root = await createModelClient({ socketPath: server.socketPath, modelIds: [embedding], key: KEY, workspace: WS, tracksTree: true })
 
     const result = await root.use(embedding).embed(['a', 'b'], { inputType: 'document' })
 
@@ -208,13 +208,13 @@ describe('the model client', () => {
 
   it('throws a refused embedding as a typed error', async () => {
     await serve(async () => answers('x'), { limit: 0 })
-    const mo = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS })
+    const mo = await createModelClient({ socketPath: server.socketPath, modelIds: ['openai/text-embedding-3-small'], key: KEY, workspace: WS })
     await expect(mo.use('openai/text-embedding-3-small').embed(['a'])).rejects.toMatchObject({ type: 'BUDGET_EXHAUSTED' })
   })
 
   it('refuses an option it would not carry', async () => {
     await serve(async () => answers('x'))
-    const mo = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS })
+    const mo = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS })
     await expect(mo.use(MODEL).answer(PROMPT, { idleHeartbeatMs: 1000 })).rejects.toMatchObject({ type: 'BROKER_BAD_OPTION' })
   })
 })

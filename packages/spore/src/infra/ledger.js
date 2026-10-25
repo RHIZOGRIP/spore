@@ -10,7 +10,7 @@ export function createLedger () {
   return { own: 0, children: 0, ownRounds: 0, childRounds: 0 }
 }
 
-export const totalSpend = (ledger) => (ledger?.own || 0) + (ledger?.children || 0)
+export const totalSpend = (ledger) => ledger.own + ledger.children
 
 /**
  * Work units: the tree's reasoning, weighted by where it happened. An agent's own round
@@ -21,7 +21,7 @@ export const totalSpend = (ledger) => (ledger?.own || 0) + (ledger?.children || 
  * sees every round of the root and of every cell: a round is a model call, every model call crosses its
  * socket, and a retry is another call.
  */
-export const workUnits = (ledger) => native.workUnits(ledger?.ownRounds || 0, ledger?.childRounds || 0)
+export const workUnits = (ledger) => native.workUnits(ledger.ownRounds, ledger.childRounds)
 
 /** Dollars as the integer micro-dollars a turn record holds. */
 export const micros = (dollars) => Math.round(dollars * 1e6)

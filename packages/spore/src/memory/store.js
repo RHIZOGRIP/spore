@@ -75,7 +75,7 @@ export { MEMORY_DIR }
  * arbitrated. Length normalisation then favours the notes without a rule: a curated fact
  * is one line against a turn's sixty words, and the score divides by length.
  */
-export function openStore (ws, { backend = 'bm25', push = null, pull = null, floor = 0, embedding = null, horizon = Infinity, budget = RECALL_BUDGET_TOKENS, socket = null, key = null, mo = null, signal } = {}) {
+export function openStore (ws, { backend, push, pull, floor = 0, embedding = null, horizon, budget = RECALL_BUDGET_TOKENS, socket = null, key, mo = null, signal }) {
   const build = BACKENDS[backend]
   if (!build) throw new Error(`unknown memory backend: ${backend} — one of ${Object.keys(BACKENDS).join(', ')}`)
 

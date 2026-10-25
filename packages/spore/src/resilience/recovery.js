@@ -86,7 +86,7 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
 
           if (kind === 'overflow') {
             logger.warn({ err, overflow: overflowDrops + 1 }, '[recovery] context overflow — compacting')
-            const contextLimit = effectiveContextLimit(model.info?.())
+            const contextLimit = effectiveContextLimit(model.info())
 
             if (contextLimit && messages) {
               // Stage 1: marker compaction

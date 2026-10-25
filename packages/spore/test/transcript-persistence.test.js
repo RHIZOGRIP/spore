@@ -10,7 +10,7 @@ import { hostState, readTranscript, readTranscriptEntries, readTurns, writeTrans
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.transcript-workspace')
 
-const answering = (text) => ({ use: () => ({ answer: async () => ({ status: 'completed', output: text }) }) })
+const answering = (text) => ({ use: () => ({ info: () => null, answer: async () => ({ status: 'completed', output: text }) }) })
 
 // The agent leaves its record for its supervisor to finalize; here the test is the supervisor.
 const run = async (over = {}) => {
@@ -72,6 +72,7 @@ describe('what a turn record says it spent', () => {
   it('records the tokens behind the cost, cache reads included', async () => {
     const counting = {
       use: () => ({
+        info: () => null,
         answer: async () => ({
           status: 'completed',
           output: 'done',
@@ -216,6 +217,7 @@ describe('the turn record', () => {
     const stopping = new AbortController()
     const abortAware = {
       use: () => ({
+        info: () => null,
         answer: (input, opts) => new Promise((resolve, reject) => {
           const timer = setTimeout(() => resolve({ status: 'completed', output: 'late' }), 5000)
           opts.signal?.addEventListener('abort', () => {
@@ -316,7 +318,7 @@ describe('what goes ahead of the conversation', () => {
   // system prompt: anything in it that changes makes the whole conversation uncacheable.
   it('is byte for byte the same on every turn, and the time is in the turn\'s own message', async () => {
     const sent = []
-    const recording = { use: () => ({ answer: async (messages) => { sent.push(structuredClone(messages)); return { status: 'completed', output: 'done' } } }) }
+    const recording = { use: () => ({ info: () => null, answer: async (messages) => { sent.push(structuredClone(messages)); return { status: 'completed', output: 'done' } } }) }
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-02T09:15:00Z'))
     await run({ mo: recording, dated: true })

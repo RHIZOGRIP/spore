@@ -216,7 +216,7 @@ export async function runSpore ({
 
   const model = mo.use(modelId)
 
-  const contextLimit = effectiveContextLimit(model.info?.())
+  const contextLimit = effectiveContextLimit(model.info())
   // Only the spore carries a history; a cell is handed its prompt and used once.
   const carried = prompt === undefined ? historyBound(contextLimit, historyBudget) : null
   const maxOutput = maxResultSizeForContext(contextLimit)
@@ -456,13 +456,13 @@ export async function runSpore ({
       // What the turn drew on the allowance, cells included. `ownMicros` is this loop's
       // own, and anything adding up what a workspace has spent wants the total —
       // a fan-out's bill is almost all in the children.
-      treeMicros: micros((result.usage?.cost || 0) + setupCost + (ledger.children || 0)),
+      treeMicros: micros((result.usage?.cost || 0) + setupCost + ledger.children),
       // What the turn cost in reasoning rather than money, its own rounds weighted 2:1 over its cells'.
       // Counted at the broker, so it includes retries and every cell's work — including
       // cells whose answers were discarded — and nothing the agent reports about itself.
       workUnits: workUnits(ledger),
-      workUnitsOwn: ledger.ownRounds || 0,
-      workUnitsChildren: ledger.childRounds || 0,
+      workUnitsOwn: ledger.ownRounds,
+      workUnitsChildren: ledger.childRounds,
       // How far the inbox has been read. The next turn starts here, so a crash replays
       // nothing that was answered and loses nothing that was not.
       inboxTo: inboxAt,
@@ -529,7 +529,7 @@ export async function runSpore ({
       // billable round and then hit a provider error was recording no spend, and every
       // spend report believed it.
       rounds: null,
-      ownMicros: micros(totalSpend(ledger) - (ledger.children || 0) + setupCost),
+      ownMicros: micros(totalSpend(ledger) - ledger.children + setupCost),
       treeMicros: micros(totalSpend(ledger) + setupCost),
       // A turn that died can still have written what it meant to hand back.
       deliverables: left.deliverables,

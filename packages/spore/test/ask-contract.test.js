@@ -57,6 +57,7 @@ const asksThenAnswers = (question = QUESTION) => {
     use: () => {
       const asking = turn++ === 0
       return {
+        info: () => null,
         answer: async () => (asking
           ? { status: 'tool_use', toolCalls: [{ id: 'c1', name: 'ask', arguments: { question } }] }
           : { status: 'completed', output: 'using package-lock.json then' })
@@ -84,6 +85,7 @@ const run = (mo, over = {}) => runSpore({
 // behind an ask ran before the question ever reached anyone.
 const asksAndWrites = () => ({
   use: () => ({
+    info: () => null,
     answer: async () => ({
       status: 'tool_use',
       toolCalls: [
@@ -114,6 +116,7 @@ describe('ask as an interrupt', () => {
     let round = 0
     const mo = {
       use: () => ({
+        info: () => null,
         answer: async () => (round++ === 0
           ? { status: 'tool_use', toolCalls: [{ id: 'c1', name: 'ask', arguments: {} }] }
           : { status: 'completed', output: 'recovered' })

@@ -35,8 +35,7 @@ export function maxResultSizeForContext (contextTokenLimit) {
  * @returns {{ contextLimit: number, maxResultSize: number }}
  */
 export function computeBudget (model) {
-  const info = model?.info?.() || {}
-  const contextLimit = effectiveContextLimit(info)
+  const contextLimit = effectiveContextLimit(model.info())
   const maxResultSize = maxResultSizeForContext(contextLimit)
   return { contextLimit, maxResultSize }
 }
