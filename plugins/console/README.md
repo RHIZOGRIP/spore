@@ -104,6 +104,12 @@ people.
 - **Nothing without the token.** A request without it gets `401` and nothing else; one from a web
   page (it carries `Origin`) gets `403`; a person the file does not map gets `403`, naming them.
 
+## Seeing what a program sends
+
+`"trace": true` in the console file writes every message and every press to the service's log, one
+line each, as the program sent it. It is read on every delivery, so it is turned on and off by
+editing the file, with no restart; leave it off once you have seen what you needed.
+
 ## What it keeps
 
 `$XDG_STATE_HOME/spore/console/<name>/events.sqlite`, every event of every person, for as long as it

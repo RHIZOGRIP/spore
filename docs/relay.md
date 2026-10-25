@@ -98,7 +98,10 @@ conversation cannot also take `details`. Anything not named there
 gets nothing, and the log says the line to add; so is the bot's owner, once per conversation while
 the service runs, in each of this bot's conversations a spore's `replyTo` default names. A bot on a platform that reacts takes
 `"react": { "taken": "👨‍💻", "failed": "💔" }`, those two when it is left out; an emoji the platform
-does not take is refused with the list it does (`reactionsOf`).
+does not take is refused with the list it does (`reactionsOf`). `"trace": true` writes everything
+the platform delivers to the service's log as it came, read again for each delivery, so it is
+turned on and off without a restart; a delivery is traced only once the platform's own check of
+it holds.
 
 ## The adapter
 
@@ -128,7 +131,7 @@ The live part, made once the credentials are proved:
 | `restore(state, save)` | where `stateFields` names any: the state holding them, and how to write it |
 | `routeOf(conversation)` | optional: the routing key a conversation answers under, where they differ — a Teams channel thread routes by its channel; the conversation itself when it is left out |
 | `prepare(table, log)` | optional: what the platform readies, or checks, before anyone writes, for every conversation the routing names — Discord's roles and webhooks, Telegram's word that a group overhears while the bot hears only what is said to it |
-| `listen({ onMessage, onChoice, signal, log, sleep })` | the transport, until `signal` aborts; awaits `onMessage` before confirming a message to the platform, and `onChoice` before confirming a press; throws an error the platform gave for good |
+| `listen({ onMessage, onChoice, trace, signal, log, sleep })` | the transport, until `signal` aborts; awaits `onMessage` before confirming a message to the platform, and `onChoice` before confirming a press; calls `trace(what, raw)` with each delivery as the platform gave it, `what` naming it (`update 5`), before acting on it; throws an error the platform gave for good |
 | `aside(message, spore)` | optional: a line the spore is given after the text — Discord's pointer to the history it has not heard |
 | `post(conversation, text, { answering, for, markdown, as, turn, origin })` | posts, as a reply to the platform's message `answering` when it is not null — or as a plain new message where a conversation with one person reads in order without one (Slack's direct messages) — and with `markdown` rendered in the platform's own formatting; answers the new message's id. `as` is the spore speaking, or null for the bot itself; `for` is `[{ person, said }]`, whom the post is about, which a platform that cannot reply shows instead — and pings when it is the answer. The first post of a turn's answer also carries `turn`, `{ turnNo, stopReason }`, and `origin`, what said it when nobody in the conversation did (`schedule "digest"`), else null — for a platform whose reader is a program; in a brief conversation too, where the text leaves them out |
 | `edit(conversation, note, text, { for })` | edits a message the bot posted; an edit that changes nothing is not a failure |

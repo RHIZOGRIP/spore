@@ -207,6 +207,12 @@ latest 100 messages at a time. It is everything they say there, kept in the spor
 read by its next turn, so choose it for a group whose talk the spore should follow. It needs the
 bot's privacy mode off, or the bot an admin of the group, as a mention does.
 
+## Seeing what Telegram sends
+
+`"trace": true` in the bot file writes every update to the service's log, one line each, as
+Telegram sent it. It is read on every update, so it is turned on and off by editing the file, with
+no restart; leave it off once you have seen what you needed.
+
 ## What it keeps
 
 `$XDG_STATE_HOME/spore/telegram/<bot>/state.json`, one per bot, mode 0600, written whole and

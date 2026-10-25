@@ -14,9 +14,9 @@ const WS = resolve(tmpdir(), 'spore-cli-usage-sql')
 
 describe('a command spore does not know', () => {
   it('names the one it is close to, in a line rather than the whole usage', () => {
-    const typed = spore('precusors', 'ls', 'test3')
+    const typed = spore('shedules', 'ls', 'test3')
     expect(typed.status).toBe(2)
-    expect(typed.stderr).toMatch(/^spore: unknown command "precusors" — did you mean precursor\?\n/)
+    expect(typed.stderr).toMatch(/^spore: unknown command "shedules" — did you mean schedule\?\n/)
     expect(typed.stderr.trim().split('\n')).toHaveLength(2)
   })
 

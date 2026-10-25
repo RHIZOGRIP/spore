@@ -21,17 +21,7 @@ await runService({
       throw new SporeError(`the bot token is for workspace ${me.team_id}, and ${file} names ${team}`, { type: 'SLACK_BOT_INVALID', detail: `team is the workspace the bot serves: "team": "${me.team_id}" for this token (${me.team})` })
     }
     await slack.connection()
-    const trace = () => readBot(SLACK, file).trace === true
-    const receive = ({ onEnvelope, signal, log, sleep }) => connect({
-      open: slack.connection,
-      signal,
-      log,
-      sleep,
-      onEnvelope: (envelope) => {
-        if (trace()) log(`envelope ${envelope.type}: ${JSON.stringify(envelope.payload)}`)
-        return onEnvelope(envelope)
-      }
-    })
+    const receive = ({ onEnvelope, signal, log, sleep }) => connect({ open: slack.connection, onEnvelope, signal, log, sleep })
     return { adapter: createAdapter({ slack, receive, team, me: me.user_id }), who: `@${me.user} in ${me.team}` }
   }
 })

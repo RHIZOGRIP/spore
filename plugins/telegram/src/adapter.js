@@ -218,7 +218,7 @@ export function createAdapter ({ telegram, bot, me }) {
      * press once it is written down. An album's parts are held, unconfirmed, until none has come for
      * a second, and handed on as one message.
      */
-    async listen ({ onMessage, onChoice, signal, log, sleep }) {
+    async listen ({ onMessage, onChoice, trace, signal, log, sleep }) {
       let offset
       let seen = -1
       let album = null
@@ -260,6 +260,7 @@ export function createAdapter ({ telegram, bot, me }) {
         const fresh = updates.filter(update => update.update_id > seen)
         if (album && !fresh.some(update => update.message?.media_group_id === album.id)) await flush()
         for (const update of fresh) {
+          trace(`update ${update.update_id}`, update)
           seen = update.update_id
           const group = update.message?.media_group_id
           if (album && group !== album.id) await flush()

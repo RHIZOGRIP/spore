@@ -15,7 +15,7 @@ import { basename, resolve } from 'node:path'
 
 import { attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf, errorText } from '../index.js'
 import { createApprovals } from './approvals.js'
-import { filesOf, reactionsOf, routesOf } from './bot-file.js'
+import { filesOf, reactionsOf, routesOf, traceOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
 import { announce, endingOf, leftOut, notCome, originOf, pieces, reply, statusText, waiting } from './render.js'
 import { bytesText, sizeSpelling } from '../core/units.js'
@@ -425,6 +425,15 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       } catch (err) {
         log(`${where(choice.conversation)}: a press — ${errorText(err)}`)
       }
+    },
+    trace: (what, raw) => {
+      let on
+      try {
+        on = traceOf(adapter, botFile)
+      } catch (err) {
+        return log(`${what} not traced: the bot file is unreadable — ${errorText(err)}`)
+      }
+      if (on) log(`${what}: ${JSON.stringify(raw)}`)
     },
     signal: stopping.signal,
     log,

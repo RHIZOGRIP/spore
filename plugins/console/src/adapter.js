@@ -91,14 +91,16 @@ export function createAdapter ({ name, events, receive }) {
   return {
     ...CONSOLE,
 
-    listen: ({ onMessage, onChoice, signal, log }) => receive({
+    listen: ({ onMessage, onChoice, trace, signal, log }) => receive({
       signal,
       log,
       deliver: async ({ event, files }) => {
+        trace(`message ${event.id}`, event)
         await onMessage(messageOf(name, event, files))
         events.delivered(event.id)
       },
       press: async ({ card, choice, by, inputs }) => {
+        trace(`press on ${card.approval}`, { choice, by, inputs })
         let heard = null
         await onChoice({
           conversation: card.person,

@@ -156,9 +156,10 @@ export function createAdapter ({ discord, me, botFile }) {
      * The Gateway, a message at a time: one in a channel the bot file names, addressed to a spore
      * there, from a person or — where the channel lets spores talk — another spore's answer.
      */
-    listen ({ onMessage, signal, log, sleep }) {
+    listen ({ onMessage, trace, signal, log, sleep }) {
       return discord.connect({
         onMessage: async (d) => {
+          trace(`message ${d.id}`, d)
           if (d.author.id === me.id) return
           const entry = routesOf(DISCORD, botFile).get(d.channel_id)
           if (!entry) return

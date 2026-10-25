@@ -8,7 +8,7 @@
 import { SporeError } from '@rhizogrip/spore'
 import { commandOf as commandIn, escapeHtml } from '@rhizogrip/spore/relay'
 
-const FIELDS = ['token', 'app', 'team', 'people', 'channels', 'trace']
+const FIELDS = ['token', 'app', 'team', 'people', 'channels']
 const ID = /^[A-Z0-9]+$/
 const CHANNEL = /^[CG][A-Z0-9]+$/
 const TEAM = /^T[A-Z0-9]+$/
@@ -55,7 +55,6 @@ const CONVERSATIONS = {
 
 function check (raw, path) {
   if (typeof raw.team !== 'string' || !TEAM.test(raw.team)) throw invalid(path, 'has no team', 'team is the workspace\'s id, T…, which auth.test answers for the bot\'s token')
-  if (raw.trace !== undefined && typeof raw.trace !== 'boolean') throw invalid(path, 'has a trace that is not true or false', 'trace: true writes every envelope Slack delivers to the log, as it came')
 }
 
 const HELP = 'Anything you write to me in a direct message goes to the spore; in a channel, mention me. /spore status says what it is doing; /spore stop ends the turn it is running and sets aside what you sent that it had not read; /spore wrap [10m] asks it to wrap up. In a thread, where Slack takes no /spore, mention me and write /status, /stop or /wrap'
@@ -303,11 +302,12 @@ export function createAdapter ({ slack, receive, team, me }) {
       save = persist
     },
 
-    listen: ({ onMessage, onChoice, signal, log, sleep }) => receive({
+    listen: ({ onMessage, onChoice, trace, signal, log, sleep }) => receive({
       signal,
       log,
       sleep,
       onEnvelope: async ({ type, payload, ack }) => {
+        trace(`envelope ${type}`, payload)
         if (type === 'slash_commands') {
           ack()
           if (payload.team_id !== team) return log(`dropped a command from team ${payload.team_id}: this bot serves ${team}`)

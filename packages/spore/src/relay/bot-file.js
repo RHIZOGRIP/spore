@@ -30,7 +30,7 @@ import { SporeError } from '../observability/errors.js'
 
 const SHOWS = ['working', 'react', 'both']
 const REACTIONS = { taken: '👨‍💻', failed: '💔' }
-const EVERY_BOT = ['brief', 'files']
+const EVERY_BOT = ['brief', 'files', 'trace']
 
 const typeOf = (spec, what) => `${spec.kind.toUpperCase()}_${what}`
 
@@ -66,6 +66,9 @@ export function readBot (spec, path) {
   }
   if (raw.files !== undefined && raw.files !== false && !(typeof raw.files === 'string' && native.sizeBytes(raw.files) > 0)) {
     throw new SporeError(`${path} has a files that is not a size or false`, { type: typeOf(spec, 'BOT_INVALID'), detail: `files is the largest file the bot takes from a person, as "10MB", ${spec.label}'s own ${spec.limits.fetch / 1024 / 1024} MB when left out — or false to take none` })
+  }
+  if (raw.trace !== undefined && typeof raw.trace !== 'boolean') {
+    throw new SporeError(`${path} has a trace that is not true or false`, { type: typeOf(spec, 'BOT_INVALID'), detail: `trace: true writes everything ${spec.label} delivers to the service's log, as it came` })
   }
   for (const field of spec.credentials) {
     if (variableOf(raw[field]) === null) {
@@ -180,6 +183,8 @@ export function reactionsOf (spec, path) {
   }
   return chosen
 }
+
+export const traceOf = (spec, path) => readBot(spec, path).trace === true
 
 /** The largest file, in bytes, the bot takes from a person: its `files`, never past what the platform lets it fetch, and 0 for none. */
 export function filesOf (spec, path) {

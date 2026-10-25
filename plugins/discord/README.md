@@ -118,6 +118,12 @@ carries none yet.
 - **Nothing a spore writes pings anyone but whom it answers.** Every post the service makes
   allows no mentions but those.
 
+## Seeing what Discord sends
+
+`"trace": true` in the bot file writes every message to the service's log, one line each, as
+Discord sent it. It is read on every message, so it is turned on and off by editing the file, with
+no restart; leave it off once you have seen what you needed.
+
 ## What it keeps
 
 `$XDG_STATE_HOME/spore/discord/<bot>/state.json`, mode 0600: where it stands in each spore, the

@@ -285,6 +285,18 @@ export function conformance (harness, platformTests = () => {}) {
         expect(notes('1')).toHaveLength(1)
       })
 
+      it('goes to the log as the platform delivered it while the bot file says trace, read again for each one', async () => {
+        start()
+        say({ conversation: '1', text: 'unseen words' })
+        await until(() => posted('1', 'hello back'))
+        await idle(1)
+        routes({ 1: { spore: 'triage' } }, {}, { trace: true })
+        say({ conversation: '1', text: 'logged words' })
+        await idle(2)
+        expect(logs.filter(line => line.includes('unseen words'))).toEqual([])
+        expect(logs.some(line => /^\S+ \S+: \{.*logged words/.test(line))).toBe(true)
+      })
+
       it('that the spore refuses is told there', async () => {
         start()
         say({ conversation: '1', text: 'hello' })

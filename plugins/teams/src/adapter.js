@@ -8,7 +8,7 @@
 import { SporeError } from '@rhizogrip/spore'
 import { commandOf, escapeHtml, listenOf as listening } from '@rhizogrip/spore/relay'
 
-const FIELDS = ['app', 'tenant', 'secret', 'listen', 'people', 'channels', 'trace']
+const FIELDS = ['app', 'tenant', 'secret', 'listen', 'people', 'channels']
 const PERSON = /^[0-9a-f][0-9a-f-]*$/i
 const CHANNEL = /^19:[^\s;]+@thread\.[a-z0-9]+$/i
 const THREAD = ';messageid='
@@ -60,7 +60,6 @@ function check (raw, path) {
     if (typeof raw[field] !== 'string' || !raw[field]) throw invalid(path, `has no ${field}`, `${field} is the Azure Bot's ${field === 'app' ? 'Microsoft App ID' : 'app tenant ID'}`)
   }
   listenOf(raw, path)
-  if (raw.trace !== undefined && typeof raw.trace !== 'boolean') throw invalid(path, 'has a trace that is not true or false', 'trace: true writes every activity Teams delivers to the log, as it came')
 }
 
 const HELP = 'Anything you write to me in a personal chat goes to the spore; in a channel, mention me. /status says what it is doing; /stop ends the turn it is running and sets aside what you sent that it had not read; /wrap [10m] asks it to wrap up'
@@ -323,10 +322,11 @@ export function createAdapter ({ connector, receive, app, tenant }) {
       save = persist
     },
 
-    listen: ({ onMessage, onChoice, signal, log }) => receive({
+    listen: ({ onMessage, onChoice, trace, signal, log }) => receive({
       signal,
       log,
       onActivity: async (one) => {
+        trace(`activity ${one.id}`, one)
         if (tenantOf(one) !== tenant) return log(`dropped an activity from tenant ${tenantOf(one)}: this bot serves ${tenant}`)
         remember(one)
         if (one.type === 'invoke' && one.name === 'adaptiveCard/action' && one.value?.trigger !== 'automatic') return press(one, onChoice, log)
