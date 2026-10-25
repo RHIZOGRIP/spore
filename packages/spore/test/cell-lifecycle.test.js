@@ -20,8 +20,8 @@ import { promisify } from 'node:util'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer, suppliedKey } from './fixtures/model-server.js'
-import { brokerSocketPath, sporeSocketDir } from '../src/infra/broker-socket.js'
+import { createModelServer, testSocket, suppliedKey } from './fixtures/model-server.js'
+import { native } from '../src/native.js'
 import { KEY_HEADER } from '../src/infra/socket-request.js'
 import { readTurns } from '../src/core/spore-dir.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
@@ -47,7 +47,7 @@ const spawnCell = async (args, env = {}) => {
         HOME: process.env.HOME,
         MODEL: 'anthropic/claude-haiku-4-5',
         SPORE_MODEL_SOCKET: broker.socketPath,
-        SPORE_SOCKET_DIR: sporeSocketDir(root),
+        SPORE_SOCKET_DIR: native.sporeSocketDir(root),
         ...env
       }
     })
@@ -62,7 +62,7 @@ const cellFrame = (ws) => JSON.parse(readFileSync(resolve(root, ws, 'spawn.json'
 const start = async (reply) => {
   broker = createModelServer({
     mo: scriptedMo(reply),
-    socketPath: brokerSocketPath('cell-test'),
+    socketPath: testSocket('cell-test'),
     limit: 10,
     key: suppliedKey(root)
   })
@@ -245,7 +245,7 @@ describe('a cell that ran out of room', () => {
 // The tree's source socket, standing in for the runner's: it answers `/list` within a view the
 // way the runner does, refusing a source the tree was not granted.
 const sourceSocket = async (granted) => {
-  const socketPath = brokerSocketPath('source-test')
+  const socketPath = testSocket('source-test')
   const asked = []
   const server = http.createServer((req, res) => {
     const chunks = []

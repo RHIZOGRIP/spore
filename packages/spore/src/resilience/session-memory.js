@@ -98,9 +98,8 @@ function segmentTurnGroups (messages) {
  *
  * @param {object} [opts]
  */
-export function createSessionMemory ({ logger } = {}) {
+export function createSessionMemory ({ logger }) {
   const facts = []
-  const log = logger || { debug () {} }
 
   /**
    * Extract facts from messages (deterministic, no LLM).
@@ -158,7 +157,7 @@ export function createSessionMemory ({ logger } = {}) {
 
     const trimmed = trimFacts()
     const totalChars = facts.reduce((s, f) => s + f.text.length, 0)
-    log.debug({ extracted: facts.length - before + trimmed, kept: facts.length, chars: totalChars, maxChars: DEFAULT_MAX_CHARS }, '[session-memory] extracted new facts')
+    logger.debug({ extracted: facts.length - before + trimmed, kept: facts.length, chars: totalChars, maxChars: DEFAULT_MAX_CHARS }, '[session-memory] extracted new facts')
   }
 
   /**
@@ -183,7 +182,7 @@ export function createSessionMemory ({ logger } = {}) {
       total -= facts.shift().text.length
       dropped++
     }
-    if (dropped) log.debug({ dropped }, '[session-memory] budget pressure — dropped oldest facts')
+    if (dropped) logger.debug({ dropped }, '[session-memory] budget pressure — dropped oldest facts')
     return -dropped
   }
 

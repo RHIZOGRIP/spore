@@ -8,10 +8,7 @@ import { withRecovery } from '../resilience/recovery.js'
 import { executeTools } from './tool-kernel.js'
 import { textOf } from './message.js'
 import { MAX_EMPTY_RETRIES, accountUsage, resolveEmptyCompletion } from './answer-result.js'
-import { silent } from '../observability/logger.js'
 import { SporeError } from '../observability/errors.js'
-
-const noEmit = { emit () {}, on () {} }
 
 /**
  * The transcript as it goes out, with the conversation opted into prefix caching.
@@ -28,7 +25,7 @@ const noEmit = { emit () {}, on () {} }
  * downstream would be computed against it.
  */
 function forCaching (messages, ttl) {
-  if (!ttl || messages.length < 2) return messages
+  if (messages.length < 2) return messages
   const outgoing = messages.map(m => ({ ...m }))
   markConversationForCaching(outgoing, ttl)
   return outgoing
@@ -53,30 +50,30 @@ const DRIFT_FLOOR = 2_000
  *
  * @param {object} opts
  * @param {object} opts.model      — mohdel model proxy (has .answer())
- * @param {string} opts.system     — system prompt
+ * @param {Array<{text: string, cache?: string}>} opts.system — `composeSystem`'s blocks
  * @param {string} opts.prompt     — user prompt
  * @param {Array}  opts.tools      — tool definitions (mohdel format)
  * @param {object} opts.toolFns    — { name: async (args) => string }
- * @param {Function} [opts.describe] — (name, args) => { title, category, detail }, carried on `tool_start`
+ * @param {Function} opts.describe — (name, args) => { title, category, detail }, carried on `tool_start`
  * @param {object} opts.limits — {rounds,cost,wall} soft/hard pairs, declared in a .cmk, never here
- * @param {Map<string, {stopReason: string, says: boolean}>} [opts.terminalTools] — tools that end the turn
- * @param {object} [opts.emitter]  — what the turn emits, to the event log
- * @param {object} [opts.logger]
+ * @param {Map<string, {stopReason: string, says: boolean}>} opts.terminalTools — tools that end the turn
+ * @param {object} opts.emitter  — what the turn emits, to the event log
+ * @param {object} opts.logger
  * @returns {{ output: string|null, messages: Array, rounds: number, usage: object }}
  */
-export async function loop ({ model, system, prompt, tools, toolFns, describe, limits, ledger, emitter = noEmit, mutators, terminalTools, signal, logger = silent, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning = [], from }) {
+export async function loop ({ model, system, prompt, tools, toolFns, describe, limits, ledger, emitter, mutators, terminalTools, signal, logger, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning, from }) {
   const userMsg = { role: 'user', content: prompt }
-  if (!Number.isInteger(limits?.rounds?.soft) || !Number.isInteger(limits?.rounds?.hard)) {
-    throw new Error('loop needs limits.rounds — declared in a .cmk, not defaulted here')
+  for (const dim of ['rounds', 'cost', 'wall']) {
+    if (typeof limits[dim]?.soft !== 'number' || typeof limits[dim]?.hard !== 'number') {
+      throw new Error(`loop needs limits.${dim} — declared in a .cmk, not defaulted here`)
+    }
   }
   // `from` continues a turn that stopped between rounds: its history already ends on the
   // round's tool results, nothing new was said, and the rounds it took still count.
   const continuing = from !== undefined
-  const messages = continuing ? [...initialMessages] : initialMessages?.length ? [...initialMessages, userMsg] : [userMsg]
-  if (onMessage) {
-    if (initialMessages?.length) for (const m of initialMessages) onMessage(m)
-    if (!continuing) onMessage(userMsg)
-  }
+  const messages = continuing ? [...initialMessages] : [...initialMessages, userMsg]
+  for (const m of initialMessages) onMessage(m)
+  if (!continuing) onMessage(userMsg)
   // Recall is shown to the model and never written down. It reaches the model attached to
   // the turn that triggered it, but nobody said it — and the transcript is what long-term
   // memory indexes, so a recalled line persisted as user speech comes back as evidence of
@@ -104,26 +101,24 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
   // Cost counts the whole tree. A cell's spend is not the parent's to ignore: it
   // was drawn from the same allowance, which is what makes the spore's ceiling a bound
   // on everything below it rather than on this loop alone.
-  const spent = (round) => ({ rounds: round, cost: usage.cost + (ledger?.children || 0), wall: Date.now() - startedAt })
+  const spent = (round) => ({ rounds: round, cost: usage.cost + ledger.children, wall: Date.now() - startedAt })
 
   // Soft is a warning the agent acts on; hard is a stop it has no say in. Cost is
   // only observable here because only a model call can raise it, so checking it
   // inside the loop is not a matter of trusting the loop.
   const crossed = (kind, at) => {
     for (const dim of ['rounds', 'cost', 'wall']) {
-      const bound = limits[dim]?.[kind]
-      if (bound !== undefined && at[dim] >= bound) return dim
+      if (at[dim] >= limits[dim][kind]) return dim
     }
     return null
   }
-  const append = (msg) => { messages.push(msg); if (onMessage) onMessage(msg) }
+  const append = (msg) => { messages.push(msg); onMessage(msg) }
 
-  // The first message of every call. A string or `composeSystem`'s blocks, each block a text
-  // part keeping its `cache` marker — a breakpoint at that block.
+  // The first message of every call: each of `composeSystem`'s blocks a text part keeping its
+  // `cache` marker — a breakpoint at that block.
   const systemMessage = {
     role: 'system',
-    content: (Array.isArray(system) ? system : [{ text: system }])
-      .map(block => (block.cache ? { type: 'text', text: block.text, cache: block.cache } : { type: 'text', text: block.text }))
+    content: system.map(block => (block.cache ? { type: 'text', text: block.text, cache: block.cache } : { type: 'text', text: block.text }))
   }
 
   const streamHandler = (chunk) => { if (chunk.delta) emitter.emit('stream', { kind: chunk.type, delta: chunk.delta }) }
@@ -155,14 +150,14 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
     // Anything said to this spore since the last round. It lands as user speech because
     // a person said it — the reader decides what it means, which is why nothing here
     // looks for a keyword. `stop` is a message like any other, answered by wrapping up.
-    for (const said of interject?.() || []) {
+    for (const said of interject()) {
       logger.info({ round: i }, '[loop] a message arrived mid-turn')
       emit('interject', { round: i })
       append({ role: 'user', content: said })
     }
 
     // `limits` already holds the change; what the turn is told depends on what changed.
-    for (const change of relimited?.() || []) {
+    for (const change of relimited()) {
       if (change.why === 'wrap') {
         wrapAsked = true
         continue
@@ -240,7 +235,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
         emitter.emit('estimate_drift', { round: i, model: model?.id || 'unknown', estimated, sent: lastInputTokens })
       }
     }
-    if (ledger) ledger.own = usage.cost
+    ledger.own = usage.cost
 
     if (res.status === 'incomplete') {
       throw new SporeError('the model stopped before finishing its reply', {
@@ -258,8 +253,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
 
     if (calling) {
       const assistantMsg = { role: 'assistant', content: assistantContent(res), toolCalls: res.toolCalls }
-      messages.push(assistantMsg)
-      if (onMessage) onMessage(assistantMsg)
+      append(assistantMsg)
 
       // Observed, not filtered: the guard reports and the loop decides. What it
       // decides is the wrap above, on the next round.
@@ -271,7 +265,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
       // order is not execution order: `[ask, wsexec]` wrote the file and only then
       // returned the question — which matters most when the question is asking for
       // permission to do exactly that.
-      const terminalAt = terminalTools ? calls.findIndex(tc => terminalTools.has(tc.name)) : -1
+      const terminalAt = calls.findIndex(tc => terminalTools.has(tc.name))
       const running = terminalAt === -1 ? calls : calls.slice(0, terminalAt + 1)
       const shelved = terminalAt === -1 ? [] : calls.slice(terminalAt + 1)
 
@@ -279,17 +273,13 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
         toolCalls: running, toolFns, describe, emitter, mutators, signal, logger
       })
       guard.record(toolResults)
-      for (const tr of toolResults) {
-        messages.push(tr)
-        if (onMessage) onMessage(tr)
-      }
+      for (const tr of toolResults) append(tr)
       // Answered rather than dropped: a tool call with no result leaves the
       // transcript malformed for the next turn that replays it.
       for (const tc of shelved) {
         emitter.emit('tool_block', { name: tc.name, reason: 'turn ended' })
         const skipped = refusedResult(tc.id, tc.name, `not run — "${calls[terminalAt].name}" ended the turn before it. Ask again next turn if it is still what you want.`)
-        messages.push(skipped)
-        if (onMessage) onMessage(skipped)
+        append(skipped)
       }
 
       // A stop during the batch wins over a terminal tool in it: readers run first, so a

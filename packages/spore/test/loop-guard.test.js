@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { createLoopGuard } from '../src/resilience/loop-guard.js'
-import { loop } from '../src/core/loop.js'
-import { REFUSED, WRAP, marked } from '../src/core/marks.js'
+import { loopOf } from './fixtures/collaborators.js'
+import { REFUSED, marked } from '../src/core/marks.js'
+import { textOf } from '../src/core/message.js'
 import { isRefusal, refuse, refusedResult } from '../src/core/refusal.js'
 import { isRecorded, recorded, recordedResult } from '../src/core/call-record.js'
 
@@ -86,16 +87,14 @@ describe('loop guard', () => {
       // turn ends with an answer. A model that ignored it would run to hard:rounds.
       answer: async (prompt) => {
         rounds++
-        if (prompt.some(msg => marked(msg, WRAP))) return { status: 'complete', output: 'what I have so far' }
+        if (prompt.some(msg => textOf(msg).startsWith('[System: this turn has'))) return { status: 'complete', output: 'what I have so far' }
         return { status: 'tool_use', toolCalls: [{ id: `c${rounds}`, name: 'exec', arguments: { command: 'same' } }] }
       }
     }
 
     const wrapped = []
-    const result = await loop({
-      mutators: new Set(),
+    const result = await loopOf({
       model: m,
-      system: 'sys',
       prompt: 'go',
       tools: [{ name: 'exec', description: 'run', parameters: { type: 'object', properties: {} } }],
       toolFns: { exec: () => recorded({ tool: 'exec', exit: 0 }) },

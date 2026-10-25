@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { executeTools } from '../src/core/tool-kernel.js'
+import { kernelOf } from './fixtures/collaborators.js'
 import { describeCall } from '../src/core/call-table.js'
 import { createEmitter } from '../src/observability/emitter.js'
 import { REFUSED, marked } from '../src/core/marks.js'
@@ -27,8 +27,7 @@ describe('tool-kernel scheduling', () => {
       a: async () => { order.push('a-start'); await delay(20); order.push('a-end'); return 'a' },
       b: async () => { order.push('b-start'); await delay(20); order.push('b-end'); return 'b' }
     }
-    const results = await executeTools({
-      mutators: new Set(),
+    const results = await kernelOf({
       toolCalls: [tc('1', 'a'), tc('2', 'b')],
       toolFns,
       logger: silent
@@ -50,7 +49,7 @@ describe('tool-kernel scheduling', () => {
       write2: async () => { order.push('w2-start'); await delay(10); order.push('w2-end'); return 'w2' }
     }
     const mutators = new Set(['write1', 'write2'])
-    const results = await executeTools({
+    const results = await kernelOf({
       toolCalls: [tc('1', 'read1'), tc('2', 'write1'), tc('3', 'read2'), tc('4', 'write2')],
       toolFns,
       mutators,
@@ -76,7 +75,7 @@ describe('tool-kernel scheduling', () => {
       slow: async () => { await delay(30); return 'slow' }
     }
     const mutators = new Set(['slow'])
-    const results = await executeTools({
+    const results = await kernelOf({
       toolCalls: [tc('1', 'slow'), tc('2', 'fast')],
       toolFns,
       mutators,
@@ -89,8 +88,7 @@ describe('tool-kernel scheduling', () => {
   })
 
   it('returns empty array for empty toolCalls', async () => {
-    const results = await executeTools({
-      mutators: new Set(),
+    const results = await kernelOf({
       toolCalls: [],
       toolFns: {},
       logger: silent
@@ -104,7 +102,7 @@ describe('tool-kernel scheduling', () => {
       w1: async () => { order.push('w1-start'); await delay(15); order.push('w1-end'); return 'w1' },
       w2: async () => { order.push('w2-start'); await delay(15); order.push('w2-end'); return 'w2' }
     }
-    await executeTools({
+    await kernelOf({
       toolCalls: [tc('1', 'w1'), tc('2', 'w2')],
       toolFns,
       mutators: new Set(['w1', 'w2']),
@@ -124,8 +122,7 @@ describe('tool-kernel abort', () => {
     const toolFns = {
       check: async (args, { signal }) => { receivedSignal = signal; return 'ok' }
     }
-    await executeTools({
-      mutators: new Set(),
+    await kernelOf({
       toolCalls: [tc('1', 'check')],
       toolFns,
       signal: controller.signal,
@@ -145,8 +142,7 @@ describe('tool-kernel abort', () => {
       }
     }
     setTimeout(() => controller.abort(), 10)
-    await executeTools({
-      mutators: new Set(),
+    await kernelOf({
       toolCalls: [tc('1', 'slow')],
       toolFns,
       signal: controller.signal,
@@ -169,7 +165,7 @@ describe('tool-kernel abort', () => {
       },
       write: async () => { ran.push('write'); return 'written' }
     }
-    const results = await executeTools({
+    const results = await kernelOf({
       toolCalls: [tc('1', 'slow'), tc('2', 'write')],
       toolFns,
       mutators: new Set(['slow', 'write']),
@@ -188,8 +184,7 @@ describe('tool-kernel abort', () => {
       good: async () => { await delay(20); return 'ok' },
       bad: async () => { throw new Error('boom') }
     }
-    const results = await executeTools({
-      mutators: new Set(),
+    const results = await kernelOf({
       toolCalls: [tc('1', 'good'), tc('2', 'bad')],
       toolFns,
       logger: silent
@@ -209,8 +204,7 @@ describe('tool-kernel events', () => {
     emitter.on('tool_end', (e) => events.push({ type: 'end', ...e }))
 
     const toolFns = { echo: async ({ text }) => text }
-    await executeTools({
-      mutators: new Set(),
+    await kernelOf({
       toolCalls: [tc('c1', 'echo', { text: 'hi' })],
       toolFns,
       emitter,
@@ -230,8 +224,7 @@ describe('tool-kernel events', () => {
   it('carries on tool_start how the call is described, from the rows it was given and then the runtime\'s', async () => {
     const started = []
     const rows = [{ name: 'contract', tools: ['read'], title: 'reading the contract', category: 'read' }]
-    await executeTools({
-      mutators: new Set(),
+    await kernelOf({
       toolCalls: [tc('a', 'read', { path: 'data/c.pdf' }), tc('b', 'exec', { command: 'node "$SPORE_SOURCE" ledger' })],
       toolFns: { read: async () => 'text', exec: async () => 'out' },
       describe: (name, args) => describeCall(name, args, rows),
@@ -250,8 +243,7 @@ describe('tool-kernel events', () => {
     emitter.on('tool_end', (e) => { endEvent = e })
 
     const toolFns = { fail: async () => { throw new Error('boom') } }
-    const results = await executeTools({
-      mutators: new Set(),
+    const results = await kernelOf({
       toolCalls: [tc('c1', 'fail')],
       toolFns,
       emitter,
@@ -272,8 +264,7 @@ describe('tool-kernel events', () => {
       refused: async () => refuse('not here'),
       text: async () => 'hi'
     }
-    await executeTools({
-      mutators: new Set(),
+    await kernelOf({
       toolCalls: Object.keys(toolFns).map(name => tc(name, name)),
       toolFns,
       emitter: { emit: (type, e) => { if (type === 'tool_end') ended[e.name] = e }, on () {} },
@@ -294,8 +285,7 @@ describe('tool-kernel events', () => {
 
   it('result objects have correct shape', async () => {
     const toolFns = { echo: async ({ text }) => text }
-    const results = await executeTools({
-      mutators: new Set(),
+    const results = await kernelOf({
       toolCalls: [tc('c1', 'echo', { text: 'hi' })],
       toolFns,
       logger: silent
@@ -315,8 +305,7 @@ describe('tool-kernel events', () => {
 // its whole budget without ever learning the tool was not there.
 describe('a tool that is not there', () => {
   it('says so, and says what is', async () => {
-    const [result] = await executeTools({
-      mutators: new Set(),
+    const [result] = await kernelOf({
       toolCalls: [{ id: 'a', name: 'exec', arguments: { command: 'ls' } }],
       toolFns: { read: async () => 'ok', write: async () => 'ok' }
     })
@@ -327,8 +316,7 @@ describe('a tool that is not there', () => {
 
   it('counts as an error in the event, not as a success', async () => {
     const ended = []
-    await executeTools({
-      mutators: new Set(),
+    await kernelOf({
       toolCalls: [{ id: 'a', name: 'nope', arguments: {} }],
       toolFns: { read: async () => 'ok' },
       emitter: { emit: (name, event) => name === 'tool_end' && ended.push(event), on () {} }
@@ -338,8 +326,7 @@ describe('a tool that is not there', () => {
   })
 
   it('does not stop the calls beside it', async () => {
-    const results = await executeTools({
-      mutators: new Set(),
+    const results = await kernelOf({
       toolCalls: [
         { id: 'a', name: 'nope', arguments: {} },
         { id: 'b', name: 'read', arguments: {} }

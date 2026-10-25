@@ -4,7 +4,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { headAndTail } from '../src/core/preview.js'
-import { appendTranscript, enqueue, hostState, INLINE_MESSAGE_BYTES, readInbox, readInboxFrom, readTranscript, readTranscriptEntries, readTurns, storable, writeOutcome } from '../src/core/spore-dir.js'
+import { appendTranscript, enqueue, hostState, readInbox, readInboxFrom, readTranscript, readTranscriptEntries, readTurns, storable, writeOutcome } from '../src/core/spore-dir.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.hostile-text-workspace')
@@ -72,7 +72,7 @@ describe('the inbox keeps one message to one entry', () => {
 describe('a spilled body survives the same text', () => {
   for (const [what, text] of Object.entries(HOSTILE)) {
     it(`writes and reads back ${what} unchanged`, () => {
-      const long = text + '\n' + 'x'.repeat(INLINE_MESSAGE_BYTES) + '\n' + text
+      const long = text + '\n' + 'x'.repeat(8192) + '\n' + text
       enqueue(WS, long)
       expect(readInbox(WS)).toHaveLength(1)
       const { bodyPath } = readInbox(WS)[0]

@@ -181,12 +181,6 @@ describe('compaction', () => {
     expect(summary.content).toContain('Tasks 1-8')
   })
 
-  it('returns original when no model provided', async () => {
-    const messages = makeMessages(10)
-    const result = await compactHistory(messages, { contextLimit: 1000 })
-    expect(result).toBe(messages)
-  })
-
   it('holds the working set alone when the model\'s window is not known', async () => {
     const messages = makeMessages(10)
     const model = mockModel('summary')

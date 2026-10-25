@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createSessionMemory } from '../src/resilience/session-memory.js'
+import { silent } from '../src/observability/logger.js'
 import { isRefusal, refuse, refusedResult } from '../src/core/refusal.js'
 import { isRecorded, recorded, recordedResult } from '../src/core/call-record.js'
 
@@ -7,7 +8,7 @@ describe('session-memory', () => {
   // ── Extract: user messages ────────────────────────────────────────
 
   it('extracts from user messages', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([{ role: 'user', content: 'Migrate the project to ESM' }])
     const facts = sm.getFacts()
     expect(facts).toHaveLength(1)
@@ -15,13 +16,13 @@ describe('session-memory', () => {
   })
 
   it('ignores short user messages', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([{ role: 'user', content: 'ok' }])
     expect(sm.getFacts()).toHaveLength(0)
   })
 
   it('truncates long user content', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([{ role: 'user', content: 'x'.repeat(500) }])
     expect(sm.getFacts()[0].text.length).toBeLessThanOrEqual(200)
   })
@@ -29,7 +30,7 @@ describe('session-memory', () => {
   // ── Extract: standalone assistant ─────────────────────────────────
 
   it('extracts from standalone assistant messages', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([{ role: 'assistant', content: 'I decided to use node:test instead of vitest because it has no dependencies.' }])
     const facts = sm.getFacts()
     expect(facts).toHaveLength(1)
@@ -37,13 +38,13 @@ describe('session-memory', () => {
   })
 
   it('ignores short assistant messages', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([{ role: 'assistant', content: 'Done.' }])
     expect(sm.getFacts()).toHaveLength(0)
   })
 
   it('truncates long assistant content', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([{ role: 'assistant', content: 'a'.repeat(500) }])
     expect(sm.getFacts()[0].text.length).toBeLessThanOrEqual(300)
   })
@@ -62,13 +63,13 @@ describe('session-memory', () => {
   ]
 
   const factFor = (name, args, content) => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract(group([[name, args, content]]))
     return sm.getFacts()[0].text
   }
 
   it('compresses assistant + tool calls + results into one fact', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([
       {
         role: 'assistant',
@@ -84,7 +85,7 @@ describe('session-memory', () => {
   })
 
   it('compresses multiple tool calls in one turn', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract(group([
       ['read', { path: 'a.js' }, record({ tool: 'read', lines: 3, eof: true })],
       ['read', { path: 'b.js' }, record({ tool: 'read', lines: 1, eof: false })]
@@ -165,7 +166,7 @@ describe('session-memory', () => {
   })
 
   it('includes reasoning prefix when assistant has content', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([
       {
         role: 'assistant',
@@ -183,7 +184,7 @@ describe('session-memory', () => {
   // ── Orphan tool_result fallback ───────────────────────────────────
 
   it('handles orphan tool_result as fallback', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([
       { role: 'tool', toolName: 'grep', content: 'src/index.js:5:export function main() { console.log("hello"); return 42; }' }
     ])
@@ -193,7 +194,7 @@ describe('session-memory', () => {
   })
 
   it('ignores compacted markers', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([
       { role: 'tool', toolName: 'read', content: '[compacted — re-read if needed]' }
     ])
@@ -201,7 +202,7 @@ describe('session-memory', () => {
   })
 
   it('ignores short tool results', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([
       { role: 'tool', toolName: 'write', content: 'ok' }
     ])
@@ -211,7 +212,7 @@ describe('session-memory', () => {
   // ── Mixed extraction ──────────────────────────────────────────────
 
   it('produces fewer facts from mixed messages via turn-group compression', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([
       { role: 'user', content: 'Fix the login bug' },
       {
@@ -230,27 +231,27 @@ describe('session-memory', () => {
   // ── Edge cases ────────────────────────────────────────────────────
 
   it('handles empty messages array', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([])
     expect(sm.getFacts()).toHaveLength(0)
   })
 
   it('handles null/undefined', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract(null)
     sm.extract(undefined)
     expect(sm.getFacts()).toHaveLength(0)
   })
 
   it('accumulates facts across multiple extract calls', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([{ role: 'user', content: 'First task' }])
     sm.extract([{ role: 'user', content: 'Second task' }])
     expect(sm.getFacts()).toHaveLength(2)
   })
 
   it('handles tool calls with missing result (no matching tool_result)', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([
       {
         role: 'assistant',
@@ -267,12 +268,12 @@ describe('session-memory', () => {
   // ── Format ────────────────────────────────────────────────────────
 
   it('returns null when empty', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     expect(sm.format()).toBeNull()
   })
 
   it('returns formatted string with facts', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     sm.extract([{ role: 'user', content: 'Migrate to ESM' }])
     const formatted = sm.format()
     expect(formatted).toContain('[Session context from earlier work]')
@@ -282,7 +283,7 @@ describe('session-memory', () => {
   // ── Budget ────────────────────────────────────────────────────────
 
   it('trims oldest facts past a hundred of them', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     for (let i = 0; i < 102; i++) {
       sm.extract([{ role: 'user', content: `Task number ${i}` }])
     }
@@ -293,7 +294,7 @@ describe('session-memory', () => {
   })
 
   it('trims oldest facts past 8000 characters of them', () => {
-    const sm = createSessionMemory()
+    const sm = createSessionMemory({ logger: silent })
     for (let i = 0; i < 50; i++) {
       sm.extract([{ role: 'user', content: `fact ${i} ` + 'x'.repeat(300) }])
     }

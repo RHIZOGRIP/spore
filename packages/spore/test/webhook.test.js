@@ -12,11 +12,10 @@ import { cellsSince, heldIn, readInbox, saidOf } from '../src/core/spore-dir.js'
 import { definitionWith } from '../src/testing.js'
 import { runPrepare } from '../src/core/prepare.js'
 import { runRouter } from '../src/core/router.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { CONFIG_DIR, CONFIG_FILE } from '../src/library/config.js'
 import { createWebhookServer, keptHeaders } from '../webhook/server.js'
 import { verify } from '../webhook/verify.js'
-import { createGate } from './fixtures/model-server.js'
+import { createGate, testSocket } from './fixtures/model-server.js'
 import { answers, scriptedMo } from './fixtures/scripted-model.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 
@@ -48,7 +47,7 @@ let gate
 let cellReply
 
 beforeAll(async () => {
-  gate = createGate({ mo: scriptedMo(() => cellReply()), socketPath: brokerSocketPath('webhook-gate') })
+  gate = createGate({ mo: scriptedMo(() => cellReply()), socketPath: testSocket('webhook-gate') })
   await gate.listen()
 })
 afterAll(() => gate.close())

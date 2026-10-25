@@ -50,10 +50,10 @@ function nowLine (now = new Date()) {
  * @param {string} opts.prompt
  * @param {string} opts.identity        — the definition's body: what the agent is told it is
  * @param {string} [opts.rules]         — what the agent can reach here, written by the runtime
- * @param {'5m'|'1h'} [opts.cacheTtl='5m']
+ * @param {'5m'|'1h'} opts.cacheTtl
  * @param {string} opts.workspace
  * @param {string} opts.modelId         — the model the turn runs on, as the definition's `model:`
- * @param {boolean} [opts.sandbox=false]
+ * @param {boolean} opts.sandbox
  * @param {object} [opts.logger]
  * @returns {{ output, messages, rounds, usage, stopReason, spent }}
  */
@@ -64,7 +64,7 @@ export async function runSpore ({
   prompt,
   identity,
   rules,
-  cacheTtl = '5m',
+  cacheTtl,
   // Long-term memory: `{ backend, push, pull }`, declared in the definition and absent by
   // default. Every number in it came from one sweep over one dataset, so none of them is
   // defaulted here — a number buried in the runtime is a number nobody benchmarks.
@@ -98,7 +98,7 @@ export async function runSpore ({
   storeSocket,
   sourceSocket,
   limits,
-  sandbox: applySandbox = false,
+  sandbox: applySandbox,
   initialMessages,
   // The suite's tools the definition grants: all the model is offered.
   tools,
@@ -321,7 +321,7 @@ export async function runSpore ({
   // for. The entry recorded here is what `readTranscript` collapses against next
   // time, so the summarizing happens once.
   let history = initialMessages
-  if (history?.length) {
+  if (history.length) {
     history = await compactHistory(history, {
       model,
       contextLimit,
@@ -342,7 +342,7 @@ export async function runSpore ({
   // loop.js fires onMessage for every replayed initialMessage too, and those are
   // already on disk — without the skip a resumed run doubles its own transcript,
   // then quadruples it.
-  let replayed = history?.length || 0
+  let replayed = history.length
   const onMessage = (msg) => {
     if (replayed > 0) {
       replayed--
@@ -363,7 +363,7 @@ export async function runSpore ({
     // it, the way a taste brings back a room — the freshest part of the prompt, past every
     // cache breakpoint, and read before the question rather than after it.
     if (memory && !resume) {
-      const live = (history || []).filter(message => !marked(message, COMPACTED)).length
+      const live = history.filter(message => !marked(message, COMPACTED)).length
       const store = openStore(WS, { ...memory, horizon: Math.max(0, readSaidSoFar(WS).length - live), socket: storeSocket, key: readModelKey(WS), mo, signal: wallStop.signal })
       try {
         const surfaced = await store.push(turnPrompt)

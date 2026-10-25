@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
 
-import { withRecovery } from '../src/resilience/recovery.js'
 import { createSessionMemory } from '../src/resilience/session-memory.js'
+import { silent } from '../src/observability/logger.js'
 import { CONTEXT_NOTICE, marked } from '../src/core/marks.js'
 import { recordedResult } from '../src/core/call-record.js'
+
+import { recoveryOf } from './fixtures/collaborators.js'
 
 const overflow = () => Object.assign(new Error('context length exceeded'), { type: 'CONTEXT_OVERFLOW' })
 
@@ -32,8 +34,8 @@ describe('what an overflow drop leaves the model', () => {
 
   it('hands back the facts, not just their number', async () => {
     const messages = history()
-    const sessionMemory = createSessionMemory()
-    const model = withRecovery(answering(1), { messages, sessionMemory })
+    const sessionMemory = createSessionMemory({ logger: silent })
+    const model = recoveryOf(answering(1), { messages, sessionMemory })
 
     await model.answer(() => ({ system: 's', messages }), {})
 
@@ -45,8 +47,12 @@ describe('what an overflow drop leaves the model', () => {
   })
 
   it('says only that context was reduced when there is nothing to hand back', async () => {
-    const messages = history()
-    const model = withRecovery(answering(1), { messages })
+    const messages = [
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'on it' },
+      { role: 'assistant', content: 'done' }
+    ]
+    const model = recoveryOf(answering(1), { messages })
 
     await model.answer(() => ({ system: 's', messages }), {})
 
@@ -57,8 +63,8 @@ describe('what an overflow drop leaves the model', () => {
 
   it('extracts from the messages that were dropped, not the ones that survived', async () => {
     const messages = history()
-    const sessionMemory = createSessionMemory()
-    const model = withRecovery(answering(1), { messages, sessionMemory })
+    const sessionMemory = createSessionMemory({ logger: silent })
+    const model = recoveryOf(answering(1), { messages, sessionMemory })
 
     await model.answer(() => ({ system: 's', messages }), {})
 

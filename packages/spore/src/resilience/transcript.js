@@ -1,12 +1,9 @@
 /**
- * Transcript integrity — sanitize messages before sending to model.
- *
- * Handles:
- *   1. Orphaned tool_results (no matching assistant toolCall) → dropped
- *   2. Unpaired assistant toolCalls (no matching tool_result) → synthetic error result added
- *   3. Duplicate tool_results for same toolCallId → keep first, drop rest
- *   4. Oversized tool_result content → truncated
- *   5. Empty/null content normalization
+ * The transcript as the model is about to see it, before every call:
+ *   - a tool result over the current model's budget is cut down — results replayed from turns
+ *     on a model with a larger context can be over it;
+ *   - a tool call with no result is answered as interrupted — an agent killed mid-batch leaves
+ *     one, and a provider refuses a call without its result.
  */
 
 import { effectiveContextLimit } from 'mohdel'
@@ -77,70 +74,26 @@ function compactResult (content, limit) {
  * @returns {Array} the sanitized messages array
  */
 export function sanitizeTranscript (messages, { maxResultSize = FALLBACK_MAX_RESULT_SIZE, logger = silent } = {}) {
-  // Collect all toolCallIds declared by assistant messages
-  const declaredCalls = new Set()
-  for (const msg of messages) {
-    if (msg.role === 'assistant' && msg.toolCalls?.length) {
-      for (const tc of msg.toolCalls) declaredCalls.add(tc.id)
-    }
-  }
-
-  // Collect all toolCallIds that have a tool_result
   const resolvedCalls = new Set()
-  const seenResults = new Set()
 
-  // Pass 1: drop orphaned/duplicate tool_results, truncate oversized
-  let i = 0
-  while (i < messages.length) {
-    const msg = messages[i]
+  for (const msg of messages) {
+    if (msg.role !== 'tool') continue
+    resolvedCalls.add(msg.toolCallId)
 
-    if (msg.role === 'tool') {
-      const id = msg.toolCallId
-
-      // Drop if no matching assistant toolCall
-      if (id && !declaredCalls.has(id)) {
-        logger.debug({ toolCallId: id }, '[transcript] dropping orphaned tool_result')
-        messages.splice(i, 1)
-        continue
-      }
-
-      // Drop duplicate
-      if (id && seenResults.has(id)) {
-        logger.debug({ toolCallId: id }, '[transcript] dropping duplicate tool_result')
-        messages.splice(i, 1)
-        continue
-      }
-
-      if (id) {
-        seenResults.add(id)
-        resolvedCalls.add(id)
-      }
-
-      // Truncate oversized content. Tools budget their
-      // own result, so this is the backstop for anything that did not — and it has to
-      // leave something the model can still read. Slicing a call record's JSON at a
-      // byte count produced a truncation marker glued to half an object.
-      // Truncating collapses parts to the text: a result too big to carry whole is one
-      // whose image was the expensive half.
-      const text = textOf(msg)
-      if (text.length > maxResultSize) {
-        logger.debug({ chars: text.length, limit: maxResultSize, tool: msg.toolName }, '[transcript] truncating tool_result')
-        msg.content = compactResult(text, maxResultSize)
-      }
-
-      // Normalize null/undefined content
-      if (msg.content == null) msg.content = ''
+    // Truncate oversized content. Tools budget their
+    // own result, so this is the backstop for anything that did not — and it has to
+    // leave something the model can still read. Slicing a call record's JSON at a
+    // byte count produced a truncation marker glued to half an object.
+    // Truncating collapses parts to the text: a result too big to carry whole is one
+    // whose image was the expensive half.
+    const text = textOf(msg)
+    if (text.length > maxResultSize) {
+      logger.debug({ chars: text.length, limit: maxResultSize, tool: msg.toolName }, '[transcript] truncating tool_result')
+      msg.content = compactResult(text, maxResultSize)
     }
-
-    // Normalize assistant content
-    if (msg.role === 'assistant' && msg.content == null) {
-      msg.content = ''
-    }
-
-    i++
   }
 
-  // Pass 2: add synthetic error results for unpaired toolCalls
+  // Add synthetic error results for unpaired toolCalls
   // Iterate backwards to keep splice indices stable
   for (let j = messages.length - 1; j >= 0; j--) {
     const msg = messages[j]

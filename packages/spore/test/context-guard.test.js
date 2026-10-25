@@ -212,7 +212,7 @@ describe('dropOldestTurnGroup', () => {
       { role: 'assistant', content: '', toolCalls: [{ id: 'c2', name: 'write', arguments: {} }] },
       { role: 'tool', toolCallId: 'c2', content: 'ok' }
     ]
-    const dropped = dropOldestTurnGroup(messages)
+    const dropped = dropOldestTurnGroup(messages, { beforeDrop () {} })
     expect(dropped).toBe(2)
     expect(messages.length).toBe(3)
     expect(messages[1].toolCalls[0].id).toBe('c2')
@@ -226,7 +226,7 @@ describe('dropOldestTurnGroup', () => {
       { role: 'tool', toolCallId: 'c2', content: 'b' },
       { role: 'assistant', content: 'done' }
     ]
-    const dropped = dropOldestTurnGroup(messages)
+    const dropped = dropOldestTurnGroup(messages, { beforeDrop () {} })
     expect(dropped).toBe(3)
     expect(messages.length).toBe(2)
     expect(messages[1].content).toBe('done')
@@ -239,7 +239,7 @@ describe('dropOldestTurnGroup', () => {
       { role: 'assistant', content: '', toolCalls: [{ id: 'c1', name: 'read', arguments: {} }] },
       { role: 'tool', toolCallId: 'c1', content: 'data' }
     ]
-    const dropped = dropOldestTurnGroup(messages)
+    const dropped = dropOldestTurnGroup(messages, { beforeDrop () {} })
     expect(dropped).toBe(1)
     expect(messages.length).toBe(3)
     expect(messages[1].toolCalls[0].id).toBe('c1')
@@ -247,7 +247,7 @@ describe('dropOldestTurnGroup', () => {
 
   it('never drops messages[0]', () => {
     const messages = [{ role: 'user', content: 'go' }]
-    const dropped = dropOldestTurnGroup(messages)
+    const dropped = dropOldestTurnGroup(messages, { beforeDrop () {} })
     expect(dropped).toBe(0)
     expect(messages.length).toBe(1)
   })
@@ -258,7 +258,7 @@ describe('dropOldestTurnGroup', () => {
       { role: 'user', content: 'follow-up' },
       { role: 'assistant', content: 'reply' }
     ]
-    const dropped = dropOldestTurnGroup(messages)
+    const dropped = dropOldestTurnGroup(messages, { beforeDrop () {} })
     expect(dropped).toBe(1)
     expect(messages.length).toBe(2)
     expect(messages[1].content).toBe('reply')
@@ -273,11 +273,11 @@ describe('dropOldestTurnGroup', () => {
     expect(messages.length).toBe(11)
 
     for (let i = 0; i < 5; i++) {
-      const dropped = dropOldestTurnGroup(messages)
+      const dropped = dropOldestTurnGroup(messages, { beforeDrop () {} })
       expect(dropped).toBe(2)
     }
     expect(messages.length).toBe(1)
-    expect(dropOldestTurnGroup(messages)).toBe(0)
+    expect(dropOldestTurnGroup(messages, { beforeDrop () {} })).toBe(0)
   })
 
   it('handles compacted markers', () => {
@@ -287,7 +287,7 @@ describe('dropOldestTurnGroup', () => {
       { role: 'tool', toolCallId: 'c1', content: '[compacted — re-read if needed]' },
       { role: 'assistant', content: 'done' }
     ]
-    const dropped = dropOldestTurnGroup(messages)
+    const dropped = dropOldestTurnGroup(messages, { beforeDrop () {} })
     expect(dropped).toBe(2)
     expect(messages.length).toBe(2)
     expect(messages[1].content).toBe('done')
@@ -317,14 +317,5 @@ describe('dropOldestTurnGroup', () => {
     dropOldestTurnGroup(messages, { beforeDrop: (msgs) => { captured = msgs } })
     expect(captured).toHaveLength(1)
     expect(captured[0].content).toBe('standalone answer')
-  })
-
-  it('works without beforeDrop (backward compat)', () => {
-    const messages = [
-      { role: 'user', content: 'go' },
-      { role: 'assistant', content: 'x' }
-    ]
-    const dropped = dropOldestTurnGroup(messages)
-    expect(dropped).toBe(1)
   })
 })

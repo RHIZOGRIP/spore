@@ -8,7 +8,7 @@ import { PLUGIN_CALLS } from '../src/core/spore-dir.js'
 import { readConfig } from '../src/library/config.js'
 import { definitionWith } from '../src/testing.js'
 import { openWorkspace } from '../src/core/workspace.js'
-import { sporeSocketDir } from '../src/infra/broker-socket.js'
+import { native } from '../src/native.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '.plugins-test')
@@ -140,7 +140,7 @@ describe('checking a plugin', () => {
       AGENT_BROWSER_CDP: '9222',
       AGENT_BROWSER_SESSION: 'ws',
       AGENT_BROWSER_PIN_TAB: '1',
-      AGENT_BROWSER_SOCKET_DIR: join(sporeSocketDir(WS), 'browser'),
+      AGENT_BROWSER_SOCKET_DIR: join(native.sporeSocketDir(WS), 'browser'),
       AGENT_BROWSER_SCREENSHOT_DIR: join(WS, 'data/browser'),
       AGENT_BROWSER_DOWNLOAD_PATH: join(WS, 'data/browser/downloads')
     })

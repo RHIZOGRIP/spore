@@ -1890,20 +1890,16 @@ fn append_event(tx: &Connection, turn: Option<&str>, event: &Record) -> Result<i
     let last: i64 = tx
         .query_row("SELECT lastSeq FROM t_workspace", [], |row| row.get(0))
         .map_err(failed_to("number the event"))?;
-    let seq = match event.get::<i64>("seq") {
-        None => last + 1,
-        Some(seq) if seq > last => seq,
-        Some(seq) => return Err(format!("event seq {seq} is not past the last, {last}")),
-    };
+    if event.has("seq") {
+        return Err("an event is numbered by the store, never by its writer".into());
+    }
+    let seq = last + 1;
     let mut row: Vec<(&'static str, SqlValue)> = Vec::new();
     // Kept as the JSON text each field was written as, so a string no Rust string can hold
     // survives.
     let mut payload: std::collections::BTreeMap<&str, &RawValue> =
         std::collections::BTreeMap::new();
     for (name, raw) in event.fields() {
-        if name == "seq" {
-            continue;
-        }
         match EVENT_ENVELOPE.iter().find(|(column, _)| *column == name) {
             Some((column, kind)) => row.push((*column, bind(name, *kind, raw)?)),
             None => {
@@ -3904,7 +3900,7 @@ mod tests {
         let turn = begin_turn(&ws, "t", None).unwrap();
         let refused = [
             json!({ "id": 1, "op": "transcript.append", "entries": [{ "at": "a", "kind": "message", "message": {} }, { "at": "b", "kind": "gossip", "message": {} }] }),
-            json!({ "id": 2, "op": "events.append", "events": [{ "v": 1, "at": "a", "event": "round", "seq": 0 }] }),
+            json!({ "id": 2, "op": "events.append", "events": [{ "v": 1, "at": "a", "event": "round", "seq": 1 }] }),
             json!({ "id": 3, "op": "turn.outcome", "turn": { "stopReason": "answer", "asked": "what" } }),
             json!({ "id": 4, "op": "turn.outcome", "turn": { "turnId": "someone-else" } }),
             json!({ "id": 5, "op": "call.record", "call": { "runId": "r", "callNo": 1, "tool": "exec", "record": {} } }),
@@ -3928,11 +3924,11 @@ mod tests {
     }
 
     #[test]
-    fn numbers_events_past_the_last_and_keeps_what_rust_cannot_hold() {
+    fn numbers_events_itself_and_keeps_what_rust_cannot_hold() {
         let ws = scratch("events");
-        let frame = "{\"id\":1,\"op\":\"events.append\",\"events\":[{\"v\":1,\"at\":\"a\",\"event\":\"stream\",\"seq\":5,\"delta\":\"a\\ud800b\"}]}";
+        let frame = "{\"id\":1,\"op\":\"events.append\",\"events\":[{\"v\":1,\"at\":\"a\",\"event\":\"stream\",\"delta\":\"a\\ud800b\"}]}";
         let answer: Value = serde_json::from_str(&request(&ws, None, frame).unwrap()).unwrap();
-        assert_eq!(answer["seqs"], json!([5]));
+        assert_eq!(answer["seqs"], json!([1]));
         assert_eq!(
             row(&ws, "SELECT payload FROM events")["payload"],
             "{\"delta\":\"a\\ud800b\"}"
@@ -3942,7 +3938,7 @@ mod tests {
             None,
             json!({ "id": 2, "op": "events.append", "events": [{ "v": 1, "at": "b", "event": "round" }] }),
         );
-        assert_eq!(next["seqs"], json!([6]));
+        assert_eq!(next["seqs"], json!([2]));
     }
 
     #[test]

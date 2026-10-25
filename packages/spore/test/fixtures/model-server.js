@@ -13,13 +13,15 @@
 
 import http from 'node:http'
 import { randomBytes } from 'node:crypto'
-import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 
 import { CALLER_HEADER, KEY_HEADER, ROOT_CALLER } from '../../src/infra/socket-request.js'
 import { MODEL_KEY_FILE } from '../../src/core/spore-dir.js'
 import { CONFIG_FILE } from '../../src/library/config.js'
-import { brokerSocketPath } from '../../src/infra/broker-socket.js'
+
+/** A socket of the test's own, under `/tmp` whatever `TMPDIR` says, so its path fits `sun_path`. */
+export const testSocket = (name) => join(mkdtempSync('/tmp/spore-test-'), `${name}.sock`)
 
 /** The key a runner leaves in the workspace for its cells, for a test standing where the runner would. */
 export function suppliedKey (ws) {
@@ -230,7 +232,7 @@ export function createGate ({ mo, socketPath }) {
  * config holding `fields` and the gate.
  */
 export async function startGate ({ mo, name }) {
-  const gate = createGate({ mo, socketPath: brokerSocketPath(name) })
+  const gate = createGate({ mo, socketPath: testSocket(name) })
   await gate.listen()
   gate.configure = (fields = {}, file = CONFIG_FILE) => {
     mkdirSync(dirname(file), { recursive: true })

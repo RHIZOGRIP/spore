@@ -19,8 +19,8 @@ import { bm25 } from '../src/memory/bm25.js'
 import { appendCompaction, appendTranscript, hostState, isTranscriptAnchor, readEvents, readTranscript, readTranscriptEntries, readTurns } from '../src/core/spore-dir.js'
 import { runSpore } from '../src/core/spore-run.js'
 import { TOOL_NAMES } from '../src/core/tool-names.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { shownToModel } from './fixtures/as-shown.js'
+import { testSocket } from './fixtures/model-server.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.memory-store-workspace')
@@ -289,11 +289,14 @@ describe('recall reaching a turn', () => {
     try {
       return await runSpore({
         tools: TOOL_NAMES,
+        sandbox: false,
+        cacheTtl: '5m',
+        initialMessages: [],
         prompt: 'What camera accessories would suit me?',
         workspace: WS,
         identity: 'You are a spore under test.',
         modelId: 'fake/model',
-        limits: { rounds: { soft: 4, hard: 6 } },
+        limits: { rounds: { soft: 4, hard: 6 }, cost: { soft: 100, hard: 100 }, wall: { soft: 600_000, hard: 600_000 } },
         mo: answering,
         state,
         ...over
@@ -355,7 +358,7 @@ describe('recall reaching a turn', () => {
   // A store that takes the connection and never answers, which is what a hung vector store looks
   // like from the agent: only the turn's own signal can end the wait.
   const silentStore = async () => {
-    const socketPath = brokerSocketPath('silent-store')
+    const socketPath = testSocket('silent-store')
     const held = new Set()
     const server = createServer((conn) => { held.add(conn); conn.on('error', () => {}) })
     await new Promise(resolve => server.listen(socketPath, resolve))
@@ -401,7 +404,7 @@ describe('recall reaching a turn', () => {
         mo: embedsToo,
         memory: recalling,
         storeSocket: store.socketPath,
-        limits: { rounds: { soft: 4, hard: 6 }, wall: { soft: 100, hard: 200 } }
+        limits: { rounds: { soft: 4, hard: 6 }, cost: { soft: 100, hard: 100 }, wall: { soft: 100, hard: 200 } }
       })
       expect(result.stopReason).toBe('hard:wall')
       expect(seen).toEqual([])
@@ -590,11 +593,14 @@ describe('a note that cannot be read', () => {
     const state = hostState(WS)
     const result = await runSpore({
       tools: TOOL_NAMES,
+      sandbox: false,
+      cacheTtl: '5m',
+      initialMessages: [],
       prompt: 'What camera do I own?',
       workspace: WS,
       identity: 'You are a spore under test.',
       modelId: 'fake/model',
-      limits: { rounds: { soft: 4, hard: 6 } },
+      limits: { rounds: { soft: 4, hard: 6 }, cost: { soft: 100, hard: 100 }, wall: { soft: 600_000, hard: 600_000 } },
       mo: answering,
       memory: { push: 3 },
       state

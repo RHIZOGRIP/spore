@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
-import { appendTurn, enqueue, outbox, OVERHEARD_KEPT, readInbox, readInboxFrom, saidOf, setAside, settleOutbox } from '../src/core/spore-dir.js'
+import { appendTurn, enqueue, outbox, readInbox, readInboxFrom, saidOf, setAside, settleOutbox } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 
 const WS = resolve(tmpdir(), 'spore-inbox-test')
@@ -134,14 +134,14 @@ describe('where an entry lands', () => {
   })
 
   it('hands a turn the latest of what was overheard, and says how many earlier ones it left in the inbox', () => {
-    for (let i = 1; i <= OVERHEARD_KEPT + 2; i++) send(WS, `chatter ${i}`, { overheard: true, from: { name: 'Bob', id: 'telegram:42', where: 'a group' } })
+    for (let i = 1; i <= 102; i++) send(WS, `chatter ${i}`, { overheard: true, from: { name: 'Bob', id: 'telegram:42', where: 'a group' } })
     const read = readInboxFrom(WS)
     const [block] = read.messages
     const lines = block.split('\n')
     expect(lines[0]).toMatch(/ 2 earlier messages are left in the inbox, marked overheard\.\]$/)
-    expect(lines.slice(1)).toHaveLength(OVERHEARD_KEPT)
+    expect(lines.slice(1)).toHaveLength(100)
     expect(lines[1]).toMatch(/: "chatter 3"$/)
-    expect([read.at, read.person]).toEqual([OVERHEARD_KEPT + 2, null])
+    expect([read.at, read.person]).toEqual([102, null])
   })
 
   it('refuses an overheard message that does not say who said it and where, or that names a place to answer', () => {

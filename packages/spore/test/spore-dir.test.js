@@ -6,7 +6,7 @@ import { resolve, dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { acquireLock, appendEvents, appendTranscript, dataDir, definitionPath, HOST_TURNS_ENV, hostState, lastSent, lockPath, readLock, readTranscript, readTranscriptEntries, releaseLock, statePath, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
+import { acquireLock, appendEvents, appendTranscript, dataDir, definitionPath, HOST_TURNS_ENV, hostState, lastSent, readLock, readTranscript, readTranscriptEntries, releaseLock, statePath, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
 import { compactionSummaryMessage, createCompactionEntry } from '../src/resilience/compaction.js'
 import { COMPACTED, WRAP, mark, marked } from '../src/core/marks.js'
 
@@ -60,7 +60,6 @@ describe('a turn begun from the host side', () => {
 describe('layout', () => {
   it('keeps the runtime files at the workspace root, undotted', () => {
     expect(definitionPath(WS)).toBe(resolve(WS, 'spore.cmk'))
-    expect(lockPath(WS)).toBe(resolve(WS, 'lock'))
     expect(statePath(WS)).toBe(resolve(WS, 'state.sqlite'))
     expect(dataDir(WS)).toBe(resolve(WS, 'data'))
   })
@@ -158,7 +157,7 @@ describe('lock', () => {
     acquireLock(WS)
     releaseLock(WS)
     expect(readLock(WS)).toBe(null)
-    expect(existsSync(lockPath(WS))).toBe(true)
+    expect(existsSync(resolve(WS, 'lock'))).toBe(true)
   })
 
   it('releasing twice is a no-op, so a signal handler and the exit path may both run', () => {
@@ -196,7 +195,7 @@ describe('lock', () => {
   })
 
   it('takes over a lock whose holder is gone, which is what a crash leaves', () => {
-    writeFileSync(lockPath(WS), JSON.stringify({ pid: 2147483646, startedAt: '2026-09-08T00:00:00.000Z' }))
+    writeFileSync(resolve(WS, 'lock'), JSON.stringify({ pid: 2147483646, startedAt: '2026-09-08T00:00:00.000Z' }))
     const taken = acquireLock(WS)
     expect(taken.error).toBeUndefined()
     expect(readLock(WS).pid).toBe(process.pid)
@@ -206,7 +205,7 @@ describe('lock', () => {
   // had. Nobody holds the lock, so nobody is running, so a half-written file is
   // something to replace rather than a reason to stop.
   it('overwrites a lock file it cannot parse, when nothing holds the lock', () => {
-    writeFileSync(lockPath(WS), 'not json')
+    writeFileSync(resolve(WS, 'lock'), 'not json')
     expect(acquireLock(WS).error).toBeUndefined()
     expect(readLock(WS).pid).toBe(process.pid)
   })
@@ -214,7 +213,7 @@ describe('lock', () => {
   it('still refuses when the holder is live and its lock file is garbage', async () => {
     const holder = await holdLockElsewhere(WS)
     try {
-      writeFileSync(lockPath(WS), 'not json')
+      writeFileSync(resolve(WS, 'lock'), 'not json')
       // The flock already answered the question; telling the caller to delete a file
       // belonging to a running process would be worse than saying less.
       expect(acquireLock(WS).error).toBe('workspace is already running — another process holds the lock')

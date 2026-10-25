@@ -19,7 +19,7 @@ import { openReader } from './sqlite.js'
 const LAYOUT = JSON.parse(native.layout())
 export const DEFINITION_FILE = LAYOUT.definition
 export const LOCK_FILE = LAYOUT.lock
-export const STATE_FILE = LAYOUT.state
+const STATE_FILE = LAYOUT.state
 // `v` on every event, the agent's and its supervisor's: one number, `rust/workspace`'s.
 export const EVENT_SCHEMA = LAYOUT.eventSchema
 export const SPAWN_FILE = LAYOUT.spawnFile
@@ -44,11 +44,11 @@ export const PRECURSOR_DIR = LAYOUT.precursorDir
 // Past this an entry stops carrying its own body: a turn's prompt is the unanswered messages
 // joined, so a long one reaches it as a head, a tail and a path (principle 5). Not a `.cmk`
 // limit: the `.cmk` bounds what the agent may do, and this is a property of the message.
-export const INLINE_MESSAGE_BYTES = 8192
+const INLINE_MESSAGE_BYTES = 8192
 
 // What one read hands a turn of what was overheard: the latest, since a busy group says more
 // between two questions than a turn should carry. The rest stay in the inbox, marked.
-export const OVERHEARD_KEPT = 100
+const OVERHEARD_KEPT = 100
 
 /**
  * The storage API's promise: nothing outside this module and `call-record.js` names where a
@@ -843,7 +843,7 @@ export const fromPerson = (entry) => !entry.overheard && originOf(entry) === nul
  * theirs quoted, so nothing said in a group can pass for the runtime or for someone speaking to the
  * spore. `left` counts the earlier ones a read did not hand on.
  */
-export function overheardOf (entries, left = 0) {
+function overheardOf (entries, left = 0) {
   const what = (entry) => [
     entry.bodyPath ? `[a message of ${entry.bodyBytes} bytes, at ${entry.bodyPath}]` : JSON.stringify(entry.text ?? ''),
     ...(entry.files?.length ? [`[sent with ${entry.files.map(file => file.path ?? file.name).join(', ')}]`] : [])
@@ -945,11 +945,7 @@ export function inboxConsumed (ws) {
   return reading(ws, 0, db => db.prepare('SELECT inboxConsumed FROM t_workspace').get().inboxConsumed)
 }
 
-export function lockPath (ws) {
-  return resolve(ws, LOCK_FILE)
-}
-
-export function modelKeyPath (ws) {
+function modelKeyPath (ws) {
   return resolve(ws, MODEL_KEY_FILE)
 }
 

@@ -24,7 +24,7 @@ import { formatTraceparent } from '../observability/tracing.js'
 import { SporeError } from '../observability/errors.js'
 import { CALLER_HEADER, MODEL_CALL_HEADER, KEY_HEADER, PRECURSOR_CALLER, ROOT_CALLER, request, typedError } from './socket-request.js'
 
-export const CALL_OPTIONS = new Set(['tools', 'signal', 'parentSpan', 'realtimeHandler', 'idleHandler', 'bufferOpts', 'reasoningSummaries', 'rawReasoning'])
+const CALL_OPTIONS = new Set(['tools', 'signal', 'parentSpan', 'realtimeHandler', 'idleHandler', 'bufferOpts', 'reasoningSummaries', 'rawReasoning'])
 
 // How long the provider may be silent before mohdel says so, and again each time this passes.
 // Longer than the turn's own 10-second heartbeat, so an idle event marks a stall, not liveness.

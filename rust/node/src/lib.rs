@@ -322,16 +322,6 @@ pub fn agent_env(env_json: String) -> napi::Result<String> {
 }
 
 #[napi]
-pub fn broker_socket_path(kind: String) -> napi::Result<String> {
-    Ok(
-        match workspace::broker_socket_path(&kind).map_err(failed)? {
-            Ok(path) => json!({ "path": path }).to_string(),
-            Err(refusal) => refused(&refusal),
-        },
-    )
-}
-
-#[napi]
 pub fn spore_socket_dir(ws: String) -> napi::Result<String> {
     Ok(workspace::spore_socket_dir(Path::new(&ws))
         .map_err(failed)?

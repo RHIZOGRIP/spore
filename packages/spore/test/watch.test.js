@@ -7,7 +7,7 @@ import { watch, watchAll, outcome } from '../src/library/watch.js'
 import { appendEvents, appendTurn, databaseOf } from '../src/core/spore-dir.js'
 
 const WS = resolve(tmpdir(), 'spore-watch-test')
-const event = (seq, extra = {}) => ({ v: 1, seq, at: 'now', runId: 'r', event: 'round', ...extra })
+const event = () => ({ v: 1, at: 'now', runId: 'r', event: 'round' })
 
 beforeEach(() => {
   rmSync(WS, { recursive: true, force: true })
@@ -25,23 +25,23 @@ describe('watching a spore as data', () => {
   // A workspace with no lock has never run, so "not running" cannot mean "over" until a
   // runner has been seen — but it must not wait forever either.
   it('yields what is there and ends, when nothing is running', async () => {
-    appendEvents(WS, [event(1), event(2)])
+    appendEvents(WS, [event(), event()])
     expect((await drain()).map(e => e.seq)).toEqual([1, 2])
   })
 
   it('resumes from a cursor, so a watcher that reconnects sees no repeats', async () => {
-    appendEvents(WS, [event(1), event(2), event(3)])
+    appendEvents(WS, [event(), event(), event()])
     expect((await drain({ after: 2 })).map(e => e.seq)).toEqual([3])
   })
 
   it('picks up events written while it is watching', async () => {
-    appendEvents(WS, [event(1)])
-    setTimeout(() => appendEvents(WS, [event(2)]), 20)
+    appendEvents(WS, [event()])
+    setTimeout(() => appendEvents(WS, [event()]), 20)
     expect((await drain({ grace: 200 })).map(e => e.seq)).toEqual([1, 2])
   })
 
   it('stops when told to, without waiting for the turn', async () => {
-    appendEvents(WS, [event(1)])
+    appendEvents(WS, [event()])
     const stop = new AbortController()
     const seen = []
     for await (const e of watch(WS, { tick: 10, grace: 5000, signal: stop.signal })) {
@@ -62,7 +62,7 @@ describe('watching a spore as data', () => {
 
 describe('watching many spores', () => {
   it('drops a cursor read from another database, and follows the new one from its start', async () => {
-    appendEvents(WS, [event(1), event(2)])
+    appendEvents(WS, [event(), event()])
     const stale = { [WS]: { seq: 40, turn: 7, database: 'an earlier database' } }
     const stop = new AbortController()
     const seen = []

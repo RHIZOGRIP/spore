@@ -121,7 +121,8 @@ function accountHome () {
  * A corpus is named in the agent's workspace, while the person names it where it is on the
  * machine — and the agent's `~` is its own home, not theirs.
  */
-export function readRules (reads, home = accountHome()) {
+function readRules (reads) {
+  const home = accountHome()
   return reads.map(({ name, path }) => {
     const theirs = home && (path === home || path.startsWith(`${home}/`)) ? ` (~${path.slice(home.length)})` : ''
     return `${name}/ is ${path}${theirs}, linked in for you to read. When the person names that directory or a ` +

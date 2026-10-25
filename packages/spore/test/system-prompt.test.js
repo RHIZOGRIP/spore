@@ -3,12 +3,11 @@ import { composeSystem } from '../src/core/system-prompt.js'
 
 describe('composeSystem', () => {
   it('returns empty array for empty slots', () => {
-    expect(composeSystem({})).toEqual([])
-    expect(composeSystem()).toEqual([])
+    expect(composeSystem({}, { cacheTtl: '5m' })).toEqual([])
   })
 
   it('returns one cached block for identity only', () => {
-    const blocks = composeSystem({ identity: 'You are a helpful assistant.' })
+    const blocks = composeSystem({ identity: 'You are a helpful assistant.' }, { cacheTtl: '5m' })
     expect(blocks).toHaveLength(1)
     expect(blocks[0].text).toContain('You are a helpful assistant.')
     expect(blocks[0].cache).toBe('5m')
@@ -18,7 +17,7 @@ describe('composeSystem', () => {
     const blocks = composeSystem({
       identity: 'IDENTITY',
       rules: 'RULES'
-    })
+    }, { cacheTtl: '5m' })
     expect(blocks).toHaveLength(1)
     expect(blocks[0].text).toContain('IDENTITY')
     expect(blocks[0].text).toContain('RULES')
@@ -35,14 +34,14 @@ describe('composeSystem', () => {
   })
 
   it('rules alone (no identity) is still cached', () => {
-    const blocks = composeSystem({ rules: 'RULES_ONLY' })
+    const blocks = composeSystem({ rules: 'RULES_ONLY' }, { cacheTtl: '5m' })
     expect(blocks).toHaveLength(1)
     expect(blocks[0].text).toContain('RULES_ONLY')
     expect(blocks[0].cache).toBe('5m')
   })
 
   it('puts the note after the foundation, with no breakpoint of its own', () => {
-    const blocks = composeSystem({ identity: 'I', note: 'NOTE' })
+    const blocks = composeSystem({ identity: 'I', note: 'NOTE' }, { cacheTtl: '5m' })
     expect(blocks).toHaveLength(2)
     expect(blocks[0].text).toBe('I')
     expect(blocks[0].cache).toBe('5m')

@@ -91,6 +91,8 @@ try {
     limits: plan.precursor.limits,
     images: plan.precursor.images,
     reasoning: plan.precursor.reasoning,
+    cacheTtl: '5m',
+    initialMessages: [],
     sandbox: true,
     parentSpan,
     signal: stopping.signal,

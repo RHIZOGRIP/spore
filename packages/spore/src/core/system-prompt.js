@@ -18,13 +18,11 @@
  * @param {string} [slots.identity] - who the agent is told it is: the definition's body
  * @param {string} [slots.rules]    - what it can reach here, written by the runtime
  * @param {string} [slots.note]     - a constant line after the foundation
- * @param {object} [opts]
- * @param {'5m'|'1h'} [opts.cacheTtl='5m'] - cache TTL for the foundation breakpoint
+ * @param {object} opts
+ * @param {'5m'|'1h'} opts.cacheTtl - cache TTL for the foundation breakpoint
  * @returns {Array<{text: string, cache?: '5m'|'1h'}>}
  */
-export function composeSystem (slots = {}, opts = {}) {
-  const { identity, rules, note } = slots
-  const cacheTtl = opts.cacheTtl || '5m'
+export function composeSystem ({ identity, rules, note }, { cacheTtl }) {
   const blocks = []
 
   // identity + rules have the same half-life, so they share one breakpoint.

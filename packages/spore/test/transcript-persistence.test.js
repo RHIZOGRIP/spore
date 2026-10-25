@@ -18,11 +18,14 @@ const run = async (over = {}) => {
   try {
     return await runSpore({
       tools: TOOL_NAMES,
+      sandbox: false,
+      cacheTtl: '5m',
+      initialMessages: [],
       prompt: 'what next',
       workspace: WS,
       identity: 'You are a spore under test.',
       modelId: 'fake/model',
-      limits: { rounds: { soft: 10, hard: 12 } },
+      limits: { rounds: { soft: 10, hard: 12 }, cost: { soft: 100, hard: 100 }, wall: { soft: 600_000, hard: 600_000 } },
       mo: answering('done'),
       state,
       ...over
@@ -234,7 +237,7 @@ describe('the turn record', () => {
 
   it('records a turn that produced no answer as one that did not', async () => {
     // A hard round limit stops the turn before the model is ever asked.
-    await run({ limits: { rounds: { soft: 0, hard: 0 } } })
+    await run({ limits: { rounds: { soft: 0, hard: 0 }, cost: { soft: 100, hard: 100 }, wall: { soft: 600_000, hard: 600_000 } } })
     const [turn] = readTurns(WS)
     expect(turn.stopReason).toBe('hard:rounds')
     expect(turn.concluded).toBe(false)
@@ -251,11 +254,14 @@ describe('what the worker will not build for itself', () => {
     const state = hostState(WS)
     await expect(runSpore({
       tools: TOOL_NAMES,
+      sandbox: false,
+      cacheTtl: '5m',
+      initialMessages: [],
       prompt: 'what next',
       workspace: WS,
       identity: 'You are a spore under test.',
       modelId: 'fake/model',
-      limits: { rounds: { soft: 10, hard: 12 } },
+      limits: { rounds: { soft: 10, hard: 12 }, cost: { soft: 100, hard: 100 }, wall: { soft: 600_000, hard: 600_000 } },
       state
     })).rejects.toMatchObject({ type: 'MODEL_CLIENT_REQUIRED' })
     expect(() => state.finalize()).toThrow(/has not said how it ended/)
@@ -292,7 +298,7 @@ describe('what a failed turn remembers', () => {
     }
     const ledger = { own: 0, children: 0 }
 
-    await expect(run({ mo, ledger, prompt: 'go', limits: { rounds: { soft: 4, hard: 6 } } })).rejects.toThrow()
+    await expect(run({ mo, ledger, prompt: 'go', limits: { rounds: { soft: 4, hard: 6 }, cost: { soft: 100, hard: 100 }, wall: { soft: 600_000, hard: 600_000 } } })).rejects.toThrow()
 
     const turn = readTurns(WS).at(-1)
     expect(turn.stopReason).toBe('error')

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { sniffImage } from '../src/core/media.js'
 import { parseDefinition, sizeBytes } from '../src/delegation/definition.js'
-import { executeTools } from '../src/core/tool-kernel.js'
+import { kernelOf } from './fixtures/collaborators.js'
 import { estimateTokens } from '../src/resilience/context-guard.js'
 import { makeTools } from '../src/tools/make-tools.js'
 import { TOOL_NAMES } from '../src/core/tool-names.js'
@@ -136,12 +136,12 @@ describe('the kernel carries it into the message', () => {
       look: async () => recorded({ tool: 'look', exit: 0 }, [{ fileUri: 'file:///x.png', mimeType: 'image/png' }]),
       plain: async () => 'exit 0'
     }
-    const [withImage] = await executeTools({ mutators: new Set(), toolCalls: [call('look')], toolFns })
+    const [withImage] = await kernelOf({ toolCalls: [call('look')], toolFns })
     expect(Array.isArray(withImage.content)).toBe(true)
     expect(withImage.content[0]).toEqual({ type: 'text', text: JSON.stringify({ tool: 'look', exit: 0 }) })
     expect(withImage.content[1]).toEqual({ type: 'image', fileUri: 'file:///x.png', mimeType: 'image/png' })
 
-    const [withoutImage] = await executeTools({ mutators: new Set(), toolCalls: [call('plain')], toolFns })
+    const [withoutImage] = await kernelOf({ toolCalls: [call('plain')], toolFns })
     expect(withoutImage.content).toBe('exit 0')
   })
 
@@ -151,7 +151,7 @@ describe('the kernel carries it into the message', () => {
     const toolFns = {
       look: async () => recorded({ tool: 'look', exit: 1 }, [{ fileUri: 'file:///x.png', mimeType: 'image/png' }])
     }
-    const [message] = await executeTools({ mutators: new Set(), toolCalls: [call('look')], toolFns, emitter })
+    const [message] = await kernelOf({ toolCalls: [call('look')], toolFns, emitter })
     expect(textOf(message)).toBe(JSON.stringify({ tool: 'look', exit: 1 }))
     const end = seen.find(([type]) => type === 'tool_end')[1]
     expect(end.error).toBe(true)

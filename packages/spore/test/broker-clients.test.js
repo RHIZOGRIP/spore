@@ -9,7 +9,7 @@ import { promisify } from 'node:util'
 import { createStoreClient } from '../src/infra/store-client.js'
 import { createSourceClient } from '../src/infra/source-client.js'
 import { KEY_HEADER } from '../src/infra/socket-request.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { testSocket } from './fixtures/model-server.js'
 
 const KEY = 'k'.repeat(64)
 
@@ -26,7 +26,7 @@ afterEach(async () => {
 
 const serve = async (answer) => {
   const seen = []
-  socketPath = brokerSocketPath('clients')
+  socketPath = testSocket('clients')
   server = http.createServer((req, res) => {
     const chunks = []
     req.on('data', chunk => chunks.push(chunk))
@@ -65,7 +65,7 @@ describe('the store client', () => {
   })
 
   it('gives up on a request the turn abandons, even when the socket never answers', async () => {
-    socketPath = brokerSocketPath('clients')
+    socketPath = testSocket('clients')
     server = http.createServer(() => {})
     await new Promise(resolve => server.listen(socketPath, resolve))
     const stop = new AbortController()
@@ -79,7 +79,7 @@ describe('the store client', () => {
   })
 
   it('says the store is unreachable when nothing listens', async () => {
-    const store = createStoreClient({ socketPath: brokerSocketPath('nobody'), key: KEY })
+    const store = createStoreClient({ socketPath: testSocket('nobody'), key: KEY })
     await expect(store.holds(4, ['a'])).rejects.toMatchObject({ type: 'BROKER_UNREACHABLE' })
   })
 })

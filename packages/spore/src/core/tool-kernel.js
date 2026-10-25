@@ -12,10 +12,6 @@
 import { isRecorded, readOutcome } from './call-record.js'
 import { RECORD, REFUSED, mark } from './marks.js'
 import { isRefusal, refuse, refusalText, refusedResult } from './refusal.js'
-import { silent } from '../observability/logger.js'
-
-const noEmit = { emit () {}, on () {} }
-const noDescription = () => ({})
 
 const resultOf = (raw) => {
   if (isRefusal(raw)) return { text: refusalText(raw), images: [], refused: true, record: false }
@@ -121,13 +117,14 @@ async function executeSingle (tc, { toolFns, describe, emitter, signal, logger }
  * @param {object} opts
  * @param {Array}  opts.toolCalls   — the tool calls to run
  * @param {object} opts.toolFns     — { name: async (args, { signal }) => string | a call record | a refusal }
- * @param {object} [opts.emitter]   — event emitter
+ * @param {Function} opts.describe — (name, args) => { title, category, detail }, carried on `tool_start`
+ * @param {object} opts.emitter   — event emitter
  * @param {Set}    opts.mutators    — tool names that mutate state (serial execution)
  * @param {AbortSignal} [opts.signal] — parent abort signal
- * @param {object} [opts.logger]
+ * @param {object} opts.logger
  * @returns {Promise<Array<{role, toolCallId, toolName, content}>>}
  */
-export async function executeTools ({ toolCalls, toolFns, describe = noDescription, emitter = noEmit, mutators, signal, logger = silent }) {
+export async function executeTools ({ toolCalls, toolFns, describe, emitter, mutators, signal, logger }) {
   if (!toolCalls.length) return []
 
   const ctx = { toolFns, describe, emitter, signal, logger }

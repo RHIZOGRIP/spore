@@ -532,8 +532,6 @@ export function list ({ where, disk = false, configFile = CONFIG_FILE } = {}) {
   }
 }
 
-export { billingFor }
-
 /** What `send` and `fork` print when a turn starts: the model, the tools, the limits, and whether it runs unconfined. */
 export function grantOf (ws) {
   const definition = sporeDefinition(ws)

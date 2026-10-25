@@ -15,7 +15,7 @@ const spore = (name) => {
   return ws
 }
 
-const event = (ws, seq, fields) => appendEvents(ws, [{ v: 1, seq, at: 't', runId: 'r1', ...fields }])
+const event = (ws, fields) => appendEvents(ws, [{ v: 1, at: 't', runId: 'r1', ...fields }])
 const turn = (ws, record) => appendTurn(ws, { startedAt: 't', ...record })
 
 // Takes items off a follower until `count` have come or `ms` have passed. A `next()` still
@@ -50,10 +50,10 @@ afterEach(() => {
 describe('reading the event log from where a follower stopped', () => {
   it('carries on from its position, and reads only what is new', () => {
     const ws = spore('a')
-    event(ws, 1, { event: 'round', index: 0 })
+    event(ws, { event: 'round', index: 0 })
     const first = readEvents(ws, { after: 0 })
     expect(first.map(e => e.seq)).toEqual([1])
-    event(ws, 2, { event: 'round', index: 1 })
+    event(ws, { event: 'round', index: 1 })
     expect(readEvents(ws, { after: first.at(-1).seq }).map(e => e.seq)).toEqual([2])
   })
 })
@@ -78,15 +78,15 @@ describe('following many spores', () => {
   it('starts where each spore is, and yields what happens after', async () => {
     const a = spore('a')
     const b = spore('b')
-    event(a, 1, { event: 'round', index: 0 })
+    event(a, { event: 'round', index: 0 })
     const stop = new AbortController()
     const take = reader(watchAll([a, b], { signal: stop.signal, tick: 200 }))
 
     expect(await take(1, 300)).toEqual([])
 
-    event(b, 1, { event: 'stream', kind: 'message', delta: 'hel' })
+    event(b, { event: 'stream', kind: 'message', delta: 'hel' })
     const said = enqueue(b, 'hello').inbox
-    event(b, 2, { event: 'complete', output: 'hi' })
+    event(b, { event: 'complete', output: 'hi' })
     turn(b, { runId: 'r1', stopReason: 'answer', concluded: true, output: 'hi', inboxTo: said })
 
     const items = await take(4)
@@ -100,8 +100,8 @@ describe('following many spores', () => {
 
   it('carries on from saved cursors without repeating anything', async () => {
     const a = spore('a')
-    event(a, 1, { event: 'round', index: 0 })
-    event(a, 2, { event: 'round', index: 1 })
+    event(a, { event: 'round', index: 0 })
+    event(a, { event: 'round', index: 1 })
     const stop = new AbortController()
     const take = reader(watchAll([a], { cursors: { [a]: { seq: 1, turn: 0, database: databaseOf(a) } }, signal: stop.signal, tick: 200 }))
     const items = await take(2, 600)
@@ -118,7 +118,7 @@ describe('following many spores', () => {
     const b = spore('b')
     followed.push(b)
     await new Promise(resolve => setTimeout(resolve, 250))
-    event(b, 1, { event: 'round', index: 0 })
+    event(b, { event: 'round', index: 0 })
     const items = await first
     stop.abort()
     expect(items.map(i => i.ws)).toEqual([b])
@@ -131,7 +131,7 @@ describe('following many spores', () => {
     const pending = take(1, 5000)
     await new Promise(resolve => setTimeout(resolve, 100))
     const at = Date.now()
-    event(a, 1, { event: 'round', index: 0 })
+    event(a, { event: 'round', index: 0 })
     const items = await pending
     stop.abort()
     expect(items).toHaveLength(1)

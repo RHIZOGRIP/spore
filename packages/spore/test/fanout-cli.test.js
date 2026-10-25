@@ -17,8 +17,7 @@ import { promisify } from 'node:util'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer, suppliedKey } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { createModelServer, testSocket, suppliedKey } from './fixtures/model-server.js'
 import { writeTurnRecords } from '../src/core/spore-dir.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
@@ -62,7 +61,7 @@ const fanout = async (args) => {
 const start = async (reply) => {
   broker = createModelServer({
     mo: scriptedMo(reply),
-    socketPath: brokerSocketPath('fanout-test'),
+    socketPath: testSocket('fanout-test'),
     limit: 10,
     key: suppliedKey(root)
   })

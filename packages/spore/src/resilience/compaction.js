@@ -73,8 +73,6 @@ Be brief but complete. Use bullet points.`
  * @returns {Array} compacted messages (may be same array if no compaction needed)
  */
 export async function compactHistory (messages, { model, contextLimit, budget: workingSet, sent = null, onStarted, onCompacted, onFailed, onCost, signal, logger = silent } = {}) {
-  if (!model) return messages
-
   const budget = historyBound(contextLimit, workingSet)
   const estimated = estimateTokens(messages)
 

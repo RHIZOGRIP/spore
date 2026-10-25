@@ -16,8 +16,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer, startGate, suppliedKey } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { createModelServer, testSocket, startGate, suppliedKey } from './fixtures/model-server.js'
 import { readTurns } from '../src/core/spore-dir.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
@@ -136,7 +135,7 @@ describe('a turn stopped from outside', () => {
 
   it('cleans up after a detached cell when the pid it printed is signalled', async () => {
     // Started as an agent starts one, so the model socket is one standing where the runner's would.
-    const socket = createModelServer({ mo: scriptedMo(async () => new Promise(() => {})), socketPath: brokerSocketPath('cancel-turn-cell'), key: suppliedKey(ws) })
+    const socket = createModelServer({ mo: scriptedMo(async () => new Promise(() => {})), socketPath: testSocket('cancel-turn-cell'), key: suppliedKey(ws) })
     await socket.listen()
     onTestFinished(() => socket.close())
     mkdirSync(resolve(ws, 'data/detached'), { recursive: true })

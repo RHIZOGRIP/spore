@@ -2,12 +2,13 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loop } from '../src/core/loop.js'
+import { loopOf } from './fixtures/collaborators.js'
 import { WRAP, marked } from '../src/core/marks.js'
-import { CALL_OPTIONS } from '../src/infra/model-client.js'
+import { textOf } from '../src/core/message.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.loop-workspace')
+const ENVELOPE = new Set(['tools', 'signal', 'parentSpan', 'realtimeHandler', 'idleHandler', 'bufferOpts', 'reasoningSummaries', 'rawReasoning'])
 
 /* ── Mock model factory ──────────────────────────────────────────── */
 
@@ -64,7 +65,7 @@ describe('a cell\'s spend against its parent\'s ceiling', () => {
   it('counts what its children spent as its own', async () => {
     const m = mockModel([{ status: 'completed', output: 'done' }])
     const ledger = { own: 0, children: 0.6 }
-    const res = await loop({ mutators: new Set(), limits: LIMITS, ledger, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: LIMITS, ledger, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     // The parent itself has spent nothing; the tree has spent past the hard bound.
     expect(res.stopReason).toBe('hard:cost')
     expect(res.spent.cost).toBeCloseTo(0.6)
@@ -73,7 +74,7 @@ describe('a cell\'s spend against its parent\'s ceiling', () => {
 
   it('leaves a parent with cheap children alone', async () => {
     const m = mockModel([{ status: 'completed', output: 'done' }])
-    const res = await loop({ mutators: new Set(), limits: LIMITS, ledger: { own: 0, children: 0.01 }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: LIMITS, ledger: { own: 0, children: 0.01 }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     expect(res.stopReason).toBe('answer')
   })
 })
@@ -89,11 +90,9 @@ describe('conversation prefix caching', () => {
 
   it('marks the last message so mohdel caches the conversation', async () => {
     const m = mockModel([completed('ok')])
-    await loop({
-      mutators: new Set(),
+    await loopOf({
       limits: { rounds: { soft: 10, hard: 12 } },
       model: m,
-      system: 'sys',
       prompt: 'next',
       tools: TOOLS,
       toolFns: makeToolFns(),
@@ -108,11 +107,9 @@ describe('conversation prefix caching', () => {
 
   it('leaves the live transcript as strings', async () => {
     const m = mockModel([completed('ok')])
-    const res = await loop({
-      mutators: new Set(),
+    const res = await loopOf({
       limits: { rounds: { soft: 10, hard: 12 } },
       model: m,
-      system: 'sys',
       prompt: 'next',
       tools: TOOLS,
       toolFns: makeToolFns(),
@@ -127,11 +124,9 @@ describe('conversation prefix caching', () => {
 
   it('does not mark a turn with no history to cache', async () => {
     const m = mockModel([completed('ok')])
-    await loop({
-      mutators: new Set(),
+    await loopOf({
       limits: { rounds: { soft: 10, hard: 12 } },
       model: m,
-      system: 'sys',
       prompt: 'only message',
       tools: TOOLS,
       toolFns: makeToolFns(),
@@ -139,21 +134,6 @@ describe('conversation prefix caching', () => {
     })
     // One message pays the cache-write premium with nothing ever reading it back.
     expect(m.calls[0].prompt.at(-1).content).toBe('only message')
-  })
-
-  it('sends the history untouched when no ttl is asked for', async () => {
-    const m = mockModel([completed('ok')])
-    await loop({
-      mutators: new Set(),
-      limits: { rounds: { soft: 10, hard: 12 } },
-      model: m,
-      system: 'sys',
-      prompt: 'next',
-      tools: TOOLS,
-      toolFns: makeToolFns(),
-      initialMessages: history
-    })
-    expect(m.calls[0].prompt.at(-1).content).toBe('next')
   })
 })
 
@@ -171,7 +151,7 @@ describe('tool loop', () => {
 
   it('returns immediately on completed (no tool calls)', async () => {
     const m = mockModel([completed('The answer is 42')])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     expect(res.output).toBe('The answer is 42')
     expect(res.rounds).toBe(1)
     expect(res.messages).toHaveLength(1) // just the user message
@@ -179,7 +159,7 @@ describe('tool loop', () => {
 
   it('nudges and recovers when a completion is empty', async () => {
     const m = mockModel([completed(''), completed('Right')])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     expect(res.output).toBe('Right')
     expect(res.rounds).toBe(2)
     // user → (empty turn placeholder + nudge) → recovered answer
@@ -189,7 +169,7 @@ describe('tool loop', () => {
 
   it('gives up after the empty-retry cap (no infinite loop)', async () => {
     const m = mockModel([completed(''), completed('  '), completed(null)])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     expect(res.output).toBeNull()
     expect(m.calls).toHaveLength(3) // original + MAX_EMPTY_RETRIES (2)
   })
@@ -199,7 +179,7 @@ describe('tool loop', () => {
       toolUse([{ name: 'echo', args: { text: 'pong' } }]),
       completed('Done')
     ])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     expect(res.output).toBe('Done')
     expect(res.rounds).toBe(2)
     // user → assistant (tool_calls) → tool_result → (second call yields completed)
@@ -216,7 +196,7 @@ describe('tool loop', () => {
       toolUse([{ name: 'echo', args: { text: 'step3' } }]),
       completed('All done')
     ])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     expect(res.output).toBe('All done')
     expect(res.rounds).toBe(4)
   })
@@ -231,7 +211,7 @@ describe('tool loop', () => {
       ]),
       completed('Got both')
     ])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     expect(res.output).toBe('Got both')
     const toolResults = res.messages.filter(m => m.role === 'tool')
     expect(toolResults).toHaveLength(2)
@@ -246,7 +226,7 @@ describe('tool loop', () => {
       toolUse([{ name: 'read', args: { path: 'readme.txt' } }]),
       completed('File says hello')
     ])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     const result = res.messages.find(m => m.role === 'tool')
     expect(result.content).toBe('hello world')
   })
@@ -256,7 +236,7 @@ describe('tool loop', () => {
       toolUse([{ name: 'write', args: { path: 'created.txt', content: 'new file' } }]),
       completed('Wrote it')
     ])
-    await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     expect(readFileSync(resolve(WS, 'created.txt'), 'utf8')).toBe('new file')
   })
 
@@ -267,7 +247,7 @@ describe('tool loop', () => {
       toolUse([{ name: 'fail', args: {} }]),
       completed('I see the error')
     ])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     const result = res.messages.find(m => m.role === 'tool')
     expect(result.content).toBe('error: boom')
     expect(res.output).toBe('I see the error')
@@ -278,7 +258,7 @@ describe('tool loop', () => {
       toolUse([{ name: 'read', args: { path: 'nope.txt' } }]),
       completed('File not found')
     ])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     const result = res.messages.find(m => m.role === 'tool')
     expect(result.content).toMatch(/error:.*ENOENT/)
   })
@@ -286,8 +266,8 @@ describe('tool loop', () => {
   // ── Max turns ─────────────────────────────────────────────────
 
   const busy = (n) => mockModel(Array.from({ length: n }, () => toolUse([{ name: 'echo', args: { text: 'loop' } }])))
-  const run = (over) => loop({
-    mutators: new Set(), system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), ...over
+  const run = (over) => loopOf({
+    prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), ...over
   })
 
   it('stops at the hard round limit with nothing to show', async () => {
@@ -447,7 +427,6 @@ describe('tool loop', () => {
   })
 
   it('refuses to run without declared round limits', async () => {
-    await expect(run({ model: mockModel([completed('x')]) })).rejects.toThrow(/limits.rounds/)
     await expect(run({ model: mockModel([completed('x')]), limits: { rounds: { soft: 3 } } })).rejects.toThrow(/limits.rounds/)
   })
 
@@ -458,7 +437,7 @@ describe('tool loop', () => {
       toolUse([{ name: 'echo', args: { text: 'x' } }]),
       completed('done')
     ])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'Be brief', prompt: 'hi', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: [{ text: 'Be brief' }], prompt: 'hi', tools: TOOLS, toolFns: makeToolFns() })
 
     // System prompt passed on every call
     expect(m.calls[0].prompt[0]).toEqual({ role: 'system', content: [{ type: 'text', text: 'Be brief' }] })
@@ -479,7 +458,7 @@ describe('tool loop', () => {
       toolUse([{ name: 'echo', args: { text: 'hi' } }]),
       completed('ok')
     ])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     const result = res.messages.find(m => m.role === 'tool')
     expect(result.toolCallId).toBe('call_0')
     expect(result.toolName).toBe('echo')
@@ -494,11 +473,9 @@ describe('tool loop', () => {
       toolUse([{ name: 'echo', args: { text: 'x' } }, { name: 'exec', args: { command: 'ls' } }]),
       completed('ok')
     ])
-    await loop({
-      mutators: new Set(),
+    await loopOf({
       limits: { rounds: { soft: 10, hard: 12 } },
       model: m,
-      system: 'sys',
       prompt: 'q',
       tools: TOOLS,
       toolFns: makeToolFns(),
@@ -516,7 +493,7 @@ describe('tool loop', () => {
       { status: 'tool_use', output: '', toolCalls: [{ id: 'c0', name: 'echo', arguments: { text: 'x' } }], inputTokens: 100, outputTokens: 20, thinkingTokens: 5 },
       { status: 'completed', output: 'done', inputTokens: 150, outputTokens: 30, thinkingTokens: 0 }
     ])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     expect(res.usage.input).toBe(250)
     expect(res.usage.output).toBe(50)
     expect(res.usage.thinking).toBe(5)
@@ -529,7 +506,7 @@ describe('tool loop', () => {
     ])
     const seen = []
     const emitter = { emit: (event, data) => { if (event === 'estimate_drift') seen.push(data) }, on () {} }
-    await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), emitter })
+    await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), emitter })
     expect(seen).toHaveLength(1)
     expect(seen[0]).toMatchObject({ round: 0, sent: 301_000 })
     expect(seen[0].estimated).toBeLessThan(2_000)
@@ -538,8 +515,8 @@ describe('tool loop', () => {
   it('asks the model for nothing the call does not carry', async () => {
     const m = mockModel([completed('done')])
     const emitter = { emit () {}, on () {} }
-    await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), emitter })
-    expect(Object.keys(m.calls[0].opts).filter(name => !CALL_OPTIONS.has(name))).toEqual([])
+    await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), emitter })
+    expect(Object.keys(m.calls[0].opts).filter(name => !ENVELOPE.has(name))).toEqual([])
   })
 
   it('carries what mohdel says of a silent provider as mohdel_idle', async () => {
@@ -552,7 +529,7 @@ describe('tool loop', () => {
     }
     const seen = []
     const emitter = { emit: (event, data) => { if (event === 'mohdel_idle' || event === 'usage') seen.push([event, data]) }, on () {} }
-    await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), emitter })
+    await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), emitter })
     expect(seen[0]).toEqual(['mohdel_idle', { sinceMs: 30_000 }])
     expect(seen[1][1]).toMatchObject({ idleEventCount: 1, idleMaxMs: 30_000 })
   })
@@ -561,13 +538,13 @@ describe('tool loop', () => {
     const m = mockModel([{ status: 'completed', output: 'done', inputTokens: 300 }])
     const seen = []
     const emitter = { emit: (event) => { if (event === 'estimate_drift') seen.push(event) }, on () {} }
-    await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), emitter })
+    await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), emitter })
     expect(seen).toEqual([])
   })
 
   it('returns zero usage when model omits token fields', async () => {
     const m = mockModel([completed('hi')])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     expect(res.usage.input).toBe(0)
     expect(res.usage.output).toBe(0)
     expect(res.usage.thinking).toBe(0)
@@ -579,7 +556,7 @@ describe('tool loop', () => {
     const controller = new AbortController()
     controller.abort()
     const m = mockModel([completed('hi')])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), signal: controller.signal })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), signal: controller.signal })
     expect(res.cancelled).toBe(true)
     expect(res.rounds).toBe(0)
     expect(m.calls.length).toBe(0)
@@ -601,7 +578,7 @@ describe('tool loop', () => {
       if (callCount === 1) controller.abort() // abort after first answer
       return res
     }
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), signal: controller.signal })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), signal: controller.signal })
     expect(res.cancelled).toBe(true)
     expect(res.rounds).toBeLessThan(3)
   })
@@ -620,10 +597,9 @@ describe('tool loop', () => {
       { name: 'write', args: { path: 'after.txt', content: 'x' } },
       { name: 'quiet', args: { because: 'nothing new' } }
     ])])
-    const res = await loop({
+    const res = await loopOf({
       limits: { rounds: { soft: 10, hard: 12 } },
       model: m,
-      system: 'sys',
       prompt: 'q',
       tools: TOOLS,
       toolFns,
@@ -640,7 +616,7 @@ describe('tool loop', () => {
   it('completes normally when signal is never fired', async () => {
     const controller = new AbortController()
     const m = mockModel([completed('done')])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), signal: controller.signal })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), signal: controller.signal })
     expect(res.cancelled).toBeUndefined()
     expect(res.output).toBe('done')
   })
@@ -653,11 +629,9 @@ describe('tool loop', () => {
       toolUse([{ name: 'echo', args: { text: 'hi' } }]),
       completed('done')
     ])
-    await loop({
-      mutators: new Set(),
+    await loopOf({
       limits: { rounds: { soft: 10, hard: 12 } },
       model: m,
-      system: 'sys',
       prompt: 'q',
       tools: TOOLS,
       toolFns: makeToolFns(),
@@ -677,11 +651,9 @@ describe('tool loop', () => {
       toolUse([{ name: 'echo', args: { text: 'x' } }]),
       completed('done')
     ])
-    const res = await loop({
-      mutators: new Set(),
+    const res = await loopOf({
       limits: { rounds: { soft: 10, hard: 12 } },
       model: m,
-      system: 'sys',
       prompt: 'q',
       tools: TOOLS,
       toolFns: makeToolFns(),
@@ -692,21 +664,9 @@ describe('tool loop', () => {
     }
   })
 
-  it('works normally when onMessage is omitted', async () => {
-    const m = mockModel([completed('ok')])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
-    expect(res.output).toBe('ok')
-  })
-
   // ── The system prompt is the first message ───────────────────────────────
   // Session memory composition happens in runSpore (composeSystem); loop.js sends it as a
   // wire `system` message, one text part per block.
-
-  it('sends a string system as one text part', async () => {
-    const m = mockModel([completed('done')])
-    await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'Be brief', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
-    expect(m.calls[0].prompt[0]).toEqual({ role: 'system', content: [{ type: 'text', text: 'Be brief' }] })
-  })
 
   // The breakpoint travels with its block: a flattened system prompt loses every one.
   it('sends each composed block as a text part, keeping its cache marker', async () => {
@@ -715,18 +675,11 @@ describe('tool loop', () => {
       { text: 'identity', cache: '5m' },
       { text: 'memory' }
     ]
-    await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: blocks, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
+    await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: blocks, prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
     expect(m.calls[0].prompt[0]).toEqual({
       role: 'system',
       content: [{ type: 'text', text: 'identity', cache: '5m' }, { type: 'text', text: 'memory' }]
     })
-  })
-
-  it('works without session memory', async () => {
-    const m = mockModel([completed('done')])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
-    expect(res.output).toBe('done')
-    expect(m.calls[0].prompt[0].content[0].text).toBe('sys')
   })
 
   // ── Initial messages (fork context) ───────────────────────────
@@ -737,7 +690,7 @@ describe('tool loop', () => {
       { role: 'assistant', content: 'prior answer' }
     ]
     const m = mockModel([completed('done')])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'new task', tools: TOOLS, toolFns: makeToolFns(), initialMessages: initial })
+    const res = await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'new task', tools: TOOLS, toolFns: makeToolFns(), initialMessages: initial })
     expect(res.messages[0].content).toBe('prior question')
     expect(res.messages[1].content).toBe('prior answer')
     expect(res.messages[2].content).toBe('new task')
@@ -746,16 +699,9 @@ describe('tool loop', () => {
   it('model receives initialMessages in first call', async () => {
     const initial = [{ role: 'assistant', content: 'context from parent' }]
     const m = mockModel([completed('done')])
-    await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'task', tools: TOOLS, toolFns: makeToolFns(), initialMessages: initial })
+    await loopOf({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, prompt: 'task', tools: TOOLS, toolFns: makeToolFns(), initialMessages: initial })
     const msgs = m.calls[0].prompt
-    expect(msgs[1].content).toBe('context from parent')
-    expect(msgs[2].content).toBe('task')
-  })
-
-  it('works without initialMessages (backward compat)', async () => {
-    const m = mockModel([completed('done')])
-    const res = await loop({ mutators: new Set(), limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns() })
-    expect(res.messages[0].content).toBe('q')
-    expect(res.messages).toHaveLength(1)
+    expect(textOf(msgs[1])).toBe('context from parent')
+    expect(textOf(msgs[2])).toBe('task')
   })
 })

@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest'
 
-import { loop } from '../src/core/loop.js'
+import { loopOf } from './fixtures/collaborators.js'
 import { compactionSummaryMessage } from '../src/resilience/compaction.js'
 
 const ROLES = new Set(['system', 'user', 'assistant', 'tool'])
@@ -73,16 +73,14 @@ describe('what the loop sends', () => {
       }
     }
 
-    const result = await loop({
-      mutators: new Set(),
+    const result = await loopOf({
       model,
       system: [{ text: 'identity', cache: '5m' }, { text: 'memory' }],
       prompt: 'go',
       initialMessages: history(),
       tools: [{ name: 'read', description: 'read a file', parameters: { type: 'object', properties: { path: { type: 'string' } } } }],
       toolFns: { read: async () => ({ content: 'saw it', images: [{ fileUri: 'file:///ws/data/a.png', mimeType: 'image/png' }] }) },
-      limits: { rounds: { soft: 1, hard: 5 } },
-      cacheTtl: '5m'
+      limits: { rounds: { soft: 1, hard: 5 } }
     })
 
     expect(result.output).toBe('done')
@@ -96,8 +94,10 @@ describe('what the loop sends', () => {
     // The retry is sent what recovery changed, not the prompt that overflowed.
     const text = (prompt) => JSON.stringify(prompt)
     expect(text(sent[1])).toMatch(/context was reduced to fit budget/)
-    expect(text(sent[0])).toMatch(/do task 0 and report/)
-    expect(text(sent[1])).not.toMatch(/do task 0 and report/)
+    const said = (prompt) => prompt.filter(msg => typeof msg.content === 'string').map(msg => msg.content)
+    expect(said(sent[0])).toContain('do task 0 and report back in full detail')
+    expect(said(sent[1])).not.toContain('do task 0 and report back in full detail')
+    expect(text(sent[1])).toMatch(/What was dropped, in brief:\\n\[Session context from earlier work\]\\n- do task 0/)
     expect(text(sent[2])).toMatch(/\[System: this turn has reached its rounds limit/)
   })
 })

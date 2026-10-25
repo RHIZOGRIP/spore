@@ -7,9 +7,8 @@ import { pauseSpores, unpauseSpores } from '../src/core/admission.js'
 import { runCell } from '../src/core/cell.js'
 import { cellsSince } from '../src/core/spore-dir.js'
 import { definitionWith } from '../src/testing.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { CONFIG_FILE } from '../src/library/config.js'
-import { createGate } from './fixtures/model-server.js'
+import { createGate, testSocket } from './fixtures/model-server.js'
 import { answers, scriptedMo } from './fixtures/scripted-model.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 
@@ -24,7 +23,7 @@ let ws
 const env = () => ({ PATH: process.env.PATH, HOME: process.env.HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME })
 
 beforeAll(async () => {
-  gate = createGate({ mo: scriptedMo((input) => reply(input)), socketPath: brokerSocketPath('cell-gate') })
+  gate = createGate({ mo: scriptedMo((input) => reply(input)), socketPath: testSocket('cell-gate') })
   await gate.listen()
   mkdirSync(dirname(CONFIG_FILE), { recursive: true })
   writeFileSync(CONFIG_FILE, JSON.stringify({ gate: gate.socketPath }))

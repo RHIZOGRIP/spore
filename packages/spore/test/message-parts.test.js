@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
 
 import { textOf } from '../src/core/message.js'
-import { mediaRoots } from '../src/core/media.js'
 import { compactIfNeeded, estimateTokens } from '../src/resilience/context-guard.js'
 import { compactHistory } from '../src/resilience/compaction.js'
 import { createSessionMemory } from '../src/resilience/session-memory.js'
+import { silent } from '../src/observability/logger.js'
 import { createLoopGuard } from '../src/resilience/loop-guard.js'
 import { sanitizeTranscript } from '../src/resilience/transcript.js'
 
@@ -74,7 +74,7 @@ describe('a message whose content is parts', () => {
   })
 
   it('does not crash session memory, which reads every role', () => {
-    const memory = createSessionMemory({})
+    const memory = createSessionMemory({ logger: silent })
     expect(() => memory.extract([
       { role: 'user', content: parts('a question worth keeping') },
       { role: 'assistant', content: parts('some reasoning worth keeping around here') },
@@ -92,16 +92,5 @@ describe('a message whose content is parts', () => {
       guard.record([{ toolName: 'read', toolCallId: 'c1', content: parts('exit 0') }])
     }
     expect(guard.stalled()).toMatchObject({ tool: 'read' })
-  })
-})
-
-describe('where a file:// image may be read from', () => {
-  it('is the workspace and its declared corpora, and nothing else', () => {
-    const roots = mediaRoots('/ws/triage', [{ name: 'papers', path: '/srv/pubmed' }])
-    expect(roots.split(':')).toEqual(['/ws/triage', '/srv/pubmed'])
-  })
-
-  it('is the workspace alone when nothing is granted', () => {
-    expect(mediaRoots('/ws/triage')).toBe('/ws/triage')
   })
 })

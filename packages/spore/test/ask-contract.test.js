@@ -67,11 +67,14 @@ const asksThenAnswers = (question = QUESTION) => {
 
 const run = (mo, over = {}) => runSpore({
   tools: TOOL_NAMES,
+  sandbox: false,
+  cacheTtl: '5m',
+  initialMessages: [],
   prompt: 'fix the build',
   workspace: WS,
   identity: 'You are a spore under test.',
   modelId: 'fake/model',
-  limits: { rounds: { soft: 10, hard: 12 } },
+  limits: { rounds: { soft: 10, hard: 12 }, cost: { soft: 100, hard: 100 }, wall: { soft: 600_000, hard: 600_000 } },
   mo,
   state: hostState(WS),
   ...over

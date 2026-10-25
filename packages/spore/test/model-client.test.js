@@ -5,8 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { createModelClient, IDLE_HEARTBEAT_MS } from '../src/infra/model-client.js'
 import { CALLER_HEADER, MODEL_CALL_HEADER, KEY_HEADER, PRECURSOR_CALLER, ROOT_CALLER } from '../src/infra/socket-request.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
-import { createModelServer } from './fixtures/model-server.js'
+import { createModelServer, testSocket } from './fixtures/model-server.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 
 const MODEL = 'anthropic/claude-haiku-4-5'
@@ -29,7 +28,7 @@ afterEach(async () => {
 })
 
 const serve = async (reply, opts = {}) => {
-  server = createModelServer({ mo: scriptedMo(reply), socketPath: brokerSocketPath('model-client'), key: KEY, ...opts })
+  server = createModelServer({ mo: scriptedMo(reply), socketPath: testSocket('model-client'), key: KEY, ...opts })
   await server.listen()
   return server
 }
@@ -191,7 +190,7 @@ describe('the model client', () => {
   it('embeds through the socket with the tree key, and the tree counts it as spend but not a round', async () => {
     const embedding = 'openai/text-embedding-3-small'
     const mo = { use: () => ({ embed: async (input) => ({ status: 'completed', vectors: input.map(() => [1, 0]), dimensions: 2, inputType: null, inputTokens: 3, cost: 0.002 }) }) }
-    server = createModelServer({ mo, socketPath: brokerSocketPath('model-client'), key: KEY })
+    server = createModelServer({ mo, socketPath: testSocket('model-client'), key: KEY })
     await server.listen()
     const root = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS, tracksTree: true })
 

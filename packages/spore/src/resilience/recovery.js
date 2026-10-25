@@ -28,13 +28,14 @@ const BACKOFF_BASE_MS = 1000
  * @param {object} model — mohdel model proxy
  * @param {object} opts
  * @param {Array} opts.messages — messages array (for compaction on overflow)
- * @param {object} [opts.logger]
+ * @param {object} opts.sessionMemory — keeps what a dropped turn-group said
+ * @param {object} opts.logger
+ * @param {object} opts.emitter
  * @returns {{ answer: Function }}
  */
-export function withRecovery (model, { messages, sessionMemory, logger, emitter, signal } = {}) {
+export function withRecovery (model, { messages, sessionMemory, logger, emitter, signal }) {
   if (!model) throw new Error('withRecovery: model is required')
-  const log = logger || { debug () {}, info () {}, warn () {}, error () {} }
-  const emit = (type, data) => emitter?.emit?.(type, data)
+  const emit = (type, data) => emitter.emit(type, data)
 
   return {
     answer: async (prompt, opts) => {
@@ -59,13 +60,13 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
           // tell whether the retry fired, succeeded silently, or was
           // killed by the parent.
           if (attempt > 0) {
-            log.debug({ attempt, maxRetries: MAX_RETRIES }, '[recovery] retry firing')
+            logger.debug({ attempt, maxRetries: MAX_RETRIES }, '[recovery] retry firing')
           }
           // Built again on every attempt: an overflow is answered by compacting or dropping
           // `messages`, and a prompt taken once would retry exactly what overflowed.
           const result = await model.answer(prompt(), opts)
           if (attempt > 0) {
-            log.info({ attempt }, '[recovery] retry succeeded')
+            logger.info({ attempt }, '[recovery] retry succeeded')
           }
           return result
         } catch (err) {
@@ -75,7 +76,7 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
           // provider cooldown outlasts every backoff step, and a wait is not a failure, so it
           // spends none of the retries. The turn's wall still bounds it, through `signal`.
           if (err.retryable && Number.isFinite(err.retryAfterMs)) {
-            log.warn({ err, delay: err.retryAfterMs }, '[recovery] told how long to wait, waiting')
+            logger.warn({ err, delay: err.retryAfterMs }, '[recovery] told how long to wait, waiting')
             emit('recovery', { action: 'wait', reason: err.type || 'RETRYABLE_ERROR', delay: err.retryAfterMs })
             await interruptibleSleep(err.retryAfterMs, signal)
             continue
@@ -84,7 +85,7 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
           const kind = classify(err)
 
           if (kind === 'overflow') {
-            log.warn({ err, overflow: overflowDrops + 1 }, '[recovery] context overflow — compacting')
+            logger.warn({ err, overflow: overflowDrops + 1 }, '[recovery] context overflow — compacting')
             const contextLimit = effectiveContextLimit(model.info?.())
 
             if (contextLimit && messages) {
@@ -101,15 +102,12 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
               }
 
               // Stage 2: extract session memory + drop oldest turn-group
-              const beforeDrop = sessionMemory
-                ? (msgs) => sessionMemory.extract(msgs)
-                : undefined
-              const dropped = dropOldestTurnGroup(messages, { beforeDrop })
+              const dropped = dropOldestTurnGroup(messages, { beforeDrop: (msgs) => sessionMemory.extract(msgs) })
               if (dropped > 0) {
                 overflowDrops++
-                const kept = sessionMemory?.format?.() || null
-                const factCount = sessionMemory?.getFacts?.()?.length || 0
-                log.warn({ err, dropped, remaining: messages.length }, '[recovery] dropped messages (turn-group)')
+                const kept = sessionMemory.format()
+                const factCount = sessionMemory.getFacts().length
+                logger.warn({ err, dropped, remaining: messages.length }, '[recovery] dropped messages (turn-group)')
                 emit('recovery', { action: 'drop', dropped, remaining: messages.length, factCount })
                 // The facts go in the notice, not just their number: they came from
                 // messages this turn can no longer see, so nothing else carries them.
@@ -120,7 +118,7 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
                     : '[System: context was reduced to fit budget. Re-read anything you need in full.]'
                 }, CONTEXT_NOTICE))
                 if (overflowDrops >= MAX_OVERFLOW_DROPS) {
-                  log.error({ limit: MAX_OVERFLOW_DROPS }, '[recovery] overflow drop limit reached')
+                  logger.error({ limit: MAX_OVERFLOW_DROPS }, '[recovery] overflow drop limit reached')
                   throw err
                 }
                 continue
@@ -134,7 +132,7 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
           if (kind === 'cancelled') throw err
 
           if (kind === 'fatal') {
-            log.error({ err }, '[recovery] fatal error')
+            logger.error({ err }, '[recovery] fatal error')
             throw err
           }
 
@@ -142,7 +140,7 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
             attempt++
             if (attempt > MAX_RETRIES) throw err
             const delay = BACKOFF_BASE_MS * Math.pow(2, attempt - 1)
-            log.warn({ err, delay, attempt, maxRetries: MAX_RETRIES }, '[recovery] retryable error, waiting')
+            logger.warn({ err, delay, attempt, maxRetries: MAX_RETRIES }, '[recovery] retryable error, waiting')
             emit('recovery', { action: 'retry', reason: err.type || 'RETRYABLE_ERROR', attempt, delay })
             await interruptibleSleep(delay, signal)
             continue
@@ -151,7 +149,7 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
           // Unknown — retry once
           if (attempt === 0) {
             attempt++
-            log.warn({ err }, '[recovery] unexpected error, retrying once')
+            logger.warn({ err }, '[recovery] unexpected error, retrying once')
             emit('recovery', { action: 'retry', reason: err.type || 'UNEXPECTED_ERROR', attempt, delay: BACKOFF_BASE_MS })
             await interruptibleSleep(BACKOFF_BASE_MS, signal)
             continue

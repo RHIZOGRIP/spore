@@ -1,24 +1,11 @@
 /**
- * Media an agent may look at: what a file is, and where one may be read from.
+ * Media an agent may look at: what a file is.
  *
  * Contract: ARCHITECTURE.md, "Looking at a picture is a read". A file is identified by
  * its first bytes rather than its name,
  * because an agent downloads one and the extension is whatever the URL ended in — or
  * absent. The four formats below are the ones every vision model accepts.
  */
-
-import { delimiter } from 'node:path'
-
-/**
- * What mohdel may read a `file://` image from, as `MOHDEL_MEDIA_ROOTS` spells it.
- *
- * The supervisor holds the provider keys and resolves the path, so this is the only
- * mohdel-side bound on what an agent can name: in-process every call is trusted media and
- * an unset variable means any readable path; behind the gate it is what permits the read.
- */
-export function mediaRoots (ws, reads = []) {
-  return [ws, ...reads.map(r => r.path)].join(delimiter)
-}
 
 const MAGIC = [
   { mime: 'image/png', bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },

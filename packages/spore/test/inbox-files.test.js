@@ -4,12 +4,12 @@ import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { headAndTail } from '../src/core/preview.js'
-import { enqueue, INLINE_MESSAGE_BYTES, readInbox, readInboxFrom, saidOf } from '../src/core/spore-dir.js'
+import { enqueue, readInbox, readInboxFrom, saidOf } from '../src/core/spore-dir.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.inbox-files-workspace')
 
-const long = (n = INLINE_MESSAGE_BYTES + 1000) => 'x'.repeat(n)
+const long = (n = 8192 + 1000) => 'x'.repeat(n)
 const only = (ws) => readInbox(ws).at(-1)
 
 beforeEach(() => {
@@ -35,7 +35,7 @@ describe('a message too long to carry', () => {
     enqueue(WS, long())
     const { bodyPath, bodyBytes, text } = only(WS)
     expect(text).toBeNull()
-    expect(bodyBytes).toBe(INLINE_MESSAGE_BYTES + 1000)
+    expect(bodyBytes).toBe(8192 + 1000)
     expect(readFileSync(resolve(WS, bodyPath), 'utf8')).toBe(long())
   })
 

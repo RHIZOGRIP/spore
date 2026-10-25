@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { createCallTrail, readCalls } from '../src/core/call-record.js'
 import { appendTranscript, hostState, readTranscript } from '../src/core/spore-dir.js'
 import { REFUSED, marked } from '../src/core/marks.js'
-import { executeTools } from '../src/core/tool-kernel.js'
+import { kernelOf } from './fixtures/collaborators.js'
 import { makeTools, recordRefusals } from '../src/tools/make-tools.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -34,8 +34,7 @@ const records = () => readCalls(WS, 'test').map(entry => entry.record)
 // disagreed, which is the thing call records exist to prevent.
 describe('a refusal is a call, however the tool said no', () => {
   it('records a refusal that was thrown, not returned', async () => {
-    const [result] = await executeTools({
-      mutators: new Set(),
+    const [result] = await kernelOf({
       toolCalls: [{ id: 'a', name: 'read', arguments: { path: '/etc/hostname' } }],
       toolFns: fns
     })
@@ -45,8 +44,7 @@ describe('a refusal is a call, however the tool said no', () => {
   })
 
   it('tells the agent what to do instead of naming the rule it broke', async () => {
-    const [result] = await executeTools({
-      mutators: new Set(),
+    const [result] = await kernelOf({
       toolCalls: [{ id: 'a', name: 'read', arguments: { path: '/etc/hostname' } }],
       toolFns: fns
     })
@@ -57,8 +55,7 @@ describe('a refusal is a call, however the tool said no', () => {
 
   it('records a symlink that leaves the workspace', async () => {
     symlinkSync('/etc', resolve(WS, 'data', 'elsewhere'))
-    const [result] = await executeTools({
-      mutators: new Set(),
+    const [result] = await kernelOf({
       toolCalls: [{ id: 'a', name: 'read', arguments: { path: 'data/elsewhere/hostname' } }],
       toolFns: fns
     })
@@ -71,8 +68,7 @@ describe('a refusal is a call, however the tool said no', () => {
   // that they had already been recorded.
   it('records every refusal in a batch that also contains a success', async () => {
     writeFileSync(resolve(WS, 'data', 'real.txt'), 'here\n')
-    const results = await executeTools({
-      mutators: new Set(),
+    const results = await kernelOf({
       toolFns: fns,
       toolCalls: [
         { id: 'a', name: 'read', arguments: { path: '/etc/hostname' } },
@@ -90,7 +86,7 @@ describe('a refusal is a call, however the tool said no', () => {
 describe('a result that only reads like a refusal', () => {
   it('is what the tool returned: an ask whose question begins "error:" is one call, and not refused', async () => {
     const question = 'error: the build fails on node 22 — which version should I target?'
-    const [result] = await executeTools({ mutators: new Set(), toolCalls: [{ id: 'a', name: 'ask', arguments: { question } }], toolFns: fns })
+    const [result] = await kernelOf({ toolCalls: [{ id: 'a', name: 'ask', arguments: { question } }], toolFns: fns })
     expect(result.content).toBe(question)
     expect(marked(result, REFUSED)).toBe(false)
     expect(records().map(r => [r.tool, Boolean(r.refused)])).toEqual([['ask', false]])
@@ -102,7 +98,7 @@ describe('a result that only reads like a call record', () => {
     const question = '{"exit":1,"question":"Which file?"}'
     const ended = []
     const emitter = { emit: (type, data) => { if (type === 'tool_end') ended.push(data) }, on () {} }
-    const [result] = await executeTools({ mutators: new Set(), toolCalls: [{ id: 'a', name: 'ask', arguments: { question } }], toolFns: fns, emitter })
+    const [result] = await kernelOf({ toolCalls: [{ id: 'a', name: 'ask', arguments: { question } }], toolFns: fns, emitter })
     expect(result.content).toBe(question)
     expect(ended).toEqual([expect.objectContaining({ name: 'ask', error: false })])
   })
@@ -110,8 +106,7 @@ describe('a result that only reads like a call record', () => {
 
 describe('a refusal in a transcript read back', () => {
   it('is still a refusal, and text that reads like one still is not', async () => {
-    const results = await executeTools({
-      mutators: new Set(),
+    const results = await kernelOf({
       toolFns: fns,
       toolCalls: [
         { id: 'a', name: 'read', arguments: { path: '/etc/hostname' } },

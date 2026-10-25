@@ -5,8 +5,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer, startGate, suppliedKey } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { createModelServer, testSocket, startGate, suppliedKey } from './fixtures/model-server.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { readLock, readTurns } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
@@ -79,7 +78,7 @@ describe('a cell that is stopped', () => {
     mkdirSync(cell, { recursive: true })
     writeFileSync(resolve(cell, 'in.md'), 'tick')
     // Started as an agent starts one, so the model socket is one standing where the runner's would.
-    const socket = createModelServer({ mo: ticking, socketPath: brokerSocketPath('forced-stop-cell'), key: suppliedKey(ws) })
+    const socket = createModelServer({ mo: ticking, socketPath: testSocket('forced-stop-cell'), key: suppliedKey(ws) })
     await socket.listen()
     onTestFinished(() => socket.close())
 

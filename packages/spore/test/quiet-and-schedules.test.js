@@ -94,10 +94,13 @@ describe('quiet when a person wrote in the turn', () => {
 
   const turn = (steps, inputs) => runSpore({
     tools: TOOL_NAMES,
+    sandbox: false,
+    cacheTtl: '5m',
+    initialMessages: [],
     workspace: WS,
     identity: 'You are a spore under test.',
     modelId: 'fake/model',
-    limits: { rounds: { soft: 10, hard: 12 } },
+    limits: { rounds: { soft: 10, hard: 12 }, cost: { soft: 100, hard: 100 }, wall: { soft: 600_000, hard: 600_000 } },
     mo: scripted(steps, inputs),
     state: hostState(WS)
   })
@@ -147,11 +150,14 @@ describe('a turn that ends quiet', () => {
 
   const run = (because = 'nothing changed') => runSpore({
     tools: TOOL_NAMES,
+    sandbox: false,
+    cacheTtl: '5m',
+    initialMessages: [],
     prompt: 'check the queue',
     workspace: WS,
     identity: 'You are a spore under test.',
     modelId: 'fake/model',
-    limits: { rounds: { soft: 10, hard: 12 } },
+    limits: { rounds: { soft: 10, hard: 12 }, cost: { soft: 100, hard: 100 }, wall: { soft: 600_000, hard: 600_000 } },
     mo: quietly(because),
     state: hostState(WS)
   })

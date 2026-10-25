@@ -5,10 +5,9 @@ import { fileURLToPath } from 'node:url'
 
 import { changedBetween, dreamDue, runDream } from '../src/core/dream.js'
 import { definitionWith } from '../src/testing.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { CONFIG_FILE } from '../src/library/config.js'
 import { dreamRecords, enqueue, holdDelivery, readTranscriptEntries, readTurns, recordCell, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
-import { createGate } from './fixtures/model-server.js'
+import { createGate, testSocket } from './fixtures/model-server.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 
@@ -136,7 +135,7 @@ describe('runDream', () => {
   }
 
   beforeAll(async () => {
-    gate = createGate({ mo: scriptedMo(next), socketPath: brokerSocketPath('dream-gate') })
+    gate = createGate({ mo: scriptedMo(next), socketPath: testSocket('dream-gate') })
     await gate.listen()
     mkdirSync(dirname(CONFIG_FILE), { recursive: true })
     writeFileSync(CONFIG_FILE, JSON.stringify({ gate: gate.socketPath }))

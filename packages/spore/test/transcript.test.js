@@ -2,18 +2,6 @@ import { describe, it, expect } from 'vitest'
 import { sanitizeTranscript } from '../src/resilience/transcript.js'
 
 describe('transcript sanitization', () => {
-  // ── Orphaned tool_results ─────────────────────────────────────
-
-  it('drops tool_result with no matching assistant toolCall', () => {
-    const messages = [
-      { role: 'user', content: 'hi' },
-      { role: 'tool', toolCallId: 'orphan_1', toolName: 'read', content: 'data' }
-    ]
-    sanitizeTranscript(messages)
-    expect(messages).toHaveLength(1)
-    expect(messages[0].role).toBe('user')
-  })
-
   it('keeps valid tool_result paired with assistant toolCall', () => {
     const messages = [
       { role: 'user', content: 'hi' },
@@ -22,21 +10,6 @@ describe('transcript sanitization', () => {
     ]
     sanitizeTranscript(messages)
     expect(messages).toHaveLength(3)
-  })
-
-  // ── Duplicate tool_results ────────────────────────────────────
-
-  it('drops duplicate tool_result for same toolCallId', () => {
-    const messages = [
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', content: '', toolCalls: [{ id: 'c1', name: 'read', arguments: {} }] },
-      { role: 'tool', toolCallId: 'c1', content: 'first' },
-      { role: 'tool', toolCallId: 'c1', content: 'duplicate' }
-    ]
-    sanitizeTranscript(messages)
-    const results = messages.filter(m => m.role === 'tool')
-    expect(results).toHaveLength(1)
-    expect(results[0].content).toBe('first')
   })
 
   // ── Unpaired toolCalls ────────────────────────────────────────
@@ -132,27 +105,6 @@ describe('transcript sanitization', () => {
     expect(messages.find(m => m.role === 'tool').content).toBe('short')
   })
 
-  // ── Content normalization ─────────────────────────────────────
-
-  it('normalizes null tool_result content to empty string', () => {
-    const messages = [
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', content: '', toolCalls: [{ id: 'c1', name: 'read', arguments: {} }] },
-      { role: 'tool', toolCallId: 'c1', content: null }
-    ]
-    sanitizeTranscript(messages)
-    expect(messages.find(m => m.role === 'tool').content).toBe('')
-  })
-
-  it('normalizes null assistant content to empty string', () => {
-    const messages = [
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', content: null }
-    ]
-    sanitizeTranscript(messages)
-    expect(messages[1].content).toBe('')
-  })
-
   // ── Complex scenarios ─────────────────────────────────────────
 
   it('handles multi-turn conversation with mixed issues', () => {
@@ -161,18 +113,15 @@ describe('transcript sanitization', () => {
       // Turn 1: complete
       { role: 'assistant', content: '', toolCalls: [{ id: 'c1', name: 'read', arguments: {} }] },
       { role: 'tool', toolCallId: 'c1', content: 'ok' },
-      // Turn 2: orphaned result
-      { role: 'tool', toolCallId: 'ghost', content: 'orphan' },
-      // Turn 3: unpaired call (simulates crash mid-execution)
+      // Turn 2: unpaired call (simulates crash mid-execution)
       { role: 'assistant', content: '', toolCalls: [{ id: 'c2', name: 'write', arguments: {} }] },
       // no result for c2
-      // Turn 4: normal response
+      // Turn 3: normal response
       { role: 'assistant', content: 'done' }
     ]
     sanitizeTranscript(messages)
 
-    // Orphan removed, synthetic result for c2 added
-    expect(messages.filter(m => m.toolCallId === 'ghost')).toHaveLength(0)
+    // Synthetic result for c2 added
     const c2Result = messages.find(m => m.toolCallId === 'c2')
     expect(c2Result).toBeTruthy()
     expect(c2Result.content).toMatch(/interrupted/)
@@ -197,11 +146,9 @@ describe('transcript sanitization', () => {
     const logger = { debug: (...a) => logged.push(a.join(' ')) }
     const messages = [
       { role: 'user', content: 'hi' },
-      { role: 'tool', toolCallId: 'orphan', content: 'x' },
       { role: 'assistant', content: '', toolCalls: [{ id: 'c1', name: 'read', arguments: {} }] }
     ]
     sanitizeTranscript(messages, { logger })
-    expect(logged.some(l => l.includes('orphan'))).toBe(true)
     expect(logged.some(l => l.includes('unpaired') || l.includes('synthetic'))).toBe(true)
   })
 })

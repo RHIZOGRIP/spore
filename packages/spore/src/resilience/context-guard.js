@@ -104,7 +104,7 @@ export function compactIfNeeded (messages, { contextLimit, budgetRatio = 0.7, bu
  * @param {Array} messages
  * @returns {number} messages removed (0 if nothing droppable)
  */
-export function dropOldestTurnGroup (messages, { beforeDrop } = {}) {
+export function dropOldestTurnGroup (messages, { beforeDrop }) {
   if (messages.length <= 1) return 0
 
   const msg = messages[1]
@@ -113,7 +113,7 @@ export function dropOldestTurnGroup (messages, { beforeDrop } = {}) {
   if (msg.role === 'assistant' && msg.toolCalls?.length) {
     let end = 2
     while (end < messages.length && messages[end].role === 'tool') end++
-    if (beforeDrop) beforeDrop(messages.slice(1, end))
+    beforeDrop(messages.slice(1, end))
     messages.splice(1, end - 1)
     return end - 1
   }
