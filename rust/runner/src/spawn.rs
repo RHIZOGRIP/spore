@@ -19,7 +19,7 @@ use spore_runner::broker::{self, Served};
 use spore_runner::enzymes::{hash_enzyme, Enzyme, Enzymes};
 use spore_runner::host::{HostArgs, Models};
 use spore_runner::model::{self, Model};
-use spore_runner::plan::{dream_for, plan_spawn, spore_definition, Asked, Plan};
+use spore_runner::plan::{dream_for, plan_spawn, Asked, Plan};
 use spore_runner::supervise::{
     confined, kept_refusal, owner_token, owners_with, supervise, Kept, GRACE, OWNERS,
 };
@@ -40,7 +40,7 @@ const HELP: &str = "spawn — run one sub-agent in a workspace of its own
 Usage:
   spawn --precursor <name> --ws <dir> --prompt <rel> --answer <rel>
 
-  --precursor  a definition in precursors/<name>.cmk
+  --precursor  a definition in the spore's precursors/<name>.cmk
   --ws         directory the child lives in; refused if it already holds spawn.json
   --prompt     material for the child, relative to --ws
   --answer     where the child's result is written, relative to --ws; must be
@@ -64,11 +64,11 @@ Usage:
                for its dream: only the precursor dream.precursor names, under the
                lower of that precursor's limits and dream.cost and dream.wall
 
-The sub-agent runs on the cell model its precursor's model: names among the
-spore's cell-models, or, when it names none, on the spore's own model:, both
-read from the spore's spore.cmk — $SPORE_WS in a turn, the working directory
-outside one. There is no flag for it: choosing a model is configuration, not
-something a caller decides.";
+The spore is $SPORE_WS in a turn and the working directory outside one; --ws
+is the caller's, from where it is. The sub-agent runs on the cell model its
+precursor's model: names among the spore's cell-models, or, when it names
+none, on the spore's own model:. There is no flag for it: choosing a model is
+configuration, not something a caller decides.";
 
 #[derive(Default)]
 struct Args {
@@ -243,7 +243,6 @@ async fn main() {
             fail("SPORE_WS is not set — spawn runs under a spore, whose runner names its workspace")
         }))
     };
-    let spore_def = spore_definition(&spore).unwrap_or_else(|problem| fail(problem));
     let mut plan = plan_spawn(
         &Asked {
             precursor: args.precursor.as_deref(),
@@ -252,7 +251,7 @@ async fn main() {
             answer: args.answer.as_deref(),
         },
         &cwd,
-        &spore_def,
+        &spore,
         |ws, reads| granted_path_containing(&root, ws, reads).ok().flatten(),
     )
     .unwrap_or_else(|problem| fail(problem));

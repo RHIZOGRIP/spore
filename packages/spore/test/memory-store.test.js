@@ -58,7 +58,7 @@ describe('what a workspace makes retrievable', () => {
 
     const [hit] = await openStore(WS).push('where does Marguerite live', 3)
     expect(hit.text).toMatch(/Marguerite/)
-    expect(isTranscriptAnchor(WS, hit.anchor)).toBe(true)
+    expect(isTranscriptAnchor(hit.anchor)).toBe(true)
   })
 
   it('anchors every chunk to a path and a position', () => {
@@ -201,7 +201,7 @@ describe('memory is what was said before now', () => {
 
     const hits = await openStore(WS, { horizon: 0 }).push(question, 5)
     expect(hits.length).toBeGreaterThan(0)
-    expect(hits.some(hit => isTranscriptAnchor(WS, hit.anchor))).toBe(false)
+    expect(hits.some(hit => isTranscriptAnchor(hit.anchor))).toBe(false)
     expect(hits[0].text).toMatch(/accessories/)
   })
 
@@ -213,7 +213,7 @@ describe('memory is what was said before now', () => {
     appendTranscript(WS, { role: 'user', content: `Today is 2023/05/30 (Tue) 05:04. ${question}` })
 
     const hits = await openStore(WS, { horizon: 0 }).pull(question, 5)
-    expect(hits.some(hit => isTranscriptAnchor(WS, hit.anchor))).toBe(false)
+    expect(hits.some(hit => isTranscriptAnchor(hit.anchor))).toBe(false)
     expect(hits[0].text).toContain('accessories')
   })
 
@@ -229,7 +229,7 @@ describe('memory is what was said before now', () => {
   it('still returns an earlier turn that merely resembles the question', async () => {
     appendTranscript(WS, { role: 'user', content: 'I bought a Sony A7R IV last spring and have used it since.' })
     const hits = await openStore(WS).push('what did I buy last spring', 5)
-    expect(isTranscriptAnchor(WS, hits[0].anchor)).toBe(true)
+    expect(isTranscriptAnchor(hits[0].anchor)).toBe(true)
   })
 })
 
@@ -467,7 +467,7 @@ describe('memory is a place, not everything written', () => {
   it('still reads the record, which is not under data/ at all', async () => {
     appendTranscript(WS, { role: 'user', content: 'My sister Marguerite teaches violin in Lisbon.' })
     const [hit] = await openStore(WS).push('who teaches violin', 3)
-    expect(isTranscriptAnchor(WS, hit.anchor)).toBe(true)
+    expect(isTranscriptAnchor(hit.anchor)).toBe(true)
   })
 })
 
@@ -546,7 +546,7 @@ describe('anchors address what read reads', () => {
     appendTranscript(WS, { role: 'user', content: 'My sister Marguerite teaches violin in Lisbon.' })
 
     const [hit] = await openStore(WS).push('who teaches violin', 3)
-    expect(isTranscriptAnchor(WS, hit.anchor)).toBe(true)
+    expect(isTranscriptAnchor(hit.anchor)).toBe(true)
     const entry = readTranscriptEntries(WS).find(e => e.entryNo === hit.anchor.line)
     expect(entry.kind).toBe('message')
     expect(entry.message.content).toBe('My sister Marguerite teaches violin in Lisbon.')

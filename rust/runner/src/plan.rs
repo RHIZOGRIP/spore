@@ -93,8 +93,11 @@ fn executable(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn resolve_precursor(cwd: &Path, name: &str) -> Result<(PathBuf, Definition, Vec<Enzyme>), String> {
-    let path = cwd
+fn resolve_precursor(
+    spore: &Path,
+    name: &str,
+) -> Result<(PathBuf, Definition, Vec<Enzyme>), String> {
+    let path = spore
         .join(PRECURSOR_DIR)
         .join(format!("{name}{PRECURSOR_EXT}"));
     let source = std::fs::read_to_string(&path).map_err(|_| {
@@ -118,7 +121,7 @@ fn resolve_precursor(cwd: &Path, name: &str) -> Result<(PathBuf, Definition, Vec
     }
     let mut enzymes = Vec::new();
     for entry in &definition.enzymes {
-        let command = resolve(cwd, &entry.path);
+        let command = resolve(spore, &entry.path);
         if !command.exists() {
             return Err(format!(
                 "precursor {name} declares an enzyme that does not exist — {} at {}",
@@ -133,7 +136,7 @@ fn resolve_precursor(cwd: &Path, name: &str) -> Result<(PathBuf, Definition, Vec
         }
         let mut with = Vec::new();
         for needed in &entry.with {
-            let path = resolve(cwd, needed);
+            let path = resolve(spore, needed);
             if !path.exists() {
                 return Err(format!(
                     "precursor {name} says {} needs {needed}, which does not exist",
@@ -211,12 +214,13 @@ fn cell_model(precursor: &str, named: Option<&str>, spore: &Definition) -> Resul
 }
 
 /// `granted` says which sandbox grant, if any, holds a directory; a workspace inside one
-/// cannot isolate a child confined beneath it. `spore` is the definition of the spore the cell
-/// runs under, which says what model it runs on.
+/// cannot isolate a child confined beneath it. `spore` is the workspace of the spore the cell
+/// runs under, whose precursors it runs and whose definition says what model it runs on; the
+/// paths it is asked for are the caller's, read from `cwd`.
 pub fn plan_spawn(
     asked: &Asked,
     cwd: &Path,
-    spore: &Definition,
+    spore: &Path,
     granted: impl Fn(&Path, &[PathBuf]) -> Option<PathBuf>,
 ) -> Result<Plan, String> {
     let required = |label: &str, value: Option<&str>| -> Result<String, String> {
@@ -232,8 +236,9 @@ pub fn plan_spawn(
 
     // Before the workspace check, because what the cell may read is part of what would
     // make a directory an unusable place to confine it.
-    let (precursor_path, mut definition, enzymes) = resolve_precursor(cwd, &precursor)?;
-    definition.model = Some(cell_model(&precursor, definition.model.as_deref(), spore)?);
+    let (precursor_path, mut definition, enzymes) = resolve_precursor(spore, &precursor)?;
+    let root = spore_definition(spore)?;
+    definition.model = Some(cell_model(&precursor, definition.model.as_deref(), &root)?);
 
     let ws_path = resolve(cwd, &ws);
     if !ws_path.is_dir() {
@@ -377,13 +382,18 @@ mod tests {
         fs::create_dir_all(dir.join("precursors")).unwrap();
         fs::write(dir.join("precursors/summarize.cmk"), SUMMARIZE).unwrap();
         fs::write(dir.join("work/1/in.md"), "material").unwrap();
+        fs::write(dir.join(DEFINITION_FILE), spore_cmk("")).unwrap();
         Root(fs::canonicalize(&dir).unwrap())
+    }
+
+    fn spore_cmk(extra: &str) -> String {
+        format!("---\nname: main\nmodel: fake/parent\n{extra}tools: [read]\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\n---\n\nYou work.\n")
     }
 
     fn spore(extra: &str) -> Definition {
         let known: Vec<String> = TOOL_NAMES.iter().map(|t| t.to_string()).collect();
         parse_definition(
-            &format!("---\nname: main\nmodel: fake/parent\n{extra}tools: [read]\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\n---\n\nYou work.\n"),
+            &spore_cmk(extra),
             &Options {
                 known_tools: &known,
                 cell: false,
@@ -406,7 +416,7 @@ mod tests {
             prompt: get("prompt", "in.md"),
             answer: get("answer", "data/out.json"),
         };
-        plan_spawn(&asked, &root.0, &spore(""), |_, _| None)
+        plan_spawn(&asked, &root.0, &root.0, |_, _| None)
     }
 
     fn error(root: &Root, over: &[(&str, Option<&str>)]) -> String {
@@ -425,7 +435,7 @@ mod tests {
             prompt: Some("in.md"),
             answer: Some("data/out.json"),
         };
-        let refused = plan_spawn(&asked, &r.0, &spore(""), |_, _| Some(PathBuf::from("/tmp")))
+        let refused = plan_spawn(&asked, &r.0, &r.0, |_, _| Some(PathBuf::from("/tmp")))
             .err()
             .unwrap();
         assert!(refused.contains("inside a sandbox-granted path (/tmp)"));
@@ -472,14 +482,27 @@ mod tests {
             prompt: Some("in.md"),
             answer: Some("data/out.json"),
         };
-        let named = plan_spawn(
-            &asked,
-            &r.0,
-            &spore("cell-models: [low=fake/cheap]\n"),
-            |_, _| None,
+        fs::write(
+            r.0.join(DEFINITION_FILE),
+            spore_cmk("cell-models: [low=fake/cheap]\n"),
         )
         .unwrap();
+        let named = plan_spawn(&asked, &r.0, &r.0, |_, _| None).unwrap();
         assert_eq!(named.precursor.model.as_deref(), Some("fake/cheap"));
+    }
+
+    #[test]
+    fn runs_the_spores_precursor_on_the_paths_the_caller_names_from_where_it_is() {
+        let r = root("elsewhere");
+        let asked = Asked {
+            precursor: Some("summarize"),
+            ws: Some("1"),
+            prompt: Some("in.md"),
+            answer: Some("data/out.json"),
+        };
+        let p = plan_spawn(&asked, &r.0.join("work"), &r.0, |_, _| None).unwrap();
+        assert_eq!(p.precursor_path, r.0.join("precursors/summarize.cmk"));
+        assert_eq!(p.ws, r.0.join("work/1"));
     }
 
     #[test]

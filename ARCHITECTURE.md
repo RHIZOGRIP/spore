@@ -2432,7 +2432,9 @@ serves.
 **The model is configuration, and `spawn` has no flag for it**
 ([principle 7](PRINCIPLES.md#7-a-spore-is-described-in-a-file-not-built-in-code)), and no
 variable carries it either: the plan reads the spore's own `spore.cmk` — at `$SPORE_WS` in a turn,
-spawn's working directory outside one. A precursor's `model:` is a name the plan reads against the
+spawn's working directory outside one — and runs the precursor from that spore's `precursors/`, its
+enzymes from that spore too, while `--ws`, `--prompt` and `--answer` are the caller's paths, read
+from where it is. A precursor's `model:` is a name the plan reads against the
 spore's `cell-models`; a precursor naming none runs on the spore's `model:`. A spore with no
 `cell-models` runs every cell on its own model and drops the name, so a precursor from a plugin or
 a sporangium still runs; one with some refuses a name it lacks. The plan settles the model before

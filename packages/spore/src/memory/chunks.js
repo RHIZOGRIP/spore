@@ -148,7 +148,7 @@ export function chunksOf (ws, unit, { dir = MEMORY_DIR, horizon = Infinity, unre
     // The entry, so following the anchor lands on the message it came from; and who said it
     // and when, because an assistant's suggestion and the person's own statement are not
     // the same kind of thing, and "next Thursday" said in May is not a date without the May.
-    const found = { anchor: transcriptAnchor(ws, message), role: message.role, when: message.at }
+    const found = { anchor: transcriptAnchor(message), role: message.role, when: message.at }
     if (unit === SENTENCE) {
       for (const line of sentences(text)) chunks.push({ text: line, ...found })
     } else if (meaningful(text)) {
@@ -165,7 +165,7 @@ export function chunksOf (ws, unit, { dir = MEMORY_DIR, horizon = Infinity, unre
  * the evidence for 8,811 tokens where retrieving whole sessions needs 15,865 for 85%.
  */
 export function expand (ws, anchor, { neighbours = 1 } = {}) {
-  if (isTranscriptAnchor(ws, anchor)) {
+  if (isTranscriptAnchor(anchor)) {
     // Anchors are entry numbers, so find the message that has one rather than counting into
     // the array — the two differ by every compaction entry in the transcript.
     const messages = readSaidSoFar(ws)

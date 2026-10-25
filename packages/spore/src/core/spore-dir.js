@@ -1032,11 +1032,11 @@ const TRANSCRIPT_ANCHOR = 'transcript'
  * shape of the anchor is the storage's, so nothing else builds or reads one by hand.
  * `transcript:<entryNo>` — the agent follows it with `$SPORE_SQL` on the `transcript` view.
  */
-export function transcriptAnchor (ws, message) {
+export function transcriptAnchor (message) {
   return { path: TRANSCRIPT_ANCHOR, line: message.entryNo }
 }
 
-export function isTranscriptAnchor (ws, anchor) {
+export function isTranscriptAnchor (anchor) {
   return anchor.path === TRANSCRIPT_ANCHOR
 }
 

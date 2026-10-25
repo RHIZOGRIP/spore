@@ -65,7 +65,9 @@ if (!existsSync(partsDir)) fail(`no such directory — ${argv.parts}`)
 // The precursor's own hard wall is what a part is allowed; the deadline is that times
 // the number of waves. Sizing this by hand was the instruction most often got wrong,
 // and getting it wrong killed the fan-out and every cell in it.
-const precursorPath = resolve(process.cwd(), 'precursors', `${argv.precursor}.cmk`)
+const spore = process.env.SPORE_WS
+if (!spore) fail('SPORE_WS is not set — fanout runs inside a spore\'s turn, whose runner names the workspace its precursors are in')
+const precursorPath = resolve(spore, 'precursors', `${argv.precursor}.cmk`)
 if (!existsSync(precursorPath)) fail(`no precursor named ${argv.precursor}`)
 const definition = parseDefinition(readFileSync(precursorPath, 'utf8'), { knownTools: TOOL_NAMES, cell: true })
 if (definition.error) fail(`precursor ${argv.precursor} ${definition.error}`)
