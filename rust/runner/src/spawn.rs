@@ -18,7 +18,7 @@ use std::time::Duration;
 use serde_json::json;
 use spore_runner::broker::{self, Served};
 use spore_runner::enzymes::{hash_enzyme, Enzyme, Enzymes};
-use spore_runner::host::HostArgs;
+use spore_runner::host::{HostArgs, Models};
 use spore_runner::model::{self, Model};
 use spore_runner::plan::{dream_for, plan_spawn, Asked, Plan};
 use spore_runner::supervise::{
@@ -52,12 +52,13 @@ Usage:
                workspace instead of waiting on this
   --debug      the cell's agent logs at debug level
 
-  --standalone with --node, --session and --chatgpt-helper: a cell outside any turn,
-               for a host that is not one. It starts its own model session, under a key
-               of its own and the precursor's hard cost, instead of reaching its
-               parent's, and counts what the cell spent on the cell's own record;
-               --no-contain when the operator turned containment off; --gate with --auth on a host whose
-               model calls go through a mohdel gate, under the spore's auth
+  --standalone with --node: a cell outside any turn, for a host that is not one.
+               It reaches the models under a key of its own and the precursor's hard
+               cost, instead of through its parent's, and counts what the cell spent on
+               the cell's own record — through a model session it starts with --session
+               and --chatgpt-helper, or, on a host whose model calls go through a mohdel
+               gate, through --gate under the spore's --auth; --no-contain when the
+               operator turned containment off
   --super      with --standalone: a super cell, which reaches what the spore's root
                agent reaches one notch lower — its writes grants and its precursors
                read and never written — as spore/. Run from the spore's workspace,
@@ -84,15 +85,14 @@ struct Args {
     auth: Option<String>,
 }
 
-/// What a cell outside any turn starts its own model session with, or the host's gate and the
-/// spore's auth it calls through instead.
+/// What a cell outside any turn reaches the models through — a session of its own, or the
+/// host's gate under the spore's `auth` — and how it is contained.
 struct Standalone {
     node: String,
-    session: String,
-    chatgpt_helper: String,
+    models: Models,
+    auth: Option<String>,
     contain: bool,
     kept: Vec<Kept>,
-    gate: Option<(PathBuf, String)>,
     call_ceiling: Duration,
 }
 
@@ -276,20 +276,17 @@ async fn main() {
     }
 
     let standalone = args.standalone.then(|| {
-        let need = |value: &Option<String>, flag: &str| {
-            value.clone().unwrap_or_else(|| fail(format!("--standalone needs {flag} — a cell outside any turn starts its own model session")))
-        };
         Standalone {
-            node: need(&args.host.node, "--node"),
-            session: need(&args.host.session, "--session"),
-            chatgpt_helper: need(&args.host.chatgpt_helper, "--chatgpt-helper"),
+            node: args.host.node.clone().unwrap_or_else(|| {
+                fail("--standalone needs --node — the Node a cell outside any turn runs its worker and its model session on")
+            }),
+            models: args
+                .host
+                .models()
+                .unwrap_or_else(|problem| fail(format!("--standalone: {problem}"))),
+            auth: args.auth.clone(),
             contain: !args.host.no_contain,
             kept: args.host.kept.clone(),
-            gate: args
-                .host
-                .gate
-                .clone()
-                .map(|gate| (gate, args.auth.clone().expect("checked above"))),
             call_ceiling: args.host.call_ceiling(),
         }
     });
@@ -386,24 +383,27 @@ async fn main() {
                     .or_else(|| std::env::var("MODEL").ok())
                     .into_iter()
                     .collect();
-                let upstream = match &own.gate {
-                    Some((gate, auth)) => {
+                let upstream = match &own.models {
+                    Models::Gate(gate) => {
                         let model = allowed.first().cloned();
                         model::reach_gate(
                             gate,
-                            auth.clone(),
+                            own.auth.clone().expect("checked above"),
                             allowed,
                             vec![plan.ws.clone()],
                             model.as_deref(),
                         )
                         .await?
                     }
-                    None => {
+                    Models::Session {
+                        program,
+                        chatgpt_helper,
+                    } => {
                         std::env::set_var("MOHDEL_MEDIA_ROOTS", plan.ws.display().to_string());
                         model::Upstream::Pool(model::start_pool(
                             own.node.clone(),
-                            own.session.clone(),
-                            own.chatgpt_helper.clone(),
+                            program.clone(),
+                            chatgpt_helper.clone(),
                             1,
                             allowed,
                         ))
@@ -517,7 +517,7 @@ async fn main() {
         let serving = serve(&plan.ws, turn_id.clone(), ours);
         let fd = theirs.as_raw_fd();
         let mut command = match &standalone {
-            Some(own) => confined(&root, "node", own.contain, &own.kept),
+            Some(own) => confined(&root, &own.node, own.contain, &own.kept),
             None => Command::new("node"),
         };
         command

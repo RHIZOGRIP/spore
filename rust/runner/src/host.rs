@@ -7,11 +7,22 @@ use std::time::Duration;
 use spore_workspace::kept::{kept_from, Kept};
 use spore_workspace::DEFAULT_CALL_CEILING_SECS;
 
+/// Where the host's model calls go: its mohdel gate, or a session this process starts with
+/// mohdel's session program and its ChatGPT helper.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Models {
+    Gate(PathBuf),
+    Session {
+        program: String,
+        chatgpt_helper: String,
+    },
+}
+
 #[derive(Debug, Default)]
 pub struct HostArgs {
     pub node: Option<String>,
-    pub session: Option<String>,
-    pub chatgpt_helper: Option<String>,
+    session: Option<String>,
+    chatgpt_helper: Option<String>,
     pub no_contain: bool,
     pub kept: Vec<Kept>,
     pub gate: Option<PathBuf>,
@@ -43,6 +54,19 @@ impl HostArgs {
             _ => return Ok(false),
         }
         Ok(true)
+    }
+
+    /// The one way the host gave to reach the models.
+    pub fn models(&self) -> Result<Models, String> {
+        match (&self.gate, &self.session, &self.chatgpt_helper) {
+            (Some(gate), None, None) => Ok(Models::Gate(gate.clone())),
+            (Some(_), _, _) => Err("--gate and --session/--chatgpt-helper are two ways to reach the models — a host gives one".into()),
+            (None, Some(program), Some(chatgpt_helper)) => Ok(Models::Session {
+                program: program.clone(),
+                chatgpt_helper: chatgpt_helper.clone(),
+            }),
+            (None, _, _) => Err("a host without --gate gives --session and --chatgpt-helper, which start the model session its calls go through".into()),
+        }
     }
 
     /// How long a model call may run before it is cut as stalled.
@@ -92,6 +116,38 @@ mod tests {
             HostArgs::default().call_ceiling(),
             Duration::from_secs(60 * 60)
         );
+    }
+
+    #[test]
+    fn reaches_the_models_through_the_gate_or_a_session_never_both() {
+        assert_eq!(
+            read(&["--gate", "/run/gate.sock"]).unwrap().models(),
+            Ok(Models::Gate(PathBuf::from("/run/gate.sock")))
+        );
+        assert_eq!(
+            read(&["--session", "s", "--chatgpt-helper", "c"])
+                .unwrap()
+                .models(),
+            Ok(Models::Session {
+                program: "s".into(),
+                chatgpt_helper: "c".into()
+            })
+        );
+        for given in [
+            &["--gate", "/run/gate.sock", "--session", "s"][..],
+            &[
+                "--gate",
+                "/run/gate.sock",
+                "--session",
+                "s",
+                "--chatgpt-helper",
+                "c",
+            ],
+            &["--session", "s"],
+            &[],
+        ] {
+            assert!(read(given).unwrap().models().is_err(), "{given:?}");
+        }
     }
 
     #[test]

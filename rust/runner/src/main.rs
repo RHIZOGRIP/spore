@@ -18,7 +18,7 @@ use std::time::Duration;
 use serde_json::json;
 use spore_definition::{parse_definition, Definition, Options, TOOL_NAMES};
 use spore_runner::broker::Served;
-use spore_runner::host::HostArgs;
+use spore_runner::host::{HostArgs, Models};
 use spore_runner::supervise::{
     confined, contain_refused, kept_refusal, owner_token, owners_with, supervise, uncontained,
     GRACE, OWNERS,
@@ -353,9 +353,10 @@ async fn main() {
     let node = args.host.node.clone().unwrap_or_else(|| fail("a runner is told which node to start the agent with — start it through send() or fork()"));
     let ws = std::path::absolute(&args.ws)
         .unwrap_or_else(|e| fail(format!("{} — {e}", args.ws.display())));
-    if args.host.session.is_none() || args.host.chatgpt_helper.is_none() {
-        fail("a runner is told mohdel's session program and its ChatGPT helper — start it through send() or fork()")
-    }
+    let models = args
+        .host
+        .models()
+        .unwrap_or_else(|problem| fail(format!("{problem} — start it through send() or fork()")));
     if !ws.is_dir() {
         fail(format!(
             "{} is not a directory — spore define makes a spore",
@@ -534,8 +535,8 @@ async fn main() {
             .chain(def.cell_models.iter().map(|named| &named.model))
             .cloned()
             .collect();
-        let upstream = match &args.host.gate {
-            Some(gate) => {
+        let upstream = match &models {
+            Models::Gate(gate) => {
                 let Some(auth) = def.auth.clone() else {
                     return Err(format!(
                         "this host calls its models through the gate at {}, and spore.cmk names no auth — add auth: <id>, whom its model calls are for",
@@ -551,14 +552,15 @@ async fn main() {
                 )
                 .await?
             }
-            None => {
+            Models::Session {
+                program,
+                chatgpt_helper,
+            } => {
                 std::env::set_var("MOHDEL_MEDIA_ROOTS", media_roots(&ws, &def));
-                let session = args.host.session.clone().expect("checked above");
-                let helper = args.host.chatgpt_helper.clone().expect("checked above");
                 model::Upstream::Pool(model::start_pool(
                     node.clone(),
-                    session,
-                    helper,
+                    program.clone(),
+                    chatgpt_helper.clone(),
                     args.model_sessions,
                     allowed,
                 ))

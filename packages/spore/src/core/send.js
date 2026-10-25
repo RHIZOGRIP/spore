@@ -192,11 +192,9 @@ export function hostFlags (config, keep) {
   const callCeiling = secondsOf(config, 'callCeiling')
   return [
     '--node', process.execPath,
-    '--session', SESSION,
-    '--chatgpt-helper', CHATGPT_HELPER,
+    ...(config.gate ? ['--gate', config.gate] : ['--session', SESSION, '--chatgpt-helper', CHATGPT_HELPER]),
     ...(containing(config) ? [] : ['--no-contain']),
     ...(keep.length ? ['--contain-keep', JSON.stringify(keep)] : []),
-    ...(config.gate ? ['--gate', config.gate] : []),
     ...(callCeiling === null ? [] : ['--call-ceiling', String(callCeiling)])
   ]
 }
