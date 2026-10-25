@@ -59,8 +59,6 @@ const failed = (c) => c.killed || (c.exit !== 0 && c.exit !== undefined) || c.sp
 
 function detail (c) {
   if (c.command) return c.command
-  if (c.url) return `${c.url}${c.status ? ` → ${c.status}` : ''}`
-  if (c.query) return c.query
   if (c.path) return `${c.path}${c.lines !== undefined ? ` (${c.lines} lines)` : ''}`
   const out = c.files?.out
   return out ? `→ ${out.path} (${out.bytes} B)` : ''

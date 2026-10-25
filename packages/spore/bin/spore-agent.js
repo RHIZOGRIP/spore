@@ -50,8 +50,7 @@ try {
     key: readModelKey(opened.ws),
     workspace: opened.ws,
     // This agent can spawn, so what its cells spend comes out of its allowance.
-    tracksTree: true,
-    logger
+    tracksTree: true
   })
 
   const result = await runSpore({

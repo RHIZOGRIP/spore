@@ -42,7 +42,7 @@ const ask = (socketPath, key, method, path, body) => request(socketPath, { key, 
  * OpenAI call carries as `prompt_cache_key`: without one, calls that share a prefix are not
  * routed to where it is cached.
  */
-export async function createModelClient ({ socketPath, modelIds = [], key, logger, tracksTree = false, precursor = null, workspace }) {
+export async function createModelClient ({ socketPath, modelIds = [], key, tracksTree = false, precursor = null, workspace }) {
   const identifier = createHash('sha256').update(workspace).digest('hex').slice(0, 32)
   const info = new Map()
   for (const modelId of modelIds) info.set(modelId, await ask(socketPath, key, 'POST', '/spore/info', { model: modelId }))
@@ -60,9 +60,7 @@ export async function createModelClient ({ socketPath, modelIds = [], key, logge
   const caller = tracksTree ? ROOT_CALLER : precursor ? `${PRECURSOR_CALLER}${precursor}` : null
 
   return {
-    logger,
     ...(tracksTree ? { ledger, spend: settle } : {}),
-    close () {},
     use (modelId) {
       return {
         id: modelId,
