@@ -55,7 +55,6 @@ The file is written whole and renamed into place.
 | `freeFloor` | free disk below which a turn is refused | 2 GB |
 | `contain` | `on` or `off`: whether every turn, job, router and prepare step runs in namespaces of its own | on |
 | `docs` | `follow` or `kept`: whether a runner's start replaces the root documents that differ from what is installed | kept |
-| `hereSnapshots` | how many `spore here` session snapshots are kept per spore | 20 |
 | `plugins` | the plugins allowed on this machine; written by `spore plugin allow`, not by `config set` | none |
 | `replyTo` | per spore, where answers go when what a turn read asked from nowhere, as `{ "triage": "discord:ops/1234" }` | none |
 | `approvals` | the hooks an approval may tell how it ended, each by its URL and the variable holding its secret | none |
@@ -615,7 +614,7 @@ Opens the spore that works in `<dir>` (the current directory by default), made t
 `<directory>-<6 hex>` in `home`, granted `writes: [here=<dir>]`. On a terminal a picker offers the
 sporangia; without one `--sporangium` is required. Outside a git work tree it is refused unless
 `--no-git`, and then nothing can be undone. Each session's snapshot is a ref under
-`refs/spore/<spore>/` in that repository; the newest `hereSnapshots` (20 unless set) are kept.
+`refs/spore/<spore>/` in that repository; the newest three are kept.
 
 ## Root documents and `spore upgrade`
 

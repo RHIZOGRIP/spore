@@ -175,12 +175,6 @@ function validate (raw, file) {
       detail: 'homeSplit is how many of a spore\'s last characters name the directory it sits in under home, a whole number from 1 to 8'
     })
   }
-  if (raw.hereSnapshots !== undefined && !(Number.isInteger(raw.hereSnapshots) && raw.hereSnapshots >= 1)) {
-    throw new SporeError(`${file} has a hereSnapshots that is not a count`, {
-      type: 'CONFIG_INVALID',
-      detail: 'hereSnapshots is how many sessions spore here keeps a snapshot of, per spore, a whole number from 1'
-    })
-  }
   const allowed = (entry) => isRecord(entry) && isRecord(entry.settings) && typeof entry.version === 'string' && typeof entry.dir === 'string'
   if (raw.plugins !== undefined && !(isRecord(raw.plugins) && Object.values(raw.plugins).every(allowed))) {
     throw new SporeError(`${file} has a plugins that is not what spore plugin allow writes`, {
@@ -255,7 +249,6 @@ const docsOf = (value) => {
 export const followingDocs = (config) => (config.docs ?? DEFAULTS.docs) === 'follow'
 
 /** How many sessions `spore here` keeps a snapshot of, per spore, the newest kept. */
-export const hereSnapshots = (config) => config.hereSnapshots ?? DEFAULTS.hereSnapshots
 
 /** A size setting in bytes, or null where the file leaves it to the runner's default. */
 export const bytesOf = (config, key) => (config[key] === undefined ? null : Math.floor(native.sizeBytes(config[key])))
@@ -272,12 +265,12 @@ export function existing (paths) {
   return { live, missing }
 }
 
-const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'largestFile', 'freeFloor', 'contain', 'docs', 'hereSnapshots'])
+const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'largestFile', 'freeFloor', 'contain', 'docs'])
 const DOCS = ['follow', 'kept']
 const APPROVALS_DETAIL = `approvals names each hook an approval may call, by a name of ${NAMES.approval.says}, as { "kpi": { "url": "https://…", "secret": "\${KPI_HOOK_SECRET}" } } — the secret set in environment beside config.json`
 const DOCS_DETAIL = 'docs says whether a runner starts by replacing the root documents that differ from what is installed (follow) or leaves them to spore upgrade (kept) — spore config set docs follow|kept'
 const SWITCHES = { on: true, off: false }
-const COUNTS = new Set(['turns', 'modelSessions', 'hereSnapshots', 'homeSplit'])
+const COUNTS = new Set(['turns', 'modelSessions', 'homeSplit'])
 const SIZES = new Set(['largestFile', 'freeFloor'])
 const LISTS = new Set(['workspaces'])
 
@@ -428,8 +421,7 @@ export const DEFAULTS = Object.freeze({
   largestFile: native.defaultLargestFile(),
   freeFloor: native.defaultFreeFloor(),
   contain: true,
-  docs: 'kept',
-  hereSnapshots: 20
+  docs: 'kept'
 })
 
 /**

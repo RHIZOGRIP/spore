@@ -1034,10 +1034,11 @@ without a terminal the sporangium must be named. Later it reopens that spore, re
 **Git is the undo**, so outside a work tree it is refused unless told to work without git. Each
 session starts with a commit of the directory as it stands — tracked and untracked, `.gitignore`
 respected — under `refs/spore/<spore>/<session>`, written through an index of its own, so neither
-the work tree nor the person's index moves. Only the newest snapshots are kept per spore
-(`hereSnapshots`, host config), the older refs dropped as a session opens: a snapshot holds
-untracked files, so one kept forever would keep a deleted file — or a `.env` nobody ignored — in
-`.git`, where a mirror push or a backup of every ref would carry it. `/diff` shows what changed
+the work tree nor the person's index moves. Only the newest three are kept per spore, the older
+refs dropped as a session opens: a snapshot holds untracked files, so one kept forever would keep a
+deleted file — or a `.env` nobody ignored — in `.git`, where a mirror push or a backup of every ref
+would carry it. A session reads only its own; three leave room for another session of the spore
+still open. `/diff` shows what changed
 since, through git's pager, and cannot tell the spore's changes from the person's; `/undo` restores
 what changed or went and removes what was made, ignored files apart. Both are commands `spore here`
 adds to the terminal (`runTui`'s `commands`).

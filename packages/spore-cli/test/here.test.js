@@ -48,16 +48,17 @@ describe('git, as the undo', () => {
   })
 
   it('keeps the newest snapshots of a spore and drops the rest, leaving another spore\'s alone', () => {
-    for (const session of ['20261001T090000Z', '20261002T090000Z', '20261003T090000Z']) snapshot(dir, { spore: 'sub-x', session })
+    for (const session of ['20261001T090000Z', '20261002T090000Z', '20261003T090000Z', '20261004T090000Z']) snapshot(dir, { spore: 'sub-x', session })
     snapshot(dir, { spore: 'other-y', session: '20261001T090000Z' })
 
-    expect(pruneSnapshots(dir, { spore: 'sub-x', keep: 2 })).toEqual(['refs/spore/sub-x/20261001T090000Z'])
+    expect(pruneSnapshots(dir, { spore: 'sub-x' })).toEqual(['refs/spore/sub-x/20261001T090000Z'])
     expect(git('for-each-ref', '--format=%(refname)', 'refs/spore/').trim().split('\n')).toEqual([
       'refs/spore/other-y/20261001T090000Z',
       'refs/spore/sub-x/20261002T090000Z',
-      'refs/spore/sub-x/20261003T090000Z'
+      'refs/spore/sub-x/20261003T090000Z',
+      'refs/spore/sub-x/20261004T090000Z'
     ])
-    expect(pruneSnapshots(dir, { spore: 'sub-x', keep: 2 })).toEqual([])
+    expect(pruneSnapshots(dir, { spore: 'sub-x' })).toEqual([])
   })
 
   it('takes a snapshot that moves neither the work tree nor the index', () => {

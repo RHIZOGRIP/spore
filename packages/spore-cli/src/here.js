@@ -62,15 +62,18 @@ export function snapshot (dir, { spore, session }) {
   return ref
 }
 
+const KEPT = 3
+
 /**
- * Drops all but the newest `keep` of `spore`'s session snapshots, so what an old one holds — an
- * untracked file since deleted — leaves `.git` with it; the refs dropped, oldest first. Session
+ * Drops all but the newest `KEPT` of `spore`'s session snapshots, so what an old one holds — an
+ * untracked file since deleted — leaves `.git` with it; the refs dropped, oldest first. A session
+ * reads only its own; more than one is kept for another session of the spore still open. Session
  * names are UTC times, so their order is their names'.
  */
-export function pruneSnapshots (dir, { spore, keep }) {
+export function pruneSnapshots (dir, { spore }) {
   const top = workTreeOf(dir)
   const refs = git(top, ['for-each-ref', '--sort=refname', '--format=%(refname)', `refs/spore/${spore}/`]).split('\n').filter(Boolean)
-  const dropped = refs.slice(0, Math.max(0, refs.length - keep))
+  const dropped = refs.slice(0, Math.max(0, refs.length - KEPT))
   for (const ref of dropped) git(top, ['update-ref', '-d', ref])
   return dropped
 }

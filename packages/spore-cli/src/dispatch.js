@@ -416,11 +416,7 @@ async function service (argv, emit) {
     return emit(services.remove(name, { yes: argv.yes }), (r) => { for (const unit of r.units) console.log(`removed ${unit}`) })
   }
   if (sub === 'log') {
-    const lines = argv.n ?? argv.lines ?? '50'
-    if (!/^\d+$/.test(lines)) {
-      console.error(`spore: -n ${lines} is not a number of lines`)
-      return 2
-    }
+    const lines = argv.n ?? '50'
     const unit = services.log(name)
     return spawnSync('journalctl', ['--user', '-u', unit, '-n', lines, '--no-pager', '-o', 'short-iso', ...(argv.f ? ['-f'] : [])], { stdio: 'inherit' }).status ?? 1
   }

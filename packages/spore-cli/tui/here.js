@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { realpathSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
-import { defaultModel, define, hereSnapshots, isWorkspace, readConfig, SporeError, sporangia, workspaceFor } from '@rhizogrip/spore'
+import { defaultModel, define, isWorkspace, SporeError, sporangia, workspaceFor } from '@rhizogrip/spore'
 
 import { changesSince, diffArgs, gitStateText, pruneSnapshots, snapshot, sporeNameFor, undoTo, workTreeOf } from '../src/here.js'
 import { choose, runTui } from './index.js'
@@ -12,7 +12,7 @@ const WHAT = { M: 'restore', D: 'bring back', A: 'remove' }
 function gitCommands (dir, spore) {
   const session = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')
   const since = snapshot(dir, { spore, session })
-  pruneSnapshots(dir, { spore, keep: hereSnapshots(readConfig()) })
+  pruneSnapshots(dir, { spore })
   return [
     {
       name: 'diff',

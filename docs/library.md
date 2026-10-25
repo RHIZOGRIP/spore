@@ -1182,15 +1182,6 @@ existing(paths) → { live, missing }
 
 `paths` split into those that exist and those that do not.
 
-### `hereSnapshots`
-
-```
-hereSnapshots(config) → number
-```
-
-How many sessions `spore here` keeps a snapshot of per spore: the `hereSnapshots` setting of a
-`readConfig` result, else 20.
-
 ### `followingDocs`
 
 ```

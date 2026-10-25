@@ -16,6 +16,7 @@ import minimist from 'minimist'
 
 import { differingDocs, fork, follow, followingDocs, grantOf, isWorkspace, lastEventSeq, loadEnvironment, mimeOf, readConfig, readInbox, RUNNING, send, stateOf, stop, turnOfMessage, turnSummary, watch, workspaceFor, errorText } from '@rhizogrip/spore'
 import { renderHeader } from '../src/dispatch.js'
+import { SERVICES } from '../src/services.js'
 
 // Detaching is neither success nor failure: the turn is still going, and 0 would claim it
 // answered. `spore show` says what actually happened once it has.
@@ -26,7 +27,7 @@ const DEFAULT_TAIL = 50
 const argv = minimist(process.argv.slice(2), {
   string: ['_', 'definition', 'from', 'sporangium', 'at', 'model', 'plugin', 'attach', 'request-id', 'after', 'since', 'until', 'tz', 'by', 'n', 'lines'],
   boolean: ['debug', 'help', 'version', 'unsafe', 'yes', 'replay', 'json', 'all', 'outdated', 'f', 'clear'],
-  alias: { h: 'help' }
+  alias: { h: 'help', n: 'lines' }
 })
 
 const VERBS = `Usage:
@@ -75,7 +76,7 @@ const VERBS = `Usage:
   spore job stop <name> <job>               ask a running job's supervisor to stop it
   spore pause [why]                         stop every turn and job of your spores, and start none
   spore unpause                             let turns start again; what waited goes at the next tick
-  spore service ls                          the services spore ships (webhook, tick, api, ssh-agent, sluice) and its plugins offer
+  spore service ls                          the services spore ships (${Object.keys(SERVICES).join(', ')}) and its plugins offer
   spore service define <svc>                write its systemd user unit, checked first
   spore service start|stop|restart <svc>    now; enable|disable: at every login
   spore service restart --outdated          every service running older code than is installed
@@ -228,6 +229,7 @@ if (shape) {
   if (unknown.length) {
     fail(`unknown option ${unknown.map(dashed).join(', ')} — ${label} takes ${shape.flags.length ? shape.flags.map(dashed).join(', ') : 'no option'}`)
   }
+  if (argv.n !== undefined && !/^\d+$/.test(argv.n)) fail(`-n ${argv.n} is not a number of lines`)
   const extra = argv._.slice(subs ? 2 : 1).slice(shape.most)
   if (extra.length) {
     const most = shape.most === 0 ? 'no argument' : shape.most === 1 ? 'at most one argument' : `at most ${shape.most} arguments`
@@ -392,8 +394,7 @@ if (verb === 'attach') {
     process.exit(await events(ws, after) ? DETACHED : exitFor(ws))
   }
   if (argv.after !== undefined) fail('--after is for --json — spore attach <name> --json --after <seq>')
-  const tail = argv.n ?? argv.lines
-  if (tail !== undefined && !/^\d+$/.test(tail)) fail(`-n ${tail} is not a number of lines`)
+  const tail = argv.n
   const running = stateOf(ws).state === RUNNING
   const ended = await follow(ws, { lines: tail !== undefined ? Number(tail) : running ? 0 : DEFAULT_TAIL, status: true })
   process.exit(ended === 'detached' ? DETACHED : exitFor(ws))

@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, workspaceFor, containing, followingDocs, hereSnapshots } from '../src/library/config.js'
+import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, workspaceFor, containing, followingDocs } from '../src/library/config.js'
 import { workspacesIn, isWorkspace } from '../src/library/discover.js'
 import { define, defaultModel, defaultSporangiumPath, switchModel, edit, grantOf, list, log, pause, show, sporePaths, precursors, schedules, setDefaultModel, setSchedule, removeSchedule, sql, unpause, usage } from '../src/library/verbs.js'
 import { billingOf } from 'mohdel/providers'
@@ -160,13 +160,6 @@ describe('editing where to look', () => {
     expect(() => setKey('freeFloor', 'lots', CONFIG)).toThrow(/not a size/)
     expect(() => setKey('largestFile', '0', CONFIG)).toThrow(/not a size/)
     expect(getKey('freeFloor', CONFIG)).toEqual({ freeFloor: '512MB' })
-  })
-
-  it('keeps 20 spore here snapshots per spore unless told another count', () => {
-    expect(hereSnapshots(readConfig(CONFIG))).toBe(20)
-    setKey('hereSnapshots', '5', CONFIG)
-    expect(hereSnapshots(readConfig(CONFIG))).toBe(5)
-    expect(() => setKey('hereSnapshots', '0', CONFIG)).toThrow(/not a count/)
   })
 
   it('contains turns unless the operator turns it off, by name', () => {
