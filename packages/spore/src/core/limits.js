@@ -7,18 +7,11 @@
 import { SporeError } from '../observability/errors.js'
 import { durationMs, limitAmount, sporeDefinition } from '../delegation/definition.js'
 import { changeLimits } from './spore-dir.js'
+import { limitText } from './units.js'
 
 export const DIMENSIONS = ['rounds', 'cost', 'wall']
 
 const SHAPE = { rounds: '20', cost: '1.50', wall: '30m' }
-
-export function limitText (dimension, value) {
-  if (dimension === 'cost') return `$${value.toFixed(2)}`
-  if (dimension === 'rounds') return `${value} rounds`
-  if (value < 60_000) return `${Math.round(value / 1000)}s`
-  const minutes = Math.round(value / 60_000)
-  return minutes >= 60 ? `${Math.floor(minutes / 60)}h${minutes % 60 ? `${minutes % 60}m` : ''}` : `${minutes}m`
-}
 
 const sayRefusal = ({ refused, dimension, room, ceiling }) => {
   if (refused === 'idle') return 'nothing is running'

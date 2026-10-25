@@ -9,6 +9,7 @@ import { executeTools } from './tool-kernel.js'
 import { textOf } from './message.js'
 import { MAX_EMPTY_RETRIES, accountUsage, resolveEmptyCompletion } from './answer-result.js'
 import { SporeError } from '../observability/errors.js'
+import { limitText } from './units.js'
 
 /**
  * The transcript as it goes out, with the conversation opted into prefix caching.
@@ -29,12 +30,6 @@ function forCaching (messages, ttl) {
   const outgoing = messages.map(m => ({ ...m }))
   markConversationForCaching(outgoing, ttl)
   return outgoing
-}
-
-const LIMIT_TEXT = {
-  rounds: (n) => `${n} rounds`,
-  cost: (n) => `$${n.toFixed(4)}`,
-  wall: (ms) => `${Math.round(ms / 1000)}s`
 }
 
 const HEARTBEAT_INTERVAL_MS = 10_000
@@ -169,7 +164,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
       emit('unwrap', { dimension: change.dimension, soft: change.soft, hard: change.hard })
       append(mark({
         role: 'user',
-        content: `[System: your owner raised this turn's ${change.dimension} limit — it now wraps at ${LIMIT_TEXT[change.dimension](change.soft)} and stops at ${LIMIT_TEXT[change.dimension](change.hard)}. Disregard the request to wrap up and carry on with the work.]`
+        content: `[System: your owner raised this turn's ${change.dimension} limit — it now wraps at ${limitText(change.dimension, change.soft)} and stops at ${limitText(change.dimension, change.hard)}. Disregard the request to wrap up and carry on with the work.]`
       }, WRAP))
     }
 
@@ -178,7 +173,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
       const stuck = soft ? null : guard.stalled()
       if (soft || stuck) {
         wrapped = soft || 'progress'
-        const reached = soft ? `reached its ${soft} limit (${LIMIT_TEXT[soft](at[soft])})` : `stopped making progress — \`${stuck.tool}\` ${stuck.because}`
+        const reached = soft ? `reached its ${soft} limit (${limitText(soft, at[soft])})` : `stopped making progress — \`${stuck.tool}\` ${stuck.because}`
         const because = soft === 'wall' && wrapAsked ? 'been asked by its owner to wrap up' : reached
         logger.info({ ...at, dimension: wrapped }, '[loop] wrapping')
         emit('wrap', { dimension: wrapped, ...at, ...(stuck || {}) })
