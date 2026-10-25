@@ -77,9 +77,9 @@ export function sandbox (workspace, { writeDir, extraWritePaths = [], extraReadP
   const readPaths = [...systemReadPaths(), ...extraReadPaths.filter(Boolean)]
   const writePaths = ['/dev/null', ...extraWritePaths.filter(Boolean)]
 
-  // Landlock resolves a path against its most nested matching rule, so handing the
-  // subdir in as the read-write root while `workspace` rides along as a read path
-  // yields exactly: read all of workspace, write only beneath writeDir. A caller that
+  // Landlock adds up the rights of every rule along a path, so `workspace` as a read path
+  // and `writeDir` as a write path yield exactly: read all of workspace, write only beneath
+  // writeDir. A write right on any parent would hand over everything under it. A caller that
   // delegates this way keeps its own ruleset — restrict_self binds the calling process only.
   // Either this process comes back confined or it does not come back: preparing the
   // write root and installing the ruleset are the same commitment, and a caller that
@@ -87,7 +87,7 @@ export function sandbox (workspace, { writeDir, extraWritePaths = [], extraReadP
   try {
     const fullWriteDir = safePath(workspace, writeDir)
     mkdirSync(fullWriteDir, { recursive: true })
-    const abi = native.sandbox({ workspace: fullWriteDir, readPaths: [...readPaths, workspace], writePaths })
+    const abi = native.sandbox({ readPaths: [...readPaths, workspace], writePaths: [fullWriteDir, ...writePaths] })
     logger.info({ abi, workspace, writeDir: fullWriteDir }, '[sandbox] landlock — confined')
     return abi
   } catch (err) {

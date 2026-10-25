@@ -1,7 +1,7 @@
 /**
  * sandbox.c — Landlock LSM bindings for Node.js (N-API)
  *
- * sandbox({ workspace, readPaths, writePaths }) confines the process (and all its
+ * sandbox({ readPaths, writePaths }) confines the process (and all its
  * children) to the given paths. Irreversible within the process lifetime.
  */
 
@@ -110,30 +110,18 @@ static int add_path_rule (int ruleset_fd, const char *path, uint64_t access) {
   return ret < 0 ? -err : 0;
 }
 
-/* Read a string from a JS object property. Returns 0 on success, buf is NUL-terminated. */
-static int get_string_prop (napi_env env, napi_value obj, const char *key, char *buf, size_t len) {
-  napi_value val;
-  if (napi_get_named_property(env, obj, key, &val) != napi_ok) return -1;
-  napi_valuetype type;
-  napi_typeof(env, val, &type);
-  if (type != napi_string) return -1;
-  size_t copied;
-  napi_get_value_string_utf8(env, val, buf, len, &copied);
-  return 0;
-}
-
-/* Add rules for each path in a JS string array. Silently skips missing paths. */
-static int add_paths_from_array (napi_env env, int ruleset_fd, napi_value arr, uint64_t access) {
+/* Add rules for each path in a JS string array. A missing path is skipped when `missing_ok`,
+   and otherwise fails, left in `path` so the caller can name it. */
+static int add_paths_from_array (napi_env env, int ruleset_fd, napi_value arr, uint64_t access, int missing_ok, char *path, size_t path_len) {
   uint32_t len;
   napi_get_array_length(env, arr, &len);
-  char path[4096];
   for (uint32_t i = 0; i < len; i++) {
     napi_value elem;
     napi_get_element(env, arr, i, &elem);
     size_t copied;
-    napi_get_value_string_utf8(env, elem, path, sizeof(path), &copied);
+    napi_get_value_string_utf8(env, elem, path, path_len, &copied);
     int ret = add_path_rule(ruleset_fd, path, access);
-    if (ret < 0 && ret != -ENOENT) return ret;
+    if (ret < 0 && !(missing_ok && ret == -ENOENT)) return ret;
   }
   return 0;
 }
@@ -143,9 +131,8 @@ static int add_paths_from_array (napi_env env, int ruleset_fd, napi_value arr, u
 /**
  * sandbox(opts)
  *
- * opts.workspace  — string, read-write path (required)
- * opts.readPaths  — string[], read-only paths (optional)
- * opts.writePaths — string[], additional read-write paths (optional)
+ * opts.readPaths  — string[], read-only paths; one missing on this host is skipped
+ * opts.writePaths — string[], read-write paths; each must exist
  *
  * Throws on error. Returns ABI version on success.
  */
@@ -155,13 +142,6 @@ static napi_value Sandbox (napi_env env, napi_callback_info info) {
   napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
   if (argc < 1) {
     napi_throw_error(env, NULL, "sandbox() requires an options object");
-    return NULL;
-  }
-
-  /* Read workspace path */
-  char workspace[4096];
-  if (get_string_prop(env, argv[0], "workspace", workspace, sizeof(workspace)) < 0) {
-    napi_throw_error(env, NULL, "opts.workspace must be a string");
     return NULL;
   }
 
@@ -196,15 +176,8 @@ static napi_value Sandbox (napi_env env, napi_callback_info info) {
     return NULL;
   }
 
-  /* Workspace: full read-write access */
-  int ret = add_path_rule(ruleset_fd, workspace, handled_fs);
-  if (ret < 0) {
-    close(ruleset_fd);
-    char msg[4352];
-    snprintf(msg, sizeof(msg), "Failed to add workspace rule for '%s': %s", workspace, strerror(-ret));
-    napi_throw_error(env, NULL, msg);
-    return NULL;
-  }
+  int ret;
+  char path[4096];
 
   /* Read-only paths */
   napi_value read_paths;
@@ -212,11 +185,11 @@ static napi_value Sandbox (napi_env env, napi_callback_info info) {
     bool is_array;
     napi_is_array(env, read_paths, &is_array);
     if (is_array) {
-      ret = add_paths_from_array(env, ruleset_fd, read_paths, LL_FS_READ);
+      ret = add_paths_from_array(env, ruleset_fd, read_paths, LL_FS_READ, 1, path, sizeof(path));
       if (ret < 0) {
         close(ruleset_fd);
         char msg[4352];
-        snprintf(msg, sizeof(msg), "Failed to add read-only rule: %s", strerror(-ret));
+        snprintf(msg, sizeof(msg), "Failed to add read-only rule for '%s': %s", path, strerror(-ret));
         napi_throw_error(env, NULL, msg);
         return NULL;
       }
@@ -229,11 +202,11 @@ static napi_value Sandbox (napi_env env, napi_callback_info info) {
     bool is_array;
     napi_is_array(env, write_paths, &is_array);
     if (is_array) {
-      ret = add_paths_from_array(env, ruleset_fd, write_paths, handled_fs);
+      ret = add_paths_from_array(env, ruleset_fd, write_paths, handled_fs, 0, path, sizeof(path));
       if (ret < 0) {
         close(ruleset_fd);
         char msg[4352];
-        snprintf(msg, sizeof(msg), "Failed to add write rule: %s", strerror(-ret));
+        snprintf(msg, sizeof(msg), "Failed to add write rule for '%s': %s", path, strerror(-ret));
         napi_throw_error(env, NULL, msg);
         return NULL;
       }
