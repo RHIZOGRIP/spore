@@ -1494,7 +1494,7 @@ Lower-level pieces the functions above are built on. Most programs need none of 
 ```
 openWorkspace(dir, { cwd = process.cwd(), definition, allowGranted = false })
 → { ws, granting, model, reads, writes, sources, scopes, limits, identity, excludeTools, retain,
-    history, memory, images, schedules, plugins, rules } | { error }
+    history, memory, images, schedules, dream, plugins, rules } | { error }
 ```
 
 Prepares a workspace for a turn and says what the turn gets. It writes: it creates `data/`, links

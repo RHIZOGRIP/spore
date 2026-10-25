@@ -4,7 +4,8 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { mimeOf } from '../src/core/call-record.js'
-import { DELIVERABLES_CAP, OUT_DIR, deliverablesIn } from '../src/core/deliverables.js'
+import { DELIVERABLES_CAP, OUT_DIR, WEIGH_EVERY_MS, dataBytesIn, deliverablesIn } from '../src/core/deliverables.js'
+import { writeTurnRecords } from '../src/core/spore-dir.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.deliverables-workspace')
@@ -51,14 +52,6 @@ describe('what a turn hands back', () => {
     expect(deliverables).toEqual([])
   })
 
-  it('counts everything data/ holds, old or new, and nothing outside it', () => {
-    write('data/old.txt', '12345')
-    write('data/new/part.json', '{}')
-    write('home/.cache/pip/blob', 'cached')
-    write('calls/r1/0001/out', 'streamed')
-    expect(deliverablesIn(WS, new Date(Date.now() + 60_000).toISOString()).dataBytes).toBe(7)
-  })
-
   it('leaves out what the turn wrote and then deleted', () => {
     write(`${OUT_DIR}/draft.md`)
     rmSync(resolve(WS, `${OUT_DIR}/draft.md`))
@@ -76,7 +69,7 @@ describe('what a turn hands back', () => {
 
   it('says nothing rather than throwing when there is nothing to walk', () => {
     rmSync(resolve(WS, 'data'), { recursive: true, force: true })
-    expect(deliverablesIn(WS, since())).toEqual({ deliverables: [], more: 0, dataBytes: 0 })
+    expect(deliverablesIn(WS, since())).toEqual({ deliverables: [], more: 0 })
   })
 })
 
@@ -123,5 +116,31 @@ describe('what a file is', () => {
 
   it('does not throw on a path that is gone', () => {
     expect(mimeOf(resolve(WS, 'data/never-existed'))).toBe('application/octet-stream')
+  })
+})
+
+describe('what data/ weighs', () => {
+  const NOW = Date.parse('2026-10-25T12:00:00.000Z')
+  const weighed = (endedAt, dataBytes) => writeTurnRecords(WS, [{ startedAt: endedAt, endedAt, stopReason: 'answer', concluded: true, dataBytes }])
+
+  beforeEach(() => {
+    write('data/old.txt', '12345')
+    write('data/out/part.json', '{}')
+    write('home/.cache/pip/blob', 'cached')
+    write('calls/r1/0001/out', 'streamed')
+  })
+
+  it('is everything under data/, and nothing outside it, for a spore that dreams', () => {
+    expect(dataBytesIn(WS, { dreams: true, now: NOW })).toBe(7)
+  })
+
+  it('is not weighed for a spore that does not dream', () => {
+    expect(dataBytesIn(WS, { dreams: false, now: NOW })).toBe(null)
+  })
+
+  it('is weighed again only once the last turn that weighed it ended an hour ago', () => {
+    weighed(new Date(NOW - WEIGH_EVERY_MS + 1000).toISOString(), 3)
+    expect(dataBytesIn(WS, { dreams: true, now: NOW })).toBe(null)
+    expect(dataBytesIn(WS, { dreams: true, now: NOW + 1000 })).toBe(7)
   })
 })

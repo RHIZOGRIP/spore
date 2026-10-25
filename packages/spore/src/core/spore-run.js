@@ -24,7 +24,7 @@ import { loop } from './loop.js'
 import { describeCall } from './call-table.js'
 import { COMPACTED, marked } from './marks.js'
 import { DATA_DIR, appendCompaction, linkTurnTmp, appendTranscript, fromPerson, inboxConsumed, readInbox, readInboxFrom, readModelKey, readSaidSoFar, runningLimits, writableDirs, writeOutcome } from './spore-dir.js'
-import { deliverablesIn } from './deliverables.js'
+import { dataBytesIn, deliverablesIn } from './deliverables.js'
 import { scheduleDir } from './schedule.js'
 import { composeSystem } from './system-prompt.js'
 import { callsIn, createCallTrail } from './call-record.js'
@@ -81,6 +81,8 @@ export async function runSpore ({
   lastSent = null,
   // A root turn is told when it started; a cell's prompt was written by a parent that knew.
   dated = false,
+  // Whether the definition grants `dream`: only then is `data/` weighed for the turn record.
+  dreams = false,
   workspace,
   modelId,
   // The model client, and it is required. This function is the confined half of a
@@ -444,7 +446,7 @@ export async function runSpore ({
     // records the streams it redirected, never what a program wrote while it ran, and a
     // rendered report is exactly that case.
     if (historyOver(historySent, carried)) logger.warn({ sent: historySent, bound: carried }, '[spore] this turn carried more history than its bound')
-    const { deliverables, more: deliverablesMore, dataBytes } = deliverablesIn(WS, turnStartedAt)
+    const { deliverables, more: deliverablesMore } = deliverablesIn(WS, turnStartedAt)
     events.emit('deliverables', { files: deliverables, more: deliverablesMore })
 
     writeOutcome(state, {
@@ -482,7 +484,7 @@ export async function runSpore ({
       // and never parses prose to find the file the turn made.
       deliverables,
       ...(deliverablesMore ? { deliverablesMore } : {}),
-      dataBytes,
+      dataBytes: dataBytesIn(WS, { dreams }),
       historySent,
       historyBound: carried,
       inputTokens: result.usage?.input || 0,
@@ -548,7 +550,7 @@ export async function runSpore ({
       // A turn that died can still have written what it meant to hand back.
       deliverables: left.deliverables,
       ...(left.more ? { deliverablesMore: left.more } : {}),
-      dataBytes: left.dataBytes,
+      dataBytes: dataBytesIn(WS, { dreams }),
       historySent,
       historyBound: carried
     })

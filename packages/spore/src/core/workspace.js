@@ -220,6 +220,7 @@ export function openWorkspace (dir, { cwd = process.cwd(), definition: given, al
     memory: definition.memory,
     images: definition.images,
     schedules: definition.schedules ?? null,
+    dream: definition.dream ?? null,
     plugins: definition.plugins,
     calls: definition.calls ?? [],
     reasoning: definition.reasoning ?? [],

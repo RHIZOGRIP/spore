@@ -14,10 +14,10 @@
  */
 
 import { readdirSync, statSync } from 'node:fs'
-import { relative, resolve, sep } from 'node:path'
+import { relative, resolve } from 'node:path'
 
 import { mimeOf } from './call-record.js'
-import { DATA_DIR } from './spore-dir.js'
+import { DATA_DIR, dataMeasured } from './spore-dir.js'
 
 // What the agent means to hand back, as `data/memory` is what it means to remember. The
 // runtime reads the name and nothing more: which of these a consumer passes on is a
@@ -27,6 +27,10 @@ export const OUT_DIR = `${DATA_DIR}/out`
 // How many files a turn hands back. Each becomes something a person receives, so past this the
 // agent bundles them.
 export const DELIVERABLES_CAP = 50
+
+// The walk stats every file `data/` keeps, and dream pressure needs how far it grew between
+// dreams, not its size at every turn.
+export const WEIGH_EVERY_MS = 3_600_000
 
 export const walk = (dir, out = []) => {
   let entries
@@ -48,24 +52,19 @@ export const walk = (dir, out = []) => {
  * of them, with `more` the ones left out.
  *
  * `since` is the turn's start, and the file has to still be there: something written and
- * then deleted was a draft, not a deliverable. `dataBytes` is everything under `data/` at the end,
- * counted on the same walk.
+ * then deleted was a draft, not a deliverable.
  */
 export function deliverablesIn (ws, since, { cap = DELIVERABLES_CAP } = {}) {
   const startedAt = new Date(since).getTime()
-  const outAt = resolve(ws, OUT_DIR)
-
   const found = []
-  let dataBytes = 0
-  for (const full of walk(resolve(ws, DATA_DIR))) {
+  for (const full of walk(resolve(ws, OUT_DIR))) {
     let st
     try {
       st = statSync(full)
     } catch {
       continue
     }
-    dataBytes += st.size
-    if (!full.startsWith(outAt + sep) || st.mtimeMs < startedAt) continue
+    if (st.mtimeMs < startedAt) continue
     found.push({
       path: relative(ws, full),
       bytes: st.size,
@@ -75,5 +74,23 @@ export function deliverablesIn (ws, since, { cap = DELIVERABLES_CAP } = {}) {
   }
 
   found.sort((a, b) => b.mtime.localeCompare(a.mtime))
-  return { deliverables: found.slice(0, cap), more: Math.max(0, found.length - cap), dataBytes }
+  return { deliverables: found.slice(0, cap), more: Math.max(0, found.length - cap) }
+}
+
+/**
+ * Everything under `data/`, in bytes, for a spore that `dreams` and was last weighed
+ * `WEIGH_EVERY_MS` or more before `now`; null when it is not weighed, and the dream reads the
+ * last turn that was.
+ */
+export function dataBytesIn (ws, { dreams, now = Date.now() }) {
+  if (!dreams) return null
+  const last = dataMeasured(ws)
+  if (last && now - Date.parse(last.endedAt) < WEIGH_EVERY_MS) return null
+  let total = 0
+  for (const full of walk(resolve(ws, DATA_DIR))) {
+    try {
+      total += statSync(full).size
+    } catch {}
+  }
+  return total
 }

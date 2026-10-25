@@ -89,6 +89,11 @@ describe('dreamRecords', () => {
     expect(dreamRecords(ws)).toEqual({ afterTurn: 0, dreamBytes: null, turnsSince: 2, endedAt: '2026-10-12T10:00:00.000Z', dataBytes: 300, unread: false, heldDue: null })
   })
 
+  it('reads data/ from the last turn that weighed it, and quiet from the last turn', () => {
+    writeTurnRecords(ws, [turn('2026-10-12T09:00:00.000Z', 300), turn('2026-10-12T10:00:00.000Z', null)])
+    expect(dreamRecords(ws)).toMatchObject({ turnsSince: 2, endedAt: '2026-10-12T10:00:00.000Z', dataBytes: 300 })
+  })
+
   it('counts from the last dream, and reads what waits', () => {
     writeTurnRecords(ws, [turn('2026-10-12T08:00:00.000Z', 100), turn('2026-10-12T09:00:00.000Z', 200), turn('2026-10-12T10:00:00.000Z', 400)])
     recordCell(ws, { precursor: 'tidy', origin: 'dream', cellWs: '/cells/dream/1', answer: 'tidied', costUsd: 0.1, durationMs: 1000, afterTurn: 1, dataBytes: 100 })

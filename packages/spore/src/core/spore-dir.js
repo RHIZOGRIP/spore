@@ -1119,18 +1119,24 @@ export function turnSummary (ws) {
   })
 }
 
+const MEASURED = 'SELECT endedAt, dataBytes FROM turns WHERE dataBytes IS NOT NULL ORDER BY turnNo DESC LIMIT 1'
+
+/** The last turn that weighed `data/`: `{ endedAt, dataBytes }`, or null when none has. */
+export const dataMeasured = (ws) => reading(ws, null, db => db.prepare(MEASURED).get() ?? null)
+
 /**
  * What says whether a dream is due, in one read: the last dream (the turn it ran after and the
- * bytes in `data/` then), the turns finished since, the last of them (when it ended, the bytes in
- * `data/` at its end), whether anything said waits unread, and when the first held delivery is
- * released.
+ * bytes in `data/` then), the turns finished since, when the last of them ended, the bytes in
+ * `data/` at the last turn that weighed it, whether anything said waits unread, and when the
+ * first held delivery is released.
  */
 export function dreamRecords (ws) {
   const none = { afterTurn: 0, dreamBytes: null, turnsSince: 0, endedAt: null, dataBytes: null, unread: false, heldDue: null }
   return reading(ws, none, db => {
     const dream = db.prepare("SELECT afterTurn, dataBytes FROM cells WHERE origin = 'dream' ORDER BY cellNo DESC LIMIT 1").get()
     const afterTurn = dream?.afterTurn ?? 0
-    const last = db.prepare('SELECT endedAt, dataBytes FROM turns ORDER BY turnNo DESC LIMIT 1').get()
+    const last = db.prepare('SELECT endedAt FROM turns ORDER BY turnNo DESC LIMIT 1').get()
+    const measured = db.prepare(MEASURED).get()
     const { turnsSince } = db.prepare('SELECT count(*) AS turnsSince FROM turns WHERE turnNo > ?').get(afterTurn)
     const { unread } = db.prepare('SELECT count(*) > 0 AS unread FROM inbox WHERE NOT consumed AND asks').get()
     const { heldDue } = db.prepare('SELECT min(releaseAt) AS heldDue FROM held').get()
@@ -1139,7 +1145,7 @@ export function dreamRecords (ws) {
       dreamBytes: dream?.dataBytes ?? null,
       turnsSince,
       endedAt: last?.endedAt ?? null,
-      dataBytes: last?.dataBytes ?? null,
+      dataBytes: measured?.dataBytes ?? null,
       unread: Boolean(unread),
       heldDue
     }

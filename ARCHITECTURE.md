@@ -238,9 +238,10 @@ whose person works in the workspace says so. Where a chat gets no file from its 
 and which is still there at the end: a draft written and deleted was working, not a deliverable.
 A program writes a report without any call naming it, so the trail cannot say what was handed
 back. `DELIVERABLES_CAP` (50) bounds a turn's list, since each file is something a person
-receives: past it the agent bundles them, and `deliverablesMore` counts the ones left out. The
-same walk adds up everything under `data/`, `dataBytes` on the turn record: how much the spore
-keeps, read later without walking it again.
+receives: past it the agent bundles them, and `deliverablesMore` counts the ones left out. A
+spore that dreams also has everything under `data/` added up, `dataBytes` on the turn record —
+at most once an hour, null on the turns between, since the walk stats every file the spore keeps
+and a dream needs only how far `data/` grew. A spore that does not dream is never weighed.
 
 Delivering those files is the **invoker's** problem. The workspace is the delivery
 surface and already holds everything; a terminal lists it, a bot attaches it, a
@@ -2374,9 +2375,9 @@ for, and the agent can.
   reaches 1, each at least a quarter: the more a spore did, the sooner it dreams once left alone,
   never in the middle of a conversation and never on too little. It is due only in a state a
   schedule fires into, with nothing unread and no held delivery released before its hard wall
-  would end. `dreamDue()` (`src/core/dream.js`) reads it from the records alone — `dataBytes` on
-  the turn record, the last dream's row in `t_cells` — because the `tick` pass asks every spore
-  every minute.
+  would end. `dreamDue()` (`src/core/dream.js`) reads it from the records alone — `dataBytes` of
+  the last turn that weighed `data/`, the last dream's row in `t_cells` — because the `tick` pass
+  asks every spore every minute.
 - **Under the lock.** The pass starts `spore-runner --dream` as `send` starts a runner, through
   an admission slot. The runner takes the lock, writes `dream: true` into it, and runs
   `bin/spore-dream.js` where a turn runs the agent; that looks again under the lock, since a

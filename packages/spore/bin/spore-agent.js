@@ -84,6 +84,7 @@ try {
     // operator's alone.
     schedules: opened.schedules,
     historyBudget: opened.history,
+    dreams: opened.dream !== null,
     lastSent: lastSent(opened.ws),
     dated: true,
     sandbox: !argv.unsafe,
