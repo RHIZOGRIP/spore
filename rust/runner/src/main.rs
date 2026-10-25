@@ -173,13 +173,12 @@ fn definition(ws: &Path) -> Result<Definition, String> {
 }
 
 /// A turn the agent never recorded, recorded by the runner so it does not read as idle.
-fn record(ws: &Path, started_at: &str, stop_reason: &str, error: &str, detail: &str, tree: f64) {
+fn record(ws: &Path, started_at: &str, stop_reason: &str, error: &str, detail: &str) {
     let turn = Unanswered {
         started_at,
         stop_reason,
         error,
         detail,
-        tree,
     };
     if let Err(e) = record_unanswered(ws, &turn) {
         eprintln!("spore: cannot record the turn — {e}");
@@ -200,7 +199,6 @@ fn unrecorded(
         stop_reason,
         error,
         detail,
-        tree: 0.0,
     };
     let recorded = write_outcome(ws, turn_id, &unanswered(&turn))
         .and_then(|()| finalize_turn(ws, turn_id, None).map(|_| ()));
@@ -217,7 +215,7 @@ fn close_channel(watcher: UnixStream, serving: std::thread::JoinHandle<Result<()
 
 /// Refused after the lock was taken, so the turn a `send` started is recorded as refused.
 fn refuse(ws: &Path, lock: std::fs::File, started_at: &str, problem: &str) -> ! {
-    record(ws, started_at, "error", "START_FAILED", problem, 0.0);
+    record(ws, started_at, "error", "START_FAILED", problem);
     let_go(ws, lock);
     fail(problem)
 }
@@ -759,7 +757,7 @@ async fn main() {
     let code = loop {
         if let Err((kind, problem)) = admit(&ws, &args, &def) {
             eprintln!("spore: {problem}");
-            record(&ws, &iso_now(), "error", kind, &problem, 0.0);
+            record(&ws, &iso_now(), "error", kind, &problem);
             break 2;
         }
         // A fork carries a turn on and reads no message, so it answers no caller.
@@ -777,7 +775,7 @@ async fn main() {
             Ok(opened) => opened,
             Err(problem) => {
                 eprintln!("spore: {problem}");
-                record(&ws, &turn_started, "error", "START_FAILED", &problem, 0.0);
+                record(&ws, &turn_started, "error", "START_FAILED", &problem);
                 turn.end(0.0);
                 break 2;
             }
@@ -786,7 +784,7 @@ async fn main() {
             Ok(turn_id) => turn_id,
             Err(problem) => {
                 eprintln!("spore: {problem}");
-                record(&ws, &turn_started, "error", "START_FAILED", &problem, 0.0);
+                record(&ws, &turn_started, "error", "START_FAILED", &problem);
                 served.into_iter().for_each(Served::stop);
                 turn.end(0.0);
                 break 2;
@@ -897,7 +895,6 @@ async fn main() {
                 stop_reason,
                 error,
                 detail: &detail,
-                tree: 0.0,
             };
             if let Err(e) = write_outcome(&ws, &turn_id, &unanswered(&unrecorded)) {
                 eprintln!("spore: cannot record the turn — {e}");
@@ -963,7 +960,6 @@ fn leave(ws: &Path, lock: std::fs::File, started_at: &str) -> ! {
         "cancelled",
         "OPERATION_CANCELLED",
         "stopped before the agent started",
-        0.0,
     );
     let_go(ws, lock);
     std::process::exit(143)

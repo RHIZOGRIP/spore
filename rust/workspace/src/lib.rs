@@ -1267,7 +1267,6 @@ pub struct Unanswered<'a> {
     pub stop_reason: &'a str,
     pub error: &'a str,
     pub detail: &'a str,
-    pub tree: f64,
 }
 
 /// A turn the agent did not record — it never started, or was killed, or died first —
@@ -1290,7 +1289,7 @@ pub fn unanswered(turn: &Unanswered) -> Record {
         "detail": turn.detail,
         "concluded": false,
         "rounds": null,
-        "treeMicros": micros(turn.tree)
+        "treeMicros": 0
     }))
 }
 

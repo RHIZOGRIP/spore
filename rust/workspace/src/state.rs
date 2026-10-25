@@ -2592,7 +2592,6 @@ pub fn recover(ws: &Path) -> Result<(), String> {
                         stop_reason: "error",
                         error: "SUPERVISOR_DIED",
                         detail: "its supervisor ended before the turn was written down",
-                        tree: 0.0,
                     })
                     .without("startedAt"),
                 )?;
@@ -4020,7 +4019,6 @@ mod tests {
             stop_reason: "cancelled",
             error: "KILLED",
             detail: "why",
-            tree: 0.0,
         });
         let frame = format!(
             "{{\"id\":1,\"op\":\"turn.outcome\",\"turn\":{}}}",

@@ -617,7 +617,6 @@ async fn main() {
                 stop_reason,
                 error,
                 detail: &detail,
-                tree: 0.0,
             };
             if let Err(e) = write_outcome(&plan.ws, &turn_id, &unanswered(&turn)) {
                 eprintln!("spawn: cannot record the cell's turn — {e}");
@@ -652,7 +651,6 @@ fn record_unstarted(ws: &Path, turn_id: &str, started_at: &str, problem: &str) {
         stop_reason: "error",
         error: "START_FAILED",
         detail: problem,
-        tree: 0.0,
     };
     let recorded = write_outcome(ws, turn_id, &unanswered(&turn))
         .and_then(|()| finalize_turn(ws, turn_id, None).map(|_| ()));
