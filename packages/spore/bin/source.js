@@ -58,7 +58,9 @@ try {
 } catch (e) {
   fail('SPORE_SOURCES is not readable JSON', e.message)
 }
-const client = createSourceClient({ socketPath, key: readTreeKey(process.cwd()), view })
+const ws = process.env.SPORE_WS
+if (!ws) fail('SPORE_WS is not set', 'source runs inside a spore\'s turn, whose runner names the workspace holding the tree\'s key')
+const client = createSourceClient({ socketPath, key: readTreeKey(ws), view })
 
 if (argv.list) {
   const { sources } = await client.list().catch(e => fail(e.message, e.detail))

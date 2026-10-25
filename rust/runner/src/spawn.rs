@@ -371,9 +371,12 @@ async fn main() {
             Some(_) => write_tree_key(&plan.ws)
                 .map_err(|e| format!("cannot write the cell's key — {e}"))?,
             None => {
-                let key = std::fs::read_to_string(cwd.join(TREE_KEY_FILE))
+                let parent = std::env::var("SPORE_WS").map_err(|_| {
+                    "SPORE_WS is not set — spawn runs under a spore, whose runner names the workspace holding the tree's key".to_string()
+                })?;
+                let key = std::fs::read_to_string(Path::new(&parent).join(TREE_KEY_FILE))
                     .map(|k| k.trim().to_string())
-                    .map_err(|e| format!("no {TREE_KEY_FILE} in {} — spawn runs under a spore, which writes the tree's key ({e})", cwd.display()))?;
+                    .map_err(|e| format!("no {TREE_KEY_FILE} in {parent} — the runner writes the tree's key there for each turn ({e})"))?;
                 std::fs::write(plan.ws.join(TREE_KEY_FILE), &key)
                     .map_err(|e| format!("cannot stage the tree's key — {e}"))?;
                 key
@@ -469,6 +472,7 @@ async fn main() {
         let env: Vec<(String, String)> = std::env::vars().collect();
         let mut passed = agent_env(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
         passed.insert("HOME".into(), plan.ws.join(HOME_DIR).display().to_string());
+        passed.insert("SPORE_WS".into(), plan.ws.display().to_string());
         passed.insert(
             "SPORE_PLAN".into(),
             plan.for_worker(args.answer.as_deref().expect("planned"), &hashes)

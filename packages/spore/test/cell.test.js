@@ -87,7 +87,7 @@ describe('a cell outside any turn', () => {
 
     writeFileSync(join(ws, 'precursors', 'digest.cmk'), DIGEST.replace('tools: [read]\n', 'model: strong\ntools: [read]\n'))
     const refused = await runCell({ ws, precursor: 'digest', origin: 'command', briefing: 'x\n', env: env() })
-    expect(refused).toMatchObject({ started: false, failed: expect.stringMatching(/cell model "strong", which this spore's cell-models does not have — it has low/) })
+    expect(refused).toMatchObject({ answer: null, started: true, failed: expect.stringMatching(/exited 2 — spawn: precursor digest runs on the cell model "strong", which this spore's cell-models does not have — it has low/) })
     expect(gate.envelopes).toHaveLength(2)
   })
 

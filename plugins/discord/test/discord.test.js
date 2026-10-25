@@ -44,7 +44,7 @@ async function broker (answer) {
   await new Promise(resolve => server.listen(socketPath, resolve))
   const history = (...args) => run(process.execPath, [join(ROOT, 'bin/discord.js'), ...args], {
     cwd: dir,
-    env: { PATH: process.env.PATH, SPORE_SOURCE: SOURCE_BIN, SPORE_SOURCE_SOCKET: socketPath }
+    env: { PATH: process.env.PATH, SPORE_SOURCE: SOURCE_BIN, SPORE_SOURCE_SOCKET: socketPath, SPORE_WS: dir }
   })
   return { asked, history }
 }

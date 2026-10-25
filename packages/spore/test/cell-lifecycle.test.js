@@ -48,6 +48,7 @@ const spawnCell = async (args, env = {}) => {
         MODEL: 'anthropic/claude-haiku-4-5',
         SPORE_MODEL_SOCKET: broker.socketPath,
         SPORE_NODE: process.execPath,
+        SPORE_WS: root,
         SPORE_SOCKET_DIR: native.sporeSocketDir(root),
         ...env
       }

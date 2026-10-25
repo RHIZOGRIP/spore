@@ -109,9 +109,6 @@ export async function runCell ({ ws, precursor, origin, ref = null, files = {}, 
   if (root.error) return unstarted(`spore.cmk ${root.error}`)
 
   const named = Object.fromEntries((root.cellModels ?? []).map(entry => [entry.name, entry.model]))
-  const naming = Object.keys(named).length > 0 && cell.model !== undefined
-  if (naming && !Object.hasOwn(named, cell.model)) return unstarted(`${PRECURSOR_DIR}/${precursor}.cmk runs on the cell model "${cell.model}", which this spore's cell-models does not have — it has ${Object.keys(named).join(', ')}`)
-  const model = naming ? named[cell.model] : root.model
 
   const cellWs = join(cellsRoot(env), basename(ws), slugOf(origin), `${Date.now()}-${randomBytes(3).toString('hex')}`)
   mkdirSync(join(cellWs, 'data'), { recursive: true })
@@ -124,7 +121,7 @@ export async function runCell ({ ws, precursor, origin, ref = null, files = {}, 
 
   const wallMs = dream ? Math.min(cell.limits.wall.hard, dream.wallMs) : cell.limits.wall.hard
   starting(wallMs)
-  const ran = await launchStandalone({ ws, precursor, cellWs, prompt: PROMPT, answer: ANSWER, model, auth: root.auth, env: { ...env, ...(naming ? { SPORE_CELL_MODELS: JSON.stringify(named) } : {}) }, configFile, wallMs, dream: Boolean(dream), signal })
+  const ran = await launchStandalone({ ws, precursor, cellWs, prompt: PROMPT, answer: ANSWER, model: root.model, auth: root.auth, env: { ...env, ...(Object.keys(named).length ? { SPORE_CELL_MODELS: JSON.stringify(named) } : {}) }, configFile, wallMs, dream: Boolean(dream), signal })
   const failed = ran.failed ?? (ran.answer === null ? 'gave no answer' : null)
   recordCell(ws, {
     precursor,

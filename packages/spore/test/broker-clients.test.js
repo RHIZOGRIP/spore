@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import http from 'node:http'
 import { execFile } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -103,9 +103,24 @@ describe('the source client', () => {
       writeFileSync(join(ws, 'tree.key'), KEY)
       const { stdout } = await promisify(execFile)(process.execPath, [resolve(import.meta.dirname, '../bin/source.js'), '--list'], {
         cwd: ws,
-        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath }
+        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath, SPORE_WS: ws }
       })
       expect(stdout).toMatch(/^tracker\s+methods: GET, POST {2}paths: \*\* under api\/v1\//)
+    } finally {
+      rmSync(ws, { recursive: true, force: true })
+    }
+  })
+
+  it('reads the tree\'s key from the workspace its runner names, wherever the agent has gone, and says when none is named', async () => {
+    await serve(() => [200, { sources: [] }])
+    const ws = mkdtempSync(join(tmpdir(), 'spore-source-cli-'))
+    try {
+      writeFileSync(join(ws, 'tree.key'), KEY)
+      mkdirSync(join(ws, 'data'))
+      const source = [resolve(import.meta.dirname, '../bin/source.js'), '--list']
+      await promisify(execFile)(process.execPath, source, { cwd: join(ws, 'data'), env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath, SPORE_WS: ws } })
+      await expect(promisify(execFile)(process.execPath, source, { cwd: ws, env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath } }))
+        .rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/^source: SPORE_WS is not set/) })
     } finally {
       rmSync(ws, { recursive: true, force: true })
     }
@@ -118,7 +133,7 @@ describe('the source client', () => {
       writeFileSync(join(ws, 'tree.key'), KEY)
       const { stdout, stderr } = await promisify(execFile)(process.execPath, [resolve(import.meta.dirname, '../bin/source.js'), 'web', '--q', 'x', '--out', '-'], {
         cwd: ws,
-        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath }
+        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath, SPORE_WS: ws }
       })
       expect(stdout).toBe('{"hits":2}')
       expect(JSON.parse(stderr)).toEqual({ source: 'web', status: 200, ok: true, bytes: 10, out: '-' })
@@ -135,14 +150,14 @@ describe('the source client', () => {
       writeFileSync(join(ws, 'tree.key'), KEY)
       const { stdout } = await promisify(execFile)(process.execPath, [resolve(import.meta.dirname, '../bin/source.js'), 'pages', '--out', 'page.png'], {
         cwd: ws,
-        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath }
+        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath, SPORE_WS: ws }
       })
       expect(readFileSync(join(ws, 'page.png'))).toEqual(image)
       expect(JSON.parse(stdout)).toEqual({ source: 'pages', status: 200, ok: true, bytes: 10, out: 'page.png' })
 
       const piped = await promisify(execFile)(process.execPath, [resolve(import.meta.dirname, '../bin/source.js'), 'pages', '--out', '-'], {
         cwd: ws,
-        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath },
+        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath, SPORE_WS: ws },
         encoding: 'buffer'
       })
       expect(piped.stdout).toEqual(image)
@@ -158,7 +173,7 @@ describe('the source client', () => {
       writeFileSync(join(ws, 'tree.key'), KEY)
       await promisify(execFile)(process.execPath, [resolve(import.meta.dirname, '../bin/source.js'), 'chat', '--path', '100/messages', '--before', '1234567890123456789', '--limit', '50', '--out', '-'], {
         cwd: ws,
-        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath }
+        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath, SPORE_WS: ws }
       })
       expect(seen[0].body).toEqual({ source: 'chat', params: { before: '1234567890123456789', limit: '50' }, path: '100/messages' })
     } finally {

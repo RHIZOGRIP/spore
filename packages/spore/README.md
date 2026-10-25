@@ -436,7 +436,7 @@ environment, and, for a store whose API differs from the protocol's defaults, `p
 | `LOG_FORMAT` | `json` forces structured logs; otherwise a tty gets the pretty one |
 | `<BOT>_BOT_TOKEN` | the Telegram plugin's: a bot's token, named by its `telegram/<bot>.json`; never passed to a spore |
 
-`TRACEPARENT`, `SPORE_CELL`, `SPORE_PLAN`, `SPORE_ENZYMES` and every `SPORE_*_SOCKET`
+`TRACEPARENT`, `SPORE_WS`, `SPORE_CELL`, `SPORE_PLAN`, `SPORE_ENZYMES` and every `SPORE_*_SOCKET`
 are internal: the runtime sets them for the processes it starts. So are `SPORE_SPAWN`,
 `SPORE_FANOUT`, `SPORE_RECALL`, `SPORE_SOURCE` and `SPORE_ENZYME`, which name the programs an agent runs.
 

@@ -257,7 +257,7 @@ pub const PASSED_THROUGH: [&str; 12] = [
 
 /// What the runtime itself sets in the environment of what it starts — the agent, a cell, a job,
 /// a command — which no variable a plugin declares may set.
-pub const RUNTIME_ENV: [&str; 28] = [
+pub const RUNTIME_ENV: [&str; 29] = [
     "HOME",
     "TMPDIR",
     "TRACEPARENT",
@@ -283,6 +283,7 @@ pub const RUNTIME_ENV: [&str; 28] = [
     "SPORE_SQL",
     "SPORE_STATE_FD",
     "SPORE_STORE_SOCKET",
+    "SPORE_WS",
     PLUGIN_READS,
     PLUGIN_ENV,
     PLUGIN_CALLS,

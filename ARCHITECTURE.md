@@ -2345,8 +2345,8 @@ agent running with its broker pulled away.
 Some hosts are not turns — a webhook's triage, a schedule that wants one judgment, a command — and
 still want a precursor's work: `runCell` (`src/core/cell.js`) runs one. It gives the cell a
 directory of its own under `$XDG_STATE_HOME/spore/cells/<spore>/<origin>/`, holding the files the
-caller names and its briefing as the prompt, on the precursor's model or the spore's, and starts it
-with `spore-spawn --standalone`.
+caller names and its briefing as the prompt, and starts it with `spore-spawn --standalone`, handing
+it the spore's `model:` and `cell-models` for the spawn plan to resolve as it does under a turn.
 
 - **It has no parent to borrow a model from**, so `--standalone` starts its own session as a
   runner does, under a key of its own and the precursor's hard cost, and records the settled spend
@@ -2665,7 +2665,9 @@ running as the same user. Without a key, another spore of the user could connect
 against a ledger that is not its own.
 
 The key is 32 random bytes, minted for each turn by the runner (`write_tree_key`,
-`rust/workspace`) into `<ws>/tree.key`, a root that is a read path to the agent. A turn's key
+`rust/workspace`) into `<ws>/tree.key`, a root that is a read path to the agent, and names that
+workspace to it as `SPORE_WS`, where `source`, `job`, `recall` and `spawn` look for the key
+wherever the agent has gone. A turn's key
 and sockets are its own: when the turn ends they are stopped, so a cell it detached fails its
 next call rather than spending the next turn's allowance. `spawn` stages the key into each cell's
 workspace the way it stages `enzyme.js`, which reads it from beside itself; a cell outside any

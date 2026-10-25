@@ -42,9 +42,10 @@ closest things written down come back, each with where it came from.`)
   process.exit(phrase ? 0 : 2)
 }
 
-const ws = process.cwd()
+const ws = process.env.SPORE_WS
+if (!ws) fail('SPORE_WS is not set — recall runs inside a spore\'s turn, whose runner names its workspace')
 const definition = resolve(ws, DEFINITION_FILE)
-if (!existsSync(definition)) fail(`no ${DEFINITION_FILE} here — recall runs in a workspace`)
+if (!existsSync(definition)) fail(`no ${DEFINITION_FILE} in ${ws} — recall runs in a workspace`)
 
 const parsed = parseDefinition(readFileSync(definition, 'utf8'), { knownTools: TOOL_NAMES })
 if (parsed.error) fail(`${DEFINITION_FILE} ${parsed.error}`)

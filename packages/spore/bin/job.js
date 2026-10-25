@@ -59,9 +59,11 @@ if (saying) {
 if (process.env.SPORE_JOB_NAME) fail('a job cannot start a job', 'its own command may run anything in the background, and is stopped with it')
 const socketPath = process.env.SPORE_JOB_SOCKET
 if (!socketPath) fail('no job socket', 'this spore was granted no jobs — its owner grants them in spore.cmk, as jobs: [2, 2h]')
+const ws = process.env.SPORE_WS
+if (!ws) fail('SPORE_WS is not set', 'job runs inside a spore\'s turn, whose runner names the workspace holding the tree\'s key')
 
 try {
-  const begun = await request(socketPath, { key: readTreeKey(process.cwd()), method: 'POST', path: '/start', body: { name, command: argv['--'].join(' ') }, what: 'job socket' })
+  const begun = await request(socketPath, { key: readTreeKey(ws), method: 'POST', path: '/start', body: { name, command: argv['--'].join(' ') }, what: 'job socket' })
   console.log(JSON.stringify(begun))
 } catch (e) {
   fail(e.message, e.detail)
