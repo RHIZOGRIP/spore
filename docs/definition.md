@@ -143,6 +143,7 @@ that level. **Absent** says what leaving the field out means where it is accepte
 | [`prepare`](#prepare) | list of `origin=plugin/program` | optional | refused | none | the program that prepares each origin's deliveries | [Deliveries nobody typed](../ARCHITECTURE.md#deliveries-nobody-typed) |
 | [`prepare.timeout`](#preparetimeout) | duration | with `prepare` | refused | — | how long one prepare step may run | same |
 | [`prepare.attach`](#prepareattach) | `[count, size]` | with `prepare` | refused | — | the files and bytes one prepare step may attach | same |
+| [`unconfined`](#unconfined) | `true` or `false` | optional | refused | confined | the spore's turns run with no Landlock, seccomp filter or namespaces | [Sandbox](../ARCHITECTURE.md#sandbox) |
 
 ¹ A sporangium's `spore.cmk`, the template spores are made from, may leave `model` out
 (§[`model`](#model)).
@@ -711,6 +712,23 @@ may attach. A step that writes more attaches nothing, and the delivery says why.
 
 `prepare.timeout` and `prepare.attach` are both required beside `prepare`, and each is refused
 without it. A [source](#sources) named `prepare` is refused.
+
+## Confinement
+
+### `unconfined`
+
+```
+unconfined: true
+```
+
+**`spore.cmk` only.** The spore's agent starts without `confine` and applies no Landlock of its
+own: no seccomp filter and no namespaces, so what `wsexec` runs reaches whatever the user can.
+Its cells, jobs, routers and prepare steps are confined as they are for any spore. It is for a
+host that cannot confine — `spore doctor` says when one cannot — or for a spore meant to work on
+the machine itself; put it in the default sporangium's `spore.cmk` for every spore made after.
+`false` is the same as leaving it out. The runner reads it when it starts, so an edit holds from the next
+runner on, and `spore show` and the line `send` prints when a turn starts say when a spore is
+unconfined.
 
 ## A schedule
 

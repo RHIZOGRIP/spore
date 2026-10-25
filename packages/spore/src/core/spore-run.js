@@ -53,7 +53,7 @@ function nowLine (now = new Date()) {
  * @param {'5m'|'1h'} [opts.cacheTtl='5m']
  * @param {string} opts.workspace
  * @param {string} opts.modelId         — the model the turn runs on, as the definition's `model:`
- * @param {boolean} [opts.unsafe=false]
+ * @param {boolean} [opts.sandbox=false]
  * @param {object} [opts.logger]
  * @returns {{ output, messages, rounds, usage, stopReason, spent }}
  */

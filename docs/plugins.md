@@ -350,7 +350,7 @@ Every contained process of the spore gets the same view, of every plugin it uses
 or only in `prepare:` — the agent of a turn, its jobs, its routers and prepare steps, a cell
 started outside any turn — laid out by `confine --contain` in the namespace it
 already makes, so it holds for whatever the process runs. One that is not contained (`contain
-off`, or `--unsafe`) would see all of `hide`, and is refused instead; so is one whose `keep` is not
+off`, or a spore that says `unconfined: true`) would see all of `hide`, and is refused instead; so is one whose `keep` is not
 there, with `missing` as the fix, or, with no `keep`, whose `hide` is not. These refusals are
 `CONTAIN_FAILED` for a turn. `spore doctor` reports them for each spore.
 

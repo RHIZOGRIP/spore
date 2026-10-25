@@ -99,8 +99,8 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
   const unsetIn = (described) => secretsIn(described).filter(variable => !env[variable])
 
   if (root) problem('machine', 'user', 'spore is running as root — every turn, job, router and prepare step is refused', 'run spore as an ordinary user (in a container, USER or --user)')
-  if (abi === -constants.errno.EOPNOTSUPP) problem('machine', 'landlock', 'is built into this kernel and not enabled at boot — every turn fails', 'add landlock to the kernel\'s lsm= boot parameter, or pass --unsafe to run unconfined')
-  else if (abi < 0) problem('machine', 'landlock', `is not in this kernel (${getSystemErrorName(abi)}) — every turn fails`, 'run spore on Linux 5.13+ built with CONFIG_SECURITY_LANDLOCK, or pass --unsafe to run unconfined')
+  if (abi === -constants.errno.EOPNOTSUPP) problem('machine', 'landlock', 'is built into this kernel and not enabled at boot — every turn fails', 'add landlock to the kernel\'s lsm= boot parameter, or set unconfined: true in a spore\'s spore.cmk to run its turns unconfined — in the default sporangium\'s for every new spore')
+  else if (abi < 0) problem('machine', 'landlock', `is not in this kernel (${getSystemErrorName(abi)}) — every turn fails`, 'run spore on Linux 5.13+ built with CONFIG_SECURITY_LANDLOCK, or set unconfined: true in a spore\'s spore.cmk to run its turns unconfined — in the default sporangium\'s for every new spore')
   else if (abi < 6) note('machine', 'landlock', `is version ${abi}, which cannot scope signals: a spore can signal another spore's processes and reach its abstract sockets`, 'Linux 6.12 or newer scopes both — what matters when spores of different people share one account')
 
   if (existsSync(environment)) {

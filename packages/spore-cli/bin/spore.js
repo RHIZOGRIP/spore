@@ -26,7 +26,7 @@ const DEFAULT_TAIL = 50
 
 const argv = minimist(process.argv.slice(2), {
   string: ['_', 'definition', 'from', 'sporangium', 'at', 'model', 'plugin', 'attach', 'request-id', 'after', 'since', 'until', 'tz', 'by', 'n', 'lines'],
-  boolean: ['debug', 'help', 'version', 'unsafe', 'yes', 'replay', 'json', 'all', 'outdated', 'f', 'clear'],
+  boolean: ['debug', 'help', 'version', 'yes', 'replay', 'json', 'all', 'outdated', 'f', 'clear'],
   alias: { h: 'help', n: 'lines' }
 })
 
@@ -112,7 +112,6 @@ ${VERBS}
   --definition  the .cmk to give it, instead of your default
   --from        the spore to cut it from: what it can do, never what it did
   --json        for a program: the answer as JSON, with the same exit code
-  --unsafe      no Landlock sandbox and no namespaces: no confinement at all
   --debug       verbose logging on stderr
 
 send, attach and fork exit 0 when the turn answered, 1 when it ended with no answer,
@@ -133,8 +132,8 @@ const ALL = Infinity
 // subcommand for a verb that has them, `bare` being the one it runs without. A message, a
 // query, a reason to pause and a plugin's settings take every word left.
 const SHAPES = {
-  send: { flags: ['attach', 'request-id', 'json', 'unsafe', 'debug'], most: ALL },
-  fork: { flags: ['at', 'definition', 'replay', 'unsafe', 'debug'], most: 2 },
+  send: { flags: ['attach', 'request-id', 'json', 'debug'], most: ALL },
+  fork: { flags: ['at', 'definition', 'replay', 'debug'], most: 2 },
   attach: { flags: ['n', 'lines', 'json', 'after'], most: 1 },
   stop: { flags: [], most: 1 },
   extend: withJson(3),
@@ -370,7 +369,7 @@ if (verb === 'fork') {
   if (!asked || !argv.at || !into) fail('fork needs a spore, a call and somewhere new — spore fork <name> --at <call> <new> [--definition <f>] [--replay]')
   let made
   try {
-    made = fork({ run: spore(asked), at: argv.at, into: workspaceFor(into).path, definition: argv.definition, replay: argv.replay, unsafe: argv.unsafe, debug: argv.debug })
+    made = fork({ run: spore(asked), at: argv.at, into: workspaceFor(into).path, definition: argv.definition, replay: argv.replay, debug: argv.debug })
   } catch (err) {
     fail(errorText(err))
   }
@@ -433,7 +432,7 @@ let grant
 let sent
 try {
   grant = grantOf(ws)
-  sent = send(ws, message, { attach, requestId, replyTo: 'terminal', unsafe: argv.unsafe, debug: argv.debug })
+  sent = send(ws, message, { attach, requestId, replyTo: 'terminal', debug: argv.debug })
 } catch (err) {
   fail(errorText(err))
 }
@@ -444,10 +443,6 @@ const settled = sent.repeated && !sent.started && stateOf(ws).state !== RUNNING
 
 const dreaming = !sent.started && !settled && stateOf(ws).dreaming
 if (dreaming) console.error('spore: it is dreaming — your message waits for it to wake, and the turn after the dream reads it')
-
-if (argv.unsafe && !sent.started && !settled) {
-  console.error('spore: --unsafe took no effect — the message went to the turn already running, which keeps the confinement it was started with')
-}
 
 if (argv.json) {
   line({ event: 'sent', inbox: sent.inbox, started: sent.started, repeated: sent.repeated })

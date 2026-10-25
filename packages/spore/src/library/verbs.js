@@ -567,10 +567,10 @@ export function list ({ where, disk = false, configFile = CONFIG_FILE } = {}) {
 
 export { billingFor }
 
-/** What `send` and `fork` print when a turn starts: the model, the tools, the limits. */
+/** What `send` and `fork` print when a turn starts: the model, the tools, the limits, and whether it runs unconfined. */
 export function grantOf (ws) {
   const definition = sporeDefinition(ws)
-  return { model: definition.model, tools: definition.tools, limits: definition.limits, billing: billingFor(definition.model) }
+  return { model: definition.model, tools: definition.tools, limits: definition.limits, billing: billingFor(definition.model), unconfined: definition.unconfined === true }
 }
 
 /**
@@ -600,6 +600,7 @@ export function show ({ ws, configFile = CONFIG_FILE } = {}) {
     sources: definition.sources,
     scopes: definition.scopes,
     tools: definition.tools,
+    unconfined: definition.unconfined === true,
     limits: definition.limits,
     extend: definition.extend ?? null,
     turnLimits: state.state === RUNNING ? runningLimits(path) : null,

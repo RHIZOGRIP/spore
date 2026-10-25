@@ -68,7 +68,7 @@ export const CHATGPT_HELPER = createRequire(import.meta.url).resolve('mohdel/cha
  *
  * @returns {{ ws: string, started: boolean, pid: number|null, inbox: number, repeated: boolean }}
  */
-export function send (ws, message, { attach = [], schedule, hook, from, traceparent, requestId, replyTo, overheard = false, approval, start: starting = true, unsafe = false, debug = false, env = process.env, configFile = CONFIG_FILE } = {}) {
+export function send (ws, message, { attach = [], schedule, hook, from, traceparent, requestId, replyTo, overheard = false, approval, start: starting = true, debug = false, env = process.env, configFile = CONFIG_FILE } = {}) {
   const workspace = resolve(ws)
   const known = requestId === undefined ? null : inboxRequest(workspace, requestId)
   if (known?.consumed) return { ws: workspace, started: false, pid: null, inbox: known.inboxNo, repeated: true }
@@ -79,7 +79,7 @@ export function send (ws, message, { attach = [], schedule, hook, from, tracepar
     return err
   }
   const start = (slot, plugins, { inbox, repeated }) =>
-    ({ ws: workspace, started: true, pid: startRunner(workspace, { slot, plugins, unsafe, debug, env, configFile }), inbox, repeated })
+    ({ ws: workspace, started: true, pid: startRunner(workspace, { slot, plugins, debug, env, configFile }), inbox, repeated })
 
   if (stateOf(workspace).state !== RUNNING) {
     const plugins = preparePlugins(workspace, { config: readConfig(configFile) })
@@ -148,7 +148,7 @@ export function release (ws, { now = Date.now(), env = process.env, configFile =
  * spore's plugins add to its agent's environment. `env` and `configFile` are what the caller was
  * launched with; the runner gets `env` as `turnEnv` makes it from `configFile`.
  */
-export function startRunner (workspace, { slot, plugins, unsafe = false, debug = false, continuing = false, dream = false, env = process.env, configFile = CONFIG_FILE }) {
+export function startRunner (workspace, { slot, plugins, debug = false, continuing = false, dream = false, env = process.env, configFile = CONFIG_FILE }) {
   const config = readConfig(configFile)
   if (followingDocs(config)) upgradeDocs(workspace, { config })
   const largestFile = bytesOf(config, 'largestFile')
@@ -171,7 +171,6 @@ export function startRunner (workspace, { slot, plugins, unsafe = false, debug =
       ...(freeFloor === null ? [] : ['--free-floor', String(freeFloor)]),
       ...(modelSessions === null ? [] : ['--model-sessions', String(modelSessions)]),
       ...(replyTo === null ? [] : ['--reply-to', replyTo]),
-      ...(unsafe ? ['--unsafe'] : []),
       ...(debug ? ['--debug'] : []),
       ...(continuing ? ['--continue'] : []),
       ...(dream ? ['--dream'] : [])

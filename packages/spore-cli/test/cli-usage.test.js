@@ -107,7 +107,7 @@ describe('what a verb takes', () => {
 
     const sent = spore('send', WS, 'hello again', '--model', 'm/b')
     expect(sent.status).toBe(2)
-    expect(sent.stderr).toBe('spore: unknown option --model — send takes --attach, --request-id, --json, --unsafe, --debug\n')
+    expect(sent.stderr).toBe('spore: unknown option --model — send takes --attach, --request-id, --json, --debug\n')
     expect(spore('sql', WS, 'SELECT count(*) AS n FROM inbox', '--json').stdout).toBe('{"n":1}\n')
 
     expect(spore('service', 'log', 'tick', '--json').stderr).toBe('spore: unknown option --json — service log takes -n, --lines, -f\n')

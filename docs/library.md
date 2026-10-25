@@ -53,7 +53,7 @@ and [§A service in front of many spores](../INTEGRATION.md#a-service-in-front-o
 
 ```
 send(ws, text, { attach = [], requestId, replyTo, from, traceparent, start = true, env,
-                 overheard = false, approval, schedule, hook, unsafe = false, debug = false })
+                 overheard = false, approval, schedule, hook, debug = false })
 → { ws, started, pid, inbox, repeated }
 ```
 
@@ -84,9 +84,8 @@ position, `started` says whether this call started a turn, `pid` is the runner's
 - `env`: the environment the runner starts with.
 - `schedule` (`{ name, due }`) and `hook` (`{ name, delivery, event? }`): record the message as
   said by the clock or by a webhook, as `tick` and the webhook service do.
-- `unsafe`: turns off all confinement for the turn — no Landlock, no namespaces of its own, no
-  seccomp filter. For a host without Landlock; `spore send --unsafe` sets it. `debug`: starts
-  the runner with debug output.
+- `debug`: starts the runner with debug output. Whether a turn is confined is the spore's own
+  `unconfined:` ([definition.md](definition.md#confinement)), never the sender's.
 
 Throws `ADMISSION_FULL`, `PAUSED` (each `retryable`; when the message was already
 said, `detail` says so), `MESSAGE_EMPTY`, `REQUEST_ID_INVALID`, `TRACEPARENT_INVALID`,
@@ -840,7 +839,7 @@ Removes a schedule; what it fired stays in the inbox. Throws `SCHEDULE_MISSING`,
 ### `fork`
 
 ```
-fork({ run, at, into, definition, replay = false, unsafe = false, debug = false, env })
+fork({ run, at, into, definition, replay = false, debug = false, env })
 → { ws, from, at, runId, rounds, inboxTo, startedAt, cutAt, replay, definition, pid }
 ```
 

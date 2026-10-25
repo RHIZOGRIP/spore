@@ -51,7 +51,6 @@ struct Args {
     model_sessions: usize,
     reply_to: Option<String>,
     debug: bool,
-    unsafe_: bool,
     continuing: bool,
     dream: bool,
 }
@@ -75,7 +74,6 @@ fn parse_args() -> Args {
         model_sessions: DEFAULT_MODEL_SESSIONS as usize,
         reply_to: None,
         debug: false,
-        unsafe_: false,
         continuing: false,
         dream: false,
     };
@@ -118,7 +116,6 @@ fn parse_args() -> Args {
             }
             "--reply-to" => args.reply_to = Some(value("--reply-to")),
             "--debug" => args.debug = true,
-            "--unsafe" => args.unsafe_ = true,
             "--continue" => args.continuing = true,
             "--dream" => args.dream = true,
             other => fail(format!("unknown argument {other}")),
@@ -291,7 +288,7 @@ fn admit(ws: &Path, args: &Args, def: &Definition) -> Result<(), (&'static str, 
             ),
         ));
     }
-    let contained = !args.unsafe_ && !args.host.no_contain;
+    let contained = !def.unconfined && !args.host.no_contain;
     if contained {
         if let Some(why) = contain_refused(&root()) {
             return Err(("CONTAIN_FAILED", uncontained(&why)));
@@ -698,7 +695,7 @@ async fn main() {
                     continuing: bool,
                     traceparent: Option<String>,
                     channel: &UnixStream| {
-        let mut command = if args.unsafe_ {
+        let mut command = if def.unconfined {
             Command::new(&node)
         } else {
             confined(&root(), &node, !args.host.no_contain, &args.host.kept)
@@ -707,8 +704,8 @@ async fn main() {
             .arg(root().join("bin").join("spore-agent.js"))
             .arg("--ws")
             .arg(&ws);
-        if args.unsafe_ {
-            command.arg("--unsafe");
+        if def.unconfined {
+            command.arg("--unconfined");
         }
         if args.debug {
             command.arg("--debug");

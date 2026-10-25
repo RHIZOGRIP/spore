@@ -3050,7 +3050,8 @@ What keeps them apart there:
   `reboot` and `syslog` are refused, and `clone3` answers `ENOSYS` so libc falls back to
   `clone`, whose namespace flags the filter reads. So a container may be loosened for the
   namespaces while what runs in it gets at least Docker's default on the calls an escape uses.
-  `--unsafe` starts the agent without `confine`.
+  A spore whose `spore.cmk` says `unconfined: true` has its agent started without `confine`,
+  and the agent applies no Landlock of its own; its cells are confined as any are.
 - **Never as root.** The runner records a turn it would run as uid 0 as `ROOT_REFUSED`, and
   `confine` runs nothing as root, so a job, a router or a cell outside any turn is refused too.
   Root of a user namespace — rootless podman's container root — is refused as well, since

@@ -102,7 +102,7 @@ const modelLine = (model, billing) => `${model}${billing === null ? '  (a provid
 export function renderHeader (ws, grant) {
   console.error([
     `spore  ${ws}`,
-    `       ${modelLine(grant.model, grant.billing)} · tools: ${grant.tools.join(', ')}`,
+    `       ${modelLine(grant.model, grant.billing)} · tools: ${grant.tools.join(', ')}${grant.unconfined ? ' · unconfined' : ''}`,
     `       limits: ${bounds(grant.limits, grant.billing)}  (soft wraps, hard stops)`
   ].join('\n'))
 }
@@ -118,6 +118,7 @@ function renderShow (result) {
   if (result.models.length) line('or', result.models.join(', '))
   if (result.cellModels.length) line('cell models', result.cellModels.map(named => `${named.name}=${named.model}`).join(', '))
   line('tools', result.tools.length ? result.tools.join(', ') : 'none')
+  if (result.unconfined) line('confined', 'no — its spore.cmk says unconfined: true, so its turns run with no Landlock, seccomp or namespaces')
   line('limits', bounds(result.limits, result.billing))
   if (result.turnLimits) for (const [i, one] of runningLines(result.turnLimits, result.extend).entries()) line(i ? '' : 'this turn', one)
   if (result.sources?.length) {

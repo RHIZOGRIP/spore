@@ -190,9 +190,9 @@ export function forkWorkspace ({ run, at, into, definition, replay = false }) {
 }
 
 /** A fork, made and started. Like `send`, it returns once the runner is on its way. */
-export function fork ({ run, at, into, definition, replay = false, unsafe = false, debug = false, env = process.env }) {
+export function fork ({ run, at, into, definition, replay = false, debug = false, env = process.env }) {
   return withSlot(slot => {
     const made = forkWorkspace({ run, at, into, definition, replay })
-    return { ...made, pid: startRunner(made.ws, { slot, plugins: preparePlugins(made.ws), unsafe, debug, continuing: true, env }) }
+    return { ...made, pid: startRunner(made.ws, { slot, plugins: preparePlugins(made.ws), debug, continuing: true, env }) }
   })
 }

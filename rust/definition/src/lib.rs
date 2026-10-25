@@ -29,7 +29,7 @@ pub use schedule::{parse_schedule, Due, Schedule};
 /// The tool suite, by name. Contract: ARCHITECTURE.md, "Tools".
 pub const TOOL_NAMES: [&str; 7] = ["read", "write", "edit", "exec", "wsexec", "ask", "quiet"];
 
-const FIELDS: [&str; 40] = [
+const FIELDS: [&str; 41] = [
     "name",
     "description",
     "model",
@@ -70,6 +70,7 @@ const FIELDS: [&str; 40] = [
     "prepare.timeout",
     "prepare.attach",
     "reasoning",
+    "unconfined",
 ];
 
 const ON_WRAP: [&str; 2] = ["keep", "discard"];
@@ -341,6 +342,9 @@ pub struct Definition {
     /// What each model call asks for besides the answer, from `REASONING`; empty asks for neither.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub reasoning: Vec<String>,
+    /// The agent runs with no Landlock, no seccomp filter and no namespaces of its own.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub unconfined: bool,
 }
 
 /// `cell` holds a definition to a cell's rules, `seed` to the shipped template's, which is
@@ -1580,6 +1584,26 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         }
     }
 
+    let unconfined = match fields.get("unconfined") {
+        None => false,
+        Some(_) if opts.cell => {
+            return Err("declares unconfined, which is the root definition's — a cell is always confined to its own directory".into());
+        }
+        Some(_) => {
+            let text = scalar(&fields, "unconfined")?.unwrap_or_default();
+            one(
+                "unconfined",
+                text,
+                |t| match t {
+                    "true" => Some(true),
+                    "false" => Some(false),
+                    _ => None,
+                },
+                "true or false",
+            )?
+        }
+    };
+
     Ok(Definition {
         name,
         description,
@@ -1608,6 +1632,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         prepare,
         calls,
         reasoning,
+        unconfined,
     })
 }
 
@@ -1675,6 +1700,31 @@ mod tests {
         )
         .unwrap_err();
         assert!(refused.contains("a cell runs once"));
+    }
+
+    #[test]
+    fn reads_unconfined_at_the_root_and_refuses_it_in_a_cell() {
+        let with =
+            |field: &str| parse(&WELL_FORMED.replacen("---\n", &format!("---\n{field}\n"), 1));
+        assert!(!parse(WELL_FORMED).unwrap().unconfined);
+        assert!(with("unconfined: true").unwrap().unconfined);
+        assert!(!with("unconfined: false").unwrap().unconfined);
+        assert!(with("unconfined: yes")
+            .unwrap_err()
+            .contains("expected true or false"));
+
+        let known: Vec<String> = TOOLS.iter().map(|t| t.to_string()).collect();
+        let source = "---\nname: c\nunconfined: true\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\non-wrap: keep\n---\n\nYou work.\n";
+        let refused = parse_definition(
+            source,
+            &Options {
+                known_tools: &known,
+                cell: true,
+                seed: false,
+            },
+        )
+        .unwrap_err();
+        assert!(refused.contains("declares unconfined"));
     }
 
     #[test]

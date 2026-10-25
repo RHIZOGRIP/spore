@@ -1,8 +1,9 @@
 /**
  * Two turns of `spore`, confined, in one workspace.
  *
- * The other CLI tests pass `--unsafe`, because a workspace under the repo is inside a
- * path the sandbox grants and the runtime refuses to confine there. So nothing had run
+ * The other CLI tests run spores whose spore.cmk says `unconfined: true`, because a
+ * workspace under the repo is inside a path the sandbox grants and the runtime refuses to
+ * confine one there. So nothing had run
  * the pair of processes as they actually run: Landlock applied, the agent writing only
  * its islands, the lock taken and released, and a second turn replaying the first.
  */

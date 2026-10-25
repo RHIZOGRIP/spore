@@ -376,7 +376,8 @@ Three layers:
 
 Landlock does not gate unix-socket connect.
 
-`--unsafe` skips it, and the namespaces with it: the turn runs with no confinement at all.
+`unconfined: true` in a spore's `spore.cmk` skips it, and the namespaces with it: that spore's
+turns run with no confinement at all. Its cells are confined still.
 
 **A host that cannot give a turn its own namespaces runs no turn**, and says why. A default
 Ubuntu 24.04 restricts unprivileged user namespaces, and Docker's default profiles refuse them.

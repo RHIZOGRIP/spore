@@ -100,13 +100,13 @@ export function sandbox (workspace, { writeDir, extraWritePaths = [], extraReadP
  * Returning a code the caller ignored meant a host without Landlock — an old
  * kernel, a blocked syscall, a rule that would not install — ran `wsexec`
  * unrestricted while everything above still believed it was sandboxed. Running
- * without it is a decision someone makes with `--unsafe`, not one a failure makes
- * for them.
+ * without it is a decision someone makes in the definition, `unconfined: true`, not
+ * one a failure makes for them.
  */
 function unconfined (err, workspace) {
   return new SporeError('sandbox failed', {
     type: 'SANDBOX_FAILED',
-    detail: `Landlock could not confine this process (${err.message}). Pass --unsafe to run without confinement deliberately.`,
+    detail: `Landlock could not confine this process (${err.message}). A spore runs its turns without confinement only when its spore.cmk says unconfined: true.`,
     context: { workspace },
     cause: err
   })

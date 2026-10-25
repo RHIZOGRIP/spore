@@ -37,12 +37,11 @@ Every turn's agent, and everything it runs, is held by the kernel, not by the to
   the surrounding container allows.
 - **Ports**: TCP bind is refused (Linux 6.7+), so nothing an agent runs listens on TCP.
 - **Not as root**: spore runs no turn, job or router as uid 0.
-- **Spend**: a turn stops at its definition's hard cost, and the operator can cap what all their
-  spores spend per day or month. Both stop new model calls once settled spend reaches them; a call
-  already running finishes and is paid.
+- **Spend**: a turn stops taking new model calls once its settled spend reaches its definition's
+  hard cost; a call already running finishes and is paid.
 
-`spore doctor` says which of these the host does not provide. `--unsafe` turns confinement off
-deliberately, for one turn.
+`spore doctor` says which of these the host does not provide. `unconfined: true` in a spore's
+`spore.cmk` turns confinement off deliberately, for that spore's turns; its cells stay confined.
 
 Requirements: Linux with Landlock (5.13+; 6.12+ for signal and socket scoping), unprivileged user
 namespaces for spore's `confine` (Ubuntu 24.04 restricts them by default; Docker's default
@@ -71,4 +70,5 @@ caller's patterns name. Exposing it further is a reverse proxy you choose.
 ## Not in scope
 
 A malicious operator; unconfined processes of the same user; kernel and container-runtime
-vulnerabilities; what a model provider does with what it is sent; a turn run with `--unsafe`.
+vulnerabilities; what a model provider does with what it is sent; a turn of a spore whose `spore.cmk` says
+`unconfined: true`.

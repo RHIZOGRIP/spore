@@ -20,12 +20,12 @@ import { autoLogger } from '../src/observability/logger.js'
 import { ensureOtelInitialized, parseTraceparent, shutdownOtel } from '../src/observability/tracing.js'
 import { runSpore } from '../src/core/spore-run.js'
 
-const argv = minimist(process.argv.slice(2), { string: ['ws'], boolean: ['debug', 'unsafe', 'continue'] })
+const argv = minimist(process.argv.slice(2), { string: ['ws'], boolean: ['debug', 'unconfined', 'continue'] })
 
 // The definition is read here rather than handed over: openWorkspace is what every
 // entry point shares, and an environment variable is a poor way to carry an
 // identity that is already on disk. The supervisor has installed any --definition already.
-const opened = openWorkspace(argv.ws, { allowGranted: argv.unsafe })
+const opened = openWorkspace(argv.ws, { allowGranted: argv.unconfined })
 if (opened.error) {
   console.error(`spore: ${opened.error}`)
   process.exit(2)
@@ -87,7 +87,7 @@ try {
     dreams: opened.dream !== null,
     lastSent: lastSent(opened.ws),
     dated: true,
-    sandbox: !argv.unsafe,
+    sandbox: !argv.unconfined,
     initialMessages: readTranscript(opened.ws),
     // A fork's turn goes on from its cut; `spore fork` is the only thing that asks for this.
     resume: argv.continue ? readFork(opened.ws) : null,

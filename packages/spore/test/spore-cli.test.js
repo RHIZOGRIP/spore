@@ -30,6 +30,10 @@ const scriptedMo = () => {
   }
 }
 
+// A workspace under the repo is inside a path the sandbox grants, and the runtime refuses to
+// confine one there.
+const definition = () => definitionWith('anthropic/claude-haiku-4-5').replace('\nmodel: ', '\nunconfined: true\nmodel: ')
+
 let broker
 
 const spore = (args, env = {}) => run(process.execPath, [SPORE, ...args], {
@@ -50,7 +54,7 @@ const spore = (args, env = {}) => run(process.execPath, [SPORE, ...args], {
 beforeEach(async () => {
   rmSync(WS, { recursive: true, force: true })
   mkdirSync(WS, { recursive: true })
-  writeFileSync(resolve(WS, 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5'))
+  writeFileSync(resolve(WS, 'spore.cmk'), definition())
   broker = createModelServer({ mo: scriptedMo(), socketPath: brokerSocketPath('cli-test'), limit: 10 })
   await broker.listen()
 })
@@ -62,12 +66,12 @@ afterEach(async () => {
 
 describe('the spore command as two processes', () => {
   it('runs a turn and puts the answer on stdout', async () => {
-    const { stdout } = await spore(['send', WS, 'hello', '--unsafe'])
+    const { stdout } = await spore(['send', WS, 'hello'])
     expect(stdout.trim()).toBe('THE ANSWER')
   })
 
   it('gives the agent no key it could spend with, only the socket', async () => {
-    await spore(['send', WS, 'hello', '--unsafe'])
+    await spore(['send', WS, 'hello'])
     const env = readFileSync(resolve(WS, 'data/env.txt'), 'utf8').split('\n')
 
     expect(env.some(line => line.startsWith('ANTHROPIC_API_SK'))).toBe(false)
@@ -77,7 +81,7 @@ describe('the spore command as two processes', () => {
   })
 
   it('keeps a key in the runner\'s environment out of the agent\'s, and a source socket it was granted no source for', async () => {
-    await spore(['send', WS, 'hello', '--unsafe'])
+    await spore(['send', WS, 'hello'])
     const given = readFileSync(resolve(WS, 'data/env.txt'), 'utf8').split('\n')
     expect(given.some(line => line.startsWith('BRAVE_API_SK') || line.startsWith('SPORE_SOURCE_SOCKET'))).toBe(false)
   })
@@ -85,7 +89,7 @@ describe('the spore command as two processes', () => {
   // The turn runs in a process of its own and `spore send` follows its files. Walking
   // away costs the turn nothing, which is the whole reason for the arrangement.
   it('runs the turn detached and follows it, so the answer still lands on stdout', async () => {
-    const { stderr } = await spore(['send', WS, 'hello', '--unsafe'])
+    const { stderr } = await spore(['send', WS, 'hello'])
 
     // The runner's streams, written to the workspace rather than inherited.
     expect(readFileSync(resolve(WS, 'spore.out'), 'utf8')).toContain('THE ANSWER')
@@ -95,7 +99,7 @@ describe('the spore command as two processes', () => {
   })
 
   it('puts what was said in the inbox, and records how far the turn read', async () => {
-    await spore(['send', WS, 'hello', '--unsafe'])
+    await spore(['send', WS, 'hello'])
 
     expect(readInbox(WS).map(entry => entry.text)).toContain('hello')
     const turn = readTurns(WS).at(-1)
@@ -103,7 +107,7 @@ describe('the spore command as two processes', () => {
   })
 
   it('records the model the turn ran on', async () => {
-    await spore(['send', WS, 'hello', '--unsafe'])
+    await spore(['send', WS, 'hello'])
     expect(readTurns(WS).at(-1).model).toBe('anthropic/claude-haiku-4-5')
   })
 
@@ -111,7 +115,7 @@ describe('the spore command as two processes', () => {
     const file = resolve(WS, '..', '.spore-cli-staged.diff')
     writeFileSync(file, 'diff --git a/x b/x\n')
     try {
-      await spore(['send', WS, 'write the commit message', '--attach', file, '--unsafe'])
+      await spore(['send', WS, 'write the commit message', '--attach', file])
       const entry = readInbox(WS).at(-1)
       expect(entry.text).toBe('write the commit message')
       expect(entry.files).toEqual([expect.objectContaining({ name: '.spore-cli-staged.diff', bytes: 19 })])
@@ -119,12 +123,12 @@ describe('the spore command as two processes', () => {
     } finally {
       rmSync(file, { force: true })
     }
-    await expect(spore(['send', WS, 'again', '--attach', file, '--unsafe'])).rejects.toMatchObject({ code: 2, stderr: expect.stringMatching(/--attach .* cannot be read/) })
+    await expect(spore(['send', WS, 'again', '--attach', file])).rejects.toMatchObject({ code: 2, stderr: expect.stringMatching(/--attach .* cannot be read/) })
     await expect(spore(['stop', WS, '--attach', file])).rejects.toMatchObject({ code: 2, stderr: expect.stringMatching(/--attach is for send/) })
   })
 
   it('with --json, prints what was sent, the turn\'s events and its result, one JSON object a line', async () => {
-    const { stdout } = await spore(['send', WS, 'hello', '--unsafe', '--json'])
+    const { stdout } = await spore(['send', WS, 'hello', '--json'])
     const lines = stdout.trim().split('\n').map(text => JSON.parse(text))
     expect(lines[0]).toEqual({ event: 'sent', inbox: 1, started: true, repeated: false })
     const logged = lines.slice(1, -1)
@@ -142,16 +146,16 @@ describe('the spore command as two processes', () => {
   })
 
   it('takes a message once under a request id, and answers a repeat with what the first got', async () => {
-    const first = await spore(['send', WS, 'hello', '--unsafe', '--request-id', 'order-7'])
+    const first = await spore(['send', WS, 'hello', '--request-id', 'order-7'])
     expect(first.stdout.trim()).toBe('THE ANSWER')
 
-    const repeat = await spore(['send', WS, 'hello', '--unsafe', '--request-id', 'order-7'])
+    const repeat = await spore(['send', WS, 'hello', '--request-id', 'order-7'])
     expect(repeat.stdout.trim()).toBe('THE ANSWER')
     expect(repeat.stderr).toMatch(/already sent under order-7 — turn 1 answered it/)
     expect(readInbox(WS)).toHaveLength(1)
     expect(readTurns(WS)).toHaveLength(1)
 
-    const asJson = await spore(['send', WS, 'hello', '--unsafe', '--request-id', 'order-7', '--json'])
+    const asJson = await spore(['send', WS, 'hello', '--request-id', 'order-7', '--json'])
     expect(asJson.stdout.trim().split('\n').map(text => JSON.parse(text))).toEqual([
       { event: 'sent', inbox: 1, started: false, repeated: true },
       expect.objectContaining({ event: 'result', read: true, turn: expect.objectContaining({ turnNo: 1, output: 'THE ANSWER' }) })
@@ -159,8 +163,8 @@ describe('the spore command as two processes', () => {
   })
 
   it('exits 4 when the turn wrapped up at a soft limit, its answer still on stdout', async () => {
-    writeFileSync(resolve(WS, 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5').replace('rounds: [40, 45]', 'rounds: [1, 3]'))
-    const wrapped = await spore(['send', WS, 'hello', '--unsafe']).catch(err => err)
+    writeFileSync(resolve(WS, 'spore.cmk'), definition().replace('rounds: [40, 45]', 'rounds: [1, 3]'))
+    const wrapped = await spore(['send', WS, 'hello']).catch(err => err)
     expect(wrapped.code).toBe(4)
     expect(wrapped.stdout.trim()).toBe('THE ANSWER')
     expect(wrapped.stderr).toMatch(/wrapped up at its rounds limit/)
@@ -168,8 +172,8 @@ describe('the spore command as two processes', () => {
   })
 
   it('exits attach by how the turn ended, as send does, with --json or without', async () => {
-    writeFileSync(resolve(WS, 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5').replace('rounds: [40, 45]', 'rounds: [1, 3]'))
-    await spore(['send', WS, 'hello', '--unsafe']).catch(err => err)
+    writeFileSync(resolve(WS, 'spore.cmk'), definition().replace('rounds: [40, 45]', 'rounds: [1, 3]'))
+    await spore(['send', WS, 'hello']).catch(err => err)
     const [plain, json] = await Promise.all([
       spore(['attach', WS]).catch(err => err),
       spore(['attach', WS, '--json', '--after', '0']).catch(err => err)
@@ -181,7 +185,7 @@ describe('the spore command as two processes', () => {
   })
 
   it('counts the agent\'s own spend where the agent cannot reach it', async () => {
-    await spore(['send', WS, 'hello', '--unsafe'])
+    await spore(['send', WS, 'hello'])
     // Two rounds through the broker, and the agent never touched the total.
     expect(broker.ledger.children).toBeCloseTo(0.02)
   })
