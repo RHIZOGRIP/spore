@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { callEmbedding } from 'mohdel/client'
 
 import { takeSlot } from '../src/core/admission.js'
-import { enqueue, readLock, readModelKey, readPending, readTurns } from '../src/core/spore-dir.js'
+import { enqueue, readLock, readTreeKey, readPending, readTurns } from '../src/core/spore-dir.js'
 import { stateOf, stop } from '../src/core/state.js'
 import { KEY_HEADER } from '../src/infra/socket-request.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
@@ -173,7 +173,7 @@ describe('a turn stopped while its call runs', () => {
     await until(() => said().some(m => m.what === 'started'))
     const embedding = callEmbedding(
       { callId: randomUUID(), authId: 'spore', model: 'openai/slow', input: ['a'] },
-      { socketPath: agentsModelSocket(), headers: { [KEY_HEADER]: readModelKey(ws) } }
+      { socketPath: agentsModelSocket(), headers: { [KEY_HEADER]: readTreeKey(ws) } }
     )
     const settled = embedding.then(() => 'answered', () => 'dropped')
     await new Promise(resolve => setTimeout(resolve, 200))
@@ -194,7 +194,7 @@ describe('calls made at once in a turn', () => {
     await until(() => said().some(m => m.what === 'started'))
     const embedding = await callEmbedding(
       { callId: randomUUID(), authId: 'spore', model: 'openai/slow', input: ['a'] },
-      { socketPath: agentsModelSocket(), headers: { [KEY_HEADER]: readModelKey(ws) } }
+      { socketPath: agentsModelSocket(), headers: { [KEY_HEADER]: readTreeKey(ws) } }
     ).then(() => 'answered', () => 'dropped')
     expect(embedding).toBe('answered')
     expect(said().map(m => m.what)).toEqual(['started', 'embedded'])

@@ -21,7 +21,7 @@ import { resolve } from 'node:path'
 
 import { parseDefinition } from '../src/delegation/definition.js'
 import { TOOL_NAMES } from '../src/core/tool-names.js'
-import { DEFINITION_FILE, readModelKey, readSaidSoFar } from '../src/core/spore-dir.js'
+import { DEFINITION_FILE, readTreeKey, readSaidSoFar } from '../src/core/spore-dir.js'
 import { openStore } from '../src/memory/store.js'
 import { createModelClient } from '../src/infra/model-client.js'
 
@@ -59,7 +59,7 @@ if (!parsed.memory) fail(`this workspace keeps no long-term memory — add a mem
 // it: searching `project release password` lost the note reading `Project release
 // password is marigold.`
 const said = readSaidSoFar(ws).length
-const key = readModelKey(ws)
+const key = readTreeKey(ws)
 const mo = parsed.memory.embedding
   ? await createModelClient({ socketPath: process.env.SPORE_MODEL_SOCKET, modelIds: [parsed.memory.embedding], key, workspace: ws })
   : null

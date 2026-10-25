@@ -29,7 +29,7 @@ afterEach(async () => {
 })
 
 async function broker (answer) {
-  writeFileSync(join(dir, 'model.key'), 'k'.repeat(64))
+  writeFileSync(join(dir, 'tree.key'), 'k'.repeat(64))
   const asked = []
   server = http.createServer((req, res) => {
     const chunks = []

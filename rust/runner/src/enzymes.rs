@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
+use base64::Engine;
 use bytes::Bytes;
 use http_body_util::BodyExt;
 use hyper::body::{Body as HttpBody, Frame, Incoming};
@@ -134,7 +135,11 @@ impl Drop for Events {
 }
 
 fn event(kind: &str, data: &[u8]) -> Bytes {
-    Bytes::from(json!({ "type": kind, "data": base64(data) }).to_string() + "\n")
+    Bytes::from(
+        json!({ "type": kind, "data": base64::engine::general_purpose::STANDARD.encode(data) })
+            .to_string()
+            + "\n",
+    )
 }
 
 async fn relay(mut pipe: impl AsyncRead + Unpin, kind: &'static str, tx: mpsc::Sender<Bytes>) {
@@ -319,24 +324,6 @@ impl Enzymes {
     }
 }
 
-fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let n = (chunk[0] as u32) << 16
-            | (*chunk.get(1).unwrap_or(&0) as u32) << 8
-            | *chunk.get(2).unwrap_or(&0) as u32;
-        for i in 0..4 {
-            if i <= chunk.len() {
-                out.push(ALPHABET[(n >> (18 - 6 * i)) as usize & 63] as char);
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,7 +390,15 @@ mod tests {
         }
 
         fn client(&self, keyed: bool) -> PathBuf {
-            let at = self.dir.join(if keyed { "keyed" } else { "anonymous" });
+            if keyed {
+                self.staged("keyed", Some(KEY))
+            } else {
+                self.staged("another", Some(&"j".repeat(KEY.len())))
+            }
+        }
+
+        fn staged(&self, name: &str, key: Option<&str>) -> PathBuf {
+            let at = self.dir.join(name);
             std::fs::create_dir_all(&at).unwrap();
             let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
             std::fs::copy(
@@ -411,8 +406,8 @@ mod tests {
                 at.join("enzyme.js"),
             )
             .unwrap();
-            if keyed {
-                std::fs::write(at.join("model.key"), KEY).unwrap();
+            if let Some(key) = key {
+                std::fs::write(at.join("tree.key"), key).unwrap();
             }
             at.join("enzyme.js")
         }
@@ -460,15 +455,6 @@ mod tests {
             stdout: output.stdout,
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         }
-    }
-
-    #[test]
-    fn encodes_base64_as_the_standard_alphabet_with_padding() {
-        assert_eq!(base64(b""), "");
-        assert_eq!(base64(b"f"), "Zg==");
-        assert_eq!(base64(b"fo"), "Zm8=");
-        assert_eq!(base64(b"foo"), "Zm9v");
-        assert_eq!(base64(&[0, 255, 128, 7]), "AP+ABw==");
     }
 
     #[test]
@@ -631,12 +617,26 @@ mod tests {
         scene.script("wordcount", "wc -l");
         let (_, socket) = scene.serve(&["wordcount"], &scene.dir);
 
-        let anonymous = call(&scene.client(false), &socket, &["wordcount"], b"a\n").await;
-        assert_eq!(anonymous.code, 127);
+        let another = call(&scene.client(false), &socket, &["wordcount"], b"a\n").await;
+        assert_eq!(another.code, 127);
         assert!(
-            anonymous.stderr.contains("not this tree"),
+            another.stderr.contains("not this tree"),
             "{}",
-            anonymous.stderr
+            another.stderr
+        );
+
+        let unstaged = call(
+            &scene.staged("unstaged", None),
+            &socket,
+            &["wordcount"],
+            b"a\n",
+        )
+        .await;
+        assert_eq!(unstaged.code, 2);
+        assert!(
+            unstaged.stderr.contains("no tree.key beside"),
+            "{}",
+            unstaged.stderr
         );
 
         let keyed = call(&scene.client(true), &socket, &["wordcount"], b"a\nb\n").await;

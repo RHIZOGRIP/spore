@@ -9,17 +9,14 @@
  */
 
 import http from 'node:http'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // Beside this file, because both are staged into the workspace together and the
 // agent may run this from anywhere. Never from the environment: `wsexec` hands the
 // environment to every command, so a key there ends up in a call record.
-const keyPath = resolve(dirname(fileURLToPath(import.meta.url)), 'model.key')
-let key = null
-try { key = readFileSync(keyPath, 'utf8').trim() } catch {}
-
+const keyPath = resolve(dirname(fileURLToPath(import.meta.url)), 'tree.key')
 const socketPath = process.env.SPORE_ENZYMES
 const [name, ...args] = process.argv.slice(2)
 
@@ -27,6 +24,11 @@ if (!socketPath) {
   console.error('enzyme: SPORE_ENZYMES is not set — no enzymes are available here')
   process.exit(2)
 }
+if (!existsSync(keyPath)) {
+  console.error(`enzyme: no tree.key beside ${fileURLToPath(import.meta.url)} — spawn stages it with this file, and the enzyme socket asks for it`)
+  process.exit(2)
+}
+const key = readFileSync(keyPath, 'utf8').trim()
 if (!name) {
   console.error('enzyme: usage: enzyme <name> [args...]')
   process.exit(2)
@@ -62,7 +64,7 @@ const req = http.request({
   method: 'POST',
   path: `/run?${query}`,
   headers: {
-    ...(key ? { 'x-spore-key': key } : {}),
+    'x-spore-key': key,
     'content-type': 'application/octet-stream',
     expect: '100-continue'
   }

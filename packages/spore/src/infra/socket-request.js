@@ -26,7 +26,7 @@ export function request (socketPath, { key, method, path, body, what, signal }) 
   return new Promise((resolve, reject) => {
     const cancelled = () => new SporeError('operation cancelled', { type: 'OPERATION_CANCELLED', detail: `${what} ${path} was aborted`, severity: 'info' })
     if (signal?.aborted) return reject(cancelled())
-    const headers = { ...(key ? { [KEY_HEADER]: key } : {}), ...(body ? { 'content-type': 'application/json' } : {}) }
+    const headers = { [KEY_HEADER]: key, ...(body ? { 'content-type': 'application/json' } : {}) }
     const req = http.request({ socketPath, path, method, headers }, (res) => {
       const chunks = []
       res.on('data', chunk => chunks.push(chunk))

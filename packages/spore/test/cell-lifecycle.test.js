@@ -302,7 +302,7 @@ describe('a cell that names sources', () => {
       ? calls('wsexec', { command: 'printf %s "$SPORE_SOURCES"', out: 'data/view.json' })
       : answers('done'))
     reader('pubmed')
-    const key = readFileSync(resolve(root, 'model.key'), 'utf8')
+    const key = readFileSync(resolve(root, 'tree.key'), 'utf8')
     const sources = await sourceSocket(['pubmed', 'other'])
     try {
       const r = await spawnCell(args, { SPORE_SOURCE_SOCKET: sources.socketPath })

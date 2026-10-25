@@ -16,7 +16,7 @@ import { resolve } from 'node:path'
 import minimist from 'minimist'
 
 import { createSourceClient } from '../src/infra/source-client.js'
-import { readModelKey } from '../src/core/spore-dir.js'
+import { readTreeKey } from '../src/core/spore-dir.js'
 
 // Every value as written: read as a number, an id past 2^53 would reach the endpoint changed.
 const named = process.argv.slice(2).filter(arg => arg.startsWith('--')).map(arg => arg.slice(2).split('=')[0])
@@ -58,7 +58,7 @@ try {
 } catch (e) {
   fail('SPORE_SOURCES is not readable JSON', e.message)
 }
-const client = createSourceClient({ socketPath, key: readModelKey(process.cwd()), view })
+const client = createSourceClient({ socketPath, key: readTreeKey(process.cwd()), view })
 
 if (argv.list) {
   const { sources } = await client.list().catch(e => fail(e.message, e.detail))

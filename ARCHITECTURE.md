@@ -166,7 +166,7 @@ conformance suite's question, answered per model.
 ### Two guards on an image path
 
 A `file://` image is resolved on the supervisor's side, which holds the provider keys. An agent
-naming `/etc/passwd`, or `model.key`, would be handing it to the model as a picture.
+naming `/etc/passwd`, or `tree.key`, would be handing it to the model as a picture.
 
 `safePath` refuses on the tool call, as it does for every other path. And the runner sets
 `MOHDEL_MEDIA_ROOTS` to the workspace, its `reads` and its `writes` before it starts its model
@@ -734,7 +734,7 @@ The workspace is flat and undotted:
     /reference.md     the full account of the runtime, for the agent to read
     /libraries.md     one tested example per provisioned library
     /plugins/         one document per plugin the spore uses
-    /model.key        this tree's key to its brokers
+    /tree.key         this tree's key to its brokers
     /lock             pid + startedAt while a run is live
     /calls/           the streams each call did not name
     /tmp              this turn's scratch: a link to calls/<run>/tmp/
@@ -2664,18 +2664,20 @@ Landlock does not gate unix-socket connect, and a 0700 directory does not separa
 running as the same user. Without a key, another spore of the user could connect and spend
 against a ledger that is not its own.
 
-The key is 32 random bytes, minted for each turn by the runner (`write_model_key`,
-`rust/workspace`) into `<ws>/model.key`, a root that is a read path to the agent. A turn's key
+The key is 32 random bytes, minted for each turn by the runner (`write_tree_key`,
+`rust/workspace`) into `<ws>/tree.key`, a root that is a read path to the agent. A turn's key
 and sockets are its own: when the turn ends they are stopped, so a cell it detached fails its
 next call rather than spending the next turn's allowance. `spawn` stages the key into each cell's
 workspace the way it stages `enzyme.js`, which reads it from beside itself; a cell outside any
-turn is its own tree and mints its own.
+turn is its own tree and mints its own. A client that finds no key stops there
+(`TREE_KEY_MISSING`, naming the path) rather than presenting none and being told it is not this
+tree.
 
 **Every socket takes it.** The runner's model, store, source and job sockets and the cell
 supervisor's enzyme socket are all served by `broker::serve` (`rust/runner/src/broker.rs`), which
 checks the key before routing. The enzyme broker runs an enzyme with the *supervisor's*
 privileges in the caller's working directory, so a caller without the key that knew the socket
-and an enzyme name could read whatever that program reaches — another cell's `model.key`
+and an enzyme name could read whatever that program reaches — another cell's `tree.key`
 included, which would open the model broker as well. What an *authorised* enzyme can reach is
 still the precursor author's choice, outside the cell's own confinement; the key governs
 invocation, not reach.
@@ -2829,7 +2831,7 @@ collection holds and what is on disk is embedded. A workspace is one collection,
 units kept apart by a filter.
 
 **It does not talk to that store itself.** The **store** socket is the runner's, on the model
-socket's terms: the same HTTP stack, the same `model.key`, in the spore's socket directory, named to
+socket's terms: the same HTTP stack, the same `tree.key`, in the spore's socket directory, named to
 the agent as `SPORE_STORE_SOCKET` (`rust/runner/src/store.rs`). The confined side embeds its chunks
 on the model socket's `/v1/embed` with the model `embedding:` names, sends the store vectors, and
 gets record ids and distances back; it never holds the URL or the token. The store pins the

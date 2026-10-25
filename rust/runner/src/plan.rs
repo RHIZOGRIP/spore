@@ -312,7 +312,6 @@ impl Plan {
         let fields = precursor
             .as_object_mut()
             .expect("a definition is an object");
-        fields.remove("retain");
         fields.insert(
             "enzymes".into(),
             Value::Array(

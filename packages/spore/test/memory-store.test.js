@@ -20,7 +20,7 @@ import { appendCompaction, appendTranscript, hostState, isTranscriptAnchor, read
 import { runSpore } from '../src/core/spore-run.js'
 import { TOOL_NAMES } from '../src/core/tool-names.js'
 import { shownToModel } from './fixtures/as-shown.js'
-import { testSocket } from './fixtures/model-server.js'
+import { suppliedKey, testSocket } from './fixtures/model-server.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.memory-store-workspace')
@@ -33,6 +33,7 @@ const note = (path, body) => {
 beforeEach(() => {
   rmSync(WS, { recursive: true, force: true })
   mkdirSync(resolve(WS, 'data'), { recursive: true })
+  suppliedKey(WS)
 })
 
 afterEach(() => {

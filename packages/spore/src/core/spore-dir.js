@@ -23,7 +23,7 @@ const STATE_FILE = LAYOUT.state
 // `v` on every event, the agent's and its supervisor's: one number, `rust/workspace`'s.
 export const EVENT_SCHEMA = LAYOUT.eventSchema
 export const SPAWN_FILE = LAYOUT.spawnFile
-export const MODEL_KEY_FILE = LAYOUT.modelKey
+export const TREE_KEY_FILE = LAYOUT.treeKey
 export const REFERENCE_FILE = 'reference.md'
 export const LIBRARIES_FILE = 'libraries.md'
 /** The documents a sporangium seeds at a workspace's root for its agent, beside `spore.cmk`. */
@@ -65,7 +65,7 @@ export const COMMITTED_TO = Object.freeze([STATE_FILE, `${STATE_FILE}-wal`, `${S
 export const TMP_DIR = 'tmp'
 
 export const RUNTIME_FILES = Object.freeze([
-  ...STATE_FILES, LOCK_FILE, MODEL_KEY_FILE, SPAWN_FILE, OUT_FILE, ERR_FILE, TMP_DIR
+  ...STATE_FILES, LOCK_FILE, TREE_KEY_FILE, SPAWN_FILE, OUT_FILE, ERR_FILE, TMP_DIR
 ])
 
 /** Where the turn whose calls are under `runRoot` keeps its scratch. */
@@ -945,10 +945,6 @@ export function inboxConsumed (ws) {
   return reading(ws, 0, db => db.prepare('SELECT inboxConsumed FROM t_workspace').get().inboxConsumed)
 }
 
-function modelKeyPath (ws) {
-  return resolve(ws, MODEL_KEY_FILE)
-}
-
 /**
  * The secret that says a caller belongs to this tree. Written by the supervisor
  * before the sandbox applies, into a workspace root that is a read path afterwards —
@@ -958,8 +954,15 @@ function modelKeyPath (ws) {
  * environment to every command an agent runs, so one `env` written to a file would
  * put the key in a call record, an out file and the transcript.
  */
-export function readModelKey (ws) {
-  return existsSync(modelKeyPath(ws)) ? readFileSync(modelKeyPath(ws), 'utf8').trim() : null
+export function readTreeKey (ws) {
+  const path = resolve(ws, TREE_KEY_FILE)
+  if (!existsSync(path)) {
+    throw new SporeError(`no ${TREE_KEY_FILE} in ${ws}`, {
+      type: 'TREE_KEY_MISSING',
+      detail: 'the runner writes the tree\'s key there for each turn, and every socket of the turn asks for it — this runs inside a spore\'s turn, from its workspace'
+    })
+  }
+  return readFileSync(path, 'utf8').trim()
 }
 
 export function dataDir (ws) {

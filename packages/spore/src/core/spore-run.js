@@ -23,7 +23,7 @@ import { makeTools, recordRefusals } from '../tools/make-tools.js'
 import { loop } from './loop.js'
 import { describeCall } from './call-table.js'
 import { COMPACTED, marked } from './marks.js'
-import { DATA_DIR, appendCompaction, linkTurnTmp, appendTranscript, fromPerson, inboxConsumed, readInbox, readInboxFrom, readModelKey, readSaidSoFar, runningLimits, writableDirs, writeOutcome } from './spore-dir.js'
+import { DATA_DIR, appendCompaction, linkTurnTmp, appendTranscript, fromPerson, inboxConsumed, readInbox, readInboxFrom, readTreeKey, readSaidSoFar, runningLimits, writableDirs, writeOutcome } from './spore-dir.js'
 import { dataBytesIn, deliverablesIn } from './deliverables.js'
 import { scheduleDir } from './schedule.js'
 import { composeSystem } from './system-prompt.js'
@@ -364,7 +364,7 @@ export async function runSpore ({
     // cache breakpoint, and read before the question rather than after it.
     if (memory && !resume) {
       const live = history.filter(message => !marked(message, COMPACTED)).length
-      const store = openStore(WS, { ...memory, horizon: Math.max(0, readSaidSoFar(WS).length - live), socket: storeSocket, key: readModelKey(WS), mo, signal: wallStop.signal })
+      const store = openStore(WS, { ...memory, horizon: Math.max(0, readSaidSoFar(WS).length - live), socket: storeSocket, key: readTreeKey(WS), mo, signal: wallStop.signal })
       try {
         const surfaced = await store.push(turnPrompt)
         // A note that cannot be read is worth saying out loud: recall carries on without it,

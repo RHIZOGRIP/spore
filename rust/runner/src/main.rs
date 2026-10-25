@@ -29,7 +29,7 @@ use spore_workspace::{
     hand_over, iso_now, leave_wal, limit_file_size, make_spore_socket_dir, prune_trail,
     read_paths_refusal, record_unanswered, recover, release_lock, serve, spore_socket_dir,
     spore_socket_path, start_limits, turn_limits, turn_state, unanswered, unanswered_traceparents,
-    unread, write_lock, write_model_key, write_outcome, writes_refusal, yield_to_host, Acquired,
+    unread, write_lock, write_outcome, write_tree_key, writes_refusal, yield_to_host, Acquired,
     Unanswered, CELL_MODELS_ENV, DEFAULT_FREE_FLOOR, DEFAULT_LARGEST_FILE, DEFAULT_MODEL_SESSIONS,
     DEFINITION_FILE, HOME_DIR, PLUGIN_ENV, PLUGIN_READS, STATE_FD,
 };
@@ -607,7 +607,7 @@ async fn main() {
     let open_turn =
         || -> Result<(BTreeMap<String, String>, Arc<model::Model>, Vec<Served>), String> {
             let key =
-                write_model_key(&ws).map_err(|e| format!("cannot write the model key — {e}"))?;
+                write_tree_key(&ws).map_err(|e| format!("cannot write the tree's key — {e}"))?;
             let env: Vec<(String, String)> = std::env::vars().collect();
             let mut passed = agent_env(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
             // What the plugins this spore uses give its agent, resolved and checked by `send`; set

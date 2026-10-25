@@ -10,7 +10,7 @@
 
 import minimist from 'minimist'
 
-import { lastSent, openChannel, PLUGIN_CALLS, readModelKey, readTranscript } from '../src/core/spore-dir.js'
+import { lastSent, openChannel, PLUGIN_CALLS, readTreeKey, readTranscript } from '../src/core/spore-dir.js'
 import { buildContinuation } from '../src/core/continuation.js'
 import { readFork } from '../src/core/fork.js'
 import { PLUGIN_READS } from '../src/core/plugins.js'
@@ -47,7 +47,7 @@ try {
   const mo = await createModelClient({
     socketPath: process.env.SPORE_MODEL_SOCKET,
     modelIds: [opened.model, ...(opened.memory?.embedding ? [opened.memory.embedding] : [])],
-    key: readModelKey(opened.ws),
+    key: readTreeKey(opened.ws),
     workspace: opened.ws,
     // This agent can spawn, so what its cells spend comes out of its allowance.
     tracksTree: true

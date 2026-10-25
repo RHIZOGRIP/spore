@@ -100,7 +100,7 @@ describe('the source client', () => {
     await serve(() => [200, { sources: [{ name: 'tracker', scope: {}, methods: ['GET', 'POST'], base: 'api/v1/', paths: ['**'] }] }])
     const ws = mkdtempSync(join(tmpdir(), 'spore-source-cli-'))
     try {
-      writeFileSync(join(ws, 'model.key'), KEY)
+      writeFileSync(join(ws, 'tree.key'), KEY)
       const { stdout } = await promisify(execFile)(process.execPath, [resolve(import.meta.dirname, '../bin/source.js'), '--list'], {
         cwd: ws,
         env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath }
@@ -115,7 +115,7 @@ describe('the source client', () => {
     await serve(() => [200, { status: 200, ok: true, contentType: 'application/json', bodyBase64: Buffer.from('{"hits":2}').toString('base64') }])
     const ws = mkdtempSync(join(tmpdir(), 'spore-source-cli-'))
     try {
-      writeFileSync(join(ws, 'model.key'), KEY)
+      writeFileSync(join(ws, 'tree.key'), KEY)
       const { stdout, stderr } = await promisify(execFile)(process.execPath, [resolve(import.meta.dirname, '../bin/source.js'), 'web', '--q', 'x', '--out', '-'], {
         cwd: ws,
         env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath }
@@ -132,7 +132,7 @@ describe('the source client', () => {
     await serve(() => [200, { status: 200, ok: true, contentType: 'image/png', bodyBase64: image.toString('base64') }])
     const ws = mkdtempSync(join(tmpdir(), 'spore-source-cli-'))
     try {
-      writeFileSync(join(ws, 'model.key'), KEY)
+      writeFileSync(join(ws, 'tree.key'), KEY)
       const { stdout } = await promisify(execFile)(process.execPath, [resolve(import.meta.dirname, '../bin/source.js'), 'pages', '--out', 'page.png'], {
         cwd: ws,
         env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath }
@@ -155,7 +155,7 @@ describe('the source client', () => {
     const seen = await serve(() => [200, { status: 200, ok: true, contentType: 'application/json', bodyBase64: Buffer.from('[]').toString('base64') }])
     const ws = mkdtempSync(join(tmpdir(), 'spore-source-cli-'))
     try {
-      writeFileSync(join(ws, 'model.key'), KEY)
+      writeFileSync(join(ws, 'tree.key'), KEY)
       await promisify(execFile)(process.execPath, [resolve(import.meta.dirname, '../bin/source.js'), 'chat', '--path', '100/messages', '--before', '1234567890123456789', '--limit', '50', '--out', '-'], {
         cwd: ws,
         env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath }

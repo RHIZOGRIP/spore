@@ -27,8 +27,8 @@ use spore_runner::supervise::{
 use spore_workspace::{
     acquire_lock, agent_env, begin_turn, broker_socket_path, end_channel, finalize_turn,
     granted_path_containing, hand_over, iso_now, leave_wal, provision_modules, read_paths_refusal,
-    release_lock, serve, spore_socket_path, turn_state, unanswered, write_model_key, write_outcome,
-    Acquired, Unanswered, CELL_MODELS_ENV, HOME_DIR, MODEL_KEY_FILE, STATE_FD,
+    release_lock, serve, spore_socket_path, turn_state, unanswered, write_outcome, write_tree_key,
+    Acquired, Unanswered, CELL_MODELS_ENV, HOME_DIR, STATE_FD, TREE_KEY_FILE,
 };
 use tokio::process::Command;
 use tokio::signal::unix::{signal, SignalKind};
@@ -368,13 +368,13 @@ async fn main() {
         // The tree's key, staged the same way: a cell is part of the agent that spawned it
         // and answers to the same sockets. A cell outside any turn is its own tree.
         let key = match &standalone {
-            Some(_) => write_model_key(&plan.ws)
+            Some(_) => write_tree_key(&plan.ws)
                 .map_err(|e| format!("cannot write the cell's key — {e}"))?,
             None => {
-                let key = std::fs::read_to_string(cwd.join(MODEL_KEY_FILE))
+                let key = std::fs::read_to_string(cwd.join(TREE_KEY_FILE))
                     .map(|k| k.trim().to_string())
-                    .map_err(|e| format!("no {MODEL_KEY_FILE} in {} — spawn runs under a spore, which writes the tree's key ({e})", cwd.display()))?;
-                std::fs::write(plan.ws.join(MODEL_KEY_FILE), &key)
+                    .map_err(|e| format!("no {TREE_KEY_FILE} in {} — spawn runs under a spore, which writes the tree's key ({e})", cwd.display()))?;
+                std::fs::write(plan.ws.join(TREE_KEY_FILE), &key)
                     .map_err(|e| format!("cannot stage the tree's key — {e}"))?;
                 key
             }

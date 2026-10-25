@@ -27,7 +27,7 @@ afterEach(async () => {
 
 async function broker (answer) {
   dir = mkdtempSync('/tmp/spore-brave-')
-  writeFileSync(join(dir, 'model.key'), KEY)
+  writeFileSync(join(dir, 'tree.key'), KEY)
   const asked = []
   server = http.createServer((req, res) => {
     const chunks = []

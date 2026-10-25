@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import minimist from 'minimist'
 
 import { request } from '../src/infra/socket-request.js'
-import { readModelKey } from '../src/core/spore-dir.js'
+import { readTreeKey } from '../src/core/spore-dir.js'
 
 const argv = minimist(process.argv.slice(2), { '--': true, boolean: ['help'] })
 const [verb, name] = argv._
@@ -61,7 +61,7 @@ const socketPath = process.env.SPORE_JOB_SOCKET
 if (!socketPath) fail('no job socket', 'this spore was granted no jobs — its owner grants them in spore.cmk, as jobs: [2, 2h]')
 
 try {
-  const begun = await request(socketPath, { key: readModelKey(process.cwd()), method: 'POST', path: '/start', body: { name, command: argv['--'].join(' ') }, what: 'job socket' })
+  const begun = await request(socketPath, { key: readTreeKey(process.cwd()), method: 'POST', path: '/start', body: { name, command: argv['--'].join(' ') }, what: 'job socket' })
   console.log(JSON.stringify(begun))
 } catch (e) {
   fail(e.message, e.detail)

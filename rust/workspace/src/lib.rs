@@ -203,7 +203,7 @@ pub fn free_bytes(path: &Path) -> io::Result<u64> {
 pub const DEFINITION_FILE: &str = "spore.cmk";
 pub const LOCK_FILE: &str = "lock";
 pub const CALLS_DIR: &str = "calls";
-pub const MODEL_KEY_FILE: &str = "model.key";
+pub const TREE_KEY_FILE: &str = "tree.key";
 pub const DATA_DIR: &str = "data";
 pub const PRECURSOR_DIR: &str = "precursors";
 pub const SCHEDULE_DIR: &str = "schedules";
@@ -563,10 +563,10 @@ pub fn release_lock(file: File) -> io::Result<()> {
 
 /// A fresh key for this tree's model socket, written where only the tree can read it: a
 /// request that does not present it is from another tree and is refused.
-pub fn write_model_key(ws: &Path) -> io::Result<String> {
+pub fn write_tree_key(ws: &Path) -> io::Result<String> {
     let key = random_hex(32)?;
     fs::create_dir_all(ws)?;
-    fs::write(ws.join(MODEL_KEY_FILE), &key)?;
+    fs::write(ws.join(TREE_KEY_FILE), &key)?;
     Ok(key)
 }
 
@@ -1603,11 +1603,11 @@ mod tests {
     #[test]
     fn writes_a_fresh_key_each_time() {
         let ws = scratch("key");
-        let first = write_model_key(&ws).unwrap();
-        let second = write_model_key(&ws).unwrap();
+        let first = write_tree_key(&ws).unwrap();
+        let second = write_tree_key(&ws).unwrap();
         assert_eq!(first.len(), 64);
         assert_ne!(first, second);
-        assert_eq!(fs::read_to_string(ws.join(MODEL_KEY_FILE)).unwrap(), second);
+        assert_eq!(fs::read_to_string(ws.join(TREE_KEY_FILE)).unwrap(), second);
     }
 
     #[test]

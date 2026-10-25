@@ -6,7 +6,7 @@ import { resolve, dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { acquireLock, appendEvents, appendTranscript, dataDir, definitionPath, HOST_TURNS_ENV, hostState, lastSent, readLock, readTranscript, readTranscriptEntries, releaseLock, statePath, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
+import { acquireLock, appendEvents, appendTranscript, dataDir, definitionPath, HOST_TURNS_ENV, hostState, lastSent, readLock, readTranscript, readTranscriptEntries, readTreeKey, releaseLock, statePath, TREE_KEY_FILE, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
 import { compactionSummaryMessage, createCompactionEntry } from '../src/resilience/compaction.js'
 import { COMPACTED, WRAP, mark, marked } from '../src/core/marks.js'
 
@@ -238,5 +238,13 @@ describe('reading', () => {
     } finally {
       rmSync(ws, { recursive: true, force: true })
     }
+  })
+})
+
+describe('the tree\'s key', () => {
+  it('is read from the workspace, and its absence is named rather than sent as no key', () => {
+    expect(() => readTreeKey(WS)).toThrow(expect.objectContaining({ type: 'TREE_KEY_MISSING', message: `no ${TREE_KEY_FILE} in ${WS}` }))
+    writeFileSync(resolve(WS, TREE_KEY_FILE), 'k'.repeat(64) + '\n')
+    expect(readTreeKey(WS)).toBe('k'.repeat(64))
   })
 })

@@ -372,7 +372,7 @@ pub fn layout() -> String {
         "definition": workspace::DEFINITION_FILE,
         "lock": workspace::LOCK_FILE,
         "calls": workspace::CALLS_DIR,
-        "modelKey": workspace::MODEL_KEY_FILE,
+        "treeKey": workspace::TREE_KEY_FILE,
         "dataDir": workspace::DATA_DIR,
         "precursorDir": workspace::PRECURSOR_DIR,
         "precursorExt": workspace::PRECURSOR_EXT,

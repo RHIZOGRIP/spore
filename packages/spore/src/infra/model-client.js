@@ -56,7 +56,7 @@ export async function createModelClient ({ socketPath, modelIds = [], key, track
     ledger.childRounds = rounds - ownRounds
     return ledger
   }
-  const keyed = key ? { [KEY_HEADER]: key } : {}
+  const keyed = { [KEY_HEADER]: key }
   const caller = tracksTree ? ROOT_CALLER : precursor ? `${PRECURSOR_CALLER}${precursor}` : null
 
   return {

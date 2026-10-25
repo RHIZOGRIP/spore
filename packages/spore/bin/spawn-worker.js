@@ -15,7 +15,7 @@ import { buildContinuation } from '../src/core/continuation.js'
 import { autoLogger } from '../src/observability/logger.js'
 import { ensureOtelInitialized, parseTraceparent, shutdownOtel } from '../src/observability/tracing.js'
 import { SporeError } from '../src/observability/errors.js'
-import { SPAWN_FILE, openChannel, readModelKey } from '../src/core/spore-dir.js'
+import { SPAWN_FILE, openChannel, readTreeKey } from '../src/core/spore-dir.js'
 import { linkGrants, superGrants } from '../src/core/workspace.js'
 
 const plan = JSON.parse(process.env.SPORE_PLAN)
@@ -33,7 +33,7 @@ const parentSpan = parseTraceparent(process.env.TRACEPARENT)
 // Which model runs behind that socket is the precursor's to say; a precursor that
 // names none inherits its parent's, which arrives as $MODEL from the spawning agent.
 const model = plan.precursor.model || process.env.MODEL
-const mo = await createModelClient({ socketPath: process.env.SPORE_MODEL_SOCKET, modelIds: model ? [model] : [], key: readModelKey(plan.ws), precursor: plan.precursor.name, workspace: plan.ws })
+const mo = await createModelClient({ socketPath: process.env.SPORE_MODEL_SOCKET, modelIds: model ? [model] : [], key: readTreeKey(plan.ws), precursor: plan.precursor.name, workspace: plan.ws })
 
 // cwd is the parent's workspace — `spawn` is invoked through its `wsexec`, which
 // runs there. A fan-out writes one of these lines per cell into a single log, so

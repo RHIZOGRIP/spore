@@ -14,7 +14,7 @@ state.sqlite     this conversation, what was said to you, what each turn did and
                  ended, and a record of every tool call — read it with $SPORE_SQL
 inbox.d/         files that came with those messages, and any message too long to inline
 lock             the pid running here, while one is
-model.key        this tree's key to its model broker
+tree.key         this tree's key to its sockets
 calls/           any stream a tool call did not name, one directory per call
 tmp/             this turn's scratch: a program you run once, a file a command spills —
                  fresh each turn, gone once the turn's record is pruned

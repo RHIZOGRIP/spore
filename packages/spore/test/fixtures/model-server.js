@@ -17,7 +17,7 @@ import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
 import { CALLER_HEADER, KEY_HEADER, ROOT_CALLER } from '../../src/infra/socket-request.js'
-import { MODEL_KEY_FILE } from '../../src/core/spore-dir.js'
+import { TREE_KEY_FILE } from '../../src/core/spore-dir.js'
 import { CONFIG_FILE } from '../../src/library/config.js'
 
 /** A socket of the test's own, under `/tmp` whatever `TMPDIR` says, so its path fits `sun_path`. */
@@ -27,7 +27,7 @@ export const testSocket = (name) => join(mkdtempSync('/tmp/spore-test-'), `${nam
 export function suppliedKey (ws) {
   const key = randomBytes(32).toString('hex')
   mkdirSync(ws, { recursive: true })
-  writeFileSync(resolve(ws, MODEL_KEY_FILE), key)
+  writeFileSync(resolve(ws, TREE_KEY_FILE), key)
   return key
 }
 
