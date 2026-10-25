@@ -38,7 +38,7 @@ function truncate (text, max) {
 function summarize (name, args, result) {
   const outcome = readOutcome(result)
   const content = textOf(result)
-  const subject = truncate(args?.command || args?.query || args?.out || args?.path || '', 60)
+  const subject = truncate(args?.command || args?.out || args?.path || '', 60)
   const head = subject ? `${name}(${subject})` : `${name}()`
 
   if (outcome.refused) return `${head} — refused: ${truncate(outcome.error, 60)}`
@@ -122,7 +122,7 @@ export function createSessionMemory ({ logger } = {}) {
       if (first.role === 'user') {
         const text = textOf(first).trim()
         if (text && text.length > 5) {
-          facts.push({ text: truncate(text, 200), source: 'user', ts: first.ts || null })
+          facts.push({ text: truncate(text, 200) })
         }
         continue
       }
@@ -134,7 +134,7 @@ export function createSessionMemory ({ logger } = {}) {
         const reasoning = textOf(first).trim()
         let text = summaries.join('; ')
         if (reasoning) text = truncate(reasoning, 100) + ' → ' + text
-        facts.push({ text: truncate(text, 300), source: 'turn', ts: first.ts || null })
+        facts.push({ text: truncate(text, 300) })
         continue
       }
 
@@ -142,7 +142,7 @@ export function createSessionMemory ({ logger } = {}) {
       if (first.role === 'assistant') {
         const text = textOf(first).trim()
         if (text && text.length > 20) {
-          facts.push({ text: truncate(text, 300), source: 'assistant', ts: first.ts || null })
+          facts.push({ text: truncate(text, 300) })
         }
         continue
       }
@@ -151,7 +151,7 @@ export function createSessionMemory ({ logger } = {}) {
       if (first.role === 'tool') {
         const content = textOf(first)
         if (content.length > 50 && !content.startsWith(COMPACT_MARKER)) {
-          facts.push({ text: `${first.toolName || 'tool'}(): ${truncate(content, 100)}`, source: 'tool', ts: first.ts || null })
+          facts.push({ text: `${first.toolName || 'tool'}(): ${truncate(content, 100)}` })
         }
       }
     }

@@ -131,7 +131,7 @@ export function buildItems ({ perFile = 5, seed = 1, tasks = TASKS, corpus = COR
 export async function readMessage (ws, read, { id = 'r1', contextTokens = 200_000 } = {}) {
   const trail = createCallTrail(ws, { runId: 'probe', state: hostState(ws) })
   const { fns } = makeTools(ws, maxResultSizeForContext(contextTokens), trail)
-  const [message] = await executeTools({ toolCalls: [{ id, name: 'read', arguments: read }], toolFns: fns })
+  const [message] = await executeTools({ toolCalls: [{ id, name: 'read', arguments: read }], toolFns: fns, mutators: new Set() })
   return message
 }
 

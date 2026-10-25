@@ -15,7 +15,7 @@ const WS = resolve(__dirname, '.spore-dir-workspace')
 
 const writeTranscript = (entries) => writeTranscriptEntries(WS, entries)
 const said = (message, at = '2026-09-08T00:00:00.000Z') => ({ at, kind: 'message', role: message.role, message })
-const compacted = (entry) => ({ at: entry.ts, kind: 'compaction', message: entry })
+const compacted = (entry, at = '2026-09-08T00:00:00.000Z') => ({ at, kind: 'compaction', message: entry })
 
 beforeEach(() => {
   rmSync(WS, { recursive: true, force: true })

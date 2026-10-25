@@ -12,9 +12,8 @@
  * shared with the caller's persistent transcript.
  */
 export function markConversationForCaching (messages, ttl) {
-  const conversational = messages.filter(m => m.role !== 'system')
-  if (conversational.length < 2) return
-  const last = conversational[conversational.length - 1]
+  if (messages.length < 2) return
+  const last = messages[messages.length - 1]
   if (typeof last.content === 'string') {
     last.content = [{ type: 'text', text: last.content, cache: ttl }]
     return

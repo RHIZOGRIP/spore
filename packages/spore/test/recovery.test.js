@@ -28,12 +28,11 @@ const onTheClock = async (answering) => {
 }
 
 /** Build the flat wire shape: machine key on `type`, label on `message`. */
-function typedError (type, { retryable = false, detail = '', status } = {}) {
+function typedError (type, { retryable = false, detail = '' } = {}) {
   const err = new Error(type.toLowerCase().replace(/_/g, ' '))
   err.type = type
   err.detail = detail
   err.retryable = retryable
-  if (status) err.status = status
   return err
 }
 
@@ -41,7 +40,7 @@ describe('recovery supervisor', () => {
   it('passes through on success', async () => {
     const model = mockModel(() => ({ status: 'completed', output: 'ok' }))
     const wrapped = withRecovery(model, { messages: [] })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('ok')
     expect(model.callCount).toBe(1)
   })
@@ -56,7 +55,7 @@ describe('recovery supervisor', () => {
       return { status: 'completed', output: 'recovered' }
     })
     const wrapped = withRecovery(model, { messages: [] })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('recovered')
     expect(model.callCount).toBe(3)
   })
@@ -69,7 +68,7 @@ describe('recovery supervisor', () => {
     const events = []
     const emitter = { emit: (type, data) => events.push({ type, data }) }
     const wrapped = withRecovery(model, { messages: [], emitter })
-    await onTheClock(wrapped.answer({}, {}))
+    await onTheClock(wrapped.answer(() => ({}), {}))
     const retries = events.filter(e => e.type === 'recovery' && e.data.action === 'retry')
     expect(retries).toEqual([
       { type: 'recovery', data: { action: 'retry', reason: 'PROVIDER_RETRYABLE_ERROR', attempt: 1, delay: 1000 } },
@@ -85,26 +84,11 @@ describe('recovery supervisor', () => {
     const events = []
     const emitter = { emit: (type, data) => events.push({ type, data }) }
     const wrapped = withRecovery(model, { messages: [], emitter })
-    await onTheClock(wrapped.answer({}, {}))
+    await onTheClock(wrapped.answer(() => ({}), {}))
     expect(events).toContainEqual({
       type: 'recovery',
       data: { action: 'retry', reason: 'UNEXPECTED_ERROR', attempt: 1, delay: 1000 }
     })
-  })
-
-  it('retries on 429 status', async () => {
-    const model = mockModel((n) => {
-      if (n === 1) {
-        const err = new Error('Too Many Requests')
-        err.status = 429
-        throw err
-      }
-      return { status: 'completed', output: 'ok' }
-    })
-    const wrapped = withRecovery(model, { messages: [] })
-    const res = await onTheClock(wrapped.answer({}, {}))
-    expect(res.output).toBe('ok')
-    expect(model.callCount).toBe(2)
   })
 
   it('retries on connection errors', async () => {
@@ -113,30 +97,8 @@ describe('recovery supervisor', () => {
       return { status: 'completed', output: 'ok' }
     })
     const wrapped = withRecovery(model, { messages: [] })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('ok')
-  })
-
-  it('throws immediately on auth errors', async () => {
-    const model = mockModel(() => {
-      const err = new Error('Unauthorized')
-      err.status = 401
-      throw err
-    })
-    const wrapped = withRecovery(model, { messages: [] })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toThrow('Unauthorized')
-    expect(model.callCount).toBe(1)
-  })
-
-  it('throws immediately on 400 bad request', async () => {
-    const model = mockModel(() => {
-      const err = new Error('Bad Request')
-      err.status = 400
-      throw err
-    })
-    const wrapped = withRecovery(model, { messages: [] })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toThrow('Bad Request')
-    expect(model.callCount).toBe(1)
   })
 
   it('compacts on context overflow then retries', async () => {
@@ -156,7 +118,7 @@ describe('recovery supervisor', () => {
       }
     }
     const wrapped = withRecovery(model, { messages })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('ok after compact')
     // Tool result should be compacted
     expect(messages[2].content).toMatch(/compacted/)
@@ -176,7 +138,7 @@ describe('recovery supervisor', () => {
     const events = []
     const wrapped = withRecovery(model, { messages: [], emitter: { emit: (type, data) => events.push({ type, data }) } })
     const started = Date.now()
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('after the cooldown')
     expect(Date.now() - started).toBeGreaterThanOrEqual(60)
     expect(events.filter(e => e.type === 'recovery').map(e => e.data.action)).toEqual(['retry', 'retry', 'retry', 'wait'])
@@ -193,7 +155,7 @@ describe('recovery supervisor', () => {
     const wrapped = withRecovery(model, { messages: [], signal: stop.signal })
     setTimeout(() => stop.abort(), 30)
     const started = Date.now()
-    const ended = wrapped.answer({}, {}).then(() => null, () => Date.now() - started)
+    const ended = wrapped.answer(() => ({}), {}).then(() => null, () => Date.now() - started)
     await vi.runAllTimersAsync()
     expect(await ended).toBeLessThan(5_000)
     expect(model.callCount).toBe(1)
@@ -209,7 +171,7 @@ describe('recovery supervisor', () => {
       throw typedError('NET_ERROR', { retryable: true })
     })
     const wrapped = withRecovery(model, { messages: [] })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toMatchObject({ type: 'NET_ERROR' })
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toMatchObject({ type: 'NET_ERROR' })
     expect(model.callCount).toBe(7)
   })
 
@@ -220,7 +182,7 @@ describe('recovery supervisor', () => {
       throw err
     })
     const wrapped = withRecovery(model, { messages: [] })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toThrow('overloaded')
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toThrow('overloaded')
     expect(model.callCount).toBe(4) // 1 initial + 3 retries
   })
 
@@ -246,7 +208,7 @@ describe('recovery supervisor', () => {
       return { status: 'completed', output: 'recovered' }
     })
     const wrapped = withRecovery(model, { messages: [], logger: capture })
-    await onTheClock(wrapped.answer({}, {}))
+    await onTheClock(wrapped.answer(() => ({}), {}))
 
     // Two `retryable error` lines (one per failure), two `retry firing`
     // lines (one per retry attempt), one `retry succeeded` line at the
@@ -270,7 +232,7 @@ describe('recovery supervisor', () => {
       return { status: 'completed', output: 'ok' }
     })
     const wrapped = withRecovery(model, { messages: [] })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('ok')
     expect(model.callCount).toBe(2)
   })
@@ -278,19 +240,8 @@ describe('recovery supervisor', () => {
   it('throws unknown errors after one retry', async () => {
     const model = mockModel(() => { throw new Error('persistent weird error') })
     const wrapped = withRecovery(model, { messages: [] })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toThrow('persistent weird error')
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toThrow('persistent weird error')
     expect(model.callCount).toBe(2) // 1 initial + 1 retry
-  })
-
-  it('preserves model info and id', () => {
-    const model = {
-      info: () => ({ contextTokenLimit: 50000, label: 'Test' }),
-      id: 'test/model',
-      answer: async () => ({})
-    }
-    const wrapped = withRecovery(model, { messages: [] })
-    expect(wrapped.info().label).toBe('Test')
-    expect(wrapped.id).toBe('test/model')
   })
 
   it('logs recovery actions', async () => {
@@ -312,7 +263,7 @@ describe('recovery supervisor', () => {
         error: (...a) => logged.push(a.join(' '))
       }
     })
-    await onTheClock(wrapped.answer({}, {}))
+    await onTheClock(wrapped.answer(() => ({}), {}))
     expect(logged.some(l => l.includes('retryable'))).toBe(true)
   })
 
@@ -335,7 +286,7 @@ describe('recovery supervisor', () => {
       }
     }
     const wrapped = withRecovery(model, { messages })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('ok')
     expect(callCount).toBe(2)
     expect(messages[2].content).toMatch(/compacted/)
@@ -360,7 +311,7 @@ describe('recovery supervisor', () => {
       }
     }
     const wrapped = withRecovery(model, { messages })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('survived')
     expect(messages.length).toBe(4) // dropped first turn-group (2 msgs) + 1 context notice
   })
@@ -382,7 +333,7 @@ describe('recovery supervisor', () => {
       }
     }
     const wrapped = withRecovery(model, { messages })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('ok')
     expect(callCount).toBe(4)
     // 3 turn-groups dropped (2 msgs each = 6 removed) + 3 context notices, from 11 → 8
@@ -408,7 +359,7 @@ describe('recovery supervisor', () => {
       }
     }
     const wrapped = withRecovery(model, { messages })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('ok')
     expect(callCount).toBe(5)
   })
@@ -425,7 +376,7 @@ describe('recovery supervisor', () => {
       answer: async () => { throw typedError('CONTEXT_OVERFLOW', { detail: 'context exceeded' }) }
     }
     const wrapped = withRecovery(model, { messages })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toThrow(expect.objectContaining({ type: 'CONTEXT_OVERFLOW' }))
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toThrow(expect.objectContaining({ type: 'CONTEXT_OVERFLOW' }))
     // Should have dropped 50 then stopped. 61 - 50 dropped + 50 context notices = 61
     expect(messages.length).toBe(61)
   })
@@ -442,7 +393,7 @@ describe('recovery supervisor', () => {
       }
     }
     const wrapped = withRecovery(model, { messages })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toThrow(expect.objectContaining({ type: 'CONTEXT_OVERFLOW' }))
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toThrow(expect.objectContaining({ type: 'CONTEXT_OVERFLOW' }))
     expect(callCount).toBe(1)
     expect(messages.length).toBe(1) // user prompt preserved
   })
@@ -452,7 +403,7 @@ describe('recovery supervisor', () => {
       throw typedError('PROVIDER_ERROR', { detail: 'something went wrong' })
     })
     const wrapped = withRecovery(model, { messages: [] })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toMatchObject({ type: 'PROVIDER_ERROR' })
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toMatchObject({ type: 'PROVIDER_ERROR' })
     expect(model.callCount).toBe(1)
   })
 
@@ -461,7 +412,7 @@ describe('recovery supervisor', () => {
       throw new SporeError('the model call ended without an answer', { type: 'BROKER_FAILED' })
     })
     const wrapped = withRecovery(model, { messages: [] })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toMatchObject({ type: 'BROKER_FAILED' })
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toMatchObject({ type: 'BROKER_FAILED' })
     expect(model.callCount).toBe(1)
   })
 
@@ -472,20 +423,9 @@ describe('recovery supervisor', () => {
       throw typedError('OPERATION_CANCELLED', { detail: 'the call was left to finish without it' })
     })
     const wrapped = withRecovery(model, { messages: [], logger })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toMatchObject({ type: 'OPERATION_CANCELLED' })
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toMatchObject({ type: 'OPERATION_CANCELLED' })
     expect(model.callCount).toBe(1)
     expect(errors).toEqual([])
-  })
-
-  it('untyped 400 is fatal', async () => {
-    const model = mockModel(() => {
-      const err = new Error('Bad Request')
-      err.status = 400
-      throw err
-    })
-    const wrapped = withRecovery(model, { messages: [] })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toThrow('Bad Request')
-    expect(model.callCount).toBe(1)
   })
 
   it('emits recovery events on drop', async () => {
@@ -507,7 +447,7 @@ describe('recovery supervisor', () => {
       }
     }
     const wrapped = withRecovery(model, { messages, emitter })
-    await onTheClock(wrapped.answer({}, {}))
+    await onTheClock(wrapped.answer(() => ({}), {}))
     const dropEvent = events.find(e => e.type === 'recovery' && e.data.action === 'drop')
     expect(dropEvent).toBeDefined()
     expect(dropEvent.data.dropped).toBe(2)
@@ -520,7 +460,7 @@ describe('recovery supervisor', () => {
     controller.abort()
     const model = mockModel(() => ({ status: 'completed', output: 'ok' }))
     const wrapped = withRecovery(model, { messages: [], signal: controller.signal })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toThrow(expect.objectContaining({ type: 'OPERATION_CANCELLED' }))
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toThrow(expect.objectContaining({ type: 'OPERATION_CANCELLED' }))
     expect(model.callCount).toBe(0)
   })
 
@@ -534,7 +474,7 @@ describe('recovery supervisor', () => {
     const wrapped = withRecovery(model, { messages: [], signal: controller.signal })
     setTimeout(() => controller.abort(), 50)
     const start = Date.now()
-    const ended = wrapped.answer({}, {}).then(() => null, (err) => ({ message: err.message, after: Date.now() - start }))
+    const ended = wrapped.answer(() => ({}), {}).then(() => null, (err) => ({ message: err.message, after: Date.now() - start }))
     await vi.runAllTimersAsync()
     const { message, after } = await ended
     expect(message).toBe('Cancelled')
@@ -560,7 +500,7 @@ describe('recovery supervisor', () => {
     }
     const sm = createSessionMemory()
     const wrapped = withRecovery(model, { messages, sessionMemory: sm })
-    await onTheClock(wrapped.answer({}, {}))
+    await onTheClock(wrapped.answer(() => ({}), {}))
     const facts = sm.getFacts()
     expect(facts.length).toBeGreaterThan(0)
     expect(facts.some(f => f.text.includes('auth.js'))).toBe(true)
@@ -578,7 +518,7 @@ describe('recovery supervisor', () => {
       }
     }
     const wrapped = withRecovery(only, { messages: [] })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toMatchObject({ type: 'RATE_LIMIT_TIER' })
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toMatchObject({ type: 'RATE_LIMIT_TIER' })
     // 1 initial + MAX_RETRIES=3 retries
     expect(calls).toBe(4)
   })
@@ -603,7 +543,7 @@ describe('recovery supervisor', () => {
       }
     }
     const wrapped = withRecovery(model, { messages })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('ok')
   })
 })
@@ -646,7 +586,7 @@ describe('recovery — translated producer shapes', () => {
       }
     }
     const wrapped = withRecovery(model, { messages })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('ok after compact')
     expect(messages[2].content).toMatch(/compacted/)
   })
@@ -664,7 +604,7 @@ describe('recovery — translated producer shapes', () => {
       }
     }
     const wrapped = withRecovery(model, { messages })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('ok after compact')
     expect(messages[2].content).toMatch(/compacted/)
   })
@@ -690,7 +630,7 @@ describe('recovery — translated producer shapes', () => {
       }
     }
     const wrapped = withRecovery(model, { messages })
-    const res = await onTheClock(wrapped.answer({}, {}))
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
     expect(res.output).toBe('ok after compact')
     expect(calls).toBe(2)
     expect(messages[2].content).toMatch(/compacted/)
@@ -708,7 +648,7 @@ describe('recovery — translated producer shapes', () => {
       }
     }
     const wrapped = withRecovery(model, { messages: [] })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toMatchObject({
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toMatchObject({
       name: 'MohdelError',
       type: 'AUTH_INVALID',
       message: 'authentication failed',
@@ -725,7 +665,7 @@ describe('recovery — translated producer shapes', () => {
       answer: async () => { callCount++; throw gateRoutedError('AUTH_INVALID') }
     }
     const wrapped = withRecovery(model, { messages: [] })
-    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toMatchObject({ type: 'AUTH_INVALID' })
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toMatchObject({ type: 'AUTH_INVALID' })
     expect(callCount).toBe(1)
   })
 })

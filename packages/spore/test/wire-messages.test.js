@@ -74,6 +74,7 @@ describe('what the loop sends', () => {
     }
 
     const result = await loop({
+      mutators: new Set(),
       model,
       system: [{ text: 'identity', cache: '5m' }, { text: 'memory' }],
       prompt: 'go',

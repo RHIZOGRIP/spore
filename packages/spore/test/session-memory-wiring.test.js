@@ -35,7 +35,7 @@ describe('what an overflow drop leaves the model', () => {
     const sessionMemory = createSessionMemory()
     const model = withRecovery(answering(1), { messages, sessionMemory })
 
-    await model.answer({ system: 's', messages }, {})
+    await model.answer(() => ({ system: 's', messages }), {})
 
     const notice = messages.find(m => marked(m, CONTEXT_NOTICE))
     expect(notice).toBeDefined()
@@ -48,7 +48,7 @@ describe('what an overflow drop leaves the model', () => {
     const messages = history()
     const model = withRecovery(answering(1), { messages })
 
-    await model.answer({ system: 's', messages }, {})
+    await model.answer(() => ({ system: 's', messages }), {})
 
     const notice = messages.find(m => marked(m, CONTEXT_NOTICE))
     expect(notice.content).toMatch(/context was reduced to fit budget/)
@@ -60,7 +60,7 @@ describe('what an overflow drop leaves the model', () => {
     const sessionMemory = createSessionMemory()
     const model = withRecovery(answering(1), { messages, sessionMemory })
 
-    await model.answer({ system: 's', messages }, {})
+    await model.answer(() => ({ system: 's', messages }), {})
 
     const facts = sessionMemory.getFacts().map(f => f.text).join('\n')
     expect(facts).toMatch(/run-0\.sh/)

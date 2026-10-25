@@ -5,7 +5,7 @@
  * call record (`recorded`), whose exit code says whether the call worked; a refusal
  * (`refusal.js`); or text. The first two reach the model as text and everything else as a
  * mark, so nothing reads a status out of text. A result the model has to *see* carries
- * `images` beside it — `{ record, images }` or `{ content, images }` — which become parts
+ * `images` beside it — `{ record, images }` — which become parts
  * so they replay with the transcript rather than attaching to one call.
  */
 
@@ -20,9 +20,6 @@ const noDescription = () => ({})
 const resultOf = (raw) => {
   if (isRefusal(raw)) return { text: refusalText(raw), images: [], refused: true, record: false }
   if (isRecorded(raw)) return { text: JSON.stringify(raw.record), images: raw.images ?? [], refused: false, record: true }
-  if (raw && typeof raw === 'object' && typeof raw.content === 'string') {
-    return { text: raw.content, images: Array.isArray(raw.images) ? raw.images : [], refused: false, record: false }
-  }
   return { text: String(raw), images: [], refused: false, record: false }
 }
 
@@ -123,9 +120,9 @@ async function executeSingle (tc, { toolFns, describe, emitter, signal, logger }
  *
  * @param {object} opts
  * @param {Array}  opts.toolCalls   — the tool calls to run
- * @param {object} opts.toolFns     — { name: async (args, { signal }) => string | { content, images } | a refusal }
+ * @param {object} opts.toolFns     — { name: async (args, { signal }) => string | a call record | a refusal }
  * @param {object} [opts.emitter]   — event emitter
- * @param {Set}    [opts.mutators]   — tool names that mutate state (serial execution)
+ * @param {Set}    opts.mutators    — tool names that mutate state (serial execution)
  * @param {AbortSignal} [opts.signal] — parent abort signal
  * @param {object} [opts.logger]
  * @returns {Promise<Array<{role, toolCallId, toolName, content}>>}
@@ -134,11 +131,6 @@ export async function executeTools ({ toolCalls, toolFns, describe = noDescripti
   if (!toolCalls.length) return []
 
   const ctx = { toolFns, describe, emitter, signal, logger }
-
-  // No mutators set — all parallel (backward compat)
-  if (!mutators) {
-    return Promise.all(toolCalls.map(tc => executeSingle(tc, ctx)))
-  }
 
   // Partition into readers (concurrent) and writers (serial)
   const readers = []

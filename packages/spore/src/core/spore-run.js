@@ -507,10 +507,7 @@ export async function runSpore ({
     })
 
     logger.info({ rounds: result.rounds || 0, inputTokens: result.usage?.input || 0, outputTokens: result.usage?.output || 0, thinkingTokens: result.usage?.thinking || 0, cost: sporeLoopCost }, '[spore] loop done')
-    return {
-      ...result,
-      cost: sporeLoopCost
-    }
+    return result
   } catch (err) {
     // A turn that died still happened. Without this the workspace says nothing at all —
     // the prompt on disk, no turn recorded, no calls — which is indistinguishable from

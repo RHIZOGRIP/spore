@@ -142,8 +142,8 @@ as the container it is: a `.wav` opens with the same four bytes as a WebP.
 **An image is a message part, not an envelope field.** As a part it replays with the rest of the
 transcript, and **compaction is the bound** — there is no second retention policy beside it.
 
-The seam is the tool kernel. A tool returns a string, `{ content, images }`, or a call record
-with images, `{ record, images }`; the text is still the result and what `readOutcome`, the loop
+The seam is the tool kernel. A tool returns a call record with images, `{ record, images }`; the
+record's text is still the result and what `readOutcome`, the loop
 guard and session memory read, and the images become parts beside it. `content` stays a plain
 string when there are none, so the common call is unchanged. Every consumer of a message's text
 goes through `textOf()` (`src/core/message.js`), because a part array answers `.length` with a

@@ -21,13 +21,14 @@ const silent = { trace () {}, debug () {}, info () {}, warn () {}, error () {}, 
 /* ── Scheduling ─────────────────────────────────────────────────── */
 
 describe('tool-kernel scheduling', () => {
-  it('runs all tools in parallel when no mutators set', async () => {
+  it('runs all tools in parallel when none of them mutates', async () => {
     const order = []
     const toolFns = {
       a: async () => { order.push('a-start'); await delay(20); order.push('a-end'); return 'a' },
       b: async () => { order.push('b-start'); await delay(20); order.push('b-end'); return 'b' }
     }
     const results = await executeTools({
+      mutators: new Set(),
       toolCalls: [tc('1', 'a'), tc('2', 'b')],
       toolFns,
       logger: silent
@@ -89,6 +90,7 @@ describe('tool-kernel scheduling', () => {
 
   it('returns empty array for empty toolCalls', async () => {
     const results = await executeTools({
+      mutators: new Set(),
       toolCalls: [],
       toolFns: {},
       logger: silent
@@ -123,6 +125,7 @@ describe('tool-kernel abort', () => {
       check: async (args, { signal }) => { receivedSignal = signal; return 'ok' }
     }
     await executeTools({
+      mutators: new Set(),
       toolCalls: [tc('1', 'check')],
       toolFns,
       signal: controller.signal,
@@ -143,6 +146,7 @@ describe('tool-kernel abort', () => {
     }
     setTimeout(() => controller.abort(), 10)
     await executeTools({
+      mutators: new Set(),
       toolCalls: [tc('1', 'slow')],
       toolFns,
       signal: controller.signal,
@@ -185,6 +189,7 @@ describe('tool-kernel abort', () => {
       bad: async () => { throw new Error('boom') }
     }
     const results = await executeTools({
+      mutators: new Set(),
       toolCalls: [tc('1', 'good'), tc('2', 'bad')],
       toolFns,
       logger: silent
@@ -205,6 +210,7 @@ describe('tool-kernel events', () => {
 
     const toolFns = { echo: async ({ text }) => text }
     await executeTools({
+      mutators: new Set(),
       toolCalls: [tc('c1', 'echo', { text: 'hi' })],
       toolFns,
       emitter,
@@ -225,6 +231,7 @@ describe('tool-kernel events', () => {
     const started = []
     const rows = [{ name: 'contract', tools: ['read'], title: 'reading the contract', category: 'read' }]
     await executeTools({
+      mutators: new Set(),
       toolCalls: [tc('a', 'read', { path: 'data/c.pdf' }), tc('b', 'exec', { command: 'node "$SPORE_SOURCE" ledger' })],
       toolFns: { read: async () => 'text', exec: async () => 'out' },
       describe: (name, args) => describeCall(name, args, rows),
@@ -244,6 +251,7 @@ describe('tool-kernel events', () => {
 
     const toolFns = { fail: async () => { throw new Error('boom') } }
     const results = await executeTools({
+      mutators: new Set(),
       toolCalls: [tc('c1', 'fail')],
       toolFns,
       emitter,
@@ -265,6 +273,7 @@ describe('tool-kernel events', () => {
       text: async () => 'hi'
     }
     await executeTools({
+      mutators: new Set(),
       toolCalls: Object.keys(toolFns).map(name => tc(name, name)),
       toolFns,
       emitter: { emit: (type, e) => { if (type === 'tool_end') ended[e.name] = e }, on () {} },
@@ -286,6 +295,7 @@ describe('tool-kernel events', () => {
   it('result objects have correct shape', async () => {
     const toolFns = { echo: async ({ text }) => text }
     const results = await executeTools({
+      mutators: new Set(),
       toolCalls: [tc('c1', 'echo', { text: 'hi' })],
       toolFns,
       logger: silent
@@ -306,6 +316,7 @@ describe('tool-kernel events', () => {
 describe('a tool that is not there', () => {
   it('says so, and says what is', async () => {
     const [result] = await executeTools({
+      mutators: new Set(),
       toolCalls: [{ id: 'a', name: 'exec', arguments: { command: 'ls' } }],
       toolFns: { read: async () => 'ok', write: async () => 'ok' }
     })
@@ -317,6 +328,7 @@ describe('a tool that is not there', () => {
   it('counts as an error in the event, not as a success', async () => {
     const ended = []
     await executeTools({
+      mutators: new Set(),
       toolCalls: [{ id: 'a', name: 'nope', arguments: {} }],
       toolFns: { read: async () => 'ok' },
       emitter: { emit: (name, event) => name === 'tool_end' && ended.push(event), on () {} }
@@ -327,6 +339,7 @@ describe('a tool that is not there', () => {
 
   it('does not stop the calls beside it', async () => {
     const results = await executeTools({
+      mutators: new Set(),
       toolCalls: [
         { id: 'a', name: 'nope', arguments: {} },
         { id: 'b', name: 'read', arguments: {} }

@@ -133,15 +133,15 @@ describe('the kernel carries it into the message', () => {
 
   it('builds parts when a tool returns images, and leaves text alone when it does not', async () => {
     const toolFns = {
-      look: async () => ({ content: 'exit 0', images: [{ fileUri: 'file:///x.png', mimeType: 'image/png' }] }),
+      look: async () => recorded({ tool: 'look', exit: 0 }, [{ fileUri: 'file:///x.png', mimeType: 'image/png' }]),
       plain: async () => 'exit 0'
     }
-    const [withImage] = await executeTools({ toolCalls: [call('look')], toolFns })
+    const [withImage] = await executeTools({ mutators: new Set(), toolCalls: [call('look')], toolFns })
     expect(Array.isArray(withImage.content)).toBe(true)
-    expect(withImage.content[0]).toEqual({ type: 'text', text: 'exit 0' })
+    expect(withImage.content[0]).toEqual({ type: 'text', text: JSON.stringify({ tool: 'look', exit: 0 }) })
     expect(withImage.content[1]).toEqual({ type: 'image', fileUri: 'file:///x.png', mimeType: 'image/png' })
 
-    const [withoutImage] = await executeTools({ toolCalls: [call('plain')], toolFns })
+    const [withoutImage] = await executeTools({ mutators: new Set(), toolCalls: [call('plain')], toolFns })
     expect(withoutImage.content).toBe('exit 0')
   })
 
@@ -151,7 +151,7 @@ describe('the kernel carries it into the message', () => {
     const toolFns = {
       look: async () => recorded({ tool: 'look', exit: 1 }, [{ fileUri: 'file:///x.png', mimeType: 'image/png' }])
     }
-    const [message] = await executeTools({ toolCalls: [call('look')], toolFns, emitter })
+    const [message] = await executeTools({ mutators: new Set(), toolCalls: [call('look')], toolFns, emitter })
     expect(textOf(message)).toBe(JSON.stringify({ tool: 'look', exit: 1 }))
     const end = seen.find(([type]) => type === 'tool_end')[1]
     expect(end.error).toBe(true)

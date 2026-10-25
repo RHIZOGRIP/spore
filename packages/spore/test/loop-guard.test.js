@@ -93,6 +93,7 @@ describe('loop guard', () => {
 
     const wrapped = []
     const result = await loop({
+      mutators: new Set(),
       model: m,
       system: 'sys',
       prompt: 'go',

@@ -4,11 +4,10 @@
  * One model, the one the turn runs on: nothing here switches to another.
  *
  * Handles:
- *   - Errors marked retryable, and untyped 429/503/529 → backoff + retry on
- *     the same model, at most MAX_RETRIES times.
+ *   - Errors marked retryable → backoff + retry on the same model, at most
+ *     MAX_RETRIES times.
  *   - Context overflow → compact, then drop the oldest turn group, + retry.
- *   - Typed errors not marked retryable, and untyped 400/401/403 → throw
- *     immediately.
+ *   - Typed errors not marked retryable → throw immediately.
  *   - Anything else → retry once, then throw.
  */
 
@@ -23,14 +22,14 @@ const MAX_OVERFLOW_DROPS = 50
 const BACKOFF_BASE_MS = 1000
 
 /**
- * Wrap a model with recovery behavior. Returns a new object with the
- * same interface but resilient answer().
+ * Wrap a model with recovery behavior: `answer(prompt, opts)`, where `prompt` is a function
+ * returning the prompt.
  *
  * @param {object} model — mohdel model proxy
  * @param {object} opts
  * @param {Array} opts.messages — messages array (for compaction on overflow)
  * @param {object} [opts.logger]
- * @returns {object} wrapped model with resilient answer()
+ * @returns {{ answer: Function }}
  */
 export function withRecovery (model, { messages, sessionMemory, logger, emitter, signal } = {}) {
   if (!model) throw new Error('withRecovery: model is required')
@@ -38,8 +37,6 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
   const emit = (type, data) => emitter?.emit?.(type, data)
 
   return {
-    info: () => model.info?.(),
-    get id () { return model.id },
     answer: async (prompt, opts) => {
       let lastError
       let attempt = 0
@@ -66,7 +63,7 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
           }
           // Built again on every attempt: an overflow is answered by compacting or dropping
           // `messages`, and a prompt taken once would retry exactly what overflowed.
-          const result = await model.answer(typeof prompt === 'function' ? prompt() : prompt, opts)
+          const result = await model.answer(prompt(), opts)
           if (attempt > 0) {
             log.info({ attempt }, '[recovery] retry succeeded')
           }
@@ -172,8 +169,6 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
  * Classify error for recovery: `type` names a typed error, which retries only when `retryable`
  * says so; `detail` is optional on one and says nothing about it.
  *
- * Untyped errors (socket transport, system) use status code fallback.
- *
  * `OPERATION_CANCELLED` is an ending someone asked for: passed on as it came, logged as no error.
  *
  * `RATE_LIMIT_TIER` (the caller's own quota is used up on this provider) is
@@ -185,12 +180,6 @@ function classify (err) {
   if (err.type === 'CONTEXT_OVERFLOW') return 'overflow'
   if (err.retryable) return 'retryable'
   if (err.type) return 'fatal'
-
-  // Untyped errors (socket transport, system errors): status code fallback
-  const status = err.status || err.statusCode
-  if (status === 429 || status === 503 || status === 529) return 'retryable'
-  if (status === 400 || status === 401 || status === 403) return 'fatal'
-
   return 'unknown'
 }
 

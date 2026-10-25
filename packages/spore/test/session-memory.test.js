@@ -12,7 +12,6 @@ describe('session-memory', () => {
     const facts = sm.getFacts()
     expect(facts).toHaveLength(1)
     expect(facts[0].text).toBe('Migrate the project to ESM')
-    expect(facts[0].source).toBe('user')
   })
 
   it('ignores short user messages', () => {
@@ -34,7 +33,7 @@ describe('session-memory', () => {
     sm.extract([{ role: 'assistant', content: 'I decided to use node:test instead of vitest because it has no dependencies.' }])
     const facts = sm.getFacts()
     expect(facts).toHaveLength(1)
-    expect(facts[0].source).toBe('assistant')
+    expect(facts[0].text).toContain('node:test instead of vitest')
   })
 
   it('ignores short assistant messages', () => {
@@ -80,7 +79,6 @@ describe('session-memory', () => {
     ])
     const facts = sm.getFacts()
     expect(facts).toHaveLength(1)
-    expect(facts[0].source).toBe('turn')
     expect(facts[0].text).toContain('check the config')
     expect(facts[0].text).toContain('read(config.js) — 2 lines')
   })
@@ -192,7 +190,6 @@ describe('session-memory', () => {
     const facts = sm.getFacts()
     expect(facts).toHaveLength(1)
     expect(facts[0].text).toMatch(/^grep\(\)/)
-    expect(facts[0].source).toBe('tool')
   })
 
   it('ignores compacted markers', () => {
@@ -226,8 +223,7 @@ describe('session-memory', () => {
     ])
     // User + one turn-group = 2 facts, not one per message.
     expect(sm.getFacts()).toHaveLength(2)
-    expect(sm.getFacts()[0].source).toBe('user')
-    expect(sm.getFacts()[1].source).toBe('turn')
+    expect(sm.getFacts()[0].text).toBe('Fix the login bug')
     expect(sm.getFacts()[1].text).toContain('exec(grep -n token.valid auth.js) — 58 bytes out')
   })
 

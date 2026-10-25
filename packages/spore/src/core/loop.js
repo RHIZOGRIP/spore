@@ -11,7 +11,7 @@ import { MAX_EMPTY_RETRIES, accountUsage, resolveEmptyCompletion } from './answe
 import { silent } from '../observability/logger.js'
 import { SporeError } from '../observability/errors.js'
 
-const noEmit = { emit () {}, on () {}, has: () => false }
+const noEmit = { emit () {}, on () {} }
 
 /**
  * The transcript as it goes out, with the conversation opted into prefix caching.
@@ -126,12 +126,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
       .map(block => (block.cache ? { type: 'text', text: block.text, cache: block.cache } : { type: 'text', text: block.text }))
   }
 
-  // Wire streaming through emitter
-  // Asked for by a listener, not by an emitter existing: every turn carries one now, so
-  // that test would request deltas on every run and a brokered one refuses them.
-  const streamHandler = emitter.has?.('stream')
-    ? (chunk) => { if (chunk.delta) emitter.emit('stream', { kind: chunk.type, delta: chunk.delta }) }
-    : null
+  const streamHandler = (chunk) => { if (chunk.delta) emitter.emit('stream', { kind: chunk.type, delta: chunk.delta }) }
 
   // A continued turn cut before its round's results: the calls the model asked for run now,
   // under the runtime as it is today, and the turn goes on from what they return.
@@ -212,10 +207,8 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
     if (signal) answerOpts.signal = signal
     if (parentSpan) answerOpts.parentSpan = parentSpan
     answerOpts.idleHandler = (sinceMs) => emitter.emit('mohdel_idle', { sinceMs })
-    if (streamHandler) {
-      answerOpts.realtimeHandler = streamHandler
-      answerOpts.bufferOpts = { maxChars: 50, maxMs: 500 }
-    }
+    answerOpts.realtimeHandler = streamHandler
+    answerOpts.bufferOpts = { maxChars: 50, maxMs: 500 }
 
     const callStartAt = Date.now()
     const heartbeatTimer = setInterval(() => {

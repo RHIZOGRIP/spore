@@ -17,10 +17,5 @@ export function createEmitter () {
     if (fns) for (const fn of fns) fn(data)
   }
 
-  // Whether anything is listening for a kind. Streaming costs a provider a different
-  // call shape and a brokered run refuses it outright, so the loop asks before requesting
-  // deltas rather than inferring the want from an emitter merely existing.
-  const has = (type) => Boolean(listeners.get(type)?.length)
-
-  return { on, emit, has }
+  return { on, emit }
 }

@@ -48,7 +48,6 @@ const keptOf = (budget) => Math.min(KEPT_TOKENS, Math.floor(budget / 2))
 // However little the budget pays for, the tail is never empty: a single enormous group
 // would otherwise leave the turn with a summary and nothing else.
 const MIN_TAIL_GROUPS = 2
-const COMPACTION_TYPE = '__compaction__'
 
 const SUMMARIZE_PROMPT = `Summarize the following conversation history concisely. Preserve:
 - Active tasks and their current status
@@ -211,17 +210,5 @@ export function compactionSummaryMessage (summary) {
  * entries replay correctly in sequence.
  */
 export function createCompactionEntry (summary, firstKeptIndex) {
-  return {
-    type: COMPACTION_TYPE,
-    summary,
-    firstKeptIndex,
-    ts: new Date().toISOString()
-  }
-}
-
-/**
- * Check if a message is a compaction entry.
- */
-export function isCompactionEntry (msg) {
-  return msg?.type === COMPACTION_TYPE
+  return { summary, firstKeptIndex }
 }
