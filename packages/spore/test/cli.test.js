@@ -8,7 +8,7 @@ import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, remo
 import { workspacesIn, isWorkspace } from '../src/library/discover.js'
 import { define, defaultModel, defaultSporangiumPath, switchModel, edit, grantOf, list, log, pause, show, sporePaths, precursors, schedules, setDefaultModel, setSchedule, removeSchedule, sql, unpause, usage } from '../src/library/verbs.js'
 import { billingOf } from 'mohdel/providers'
-import { definitionWith } from '../src/core/identity-defaults.js'
+import { definitionWith } from '../src/testing.js'
 import { takeSlot } from '../src/core/admission.js'
 import { send } from '../src/core/send.js'
 import { tick } from '../src/core/tick.js'

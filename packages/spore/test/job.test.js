@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path'
 import { pauseSpores, takeSlot, unpauseSpores } from '../src/core/admission.js'
 import { superviseJob, deliverJob, jobAlive, progressOf, reportInterrupted } from '../src/core/job.js'
 import { beginJob, heldIn, jobsIn, saidOf } from '../src/core/spore-dir.js'
-import { definitionWith } from '../src/core/identity-defaults.js'
+import { definitionWith } from '../src/testing.js'
 import { CONFIG_FILE } from '../src/library/config.js'
 import { native } from '../src/native.js'
 

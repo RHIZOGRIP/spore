@@ -6,13 +6,20 @@
  * no turn made.
  */
 
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { grantedPathContaining } from './isolation/sandbox.js'
+import { DEFAULT_DEFINITION_PATH } from './core/sporangia.js'
+import { filledIn } from './delegation/definition.js'
 
 export { appendTurn, acquireLock, releaseLock, writeTranscriptEntries, writeTurnRecords } from './core/spore-dir.js'
-export { definitionWith } from './core/identity-defaults.js'
+
+/**
+ * The shipped definition with `model:` filled in, as `define` fills it: the shipped one names
+ * none, since a model id baked into a package goes stale against a catalog that is live.
+ */
+export const definitionWith = (model) => filledIn(readFileSync(DEFAULT_DEFINITION_PATH, 'utf8'), { model, plugins: [] })
 
 /**
  * A fresh directory under `base` that no sandbox grant covers, as a cell's workspace must be:

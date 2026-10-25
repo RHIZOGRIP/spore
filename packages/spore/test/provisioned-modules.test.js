@@ -7,7 +7,7 @@ import { promisify } from 'node:util'
 
 import { PROVISIONED_MODULES, agentEnv } from '../src/delegation/agent-env.js'
 import { openWorkspace } from '../src/core/workspace.js'
-import { definitionWith } from '../src/core/identity-defaults.js'
+import { definitionWith } from '../src/testing.js'
 
 const run = promisify(execFile)
 

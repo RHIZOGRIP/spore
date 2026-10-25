@@ -4,7 +4,7 @@ import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { changedBetween, dreamDue, runDream } from '../src/core/dream.js'
-import { definitionWith } from '../src/core/identity-defaults.js'
+import { definitionWith } from '../src/testing.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { CONFIG_FILE } from '../src/library/config.js'
 import { dreamRecords, enqueue, holdDelivery, readTranscriptEntries, readTurns, recordCell, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'

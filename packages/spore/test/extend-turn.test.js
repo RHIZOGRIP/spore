@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 
 import { startGate } from './fixtures/model-server.js'
 import { outsideWorkspace, withAuth } from './fixtures/outside-ws.js'
-import { definitionWith } from '../src/core/identity-defaults.js'
+import { definitionWith } from '../src/testing.js'
 import { readTurns, runningLimits } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 import { RUNNING, stateOf } from '../src/core/state.js'

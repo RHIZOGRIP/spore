@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 
 import { setKey } from '../src/library/config.js'
 import { define, defaultSporangiumPath, remake, show, sporangia } from '../src/library/verbs.js'
-import { definitionWith } from '../src/core/identity-defaults.js'
+import { definitionWith } from '../src/testing.js'
 import { differingDocs, upgradeDocs } from '../src/core/plugins.js'
 import { DEFAULT_SPORANGIUM, SHIPPED_SPORANGIA, knownSporangia, operatorSporangia, sporangiumOf } from '../src/core/sporangia.js'
 import { TOOL_NAMES } from '../src/core/tool-names.js'

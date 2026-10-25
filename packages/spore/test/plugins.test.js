@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { allowPlugin, checkPlugin, containOf, differingDocs, disallowPlugin, installedPlugins, listPlugins, pluginProgram, pluginRoots, pluginServices, preparePlugins, showPlugin, upgradeDocs, PLUGIN_READS } from '../src/core/plugins.js'
 import { PLUGIN_CALLS } from '../src/core/spore-dir.js'
 import { readConfig } from '../src/library/config.js'
-import { definitionWith } from '../src/core/identity-defaults.js'
+import { definitionWith } from '../src/testing.js'
 import { openWorkspace } from '../src/core/workspace.js'
 import { sporeSocketDir } from '../src/infra/broker-socket.js'
 

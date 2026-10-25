@@ -15,7 +15,7 @@ import { startGate } from './fixtures/model-server.js'
 import { acquireLock, copyInbox, readState, readTranscript, releaseLock, readTranscriptEntries, readTurns, hostState, writeOutcome, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
 import { callRuns, readCall, readCalls, writeCall } from '../src/core/call-record.js'
 import { forkWorkspace, readFork } from '../src/core/fork.js'
-import { definitionWith } from '../src/core/identity-defaults.js'
+import { definitionWith } from '../src/testing.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 

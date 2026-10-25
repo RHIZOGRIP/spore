@@ -43,6 +43,38 @@ export function parseFrontmatter (head) {
 }
 
 /**
+ * The frontmatter with `model:` replaced or added, and the plugins added to any it already
+ * names. Line by line, so everything else in the file stays as its author wrote it.
+ */
+export function filledIn (source, { model, plugins, writes = [] }) {
+  const end = source.indexOf('\n---', 3)
+  const head = source.slice(0, end).split('\n')
+  const body = source.slice(end)
+  const at = (key) => head.findIndex((line, i) => i > 0 && line.startsWith(`${key}:`))
+  if (model) {
+    const line = `model: ${model}`
+    if (at('model') > 0) head[at('model')] = line
+    else head.splice(1, 0, line)
+  }
+  if (plugins.length) {
+    let held = []
+    if (at('plugins') > 0) {
+      const parsed = parseFrontmatter(head[at('plugins')])
+      if (parsed.error) throw new SporeError(`its plugins line ${parsed.error}`, { type: 'DEFINITION_INVALID', detail: 'plugins: [a, b]' })
+      held = [].concat(parsed.fields.plugins)
+    }
+    const line = `plugins: [${[...new Set([...held, ...plugins])].join(', ')}]`
+    if (at('plugins') > 0) head[at('plugins')] = line
+    else head.push(line)
+  }
+  if (writes.length) {
+    if (at('writes') > 0) throw new SporeError('its definition already writes a directory', { type: 'DEFINITION_INVALID', detail: 'a spore made to work in a directory is given that one grant' })
+    head.push(`writes: [${writes.join(', ')}]`)
+  }
+  return head.join('\n') + body
+}
+
+/**
  * A `.cmk` parsed: a root definition by default, a precursor — a cell's definition — with
  * `cell: true`, which is where their rules differ.
  *

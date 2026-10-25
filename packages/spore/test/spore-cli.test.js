@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 import { startGate } from './fixtures/model-server.js'
 import { withAuth } from './fixtures/outside-ws.js'
-import { definitionWith } from '../src/core/identity-defaults.js'
+import { definitionWith } from '../src/testing.js'
 import { readInbox, readTurns } from '../src/core/spore-dir.js'
 
 const run = promisify(execFile)

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { openWorkspace, readRules } from '../src/core/workspace.js'
 import { dataDir, definitionPath } from '../src/core/spore-dir.js'
-import { definitionWith } from '../src/core/identity-defaults.js'
+import { definitionWith } from '../src/testing.js'
 import { TOOL_NAMES } from '../src/core/tool-names.js'
 
 const MODEL = 'anthropic/claude-haiku-4-5'

@@ -19,6 +19,7 @@ export const SPORANGIA_DIR = 'sporangia'
 export const DEFAULT_SPORANGIUM = 'default'
 export const SPORANGIUM_RECORD = 'sporangium.json'
 export const SHIPPED_SPORANGIA = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', SPORANGIA_DIR)
+export const DEFAULT_DEFINITION_PATH = join(SHIPPED_SPORANGIA, DEFAULT_SPORANGIUM, DEFINITION_FILE)
 
 export const operatorSporangia = (configFile) => resolve(dirname(configFile), SPORANGIA_DIR)
 
