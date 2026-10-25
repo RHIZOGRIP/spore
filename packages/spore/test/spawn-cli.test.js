@@ -1,11 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFile } from 'node:child_process'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { outsideRoot } from './fixtures/outside-ws.js'
+import { SPAWN_FILE } from '../src/core/spore-dir.js'
+import { definitionWith } from '../src/testing.js'
+
+import { outsideWorkspace } from './fixtures/outside-ws.js'
 
 const run = promisify(execFile)
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -14,7 +17,7 @@ const ROOT = resolve(__dirname, '.spawn-cli-workspace')
 
 const spawnCli = async (args, env = {}) => {
   try {
-    const { stdout, stderr } = await run(SPAWN, args, { cwd: ROOT, env: { ...process.env, ...env } })
+    const { stdout, stderr } = await run(SPAWN, args, { cwd: ROOT, env: { ...process.env, SPORE_WS: ROOT, ...env } })
     return { code: 0, stdout, stderr }
   } catch (e) {
     return { code: e.code, stdout: e.stdout, stderr: e.stderr }
@@ -27,6 +30,7 @@ beforeEach(() => {
   mkdirSync(resolve(ROOT, 'precursors'), { recursive: true })
   writeFileSync(resolve(ROOT, 'precursors/summarize.cmk'), '---\nname: summarize\ntools: [read]\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\non-wrap: discard\n---\n\nYou summarize.\n')
   writeFileSync(resolve(ROOT, 'work/1/in.md'), 'material')
+  writeFileSync(resolve(ROOT, 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5'))
 })
 
 afterEach(() => {
@@ -58,6 +62,14 @@ describe('the spawn command', () => {
     expect(r.stderr).toMatch(/already the sub-agent "summarize"/)
   })
 
+  it('refuses a cell in a turn whose runner named no spore, before anything starts', async () => {
+    const r = await run(SPAWN, ARGS, { cwd: ROOT, env: { PATH: process.env.PATH } })
+      .then(() => ({ code: 0 }), e => ({ code: e.code, stderr: e.stderr }))
+    expect(r.code).toBe(2)
+    expect(r.stderr).toMatch(/SPORE_WS is not set — spawn runs under a spore, whose runner names its workspace/)
+    expect(existsSync(resolve(ROOT, 'work/1', SPAWN_FILE))).toBe(false)
+  })
+
   // The workspace is under the repo, which the sandbox grants read to every agent,
   // so this is also the first thing a real spawn from here would be told.
   it('reports a plan it cannot make without starting a child', async () => {
@@ -78,7 +90,7 @@ describe('a cell outside any turn', () => {
   const asked = ['--precursor', 'route-hook-forge', '--ws', 'work/1', '--prompt', 'in.md', '--answer', 'data/out.json', ...standalone]
 
   beforeEach(() => {
-    outside = outsideRoot('spawn-standalone')
+    outside = outsideWorkspace('spawn-standalone')
     mkdirSync(resolve(outside, 'work/1'), { recursive: true })
     mkdirSync(resolve(outside, 'precursors'), { recursive: true })
     writeFileSync(resolve(outside, 'work/1/in.md'), 'a delivery')

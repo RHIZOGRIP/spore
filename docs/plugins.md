@@ -311,15 +311,15 @@ Any other placeholder, a `{settings.<key>}` the manifest does not declare among 
 A variable name is a letter or `_`, then letters, digits and `_`. A plugin may not set:
 
 - a variable the runtime sets itself (`RUNTIME_ENV` in `rust/workspace`): `HOME`, `TMPDIR`,
-  `TRACEPARENT`, `MOHDEL_MEDIA_ROOTS`, `SPORE_SOCKET_DIR`, `SPORE_CELL`, `SPORE_CELL_MODELS`,
-  `SPORE_DEBUG`, `SPORE_ENZYME`, `SPORE_ENZYMES`, `SPORE_FANOUT`, `SPORE_JOB`, `SPORE_JOB_DIR`,
+  `TRACEPARENT`, `MOHDEL_MEDIA_ROOTS`, `SPORE_SOCKET_DIR`, `SPORE_CELL`, `SPORE_DEBUG`,
+  `SPORE_ENZYME`, `SPORE_ENZYMES`, `SPORE_FANOUT`, `SPORE_JOB`, `SPORE_JOB_DIR`,
   `SPORE_JOB_NAME`, `SPORE_JOB_SOCKET`, `SPORE_MODEL_SOCKET`, `SPORE_NODE`, `SPORE_RECALL`,
   `SPORE_SOURCE`, `SPORE_SOURCES`, `SPORE_SOURCE_SOCKET`, `SPORE_SPAWN`, `SPORE_SQL`,
   `SPORE_STATE_FD`, `SPORE_STORE_SOCKET`, `SPORE_WS`, `SPORE_PLUGIN_READS`, `SPORE_PLUGIN_ENV` and
   `SPORE_PLUGIN_CALLS` — even when its name starts with the plugin's own prefix;
-- a variable the runtime passes to every agent: `PATH`, `LANG`, `LC_ALL`, `TZ`, `TMPDIR`, `MODEL`,
-  `TRACEPARENT`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_INIT_TIMEOUT_MS`,
-  `SPORE_OWNERS` and `SPORE_CELL_MODELS`;
+- a variable the runtime passes to every agent: `PATH`, `LANG`, `LC_ALL`, `TZ`, `TMPDIR`,
+  `TRACEPARENT`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_INIT_TIMEOUT_MS` and
+  `SPORE_OWNERS`;
 - any `SPORE_*` other than its own prefix, `SPORE_<NAME>` and `SPORE_<NAME>_*`.
 
 Each is refused as *sets …, which it may not*. Two plugins one spore uses that set the same

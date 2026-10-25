@@ -13,7 +13,7 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 
 import { readConfig, existing, addTo, workspaceFor, CONFIG_FILE, containing, recordLayout } from './config.js'
 import { isWorkspace, sporesInHome } from './discover.js'
-import { acquireLock, approvalsIn, asked, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
+import { acquireLock, approvalsIn, asked, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readLock, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
 import { askApproval } from './approvals.js'
 import { sqlLines } from './sql.js'
 import { TOOL_NAMES } from '../core/tool-names.js'
@@ -104,9 +104,29 @@ export function setDefaultModel (model, { configFile = CONFIG_FILE } = {}) {
  * The spore at `ws` set to run on `model` from its next turn: one of what its definition offers,
  * its `model:` or one of `models:`. The model it leaves stays in `models:`, so the choice offered
  * stays the same; nothing else in the file changes.
+ *
+ * Between turns only, under the spore's lock: a cell reads its spore's model when it starts, so a
+ * switch inside a turn would run its cells on another model than the turn. Refused after a crash
+ * too, because taking the lock writes over the pid a crashed runner left, which is how `stateOf`
+ * tells one.
  */
 export function switchModel ({ ws, model, configFile = CONFIG_FILE } = {}) {
   const path = here(ws, configFile)
+  if (!isRunning(path) && readLock(path)?.pid) {
+    throw new SporeError(`${path} crashed in its last turn`, { type: 'SPORE_CRASHED', detail: `that turn was never recorded — spore send ${ws} records it, then switch` })
+  }
+  const taken = acquireLock(path)
+  if (taken.error) {
+    throw new SporeError(taken.error, { type: 'SPORE_RUNNING', detail: `the model switches between turns — wait for this one to end, or spore stop ${ws}` })
+  }
+  try {
+    return switched(path, model)
+  } finally {
+    releaseLock(path)
+  }
+}
+
+function switched (path, model) {
   const file = definitionPath(path)
   const source = readFileSync(file, 'utf8')
   const definition = parseDefinition(source, { knownTools: TOOL_NAMES })

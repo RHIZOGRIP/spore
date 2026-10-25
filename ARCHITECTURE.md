@@ -836,11 +836,10 @@ one.
 **The model is part of the definition**
 ([principle 7](PRINCIPLES.md#7-a-spore-is-described-in-a-file-not-built-in-code)): `model: <provider>/<name>` sits
 beside the tools and the limits, and a root definition naming none is refused the way one missing
-a limit is. A precursor may leave it out and run on its parent's. The parent's model reaches the
-cell as `$MODEL`: a spawning agent's environment carries its own model there, and the cell's
-supervisor and worker take the precursor's model or else that variable (`rust/runner/src/spawn.rs`,
-`bin/spawn-worker.js`). That is the only place `$MODEL` is read at runtime; elsewhere it is how
-the conformance suite picks what to write into the definitions it stages.
+a limit is. A precursor may leave it out and run on its spore's: the spawn plan reads the spore's
+`spore.cmk` for it (`rust/runner/src/plan.rs`), and no environment variable carries a model.
+`$MODEL` is how the conformance suite, on the host, picks what to write into the definitions it
+stages.
 
 **A spore is made from a sporangium.** A sporangium is laid out as a spore is, with nothing run
 yet: its `spore.cmk`, and any `precursors/`, `schedules/`, `data/`, `home/` and root documents.
@@ -2345,8 +2344,8 @@ agent running with its broker pulled away.
 Some hosts are not turns — a webhook's triage, a schedule that wants one judgment, a command — and
 still want a precursor's work: `runCell` (`src/core/cell.js`) runs one. It gives the cell a
 directory of its own under `$XDG_STATE_HOME/spore/cells/<spore>/<origin>/`, holding the files the
-caller names and its briefing as the prompt, and starts it with `spore-spawn --standalone`, handing
-it the spore's `model:` and `cell-models` for the spawn plan to resolve as it does under a turn.
+caller names and its briefing as the prompt, and starts it with `spore-spawn --standalone` from the
+spore's workspace, whose `spore.cmk` the spawn plan reads its model from as it does under a turn.
 
 - **It has no parent to borrow a model from**, so `--standalone` starts its own session as a
   runner does, under a key of its own and the precursor's hard cost, and records the settled spend
@@ -2431,23 +2430,27 @@ serves.
   as `SPORE_PLAN`, the client's path as `SPORE_ENZYME` and the broker's socket as `SPORE_ENZYMES`.
 
 **The model is configuration, and `spawn` has no flag for it**
-([principle 7](PRINCIPLES.md#7-a-spore-is-described-in-a-file-not-built-in-code)). A precursor's `model:` is a name the
-plan reads against the map the runner hands down as `SPORE_CELL_MODELS`, at any depth; a
-precursor naming none runs on its parent's, which arrives as `$MODEL` since `exec` and `wsexec`
-export it, and `bin/spawn-worker.js` reads `plan.precursor.model || process.env.MODEL`. A spore
-with no `cell-models` runs every cell on its parent's model and drops the name, so a precursor
-from a plugin or a sporangium still runs; one with some refuses a name it lacks. Passing `-m`
-fails with *the model comes from the precursor's model: or $MODEL, never from a flag* rather than
-being quietly ignored.
+([principle 7](PRINCIPLES.md#7-a-spore-is-described-in-a-file-not-built-in-code)), and no
+variable carries it either: the plan reads the spore's own `spore.cmk` — at `$SPORE_WS` in a turn,
+spawn's working directory outside one. A precursor's `model:` is a name the plan reads against the
+spore's `cell-models`; a precursor naming none runs on the spore's `model:`. A spore with no
+`cell-models` runs every cell on its own model and drops the name, so a precursor from a plugin or
+a sporangium still runs; one with some refuses a name it lacks. The plan settles the model before
+anything starts, and `bin/spawn-worker.js` runs on `plan.precursor.model` alone. Passing `-m`
+fails with *the model comes from the precursor's model: or its spore's, never from a flag* rather
+than being quietly ignored.
 
 **The root definition says which models the spore runs on**: `model:` is what the root runs on,
 `models:` what a person may switch it to (`switchModel`, which rewrites `model:` and keeps the
 model it leaves in `models:`), and `cell-models:` the names a precursor's `model:` may give.
 A turn runs on `model:` alone: a used-up quota (`RATE_LIMIT_TIER`) is retried on it and then fails
-the turn, and nothing but a person's switch moves the spore to another model.
+the turn, and nothing but a person's switch moves the spore to another model. A switch waits for
+the turn to end: `switchModel` takes the spore's lock, so it is refused while a turn runs — a cell
+reads the model when it starts, and would otherwise run on another than its turn — and after a
+crash, whose mark taking the lock would erase.
 **The model broker holds it:** its route policy (`DefinedModels`, `rust/runner/src/model.rs`)
 refuses a call to any model the definition does not name (`ROUTE_REJECTED`), before a key is
-filled, so neither a precursor nor `$MODEL` — both the agent's to set — reaches another.
+filled, so a precursor — the agent's to write — reaches no other.
 Embeddings do not pass through mohdel's route, so the `embedding:` model is not held there.
 
 The base-tool allow-list needs no new machinery: what the precursor granted is passed to `runSpore`
@@ -2529,7 +2532,7 @@ through the host's gate, so its hard cost, the models its definition names and t
 hold for every turn, and its key is minted for that turn. An embedder that keeps its own keys
 serves a gate and names it as the host's `gate`.
 
-**A cell's environment is assembled by name** — `PATH`, `HOME`, `MODEL`, `TRACEPARENT`, the
+**A cell's environment is assembled by name** — `PATH`, `HOME`, `TRACEPARENT`, the
 `SPORE_*` it needs (`PASSED_THROUGH`, `rust/workspace`) — and holds no provider key
 ([principle 10](PRINCIPLES.md#10-passwords-never-reach-the-assistant-the-internet-is-open)): the
 list that is kept is what may cross, not which names to strip. Landlock does not gate unix-socket

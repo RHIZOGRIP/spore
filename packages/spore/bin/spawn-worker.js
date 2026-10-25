@@ -30,10 +30,10 @@ const parentSpan = parseTraceparent(process.env.TRACEPARENT)
 
 // The cell holds no provider key. Its model is a socket its parent listens on,
 // which is what makes the cell's own cost limit something other than advice.
-// Which model runs behind that socket is the precursor's to say; a precursor that
-// names none inherits its parent's, which arrives as $MODEL from the spawning agent.
-const model = plan.precursor.model || process.env.MODEL
-const mo = await createModelClient({ socketPath: process.env.SPORE_MODEL_SOCKET, modelIds: model ? [model] : [], key: readTreeKey(plan.ws), precursor: plan.precursor.name, workspace: plan.ws })
+// Which model runs behind that socket the plan has settled: the precursor's, or the
+// parent's it inherits.
+const model = plan.precursor.model
+const mo = await createModelClient({ socketPath: process.env.SPORE_MODEL_SOCKET, modelIds: [model], key: readTreeKey(plan.ws), precursor: plan.precursor.name, workspace: plan.ws })
 
 // cwd is the parent's workspace — `spawn` is invoked through its `wsexec`, which
 // runs there. A fan-out writes one of these lines per cell into a single log, so

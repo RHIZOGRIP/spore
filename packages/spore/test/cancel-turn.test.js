@@ -34,7 +34,6 @@ const env = () => ({
   HOME: process.env.HOME,
   XDG_STATE_HOME: process.env.XDG_STATE_HOME,
   XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
-  MODEL: 'anthropic/claude-haiku-4-5',
   SPORE_SPAWN: SPAWN
 })
 

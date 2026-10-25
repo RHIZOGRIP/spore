@@ -30,8 +30,8 @@ use spore_workspace::{
     read_paths_refusal, record_unanswered, recover, release_lock, serve, spore_socket_dir,
     spore_socket_path, start_limits, turn_limits, turn_state, unanswered, unanswered_traceparents,
     unread, write_lock, write_outcome, write_tree_key, writes_refusal, yield_to_host, Acquired,
-    Unanswered, CELL_MODELS_ENV, DEFAULT_FREE_FLOOR, DEFAULT_LARGEST_FILE, DEFAULT_MODEL_SESSIONS,
-    DEFINITION_FILE, HOME_DIR, PLUGIN_ENV, PLUGIN_READS, STATE_FD,
+    Unanswered, DEFAULT_FREE_FLOOR, DEFAULT_LARGEST_FILE, DEFAULT_MODEL_SESSIONS, DEFINITION_FILE,
+    HOME_DIR, PLUGIN_ENV, PLUGIN_READS, STATE_FD,
 };
 use tokio::process::Command;
 use tokio::signal::unix::{signal, Signal, SignalKind};
@@ -622,17 +622,6 @@ async fn main() {
             passed.insert("SPORE_SOCKET_DIR".into(), sockets.display().to_string());
             passed.insert("SPORE_NODE".into(), node.clone());
             passed.insert("SPORE_WS".into(), ws.display().to_string());
-            if !def.cell_models.is_empty() {
-                let named: BTreeMap<&str, &str> = def
-                    .cell_models
-                    .iter()
-                    .map(|named| (named.name.as_str(), named.model.as_str()))
-                    .collect();
-                passed.insert(
-                    CELL_MODELS_ENV.into(),
-                    serde_json::to_string(&named).expect("a map of strings serializes"),
-                );
-            }
             let mut served = Vec::new();
             let bind = |kind: &str,
                         served: &mut Vec<Served>,

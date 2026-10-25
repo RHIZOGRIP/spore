@@ -24,7 +24,7 @@ import { createModelServer, testSocket, suppliedKey } from './fixtures/model-ser
 import { native } from '../src/native.js'
 import { KEY_HEADER } from '../src/infra/socket-request.js'
 import { readTurns } from '../src/core/spore-dir.js'
-import { outsideRoot } from './fixtures/outside-ws.js'
+import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 
 const run = promisify(execFile)
@@ -45,7 +45,6 @@ const spawnCell = async (args, env = {}) => {
       env: {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
-        MODEL: 'anthropic/claude-haiku-4-5',
         SPORE_MODEL_SOCKET: broker.socketPath,
         SPORE_NODE: process.execPath,
         SPORE_WS: root,
@@ -72,7 +71,7 @@ const start = async (reply) => {
 }
 
 beforeEach(() => {
-  root = outsideRoot('cell-lifecycle')
+  root = outsideWorkspace('cell-lifecycle')
   mkdirSync(resolve(root, 'precursors'), { recursive: true })
   mkdirSync(resolve(root, 'tools'), { recursive: true })
   mkdirSync(resolve(root, 'data/one'), { recursive: true })

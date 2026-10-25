@@ -43,7 +43,7 @@ export const cellsRoot = (env) => join(env.XDG_STATE_HOME || join(homedir(), '.l
  *
  * @returns {Promise<{ answer: string|null, costUsd: number, durationMs: number, failed: string|null }>}
  */
-function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model, auth, env, configFile = CONFIG_FILE, wallMs, dream = false, signal = null }) {
+function launchStandalone ({ ws, precursor, cellWs, prompt, answer, auth, env, configFile = CONFIG_FILE, wallMs, dream = false, signal = null }) {
   const startedAt = Date.now()
   const config = readConfig(configFile)
   let keep
@@ -64,7 +64,7 @@ function launchStandalone ({ ws, precursor, cellWs, prompt, answer, model, auth,
       '--prompt', prompt,
       '--answer', answer,
       ...(config.gate && auth ? ['--auth', auth] : [])
-    ], { cwd: ws, env: { ...environment, MODEL: model }, stdio: ['ignore', 'ignore', 'pipe'] })
+    ], { cwd: ws, env: environment, stdio: ['ignore', 'ignore', 'pipe'] })
     let stderr = ''
     child.stderr.on('data', chunk => { stderr += chunk })
     const timer = setTimeout(() => child.kill('SIGTERM'), wallMs + BEYOND_WALL_MS)
@@ -108,8 +108,6 @@ export async function runCell ({ ws, precursor, origin, ref = null, files = {}, 
   const root = parsedDefinition(ws)
   if (root.error) return unstarted(`spore.cmk ${root.error}`)
 
-  const named = Object.fromEntries((root.cellModels ?? []).map(entry => [entry.name, entry.model]))
-
   const cellWs = join(cellsRoot(env), basename(ws), slugOf(origin), `${Date.now()}-${randomBytes(3).toString('hex')}`)
   mkdirSync(join(cellWs, 'data'), { recursive: true })
   for (const [name, from] of Object.entries(files)) {
@@ -121,7 +119,7 @@ export async function runCell ({ ws, precursor, origin, ref = null, files = {}, 
 
   const wallMs = dream ? Math.min(cell.limits.wall.hard, dream.wallMs) : cell.limits.wall.hard
   starting(wallMs)
-  const ran = await launchStandalone({ ws, precursor, cellWs, prompt: PROMPT, answer: ANSWER, model: root.model, auth: root.auth, env: { ...env, ...(Object.keys(named).length ? { SPORE_CELL_MODELS: JSON.stringify(named) } : {}) }, configFile, wallMs, dream: Boolean(dream), signal })
+  const ran = await launchStandalone({ ws, precursor, cellWs, prompt: PROMPT, answer: ANSWER, auth: root.auth, env, configFile, wallMs, dream: Boolean(dream), signal })
   const failed = ran.failed ?? (ran.answer === null ? 'gave no answer' : null)
   recordCell(ws, {
     precursor,

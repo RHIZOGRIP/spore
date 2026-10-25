@@ -6,7 +6,6 @@
 //! precursor's enzymes live in the parent's tree, which the child cannot reach.
 //! `bin/spawn-worker.js` is the confined half.
 
-use std::collections::BTreeMap;
 use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
@@ -20,7 +19,7 @@ use spore_runner::broker::{self, Served};
 use spore_runner::enzymes::{hash_enzyme, Enzyme, Enzymes};
 use spore_runner::host::{HostArgs, Models};
 use spore_runner::model::{self, Model};
-use spore_runner::plan::{dream_for, plan_spawn, Asked, Plan};
+use spore_runner::plan::{dream_for, plan_spawn, spore_definition, Asked, Plan};
 use spore_runner::supervise::{
     confined, kept_refusal, owner_token, owners_with, supervise, Kept, GRACE, OWNERS,
 };
@@ -28,7 +27,7 @@ use spore_workspace::{
     acquire_lock, agent_env, begin_turn, broker_socket_path, end_channel, finalize_turn,
     granted_path_containing, hand_over, iso_now, leave_wal, provision_modules, read_paths_refusal,
     release_lock, serve, spore_socket_path, turn_state, unanswered, write_outcome, write_tree_key,
-    Acquired, Unanswered, CELL_MODELS_ENV, HOME_DIR, STATE_FD, TREE_KEY_FILE,
+    Acquired, Unanswered, HOME_DIR, STATE_FD, TREE_KEY_FILE,
 };
 use tokio::process::Command;
 use tokio::signal::unix::{signal, SignalKind};
@@ -66,8 +65,9 @@ Usage:
                lower of that precursor's limits and dream.cost and dream.wall
 
 The sub-agent runs on the cell model its precursor's model: names among the
-spore's cell-models, or, when it names none, on $MODEL, inherited from the
-environment. There is no flag for it: choosing a model is configuration, not
+spore's cell-models, or, when it names none, on the spore's own model:, both
+read from the spore's spore.cmk — $SPORE_WS in a turn, the working directory
+outside one. There is no flag for it: choosing a model is configuration, not
 something a caller decides.";
 
 #[derive(Default)]
@@ -132,7 +132,7 @@ fn parse_args(given: &[String]) -> Args {
             "--auth" => args.auth = Some(value()),
             "--help" | "-h" => args.help = true,
             "-m" | "--model" => fail(format!(
-                "unknown option {name} — the model comes from the precursor's model: or $MODEL, never from a flag"
+                "unknown option {name} — the model comes from the precursor's model: or its spore's, never from a flag"
             )),
             other if other.starts_with('-') => fail(format!("unknown option {other}")),
             other => fail(format!("unexpected argument {other}")),
@@ -236,14 +236,14 @@ async fn main() {
     let root = root();
     let cwd = std::env::current_dir()
         .unwrap_or_else(|e| fail(format!("cannot read the working directory — {e}")));
-    let cell_models: BTreeMap<String, String> = match std::env::var(CELL_MODELS_ENV) {
-        Ok(given) => serde_json::from_str(&given).unwrap_or_else(|e| {
-            fail(format!(
-                "{CELL_MODELS_ENV} is not a JSON object of name to model — {e}"
-            ))
-        }),
-        Err(_) => BTreeMap::new(),
+    let spore = if args.standalone {
+        cwd.clone()
+    } else {
+        PathBuf::from(std::env::var("SPORE_WS").unwrap_or_else(|_| {
+            fail("SPORE_WS is not set — spawn runs under a spore, whose runner names its workspace")
+        }))
     };
+    let spore_def = spore_definition(&spore).unwrap_or_else(|problem| fail(problem));
     let mut plan = plan_spawn(
         &Asked {
             precursor: args.precursor.as_deref(),
@@ -252,12 +252,12 @@ async fn main() {
             answer: args.answer.as_deref(),
         },
         &cwd,
-        &cell_models,
+        &spore_def,
         |ws, reads| granted_path_containing(&root, ws, reads).ok().flatten(),
     )
     .unwrap_or_else(|problem| fail(problem));
     if args.dream {
-        dream_for(&cwd, &mut plan).unwrap_or_else(|problem| fail(problem));
+        dream_for(&spore, &mut plan).unwrap_or_else(|problem| fail(problem));
     }
     let (super_reads, super_writes) = plan
         .super_reach
@@ -371,12 +371,9 @@ async fn main() {
             Some(_) => write_tree_key(&plan.ws)
                 .map_err(|e| format!("cannot write the cell's key — {e}"))?,
             None => {
-                let parent = std::env::var("SPORE_WS").map_err(|_| {
-                    "SPORE_WS is not set — spawn runs under a spore, whose runner names the workspace holding the tree's key".to_string()
-                })?;
-                let key = std::fs::read_to_string(Path::new(&parent).join(TREE_KEY_FILE))
+                let key = std::fs::read_to_string(spore.join(TREE_KEY_FILE))
                     .map(|k| k.trim().to_string())
-                    .map_err(|e| format!("no {TREE_KEY_FILE} in {parent} — the runner writes the tree's key there for each turn ({e})"))?;
+                    .map_err(|e| format!("no {TREE_KEY_FILE} in {} — the runner writes the tree's key there for each turn ({e})", spore.display()))?;
                 std::fs::write(plan.ws.join(TREE_KEY_FILE), &key)
                     .map_err(|e| format!("cannot stage the tree's key — {e}"))?;
                 key
@@ -385,22 +382,20 @@ async fn main() {
         let own_model = match &standalone {
             None => None,
             Some(own) => {
-                let allowed: Vec<String> = plan
+                let chosen = plan
                     .precursor
                     .model
                     .clone()
-                    .or_else(|| std::env::var("MODEL").ok())
-                    .into_iter()
-                    .collect();
+                    .expect("the plan settles the model");
+                let allowed = vec![chosen.clone()];
                 let upstream = match &own.models {
                     Models::Gate(gate) => {
-                        let model = allowed.first().cloned();
                         model::reach_gate(
                             gate,
                             own.auth.clone().expect("checked above"),
                             allowed,
                             vec![plan.ws.clone()],
-                            model.as_deref(),
+                            Some(&chosen),
                         )
                         .await?
                     }

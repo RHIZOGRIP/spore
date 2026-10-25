@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 
 import { createModelServer, testSocket, suppliedKey } from './fixtures/model-server.js'
 import { writeTurnRecords } from '../src/core/spore-dir.js'
-import { outsideRoot } from './fixtures/outside-ws.js'
+import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 
 const run = promisify(execFile)
@@ -48,7 +48,6 @@ const fanout = async (args) => {
       env: {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
-        MODEL: 'anthropic/claude-haiku-4-5',
         SPORE_MODEL_SOCKET: broker.socketPath,
         SPORE_NODE: process.execPath,
         SPORE_WS: root
@@ -73,7 +72,7 @@ const start = async (reply) => {
 const eachAnswers = async (input) => answers(asked(input).toUpperCase())
 
 beforeEach(() => {
-  root = outsideRoot('fanout-cli')
+  root = outsideWorkspace('fanout-cli')
   mkdirSync(resolve(root, 'precursors'), { recursive: true })
   mkdirSync(resolve(root, 'parts'), { recursive: true })
   writeFileSync(resolve(root, 'precursors/worker.cmk'),

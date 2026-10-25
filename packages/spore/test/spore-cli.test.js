@@ -76,7 +76,7 @@ describe('the spore command as two processes', () => {
     expect(env.some(line => line.startsWith('OPENAI_API_SK'))).toBe(false)
     expect(env.some(line => line.startsWith('SPORE_MODEL_SOCKET='))).toBe(true)
     expect(env.some(line => line.includes(gate.socketPath))).toBe(false)
-    expect(env.some(line => line.startsWith('MODEL=anthropic/'))).toBe(true)
+    expect(env.some(line => line.startsWith('MODEL=') || line.startsWith('SPORE_CELL_MODELS='))).toBe(false)
   })
 
   it('keeps a key in the runner\'s environment out of the agent\'s, and a source socket it was granted no source for', async () => {

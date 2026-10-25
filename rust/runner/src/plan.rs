@@ -1,7 +1,6 @@
 //! Resolving and validating one spawn before anything runs. Contract: ARCHITECTURE.md,
 //! "Spawn".
 
-use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
@@ -166,32 +165,58 @@ fn contained(ws: &Path, rel: &str, label: &str) -> Result<PathBuf, String> {
     })
 }
 
-/// A precursor's `model:` names one of its spore's `cell-models`; this gives the model it stands for.
-/// A spore with none runs every cell on its parent's model, so the name is dropped; one with some
-/// refuses a name it does not have, which is a typo rather than a precursor from elsewhere.
-pub fn cell_model(
-    precursor: &str,
-    named: Option<&str>,
-    cell_models: &BTreeMap<String, String>,
-) -> Result<Option<String>, String> {
+/// The definition of the spore at `spore`, which every cell it runs is read against.
+pub fn spore_definition(spore: &Path) -> Result<Definition, String> {
+    let path = spore.join(DEFINITION_FILE);
+    let source = std::fs::read_to_string(&path)
+        .map_err(|e| format!("cannot read {} — {e}", path.display()))?;
+    let known: Vec<String> = TOOL_NAMES.iter().map(|t| t.to_string()).collect();
+    parse_definition(
+        &source,
+        &Options {
+            known_tools: &known,
+            cell: false,
+            seed: false,
+        },
+    )
+    .map_err(|e| format!("{DEFINITION_FILE} {e}"))
+}
+
+/// A precursor's `model:` names one of its spore's `cell-models`, and the cell runs on the model
+/// that name stands for; one naming none runs on its spore's `model:`. A spore with no
+/// `cell-models` runs every cell on its own model, so the name is dropped; one with some refuses
+/// a name it does not have, which is a typo rather than a precursor from elsewhere.
+fn cell_model(precursor: &str, named: Option<&str>, spore: &Definition) -> Result<String, String> {
+    let own = || {
+        spore
+            .model
+            .clone()
+            .expect("a root definition names its model")
+    };
     match named {
-        None => Ok(None),
-        Some(_) if cell_models.is_empty() => Ok(None),
-        Some(name) => cell_models.get(name).cloned().map(Some).ok_or_else(|| {
-            format!(
-                "precursor {precursor} runs on the cell model \"{name}\", which this spore's cell-models does not have — it has {}",
-                cell_models.keys().cloned().collect::<Vec<_>>().join(", ")
-            )
-        }),
+        None => Ok(own()),
+        Some(_) if spore.cell_models.is_empty() => Ok(own()),
+        Some(name) => spore
+            .cell_models
+            .iter()
+            .find(|entry| entry.name == name)
+            .map(|entry| entry.model.clone())
+            .ok_or_else(|| {
+                format!(
+                    "precursor {precursor} runs on the cell model \"{name}\", which this spore's cell-models does not have — it has {}",
+                    spore.cell_models.iter().map(|entry| entry.name.as_str()).collect::<Vec<_>>().join(", ")
+                )
+            }),
     }
 }
 
 /// `granted` says which sandbox grant, if any, holds a directory; a workspace inside one
-/// cannot isolate a child confined beneath it.
+/// cannot isolate a child confined beneath it. `spore` is the definition of the spore the cell
+/// runs under, which says what model it runs on.
 pub fn plan_spawn(
     asked: &Asked,
     cwd: &Path,
-    cell_models: &BTreeMap<String, String>,
+    spore: &Definition,
     granted: impl Fn(&Path, &[PathBuf]) -> Option<PathBuf>,
 ) -> Result<Plan, String> {
     let required = |label: &str, value: Option<&str>| -> Result<String, String> {
@@ -208,7 +233,7 @@ pub fn plan_spawn(
     // Before the workspace check, because what the cell may read is part of what would
     // make a directory an unusable place to confine it.
     let (precursor_path, mut definition, enzymes) = resolve_precursor(cwd, &precursor)?;
-    definition.model = cell_model(&precursor, definition.model.as_deref(), cell_models)?;
+    definition.model = Some(cell_model(&precursor, definition.model.as_deref(), spore)?);
 
     let ws_path = resolve(cwd, &ws);
     if !ws_path.is_dir() {
@@ -268,22 +293,7 @@ pub fn plan_spawn(
 /// that spore's `dream.precursor` names, run under the lower of its own limits and the dream's —
 /// the agent writes its precursors, so its dream may ask for more and never gets it.
 pub fn dream_for(spore: &Path, plan: &mut Plan) -> Result<(), String> {
-    let source = std::fs::read_to_string(spore.join(DEFINITION_FILE)).map_err(|e| {
-        format!(
-            "cannot read {} — {e}",
-            spore.join(DEFINITION_FILE).display()
-        )
-    })?;
-    let known: Vec<String> = TOOL_NAMES.iter().map(|t| t.to_string()).collect();
-    let root = parse_definition(
-        &source,
-        &Options {
-            known_tools: &known,
-            cell: false,
-            seed: false,
-        },
-    )
-    .map_err(|e| format!("{DEFINITION_FILE} {e}"))?;
+    let root = spore_definition(spore)?;
     let Some(dream) = &root.dream else {
         return Err(format!("a super cell is a dream's, and this spore declares none — dream: [turns, quiet] in its {DEFINITION_FILE}"));
     };
@@ -370,6 +380,19 @@ mod tests {
         Root(fs::canonicalize(&dir).unwrap())
     }
 
+    fn spore(extra: &str) -> Definition {
+        let known: Vec<String> = TOOL_NAMES.iter().map(|t| t.to_string()).collect();
+        parse_definition(
+            &format!("---\nname: main\nmodel: fake/parent\n{extra}tools: [read]\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\n---\n\nYou work.\n"),
+            &Options {
+                known_tools: &known,
+                cell: false,
+                seed: false,
+            },
+        )
+        .unwrap()
+    }
+
     fn plan_with(root: &Root, over: &[(&str, Option<&str>)]) -> Result<Plan, String> {
         let get = |key: &str, default: &'static str| {
             over.iter()
@@ -383,7 +406,7 @@ mod tests {
             prompt: get("prompt", "in.md"),
             answer: get("answer", "data/out.json"),
         };
-        plan_spawn(&asked, &root.0, &BTreeMap::new(), |_, _| None)
+        plan_spawn(&asked, &root.0, &spore(""), |_, _| None)
     }
 
     fn error(root: &Root, over: &[(&str, Option<&str>)]) -> String {
@@ -402,35 +425,61 @@ mod tests {
             prompt: Some("in.md"),
             answer: Some("data/out.json"),
         };
-        let refused = plan_spawn(&asked, &r.0, &BTreeMap::new(), |_, _| {
-            Some(PathBuf::from("/tmp"))
-        })
-        .err()
-        .unwrap();
+        let refused = plan_spawn(&asked, &r.0, &spore(""), |_, _| Some(PathBuf::from("/tmp")))
+            .err()
+            .unwrap();
         assert!(refused.contains("inside a sandbox-granted path (/tmp)"));
         assert!(refused.contains("outside the spore repo and outside /tmp"));
     }
 
     #[test]
-    fn runs_a_cell_on_the_model_its_name_stands_for_and_drops_the_name_where_there_are_none() {
-        let map: BTreeMap<String, String> = [
-            ("low".to_string(), "anthropic/claude-haiku-4-5".to_string()),
-            ("strong".to_string(), "openai/gpt-6.1-sol".to_string()),
-        ]
-        .into_iter()
-        .collect();
+    fn runs_a_cell_on_the_model_its_name_stands_for_and_on_its_spores_otherwise() {
+        let named =
+            spore("cell-models: [low=anthropic/claude-haiku-4-5, strong=openai/gpt-6.1-sol]\n");
         assert_eq!(
-            cell_model("summarize", Some("strong"), &map),
-            Ok(Some("openai/gpt-6.1-sol".to_string()))
+            cell_model("summarize", Some("strong"), &named),
+            Ok("openai/gpt-6.1-sol".to_string())
         );
-        assert_eq!(cell_model("summarize", None, &map), Ok(None));
         assert_eq!(
-            cell_model("summarize", Some("strong"), &BTreeMap::new()),
-            Ok(None)
+            cell_model("summarize", None, &named),
+            Ok("fake/parent".to_string())
         );
-        assert!(cell_model("summarize", Some("fast"), &map)
+        assert_eq!(
+            cell_model("summarize", Some("strong"), &spore("")),
+            Ok("fake/parent".to_string())
+        );
+        assert!(cell_model("summarize", Some("fast"), &named)
             .unwrap_err()
             .contains("does not have — it has low, strong"));
+    }
+
+    #[test]
+    fn settles_the_cells_model_from_its_spore_before_anything_starts() {
+        let r = root("model");
+        assert_eq!(
+            plan_with(&r, &[]).unwrap().precursor.model.as_deref(),
+            Some("fake/parent")
+        );
+
+        fs::write(
+            r.0.join("precursors/named.cmk"),
+            SUMMARIZE.replace("name: summarize\n", "name: named\nmodel: low\n"),
+        )
+        .unwrap();
+        let asked = Asked {
+            precursor: Some("named"),
+            ws: Some("work/1"),
+            prompt: Some("in.md"),
+            answer: Some("data/out.json"),
+        };
+        let named = plan_spawn(
+            &asked,
+            &r.0,
+            &spore("cell-models: [low=fake/cheap]\n"),
+            |_, _| None,
+        )
+        .unwrap();
+        assert_eq!(named.precursor.model.as_deref(), Some("fake/cheap"));
     }
 
     #[test]
@@ -446,6 +495,7 @@ mod tests {
             worker["precursor"],
             json!({
                 "name": "summarize",
+                "model": "fake/parent",
                 "identity": "You summarize.",
                 "tools": ["read"],
                 "reads": [],

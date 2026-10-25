@@ -594,6 +594,20 @@ describe('editing a spore\'s definition', () => {
     expect(() => switchModel({ ws: 'test', model: 'm/costly', configFile: CONFIG })).toThrow(expect.objectContaining({ type: 'MODEL_NOT_OFFERED', detail: expect.stringMatching(/offers m\/b, m\/a/) }))
   })
 
+  it('switches only between turns, and not over a crash it would hide', () => {
+    const ws = resolve(DIR, 'home', 'test')
+    writeFileSync(resolve(ws, 'spore.cmk'), held().replace(/^model: .*$/m, 'model: m/a\nmodels: [m/b]'))
+    acquireLock(ws)
+    try {
+      expect(() => switchModel({ ws: 'test', model: 'm/b', configFile: CONFIG })).toThrow(expect.objectContaining({ type: 'SPORE_RUNNING', detail: expect.stringMatching(/switches between turns/) }))
+    } finally {
+      releaseLock(ws)
+    }
+    writeFileSync(resolve(ws, 'lock'), JSON.stringify({ pid: 2 ** 22 + 7, startedAt: 'then' }))
+    expect(() => switchModel({ ws: 'test', model: 'm/b', configFile: CONFIG })).toThrow(expect.objectContaining({ type: 'SPORE_CRASHED' }))
+    expect(held()).toMatch(/^model: m\/a$/m)
+  })
+
   it('replaces spore.cmk with what was saved, and says what changed', async () => {
     const editor = writes(text => text.replace('wall: [1m, 2m]', 'wall: [10m, 12m]\nextend.wall: 1h').replace('you are a test.', 'you are a careful test.'))
     const result = await edit({ ws: 'test', open: editor.open, again: asked().again, configFile: CONFIG })

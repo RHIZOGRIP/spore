@@ -240,31 +240,28 @@ pub const SUN_PATH_MAX: usize = 107;
 /// Named here rather than filtered out: a denylist of key names goes stale the day a
 /// provider is added, so nothing reaches an agent that is not on this list. Not `HOME`: the
 /// host's is not granted, so its supervisor sets the workspace's own (`HOME_DIR`).
-pub const PASSED_THROUGH: [&str; 12] = [
+pub const PASSED_THROUGH: [&str; 10] = [
     "PATH",
     "LANG",
     "LC_ALL",
     "TZ",
     "TMPDIR",
-    "MODEL",
     "TRACEPARENT",
     "OTEL_EXPORTER_OTLP_ENDPOINT",
     "OTEL_SERVICE_NAME",
     "OTEL_INIT_TIMEOUT_MS",
     "SPORE_OWNERS",
-    CELL_MODELS_ENV,
 ];
 
 /// What the runtime itself sets in the environment of what it starts — the agent, a cell, a job,
 /// a command — which no variable a plugin declares may set.
-pub const RUNTIME_ENV: [&str; 29] = [
+pub const RUNTIME_ENV: [&str; 28] = [
     "HOME",
     "TMPDIR",
     "TRACEPARENT",
     "MOHDEL_MEDIA_ROOTS",
     "SPORE_SOCKET_DIR",
     "SPORE_CELL",
-    "SPORE_CELL_MODELS",
     "SPORE_DEBUG",
     "SPORE_ENZYME",
     "SPORE_ENZYMES",
@@ -299,10 +296,6 @@ pub const PLUGIN_CALLS: &str = "SPORE_PLUGIN_CALLS";
 /// The variable a runner reads its spore's plugin environment from, a JSON object of name to
 /// value: a process's environment is readable by its own user alone, its arguments by anyone.
 pub const PLUGIN_ENV: &str = "SPORE_PLUGIN_ENV";
-
-/// A spore's `cell-models` as a JSON object of name to model, set by the runner and passed to every
-/// cell, so a precursor's `model:` is read against its root's map at any depth.
-pub const CELL_MODELS_ENV: &str = "SPORE_CELL_MODELS";
 
 /// Libraries an agent's own programs may import, and dependencies of the package for that
 /// reason alone: each is a format or a kind of arithmetic that is unreasonable to redo by
@@ -1597,7 +1590,7 @@ mod tests {
         ];
         assert_eq!(
             agent_env(env).keys().collect::<Vec<_>>(),
-            ["MODEL", "PATH", "TRACEPARENT"]
+            ["PATH", "TRACEPARENT"]
         );
     }
 

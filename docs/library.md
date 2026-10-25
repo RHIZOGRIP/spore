@@ -766,8 +766,9 @@ switchModel({ ws, model, configFile }) → { ws, model, was }
 ```
 
 Sets the model the spore runs on from its next turn, among those its definition offers (`model:`
-and `models:`); the one it leaves stays offered. Throws `MODEL_NOT_OFFERED`,
-`DEFINITION_INVALID`, `NOT_A_WORKSPACE`.
+and `models:`); the one it leaves stays offered. Only between turns, under the spore's lock. Throws
+`MODEL_NOT_OFFERED`, `DEFINITION_INVALID`, `NOT_A_WORKSPACE`, `SPORE_RUNNING` while a turn runs,
+and `SPORE_CRASHED` when its last runner died without recording its turn.
 
 ### `setDefaultModel`
 

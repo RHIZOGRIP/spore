@@ -236,7 +236,6 @@ export async function runSpore ({
   if (carried !== null) events.on('usage', ({ input, cacheRead, cacheWrite }) => { historySent ??= input + cacheRead + cacheWrite })
   events.emit('inbox_read', { inboxTo: inboxAt })
   let { fns, defs } = makeTools(WS, maxOutput, trail, {
-    modelId,
     traceparent: formatTraceparent(sporeDispatchSpan),
     modelSocket,
     storeSocket,
