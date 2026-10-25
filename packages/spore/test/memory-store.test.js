@@ -18,6 +18,7 @@ import { chunksOf, expand, SENTENCE, TURN } from '../src/memory/chunks.js'
 import { bm25 } from '../src/memory/bm25.js'
 import { appendCompaction, appendTranscript, hostState, isTranscriptAnchor, readEvents, readTranscript, readTranscriptEntries, readTurns } from '../src/core/spore-dir.js'
 import { runSpore } from '../src/core/spore-run.js'
+import { TOOL_NAMES } from '../src/core/tool-names.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { shownToModel } from './fixtures/as-shown.js'
 
@@ -287,6 +288,7 @@ describe('recall reaching a turn', () => {
     const state = hostState(WS)
     try {
       return await runSpore({
+        tools: TOOL_NAMES,
         prompt: 'What camera accessories would suit me?',
         workspace: WS,
         identity: 'You are a spore under test.',
@@ -587,6 +589,7 @@ describe('a note that cannot be read', () => {
     const answering = { use: () => ({ answer: async () => ({ status: 'completed', output: 'answered anyway' }) }) }
     const state = hostState(WS)
     const result = await runSpore({
+      tools: TOOL_NAMES,
       prompt: 'What camera do I own?',
       workspace: WS,
       identity: 'You are a spore under test.',

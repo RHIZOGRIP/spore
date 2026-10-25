@@ -75,4 +75,4 @@ export { SCHEMA as EVENT_SCHEMA, EVENTS, PROMISED } from './observability/event-
 
 export { cliLogger, silent } from './observability/logger.js'
 export { formatTraceparent, parseTraceparent } from './observability/tracing.js'
-export { errorText, SporeError, SEVERITY_TAGS, toWireError } from './observability/errors.js'
+export { errorText, SporeError, SEVERITY_TAGS } from './observability/errors.js'

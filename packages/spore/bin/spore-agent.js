@@ -67,7 +67,7 @@ try {
     modelSocket: process.env.SPORE_MODEL_SOCKET,
     storeSocket: process.env.SPORE_STORE_SOCKET,
     sourceSocket: process.env.SPORE_SOURCE_SOCKET,
-    excludeTools: opened.excludeTools,
+    tools: opened.granting,
     reads: opened.reads,
     writes: opened.writes,
     pluginReads: process.env[PLUGIN_READS] === undefined ? [] : JSON.parse(process.env[PLUGIN_READS]),
@@ -80,6 +80,7 @@ try {
     // What it may look at, and how much of it, this turn. Absent means it cannot.
     images: opened.images,
     reasoning: opened.reasoning,
+    cacheTtl: opened.cache,
     // Whether it may write its own schedules, and within what. Absent means they are its
     // operator's alone.
     schedules: opened.schedules,

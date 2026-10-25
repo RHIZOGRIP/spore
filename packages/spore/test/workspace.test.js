@@ -36,7 +36,6 @@ describe('openWorkspace', () => {
     writeFileSync(definitionPath(WS), definitionWith(MODEL))
     const opened = open()
     expect(opened.granting).toEqual([...TOOL_NAMES])
-    expect(opened.excludeTools).toEqual([])
     expect(opened.identity).not.toBe('')
     expect(definitionWith(MODEL)).toContain(opened.identity)
     expect(opened.model).toBe(MODEL)
@@ -46,7 +45,6 @@ describe('openWorkspace', () => {
     writeFileSync(definitionPath(WS), '---\nname: spore\nmodel: anthropic/claude-haiku-4-5\ntools: [read]\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\n---\n\nYou answer about files.\n')
     const opened = open()
     expect(opened.granting).toEqual(['read'])
-    expect(opened.excludeTools).toEqual(TOOL_NAMES.filter(t => t !== 'read'))
     expect(opened.identity).toBe('You answer about files.')
   })
 

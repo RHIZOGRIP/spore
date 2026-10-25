@@ -29,7 +29,7 @@ pub use schedule::{parse_schedule, Due, Schedule};
 /// The tool suite, by name. Contract: ARCHITECTURE.md, "Tools".
 pub const TOOL_NAMES: [&str; 7] = ["read", "write", "edit", "exec", "wsexec", "ask", "quiet"];
 
-const FIELDS: [&str; 41] = [
+const FIELDS: [&str; 42] = [
     "name",
     "description",
     "model",
@@ -70,6 +70,7 @@ const FIELDS: [&str; 41] = [
     "prepare.timeout",
     "prepare.attach",
     "reasoning",
+    "cache",
     "unconfined",
 ];
 
@@ -77,6 +78,10 @@ const ON_WRAP: [&str; 2] = ["keep", "discard"];
 
 /// What a turn may ask its model for besides the answer: `summaries` of its reasoning, `raw` reasoning.
 const REASONING: [&str; 2] = ["summaries", "raw"];
+
+/// How long a provider keeps the root's prompt cached between calls, the first the default. A
+/// cell's calls are seconds apart inside one turn, so it always runs on the default.
+const CACHE: [&str; 2] = ["5m", "1h"];
 
 /// mohdel's bound on an envelope's `authId`.
 const AUTH_MAX_BYTES: usize = 128;
@@ -342,6 +347,9 @@ pub struct Definition {
     /// What each model call asks for besides the answer, from `REASONING`; empty asks for neither.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub reasoning: Vec<String>,
+    /// The root's prompt-cache lifetime, from `CACHE`; a cell carries none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache: Option<String>,
     /// The agent runs with no Landlock, no seccomp filter and no namespaces of its own.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub unconfined: bool,
@@ -1584,6 +1592,23 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         }
     }
 
+    let cache = match fields.get("cache") {
+        None if opts.cell => None,
+        None => Some(CACHE[0].to_string()),
+        Some(_) if opts.cell => {
+            return Err("declares cache, which is the root definition's — a cell's calls are seconds apart, and always cache for 5m".into());
+        }
+        Some(_) => {
+            let text = scalar(&fields, "cache")?.unwrap_or_default();
+            Some(one(
+                "cache",
+                text,
+                |t| CACHE.contains(&t).then(|| t.to_string()),
+                &CACHE.join(" or "),
+            )?)
+        }
+    };
+
     let unconfined = match fields.get("unconfined") {
         None => false,
         Some(_) if opts.cell => {
@@ -1632,6 +1657,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         prepare,
         calls,
         reasoning,
+        cache,
         unconfined,
     })
 }
@@ -1725,6 +1751,34 @@ mod tests {
         )
         .unwrap_err();
         assert!(refused.contains("declares unconfined"));
+    }
+
+    #[test]
+    fn reads_cache_at_the_root_and_refuses_it_in_a_cell() {
+        let with =
+            |field: &str| parse(&WELL_FORMED.replacen("---\n", &format!("---\n{field}\n"), 1));
+        assert_eq!(parse(WELL_FORMED).unwrap().cache.as_deref(), Some("5m"));
+        assert_eq!(with("cache: 1h").unwrap().cache.as_deref(), Some("1h"));
+        assert_eq!(with("cache: 5m").unwrap().cache.as_deref(), Some("5m"));
+        assert!(with("cache: 30m")
+            .unwrap_err()
+            .contains("expected 5m or 1h"));
+
+        let known: Vec<String> = TOOLS.iter().map(|t| t.to_string()).collect();
+        let cell = |source: &str| {
+            parse_definition(
+                source,
+                &Options {
+                    known_tools: &known,
+                    cell: true,
+                    seed: false,
+                },
+            )
+        };
+        let plain = "---\nname: c\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\non-wrap: keep\n---\n\nYou work.\n";
+        assert_eq!(cell(plain).unwrap().cache, None);
+        let refused = cell(&plain.replacen("name: c\n", "name: c\ncache: 1h\n", 1)).unwrap_err();
+        assert!(refused.contains("declares cache"));
     }
 
     #[test]

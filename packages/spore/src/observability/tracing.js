@@ -35,7 +35,7 @@ export async function ensureOtelInitialized () {
     ])
     otelSdk = new NodeSDK({
       traceExporter: new OTLPTraceExporter({ url: endpoint }),
-      serviceName: process.env.OTEL_SERVICE_NAME || 'spore-worker'
+      serviceName: process.env.OTEL_SERVICE_NAME || 'spore'
     })
     otelSdk.start()
     otelInitialized = true

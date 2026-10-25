@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SporeError, toWireError } from '../src/observability/errors.js'
+import { SporeError } from '../src/observability/errors.js'
 
 describe('SporeError', () => {
   it('sets all fields from options', () => {
@@ -80,40 +80,5 @@ describe('toJSON', () => {
   it('survives JSON.stringify with severity intact', () => {
     const err = new SporeError('rate limited', { type: 'RATE_LIMIT', severity: 'warn', retryable: true })
     expect(JSON.parse(JSON.stringify(err))).toMatchObject({ type: 'RATE_LIMIT', severity: 'warn', retryable: true })
-  })
-})
-
-describe('toWireError', () => {
-  it('projects a typed SporeError', () => {
-    const err = new SporeError('path is empty', {
-      type: 'PATH_EMPTY',
-      detail: 'The agent tried to access a file without specifying which one.',
-      context: { workspace: '/tmp/ws' }
-    })
-    const out = toWireError(err)
-    expect(out.type).toBe('PATH_EMPTY')
-    expect(out.detail).toBe('The agent tried to access a file without specifying which one.')
-    expect(out.retryable).toBe(false)
-    expect('context' in out).toBe(false)
-  })
-
-  it('redacts a plain Error as UNEXPECTED_ERROR', () => {
-    const err = new Error('null pointer somewhere')
-    const out = toWireError(err)
-    expect(out.type).toBe('UNEXPECTED_ERROR')
-    expect(out.detail).toBe('An unexpected error occurred')
-    expect(out.message).not.toContain('null pointer')
-    expect(out.retryable).toBe(false)
-  })
-
-  it('extracts traceId from span', () => {
-    const fakeSpan = { spanContext: () => ({ traceId: 'abc123def', spanId: 'xyz' }) }
-    const out = toWireError(new SporeError('boom', { type: 'KEY', detail: 'msg' }), fakeSpan)
-    expect(out.trace).toBe('abc123def')
-  })
-
-  it('handles missing span gracefully', () => {
-    const out = toWireError(new SporeError('boom', { type: 'KEY', detail: 'msg' }))
-    expect(out.trace).toBeUndefined()
   })
 })

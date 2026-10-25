@@ -216,7 +216,7 @@ describe('the model client', () => {
   it('refuses an option it would not carry', async () => {
     await serve(async () => answers('x'))
     const mo = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS })
-    await expect(mo.use(MODEL).answer(PROMPT, { idleHandler: () => {} })).rejects.toMatchObject({ type: 'BROKER_BAD_OPTION' })
+    await expect(mo.use(MODEL).answer(PROMPT, { idleHeartbeatMs: 1000 })).rejects.toMatchObject({ type: 'BROKER_BAD_OPTION' })
   })
 })
 

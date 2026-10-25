@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { makeTools } from '../src/tools/make-tools.js'
 import { runSpore } from '../src/core/spore-run.js'
+import { TOOL_NAMES } from '../src/core/tool-names.js'
 import { createCallTrail, readCall } from '../src/core/call-record.js'
 import { enqueue, hostState, readEvents, readPending } from '../src/core/spore-dir.js'
 import { textOf } from '../src/core/message.js'
@@ -92,6 +93,7 @@ describe('quiet when a person wrote in the turn', () => {
   const toolResults = (input) => input.filter(m => m.role === 'tool').map(textOf)
 
   const turn = (steps, inputs) => runSpore({
+    tools: TOOL_NAMES,
     workspace: WS,
     identity: 'You are a spore under test.',
     modelId: 'fake/model',
@@ -144,6 +146,7 @@ describe('a turn that ends quiet', () => {
   })
 
   const run = (because = 'nothing changed') => runSpore({
+    tools: TOOL_NAMES,
     prompt: 'check the queue',
     workspace: WS,
     identity: 'You are a spore under test.',

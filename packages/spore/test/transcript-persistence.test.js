@@ -4,6 +4,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { runSpore } from '../src/core/spore-run.js'
+import { TOOL_NAMES } from '../src/core/tool-names.js'
 import { hostState, readTranscript, readTranscriptEntries, readTurns, writeTranscriptEntries } from '../src/core/spore-dir.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -16,6 +17,7 @@ const run = async (over = {}) => {
   const state = hostState(WS)
   try {
     return await runSpore({
+      tools: TOOL_NAMES,
       prompt: 'what next',
       workspace: WS,
       identity: 'You are a spore under test.',
@@ -248,6 +250,7 @@ describe('what the worker will not build for itself', () => {
   it('refuses to run without a model client, before the turn says how it ended', async () => {
     const state = hostState(WS)
     await expect(runSpore({
+      tools: TOOL_NAMES,
       prompt: 'what next',
       workspace: WS,
       identity: 'You are a spore under test.',

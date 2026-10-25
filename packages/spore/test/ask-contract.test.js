@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { makeTools } from '../src/tools/make-tools.js'
 import { runSpore } from '../src/core/spore-run.js'
+import { TOOL_NAMES } from '../src/core/tool-names.js'
 import { callRuns, createCallTrail, readCall, readCalls } from '../src/core/call-record.js'
 import { hostState, readPending, readTranscript } from '../src/core/spore-dir.js'
 import { shownToModel } from './fixtures/as-shown.js'
@@ -65,6 +66,7 @@ const asksThenAnswers = (question = QUESTION) => {
 }
 
 const run = (mo, over = {}) => runSpore({
+  tools: TOOL_NAMES,
   prompt: 'fix the build',
   workspace: WS,
   identity: 'You are a spore under test.',

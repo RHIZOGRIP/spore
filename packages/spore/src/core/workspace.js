@@ -207,7 +207,6 @@ export function openWorkspace (dir, { cwd = process.cwd(), definition: given, al
     scopes: definition.scopes,
     limits: definition.limits,
     identity: definition.identity,
-    excludeTools: TOOL_NAMES.filter(name => !definition.tools.includes(name)),
     // Reading a workspace does not tidy it. Retention deletes a live run's records
     // just as readily as a finished one's, so it belongs to whoever holds the lock.
     retain: definition.retain,
@@ -219,6 +218,7 @@ export function openWorkspace (dir, { cwd = process.cwd(), definition: given, al
     plugins: definition.plugins,
     calls: definition.calls ?? [],
     reasoning: definition.reasoning ?? [],
+    cache: definition.cache,
     rules: [workRules(writes), readRules(reachable), ANSWER_RULES, seededRules(ws), pluginRules(ws, definition.plugins), precursorRules(describePrecursors(ws), definition.dream?.precursor), cellModelRules(definition.cellModels ?? [], definition.model)].filter(Boolean).join('\n\n')
   }
 }

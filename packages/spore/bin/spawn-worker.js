@@ -8,14 +8,13 @@
 import { ftruncateSync, mkdirSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs'
 import { dirname, relative, resolve } from 'node:path'
 
-import { TOOL_NAMES } from '../src/core/tool-names.js'
 import { runSpore } from '../src/core/spore-run.js'
 import { createModelClient } from '../src/infra/model-client.js'
 import { enzymeRules } from '../src/delegation/enzyme-catalog.js'
 import { buildContinuation } from '../src/core/continuation.js'
 import { autoLogger } from '../src/observability/logger.js'
 import { ensureOtelInitialized, parseTraceparent, shutdownOtel } from '../src/observability/tracing.js'
-import { SporeError, toWireError } from '../src/observability/errors.js'
+import { SporeError } from '../src/observability/errors.js'
 import { SPAWN_FILE, openChannel, readModelKey } from '../src/core/spore-dir.js'
 import { linkGrants, superGrants } from '../src/core/workspace.js'
 
@@ -88,7 +87,7 @@ try {
     sourceSocket: process.env.SPORE_SOURCE_SOCKET,
     reads: granted ? [...reads, ...granted.reads] : reads,
     writes: granted ? granted.writes : [],
-    excludeTools: TOOL_NAMES.filter(name => !plan.precursor.tools.includes(name)),
+    tools: plan.precursor.tools,
     limits: plan.precursor.limits,
     images: plan.precursor.images,
     reasoning: plan.precursor.reasoning,
@@ -138,7 +137,7 @@ try {
   const failure = typeof err?.toJSON === 'function'
     ? err
     : new SporeError('the cell could not finish', { type: 'SPAWN_WORKER_FAILED', detail: err?.message })
-  report({ precursor: plan.precursor.name, ws: where, answer: null, error: toWireError(failure) })
+  report({ precursor: plan.precursor.name, ws: where, answer: null, error: failure.toJSON() })
   await shutdownOtel()
   process.exit(1)
 }

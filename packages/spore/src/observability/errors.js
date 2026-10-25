@@ -73,28 +73,3 @@ export class SporeError extends Error {
     })
   }
 }
-
-/**
- * Project any error — typed or plain — onto the wire shape. Plain `Error`
- * instances are redacted: their message may carry internals.
- *
- * @param {Error|SporeError} err
- * @param {object} [span]  OTel span; when given, `out.trace` is its traceId.
- */
-export function toWireError (err, span) {
-  const isTyped = err && typeof err === 'object' && typeof err.toJSON === 'function'
-  const out = isTyped
-    ? err.toJSON()
-    : {
-        message: 'unexpected error',
-        detail: 'An unexpected error occurred',
-        severity: 'error',
-        retryable: false,
-        type: 'UNEXPECTED_ERROR'
-      }
-  if (span && typeof span.spanContext === 'function') {
-    const ctx = span.spanContext()
-    if (ctx && ctx.traceId) out.trace = ctx.traceId
-  }
-  return out
-}

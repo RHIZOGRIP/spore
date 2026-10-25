@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { trace } from '@opentelemetry/api'
 
 import { runSpore } from '../src/core/spore-run.js'
+import { TOOL_NAMES } from '../src/core/tool-names.js'
 import { hostState } from '../src/core/spore-dir.js'
 import { jsonLogger } from '../src/observability/logger.js'
 
@@ -51,6 +52,7 @@ describe('a turn traced by a recording span', () => {
     const state = hostState(WS)
     try {
       await runSpore({
+        tools: TOOL_NAMES,
         prompt: 'what next',
         workspace: WS,
         identity: 'You are a spore under test.',

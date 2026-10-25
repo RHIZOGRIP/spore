@@ -130,6 +130,7 @@ that level. **Absent** says what leaving the field out means where it is accepte
 | [`history`](#history) | whole number | optional | refused | 256k tokens | tokens of earlier turns re-sent word for word | [Retention](../ARCHITECTURE.md#retention) |
 | [`images`](#images) | `[count, size]` | optional | optional | cannot look at images | images `read` may show per turn | [Looking at a picture is a read](../ARCHITECTURE.md#looking-at-a-picture-is-a-read) |
 | [`reasoning`](#reasoning) | list of `summaries`, `raw` | optional | optional | neither asked for | what each model call asks for besides the answer | [What a running turn shows](../ARCHITECTURE.md#what-a-running-turn-shows) |
+| [`cache`](#cache) | `5m` or `1h` | optional | refused | `5m` | how long the provider keeps the prompt cached between calls | [Prompt caching](../ARCHITECTURE.md#prompt-caching) |
 | [`schedules`](#schedules) | `[count, interval]` | optional | refused | `schedules/` read-only to the agent | lets the agent write its own schedules, bounded | [Turns the clock starts](../ARCHITECTURE.md#turns-the-clock-starts) |
 | [`jobs`](#jobs) | `[count, wall]` | optional | refused | no jobs | work a turn starts that outlives it | [Jobs](../ARCHITECTURE.md#jobs) |
 | [`jobs.maxWait`](#jobsmaxwait) | duration | optional² | refused | released once timed | longest the spore's router or triage cell may keep a job's delivery waiting | [Deliveries nobody typed](../ARCHITECTURE.md#deliveries-nobody-typed) |
@@ -549,6 +550,21 @@ a summary from OpenAI or ChatGPT only for a key whose account may ask for one �
 in mohdel's `providers.json`. Asking for summaries delays the answer: about 2.5 s a round on a
 Claude model that thinks. Absent, neither is asked for; what the model writes for the person while
 it works (`commentary`) comes either way.
+
+### `cache`
+
+```
+cache: 1h
+```
+
+Root only. How long the provider keeps the spore's prompt — its system prompt and the conversation
+behind it — cached between calls: `5m`, the default, or `1h`. A cached prefix is read back for a
+fraction of the input price and written for more than it: on Anthropic's prices a quarter more
+for `5m`, twice it for `1h`. Rounds inside a turn are seconds apart, so `5m` holds them; `1h`
+pays when turns come minutes apart, a person answering in a chat or a schedule firing often,
+where on `5m` every turn writes the whole prefix again. Only a provider that takes a lifetime honours it — Anthropic's;
+one that caches a repeated prefix on its own ignores it. A cell's calls are seconds apart, so a
+precursor declaring it is refused, and every cell caches for `5m`.
 
 ## The clock and jobs
 

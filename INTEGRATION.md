@@ -423,9 +423,8 @@ for (const { errand, turns, crashed } of ended) console.log(errand.label, crashe
 ### Errors and tracing helpers
 
 `SporeError` is the one error class: `type` (the tag to branch on), `message`, `detail`,
-`severity`, `retryable`, and `retryAfterMs` when known. `toWireError(err)` serializes any error for
-a wire, hiding the message of an untyped one. `formatTraceparent(span)` and
-`parseTraceparent(header)` convert between an OpenTelemetry span and a W3C `traceparent`.
+`severity`, `retryable`, and `retryAfterMs` when known; its `toJSON()` is its shape on a wire.
+`formatTraceparent(span)` and `parseTraceparent(header)` convert between an OpenTelemetry span and a W3C `traceparent`.
 `cliLogger(debug)` and `silent` are the two loggers the command uses.
 
 ### A terminal for your application
@@ -697,8 +696,9 @@ the agent's `spore.dispatch`, each cell's, and each model call.
 
 Spans are exported only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set in the environment of the runner,
 which is the `env` given to `send` (by default `process.env`); `OTEL_SERVICE_NAME` names the
-service. Without it nothing is exported, and the context still passes through, so the agent is
-traced under your span in your own exporter's view. Details:
+service, `spore` unless set, for the runner, the agent and its cells alike. Without the endpoint
+nothing is exported, and the context still passes through, so the agent is traced under your span
+in your own exporter's view. Details:
 [ARCHITECTURE §Tracing](ARCHITECTURE.md#tracing).
 
 ---

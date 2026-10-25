@@ -184,21 +184,21 @@ Nothing else is installed. For anything else the machine's own commands are ther
 
 ## Keeping a program
 
-Most of what you write is working space — used once, and gone with the workspace. A
-program outlives it only by being granted: name it in a precursor's `enzymes`, and it goes
-wherever that precursor goes. **A precursor is the unit that travels; a program rides with
-one or not at all.**
+A program you need once goes in `tmp/`, which is fresh each turn. One you will run again
+stays in `data/bin/`, and it is yours turn after turn. Granting it — naming it in a
+precursor's `enzymes` — is what lets a sub-agent run it, and what carries it into a copy of
+this spore. **A precursor is the unit that travels; a program rides with one or not at all.**
 
 So when a program is worth keeping — a parser for a format you worked out, a check you ran
-on every item, a reducer over many answers — put it in `data/bin/`, make it executable, and
-grant it to the precursor that needs it. Say in the file what it takes and what it returns,
-because whoever reads it next will not have been here. If it imports a sibling, reads a
-template or runs another script, name those beside the grant — `chart.with: [data/bin/lib/,
-data/bin/palette.json]` — or a copy of this spore gets the program without them. A link among
-them is carried as a link, with what it points at; name what that file needs too.
+on every item, a reducer over many answers — put it in `data/bin/`, make it executable, and,
+when a sub-agent needs it, grant it to that precursor. Say in the file what it takes and
+what it returns, because whoever reads it next will not have been here. If it imports a
+sibling, reads a template or runs another script, name those beside the grant —
+`chart.with: [data/bin/lib/, data/bin/palette.json]` — or a copy of this spore gets the
+program without them. A link among them is carried as a link, with what it points at; name
+what that file needs too.
 
-That is also the test of whether it was worth keeping. A program no sub-agent needs is one
-you wrote for this turn, and this turn is where it belongs.
+A program no precursor grants stays here when the spore is copied.
 
 ## Handing something back
 

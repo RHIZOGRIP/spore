@@ -2448,8 +2448,8 @@ refuses a call to any model the definition does not name (`ROUTE_REJECTED`), bef
 filled, so neither a precursor nor `$MODEL` — both the agent's to set — reaches another.
 Embeddings do not pass through mohdel's route, so the `embedding:` model is not held there.
 
-The base-tool allow-list needs no new machinery: it is passed to `runSpore` as `excludeTools` —
-the complement of what the precursor granted — so one filter serves both directions.
+The base-tool allow-list needs no new machinery: what the precursor granted is passed to `runSpore`
+as `tools`, the filter the root's own grant goes through.
 
 `enzyme.js` is **copied** into the cell rather than granted a path. The client is generic, so a
 cell reading it learns nothing, and a copy needs no hole in the ruleset. It imports only `node:`
@@ -2719,7 +2719,8 @@ then the conversation, stable behind its growing end — and **nothing volatile 
 is cacheable**: a value that changes in the system prompt would invalidate the whole conversation
 behind it on every turn.
 
-Spore's signal is a `cache: '5m' | '1h'` marker, `runSpore`'s `cacheTtl` (`5m` unless given).
+Spore's signal is a `cache: '5m' | '1h'` marker, `runSpore`'s `cacheTtl`: the root definition's
+`cache:` (`5m` unless it names `1h`), and `5m` for a cell.
 `composeSystem` (`src/core/system-prompt.js`) puts it on the system blocks, which go out as the
 first message, `role: 'system'`, one text part per block with its marker. `loop.js` marks the
 conversation's last message **on a copy** (`markConversationForCaching`,

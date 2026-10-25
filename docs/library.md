@@ -1492,8 +1492,8 @@ Lower-level pieces the functions above are built on. Most programs need none of 
 
 ```
 openWorkspace(dir, { cwd = process.cwd(), definition, allowGranted = false })
-→ { ws, granting, model, reads, writes, sources, scopes, limits, identity, excludeTools, retain,
-    history, memory, images, schedules, dream, plugins, rules } | { error }
+→ { ws, granting, model, reads, writes, sources, scopes, limits, identity, retain, history,
+    memory, images, schedules, dream, plugins, cache, rules } | { error }
 ```
 
 Prepares a workspace for a turn and says what the turn gets. It writes: it creates `data/`, links
@@ -1650,16 +1650,6 @@ An error as one line: its `message`, then ` — ` and its `detail` when it has o
 ### `SEVERITY_TAGS`
 
 The values of `severity`: `trace`, `debug`, `info`, `warn`, `error`, `fatal`.
-
-### `toWireError`
-
-```
-toWireError(err, span) → { message, severity, retryable, detail?, type?, retryAfterMs?, trace? }
-```
-
-Any error in the shape it takes on a wire. An error without `toJSON` becomes
-`{ message: 'unexpected error', type: 'UNEXPECTED_ERROR', … }`, its own message hidden. `trace`
-is the trace id of `span` when one is given.
 
 ### `formatTraceparent`
 

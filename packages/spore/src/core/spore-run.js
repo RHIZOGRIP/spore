@@ -100,8 +100,8 @@ export async function runSpore ({
   limits,
   sandbox: applySandbox = false,
   initialMessages,
-  // The suite's tools the definition does not grant, taken off what the model is offered.
-  excludeTools,
+  // The suite's tools the definition grants: all the model is offered.
+  tools,
   // Corpora the definition declared, already linked into the workspace by `openWorkspace`.
   // Three layers have to agree for one of these to work, and this is where two of them
   // are told: the ruleset below, and the path check the tools go through.
@@ -248,11 +248,8 @@ export async function runSpore ({
     schedules,
     unanswered: () => person
   })
-  if (Array.isArray(excludeTools) && excludeTools.length) {
-    const excluded = new Set(excludeTools)
-    defs = defs.filter(t => !excluded.has(t.name))
-    for (const name of excluded) delete fns[name]
-  }
+  defs = defs.filter(t => tools.includes(t.name))
+  fns = Object.fromEntries(Object.entries(fns).filter(([name]) => tools.includes(name)))
 
   fns = recordRefusals(fns, trail)
 
