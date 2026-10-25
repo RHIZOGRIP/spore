@@ -33,8 +33,8 @@ const parentSpan = parseTraceparent(process.env.TRACEPARENT)
 // which is what makes the cell's own cost limit something other than advice.
 // Which model runs behind that socket is the precursor's to say; a precursor that
 // names none inherits its parent's, which arrives as $MODEL from the spawning agent.
-const modelIds = [plan.precursor.model || process.env.MODEL].filter(Boolean)
-const mo = await createModelClient({ socketPath: process.env.SPORE_MODEL_SOCKET, modelIds, key: readModelKey(plan.ws), logger, precursor: plan.precursor.name, workspace: plan.ws })
+const model = plan.precursor.model || process.env.MODEL
+const mo = await createModelClient({ socketPath: process.env.SPORE_MODEL_SOCKET, modelIds: model ? [model] : [], key: readModelKey(plan.ws), logger, precursor: plan.precursor.name, workspace: plan.ws })
 
 // cwd is the parent's workspace — `spawn` is invoked through its `wsexec`, which
 // runs there. A fan-out writes one of these lines per cell into a single log, so
@@ -78,7 +78,7 @@ try {
     identity: plan.precursor.identity,
     rules: enzymeRules(plan.precursor.enzymes),
     workspace: plan.ws,
-    modelId: modelIds[0],
+    modelId: model,
     mo,
     // Written through `spore-spawn`, which holds the cell's database as a runner holds a root's.
     state: openChannel(Number(process.env.SPORE_STATE_FD)),

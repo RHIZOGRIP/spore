@@ -10,8 +10,6 @@
  *
  * Compaction is lossy but safe — the model sees what tools were called
  * and can re-read files if needed.
- *
- * Caller must pass logger (use silent from logger.js for no output).
  */
 import { textOf } from '../core/message.js'
 import { silent } from '../observability/logger.js'

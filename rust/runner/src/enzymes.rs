@@ -367,12 +367,12 @@ mod tests {
                 NEXT.fetch_add(1, Ordering::SeqCst)
             ));
             let _ = std::fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(dir.join("tools")).unwrap();
+            std::fs::create_dir_all(dir.join("enzymes")).unwrap();
             Scene { dir }
         }
 
         fn script(&self, name: &str, body: &str) -> PathBuf {
-            let path = self.dir.join("tools").join(name);
+            let path = self.dir.join("enzymes").join(name);
             std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
             path
@@ -382,7 +382,7 @@ mod tests {
             let enzymes = names
                 .iter()
                 .map(|name| {
-                    let command = self.dir.join("tools").join(name);
+                    let command = self.dir.join("enzymes").join(name);
                     Enzyme {
                         name: name.to_string(),
                         hash: hash_file(&command).unwrap(),

@@ -1,9 +1,7 @@
 import { trace, context, SpanStatusCode } from '@opentelemetry/api'
 
-// Lazy: defer getTracer until first use so the host app can register
-// its TracerProvider first. Cache invalidates on SDK init so a tracer
-// retrieved before init (no-op) doesn't get pinned for the worker's
-// lifetime.
+// Lazy, and dropped on SDK init, so a no-op tracer retrieved before init is not pinned for
+// the process's lifetime.
 let tracer
 const getTracer = () => (tracer ??= trace.getTracer('spore'))
 const resetTracer = () => { tracer = undefined }
@@ -11,24 +9,20 @@ const resetTracer = () => { tracer = undefined }
 let otelInitialized = false
 let otelSdk = null
 
-/**
- * Lazy OTel SDK setup for standalone spore worker subprocesses.
- *
- * Library callers inherit whatever TracerProvider the host registered.
- * Worker subprocesses spore starts don't — they need their own SDK to
- * actually export spans. Call `await ensureOtelInitialized()` at the
- * top of each worker main().
- *
- * No-op when `OTEL_EXPORTER_OTLP_ENDPOINT` is absent; when the SDK
- * packages cannot be loaded, init fails with a warning and spans stay
- * no-ops.
- */
 // Hard ceiling on OTel init. Telemetry is observability, not
 // correctness; never let a slow/stuck SDK block worker readiness or
 // envelope handling. Configurable via env for environments with
 // pathologically slow ESM cold-load (e.g. some staging hosts).
 const OTEL_INIT_TIMEOUT_MS = Number(process.env.OTEL_INIT_TIMEOUT_MS) || 5000
 
+/**
+ * OTel SDK setup for the processes spore starts that open spans — the agent, a cell's agent,
+ * the API — each of which exports its own. Called at the top of each one's main.
+ *
+ * No-op when `OTEL_EXPORTER_OTLP_ENDPOINT` is absent; when the SDK
+ * packages cannot be loaded, init fails with a warning and spans stay
+ * no-ops.
+ */
 export async function ensureOtelInitialized () {
   if (otelInitialized) return
   const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
@@ -80,15 +74,15 @@ export async function ensureOtelInitialized () {
 }
 
 /**
- * Flush + shut down the OTel SDK before a worker exits. Without this
+ * Flush + shut down the OTel SDK before the process exits. Without this
  * the `BatchSpanProcessor` buffer is discarded at `process.exit`,
- * which silently drops every span the worker emitted — including the
- * `cell.session` / `spore.session` parent spans that downstream
- * mohdel calls reference. Result: a trace backend shows those mohdel
- * spans with a missing parent, detached from the caller's trace.
+ * which silently drops every span the process emitted — including the
+ * `spore.dispatch` span its model calls name as their parent. Result: a
+ * trace backend shows those calls with a missing parent, detached from
+ * the caller's trace.
  *
  * Idempotent + swallows errors — called from `finally` blocks in
- * worker exit paths, must never mask the real termination reason.
+ * exit paths, must never mask the real termination reason.
  */
 export async function shutdownOtel (timeoutMs = 3000) {
   if (!otelSdk) return
@@ -126,8 +120,8 @@ export const endSpanError = (span, err) => {
 }
 
 // W3C Trace Context — https://www.w3.org/TR/trace-context/#traceparent-header
-// Format: 00-<traceId>-<spanId>-<traceFlags> (lowercase hex). Used by the spore mohdel
-// sidecar client so trace context can cross the unix-socket process boundary as a header
+// Format: 00-<traceId>-<spanId>-<traceFlags> (lowercase hex). Used by the model client so
+// trace context can cross the unix-socket process boundary as a header
 // instead of trying to serialize a live span object (which has circular OTel internals).
 const INVALID_TRACE_ID = '00000000000000000000000000000000'
 const INVALID_SPAN_ID = '0000000000000000'

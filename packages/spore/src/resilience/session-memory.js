@@ -28,12 +28,8 @@ function truncate (text, max) {
 // ── What a call did ────────────────────────────────────────────────
 
 /**
- * One projection over the call record, replacing ten per-tool extractors that were
- * written against v2's shapes and had silently stopped being true: the `exec` one
- * looked for a textual `exit N` and so reported `exit 0` for every failure, and the
- * `write` one read `args.path` where v3 names the target `out`, so every write was
- * `wrote ?`. Facts extracted here are handed back to the model as what happened
- * earlier, which makes a wrong one worse than none.
+ * One projection over the call record. Facts extracted here are handed back to the model
+ * as what happened earlier, which makes a wrong one worse than none.
  *
  * The record already carries this. `readOutcome` says whether the call worked, and the
  * fields below are the record's own — so a tool added later summarizes without an
@@ -57,8 +53,7 @@ function summarize (name, args, result) {
   if (record?.replaced !== undefined) return `${head} — replaced`
   if (record?.files?.out?.bytes !== undefined) return `${head} — ${record.files.out.bytes} bytes out`
   if (outcome.exit === 0) return `${head} — exit 0`
-  // Not a call record: `ask` returns the question, and a precursor's own tool returns
-  // whatever it returns.
+  // Not a call record: `ask` returns the question.
   return content && content.length > 50 && !content.startsWith(COMPACT_MARKER)
     ? `${head}: ${truncate(content, 80)}`
     : head
@@ -167,7 +162,7 @@ export function createSessionMemory ({ logger } = {}) {
   }
 
   /**
-   * Format session memory for system prompt injection.
+   * Format session memory for the notice an overflow drop leaves.
    * Returns null if empty.
    */
   function format () {

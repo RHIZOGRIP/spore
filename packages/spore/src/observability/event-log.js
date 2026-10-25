@@ -44,9 +44,9 @@ const CARRIED = [
 export const EVENTS = [...CARRIED, 'annotation', 'turn_end']
 
 /**
- * Named by the schema and not produced: mohdel's factory never calls an idle handler, so
- * there is nothing to carry. It joins the carried events when mohdel emits it, and every consumer of
- * the log has it without changing.
+ * Named by the schema and not produced: nothing on the model path reports an idle stream, so
+ * there is nothing to carry. It joins the carried events once the model path does, and every
+ * consumer of the log has it without changing.
  */
 export const PROMISED = ['mohdel_idle']
 

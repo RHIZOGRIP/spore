@@ -16,17 +16,6 @@ import { shippedTree, sporangiumOf } from './sporangia.js'
 import { dataDir, definitionPath, DEFINITION_FILE, LIBRARIES_FILE, PLUGINS_DIR, REFERENCE_FILE, ROOT_DOCS } from './spore-dir.js'
 
 /**
- * The files the runtime put in the workspace, named to the agent that has to find them.
- *
- * The default sporangium's `spore.cmk` points at `reference.md` in one line, and `--definition` replaces
- * the shipped definition entirely — so any custom identity lost that pointer while the files
- * were still being seeded. Measured on a benchmark run: agents guessed `context/` and
- * `data/`, and nine `read` calls went looking for a file sitting at the workspace root.
- *
- * It belongs in `rules` because that slot already means *what you can reach here*,
- * and it is what the runtime knows and an identity's author may not.
- */
-/**
  * A declared grant — a corpus it reads, a directory it writes — linked in under the name the
  * definition gave it. The link is what lets the agent name it the way it names everything
  * else; the access is Landlock's, and neither is worth anything without the other. Only a link
@@ -91,6 +80,12 @@ function unlinkUndeclared (ws, declared) {
   }
 }
 
+/**
+ * The files the runtime put in the workspace, named to the agent that has to find them. A
+ * definition need not point at them — `--definition` replaces the shipped one entirely — so
+ * the runtime does. It belongs in `rules` because that slot already means *what you can reach
+ * here*, and it is what the runtime knows and an identity's author may not.
+ */
 function seededRules (ws) {
   const seeded = ROOT_DOCS.filter(file => existsSync(resolve(ws, file)))
   if (!seeded.length) return ''

@@ -1,5 +1,6 @@
-//! The model path: mohdel's call protocol on the tree's model socket, with the three things
-//! spore adds around it and nothing more — the tree key, the ledger, and the hard stop.
+//! The model path: mohdel's call protocol on the tree's model socket, with what spore adds
+//! around it and nothing more — the tree key, the ledger, the hard cost limit, the call ceiling,
+//! the definition's models held on the route, and, toward a gate, workspace images inlined.
 //! Contract: ARCHITECTURE.md §The model broker.
 //!
 //! `POST /v1/call` and `POST /v1/embed` go to thin-gate's public `handle_call` and
@@ -735,9 +736,6 @@ impl QuotaPolicy for Unmetered {
     }
 }
 
-/// The sessions for this turn and its cells: one started alongside the agent, another each
-/// time every one is busy, up to `max`. A call waits for a session as long as it takes, since
-/// the turn's wall bounds the whole tree. The catalog is the session's own disk load;
 /// Refuses a call to a model the definition does not name, before a key is filled: an agent sets
 /// what its commands and cells are told, so what the definition grants is held here, where the call
 /// is. Embeddings do not pass through a route and are not held to it.
@@ -799,6 +797,9 @@ fn not_named(model: &str, allowed: &[String]) -> RouteError {
     ))
 }
 
+/// The sessions for this turn and its cells: one started alongside the agent, another each
+/// time every one is busy, up to `max`. A call waits for a session as long as it takes, since
+/// the turn's wall bounds the whole tree. The catalog is the session's own disk load.
 /// `MOHDEL_MEDIA_ROOTS` must be set in this process first, since the session's environment is
 /// built from an allowlist of this one. `allowed` is every model the definition names.
 pub fn start_pool(

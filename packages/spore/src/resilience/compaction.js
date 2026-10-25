@@ -139,23 +139,13 @@ export async function compactHistory (messages, { model, contextLimit, budget: w
 }
 
 /**
- * Find the start index of the tail (last N turn-groups).
- * A turn-group starts at a user message or an assistant message with toolCalls.
- */
-/**
- * Where the verbatim tail begins: as many recent turn-groups as `budget` pays for.
+ * Where the verbatim tail begins: as many recent turn-groups as `budget` pays for. A
+ * turn-group starts at a user message or an assistant message with toolCalls.
  *
- * This was a count — `floor(budget / 30_000)`, capped at ten — which spent a token
- * budget through a guess about what a turn-group weighs. A group's weight is not
- * knowable in advance and cannot be: an agentic one carries a tool result, an exchange
- * carries a sentence, and they are two orders of magnitude apart. Worse, a "group" is
- * counted by boundaries, and a history with no tool calls has one at every message, so
- * the guess was wrong twice over. Measured against a 100,000-token budget on a 122K
- * history: three messages kept, 905 tokens, 0.9% of the budget, the other 99%
- * summarized away.
- *
- * So the groups are weighed rather than counted, which needs no constant and holds for
- * either shape.
+ * The groups are weighed rather than counted. A group's weight is not knowable in advance:
+ * an agentic one carries a tool result, an exchange carries a sentence, and they are two
+ * orders of magnitude apart; a history with no tool calls has a boundary at every message.
+ * Weighing needs no constant and holds for either shape.
  */
 function findTailStart (messages, budget) {
   let start = messages.length

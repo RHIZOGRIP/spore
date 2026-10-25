@@ -84,8 +84,9 @@ export function openStore (ws, { backend = 'bm25', push = null, pull = null, flo
 
   // Rebuilt rather than persisted. At BM25 over a few hundred facts this costs nothing
   // and leaves no sidecar to drift out of step with the notes. An embedding backend
-  // cannot do this — each chunk is a model call — so it will carry its own cache behind
-  // the same interface, which is why this returns a handle and names no file format.
+  // cannot do this — each chunk is a model call — so `vectors` keeps its index in the
+  // store, behind the same interface, which is why this returns a handle and names no
+  // file format.
   const ready = () => {
     if (indexes) return indexes
     const units = {}

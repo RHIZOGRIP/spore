@@ -73,7 +73,7 @@ run — unless you grant it as an **enzyme**: name it in `enzymes` and say what 
 ---
 name: render
 tools: [exec]
-enzymes: [chart=data/tools/plot.py]
+enzymes: [chart=data/bin/plot.py]
 rounds: [5, 7]
 cost: [0.10, 0.15]
 wall: [2m, 3m]
@@ -89,7 +89,7 @@ chart — reads a CSV with a header row on stdin, writes a PNG on stdout.
 ```
 
 **The file has to be executable.** An enzyme is run, not read, so it needs its
-executable bit set and a shebang line — `chmod +x data/tools/plot.py` and `#!/usr/bin/env
+executable bit set and a shebang line — `chmod +x data/bin/plot.py` and `#!/usr/bin/env
 node` or the interpreter it wants. A spawn that finds it otherwise is refused with *"declares
 an enzyme that is not executable"*, and it is refused at planning time, before any of the
 sub-agents start.
@@ -99,7 +99,7 @@ template or runs another script needs those too, and nothing can find them for y
 precursor says so, one line per enzyme:
 
 ```
-chart.with: [data/tools/palette.py, data/tools/templates/]
+chart.with: [data/bin/palette.py, data/bin/templates/]
 ```
 
 Paths are relative to the workspace, like the program's, and a directory carries everything

@@ -7,9 +7,6 @@
  * `summarise this:` before twenty pages, and forty kilobytes of log before `why does this
  * fail?` — and nothing tells you which you have. A head alone loses the ask in the second,
  * which is the commoner one.
- *
- * Written once because `read` refusing an oversized file wants the same thing, and two
- * implementations would differ on whether they snap to lines.
  */
 
 const EACH = 800

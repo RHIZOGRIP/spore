@@ -2,7 +2,7 @@
 //! Format and rationale: ARCHITECTURE.md, "Precursors".
 //!
 //! The one implementation of the grammar, the schema and every refusal. JavaScript reaches
-//! it through `spore-definition-node`; a Rust host links it directly. Two parsers would be
+//! it through `spore-node`; a Rust host links it directly. Two parsers would be
 //! a definition that means two things.
 
 use std::sync::LazyLock;

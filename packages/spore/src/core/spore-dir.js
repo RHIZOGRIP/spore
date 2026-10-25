@@ -41,10 +41,9 @@ export const DATA_DIR = LAYOUT.dataDir
 export const CALLS_DIR = LAYOUT.calls
 export const PRECURSOR_DIR = LAYOUT.precursorDir
 
-// Past this an entry stops carrying its own body. Not a `.cmk` limit: the `.cmk` bounds
-// what the agent may do, and this is a property of the file — the inbox is re-read at
-// every round boundary, so lines stay small or every round pays for the biggest thing
-// anyone ever pasted. It is the neighbour of `MAX_FRAME`, not of `cost`.
+// Past this an entry stops carrying its own body: a turn's prompt is the unanswered messages
+// joined, so a long one reaches it as a head, a tail and a path (principle 5). Not a `.cmk`
+// limit: the `.cmk` bounds what the agent may do, and this is a property of the message.
 export const INLINE_MESSAGE_BYTES = 8192
 
 // What one read hands a turn of what was overheard: the latest, since a busy group says more
@@ -236,7 +235,7 @@ export function hostState (ws) {
 }
 
 // A workspace named where a writer is expected: the host writing records that belong to no
-// turn, which is what a fixture does.
+// turn, as a dream's note does.
 const writerOf = (target) => (typeof target === 'string' ? { request: hostRequest(target, null) } : target)
 
 export function definitionPath (ws) {
@@ -906,12 +905,6 @@ export function setAside (ws, { replyTo, upto }) {
   return native.setAside(ws, replyTo, upto)
 }
 
-/** How far the last finished turn read the inbox: where the next one starts. */
-/**
- * The running turn's limits as its owner has left them: when the turn started, and the latest
- * row of each dimension, as `{ startedAt, limits: { rounds, cost, wall } }` of `{ limitNo, soft,
- * hard, why }` — or null when no running turn recorded any.
- */
 /** How far the turn running now has read the inbox, as its latest `inbox_read` says — null when none runs or it has read nothing yet. */
 export function runningReadTo (ws) {
   return reading(ws, null, db => db.prepare(`SELECT json_extract(e.payload, '$.inboxTo') AS readTo
@@ -920,6 +913,11 @@ export function runningReadTo (ws) {
                                               ORDER BY e.seq DESC LIMIT 1`).get()?.readTo ?? null)
 }
 
+/**
+ * The running turn's limits as its owner has left them: when the turn started, and the latest
+ * row of each dimension, as `{ startedAt, limits: { rounds, cost, wall } }` of `{ limitNo, soft,
+ * hard, why }` — or null when no running turn recorded any.
+ */
 export function runningLimits (ws) {
   return reading(ws, null, db => {
     const rows = db.prepare(`SELECT t.startedAt, l.limitNo, l.dimension, l.soft, l.hard, l.why
@@ -948,6 +946,7 @@ export function appendAnnotation (ws, text) {
   return JSON.parse(native.annotate(ws, text))
 }
 
+/** How far the last finished turn read the inbox: where the next one starts. */
 export function inboxConsumed (ws) {
   return reading(ws, 0, db => db.prepare('SELECT inboxConsumed FROM t_workspace').get().inboxConsumed)
 }
@@ -1151,13 +1150,6 @@ export function dreamRecords (ws) {
     }
   })
 }
-
-// `clearTranscript` was here: it truncated the live descriptor to zero, or unlinked the
-// file. v2 has no such thing — no truncate, no unlink, the transcript only ever grows —
-// and nothing in v3's runtime ever called it. The one caller it did acquire, a benchmark
-// bounding an agent's context, destroyed the record the memory store reads from and cost
-// two runs their second source of evidence. Bounding what replays is a compaction entry;
-// that path exists, is append-only, and is what eviction actually does.
 
 const heldLocks = new Map()
 

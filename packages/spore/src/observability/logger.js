@@ -1,10 +1,10 @@
 /**
  * Logger interface — { trace, debug, info, warn, error, fatal, child }
  *
- * Same shape as mohdel + pino expects. CLI picks between:
+ * Same shape as mohdel + pino expects. The agent and a cell's agent take theirs from
+ * `autoLogger`, which picks between:
  *   - `cliLogger` for interactive terminals (human-readable console.error)
  *   - `jsonLogger` for pipes/subprocesses (pino-shaped JSON → stderr)
- * Library callers inject their own, typically a pino logger.
  *
  * `.child(bindings)` returns a logger of the same shape with extra context bound.
  * For pino, this is native. For `silent` and `cliLogger`, it's a no-op that
@@ -100,7 +100,7 @@ export function jsonLogger ({ level = 'debug', bindings = {} } = {}) {
   return lg
 }
 
-// Helper for CLIs: pick the right logger based on output context.
+// Pick the logger by where stderr goes.
 //   - LOG_FORMAT=json  → always JSON
 //   - piped stderr     → JSON (subprocess use, log pipeline expects structured)
 //   - interactive TTY  → cliLogger (human-readable)

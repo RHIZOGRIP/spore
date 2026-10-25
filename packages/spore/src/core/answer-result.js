@@ -13,8 +13,8 @@ export const MAX_EMPTY_RETRIES = 2
 
 /**
  * Accumulate one call's usage into the running tally and emit the per-call
- * `usage` event. Returns this call's input-token count (callers track it as
- * `lastInputTokens` to drive compaction headroom).
+ * `usage` event. Returns what this call's prompt weighed — input, cache read and cache
+ * write — which the loop holds as `lastInputTokens` for the context guard.
  *
  * @param {object} res                 — mohdel AnswerResult
  * @param {object} args
@@ -22,7 +22,7 @@ export const MAX_EMPTY_RETRIES = 2
  * @param {(event: string, data: object) => void} args.emit
  * @param {string} args.modelId        — model id for the usage event
  * @param {number} args.elapsedMs      — wall-time of the call
- * @returns {number}                   — res.inputTokens || 0
+ * @returns {number}                   — the prompt's tokens, cached or not
  */
 export function accountUsage (res, { usage, emit, modelId, elapsedMs }) {
   usage.input += res.inputTokens || 0

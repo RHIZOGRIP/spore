@@ -223,7 +223,7 @@ export function readCall (workspace, runId, call) {
 
 /**
  * A call's record written as a finished call writes it, through a turn's writer — or, given a
- * workspace, from the host side, for fixtures.
+ * workspace, from the host side, as a fork does.
  */
 export function writeCall (target, runId, call, record) {
   recordCall(target, callRow(runId, { ...record, call }))

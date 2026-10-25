@@ -1,6 +1,7 @@
 //! Workspace rules the runner and the JS runtime share: the workspace lock, admission
 //! slots, the environment an agent is given, where a broker socket goes, path containment,
-//! what the sandbox grants, and the libraries an agent's programs may import.
+//! what the sandbox grants, the libraries an agent's programs may import, and the workspace
+//! database.
 //! Contract: ARCHITECTURE.md, "One runner per workspace" and "Turns of one user".
 //!
 //! One implementation. JavaScript reaches it through `spore-node`; the Rust runner links it.
@@ -402,7 +403,7 @@ pub fn write_lock(file: &File, held: &Value) -> io::Result<()> {
 fn text_of(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
-        Value::Null => "undefined".to_string(),
+        Value::Null => "unknown".to_string(),
         other => other.to_string(),
     }
 }

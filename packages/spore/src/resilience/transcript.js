@@ -7,8 +7,6 @@
  *   3. Duplicate tool_results for same toolCallId → keep first, drop rest
  *   4. Oversized tool_result content → truncated
  *   5. Empty/null content normalization
- *
- * Caller must pass logger (use silent from logger.js for no output).
  */
 
 import { effectiveContextLimit } from 'mohdel'

@@ -150,20 +150,15 @@ export async function runSpore ({
       detail: 'runSpore writes its records through the turn\'s channel to its supervisor. Start it with `send`, or pass `state`.'
     })
   }
-  // The logger is bound to this run's own dispatch span below rather than to
-  // `parentSpan`: binding conditionally left every line trace-less whenever an upstream
-  // forgot to inject `traceparent`.
-
-  // ── Tool-loop path ──────────────────────────────────────────────────
-
   const WS = resolve(workspace)
 
   // Root of this spore's OTel subtree; one `runSpore()` call = one span.
-  // Session is a runtime concept, not OTel — no spore.session span.
   const sporeDispatchSpan = startSpan('spore.dispatch', {
     'spore.workspace': WS,
     'spore.model': modelId
   }, parentSpan)
+  // Bound to this run's own span rather than to `parentSpan`, which an upstream may not
+  // have passed: every line carries a trace either way.
   if (logger.child) logger = logger.child({ span: serializeSpanContext(sporeDispatchSpan) })
 
   logger.debug({ workspace: WS, cwd: process.cwd() }, '[spore] workspace')
@@ -261,11 +256,6 @@ export async function runSpore ({
 
   fns = recordRefusals(fns, trail)
 
-  // Summarize a history that has outgrown its retention budget before replaying
-  // it. Without this the entry point grows the transcript until `recovery` starts
-  // dropping turn-groups outright, and the replay is most of what a long run pays
-  // for. The entry recorded here is what `readTranscript` collapses against next
-  // time, so the summarizing happens once.
   // One per turn. Facts are extracted from the messages an overflow drop mid-loop
   // takes, and handed back to the model in the notice that reports the loss.
   const sessionMemory = createSessionMemory({ logger })
@@ -328,6 +318,11 @@ export async function runSpore ({
   // belongs in `cost`, and the broker already counted it as ours when subtracting.
   let setupCost = 0
 
+  // Summarize a history that has outgrown its retention budget before replaying
+  // it. Without this the entry point grows the transcript until `recovery` starts
+  // dropping turn-groups outright, and the replay is most of what a long run pays
+  // for. The entry recorded here is what `readTranscript` collapses against next
+  // time, so the summarizing happens once.
   let history = initialMessages
   if (history?.length) {
     history = await compactHistory(history, {
@@ -466,11 +461,6 @@ export async function runSpore ({
       // own, and anything adding up what a workspace has spent wants the total —
       // a fan-out's bill is almost all in the children.
       treeMicros: micros((result.usage?.cost || 0) + setupCost + (ledger.children || 0)),
-      // The tokens behind that money. Cost alone cannot say why a turn was dear: a
-      // prefix that missed the cache and one that hit it differ by an order of
-      // magnitude and look identical in dollars. `cacheRead` on a resumed turn is the
-      // one measurement that says caching is working, and it lived only in this
-      // process until now — see ARCHITECTURE.md, "Prompt caching".
       // What the turn cost in reasoning rather than money, its own rounds weighted 2:1 over its cells'.
       // Counted at the broker, so it includes retries and every cell's work — including
       // cells whose answers were discarded — and nothing the agent reports about itself.
@@ -487,6 +477,10 @@ export async function runSpore ({
       dataBytes: dataBytesIn(WS, { dreams }),
       historySent,
       historyBound: carried,
+      // The tokens behind that money. Cost alone cannot say why a turn was dear: a
+      // prefix that missed the cache and one that hit it differ by an order of
+      // magnitude and look identical in dollars. `cacheRead` on a resumed turn is the
+      // one measurement that says caching is working — see ARCHITECTURE.md, "Prompt caching".
       inputTokens: result.usage?.input || 0,
       outputTokens: result.usage?.output || 0,
       thinkingTokens: result.usage?.thinking || 0,
@@ -504,9 +498,8 @@ export async function runSpore ({
       onMessage({ role: 'assistant', content: result.output })
     }
 
-    // `result.usage.cost` aggregates every mohdel call this agent made;
-    // surface it as `result.cost` for the worker's terminal frame. Spawned
-    // children are not folded in; `units` in the turn record is where they are.
+    // `result.usage.cost` aggregates every model call this agent made, its cells not
+    // folded in: `treeMicros` in the turn record is where they are.
     const sporeLoopCost = result.usage?.cost || 0
 
     endSpanOk(sporeDispatchSpan, {
@@ -523,10 +516,8 @@ export async function runSpore ({
     }
   } catch (err) {
     // A turn that died still happened. Without this the workspace says nothing at all —
-    // the prompt on disk, no turn recorded, no calls — and `check` reports the
-    // member as idle, which is indistinguishable from never having been launched.
-    // Found by a conformance run against a provider that was refusing: fourteen spores
-    // died and left no trace of why, or that they had.
+    // the prompt on disk, no turn recorded, no calls — which is indistinguishable from
+    // never having been started.
     const left = deliverablesIn(WS, turnStartedAt)
     writeOutcome(state, {
       runId: trailRunId,

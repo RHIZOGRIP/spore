@@ -1619,9 +1619,9 @@ The event schema version every event carries as `v`: `1`
 ### `EVENTS`
 
 Every event name the log holds: `round`, `tool_start`, `tool_end`, `tool_block`, `wrap`,
-`interject`, `inbox_read`, `heartbeat`, `stream`, `usage`, `complete`, `deliverables`, `recall`,
-`compaction_started`, `compaction`, `compaction_failed`, `estimate_drift`, `empty_completion`,
-`recovery` and `turn_end`.
+`unwrap`, `interject`, `inbox_read`, `heartbeat`, `stream`, `usage`, `complete`, `deliverables`,
+`recall`, `compaction_started`, `compaction`, `compaction_failed`, `estimate_drift`,
+`empty_completion`, `recovery`, `annotation` and `turn_end`.
 
 ### `PROMISED`
 
@@ -1685,7 +1685,7 @@ is absent or malformed.
 cliLogger(debug = false) → logger
 ```
 
-The command's logger: `warn`, `error` and `fatal` to stderr, `debug` and `info` too when `debug`,
+A human-readable logger: `warn`, `error` and `fatal` to stderr, `debug` and `info` too when `debug`,
 `trace` never; `child()` returns itself.
 
 ### `silent`

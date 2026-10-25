@@ -1,6 +1,6 @@
-//! What every socket the runner serves has in common: the tree key on each request, typed
-//! refusals in mohdel's error shape, and JSON bodies. The model, store and source sockets
-//! differ only in their routes.
+//! What every socket the runner and a cell's supervisor serve has in common: the tree key on each
+//! request, typed refusals in mohdel's error shape, and JSON bodies. The model, store, source,
+//! job and enzymes sockets differ only in their routes.
 
 use std::convert::Infallible;
 use std::future::Future;

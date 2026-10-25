@@ -2088,9 +2088,9 @@ it — `message` for the answer's text, `function_call` for a call's arguments, 
 the model writes for the person while it works, `reasoning_summary` and `reasoning` (raw) when the
 definition's `reasoning` asks for them — at mohdel's granularity, which
 the loop sets with `bufferOpts` to at most 50 characters or half a second. `mohdel_idle` is named by
-the schema and **not produced** (`PROMISED`): mohdel's factory never calls an idle handler, so
-there is nothing to carry. It joins `EVENTS` when mohdel emits it, and every consumer has it
-without changing.
+the schema and **not produced** (`PROMISED`): nothing on the model path reports an idle stream,
+so there is nothing to carry. It joins `EVENTS` once the model path does, and every consumer has
+it without changing.
 
 **The stream and the log are two layers.** The transport delivers every chunk to the turn's emitter,
 and anything listening there hears each one. The log is one listener among them and batches its own
@@ -2435,7 +2435,8 @@ precursor naming none runs on its parent's, which arrives as `$MODEL` since `exe
 export it, and `bin/spawn-worker.js` reads `plan.precursor.model || process.env.MODEL`. A spore
 with no `cell-models` runs every cell on its parent's model and drops the name, so a precursor
 from a plugin or a sporangium still runs; one with some refuses a name it lacks. Passing `-m`
-fails with *the model comes from $MODEL, never from a flag* rather than being quietly ignored.
+fails with *the model comes from the precursor's model: or $MODEL, never from a flag* rather than
+being quietly ignored.
 
 **The root definition says which models the spore runs on**: `model:` is what the root runs on,
 `models:` what a person may switch it to (`switchModel`, which rewrites `model:` and keeps the

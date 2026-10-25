@@ -166,8 +166,6 @@ fn contained(ws: &Path, rel: &str, label: &str) -> Result<PathBuf, String> {
     })
 }
 
-/// `granted` says which sandbox grant, if any, holds a directory; a workspace inside one
-/// cannot isolate a child confined beneath it.
 /// A precursor's `model:` names one of its spore's `cell-models`; this gives the model it stands for.
 /// A spore with none runs every cell on its parent's model, so the name is dropped; one with some
 /// refuses a name it does not have, which is a typo rather than a precursor from elsewhere.
@@ -188,6 +186,8 @@ pub fn cell_model(
     }
 }
 
+/// `granted` says which sandbox grant, if any, holds a directory; a workspace inside one
+/// cannot isolate a child confined beneath it.
 pub fn plan_spawn(
     asked: &Asked,
     cwd: &Path,

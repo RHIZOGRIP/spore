@@ -50,6 +50,7 @@ Usage:
                what its pid is. <ws>/spawn.json says \"running\":true until the
                cell ends and then holds its last frame, so the caller polls the
                workspace instead of waiting on this
+  --debug      the cell's agent logs at debug level
 
   --standalone with --node, --session and --chatgpt-helper: a cell outside any turn,
                for a host that is not one. It starts its own model session, under a key
@@ -63,8 +64,10 @@ Usage:
                for its dream: only the precursor dream.precursor names, under the
                lower of that precursor's limits and dream.cost and dream.wall
 
-The sub-agent runs on $MODEL, inherited from the environment. There is no flag
-for it: choosing a model is configuration, not something a caller decides.";
+The sub-agent runs on the cell model its precursor's model: names among the
+spore's cell-models, or, when it names none, on $MODEL, inherited from the
+environment. There is no flag for it: choosing a model is configuration, not
+something a caller decides.";
 
 #[derive(Default)]
 struct Args {
@@ -129,7 +132,7 @@ fn parse_args(given: &[String]) -> Args {
             "--auth" => args.auth = Some(value()),
             "--help" | "-h" => args.help = true,
             "-m" | "--model" => fail(format!(
-                "unknown option {name} — the model comes from $MODEL, never from a flag"
+                "unknown option {name} — the model comes from the precursor's model: or $MODEL, never from a flag"
             )),
             other if other.starts_with('-') => fail(format!("unknown option {other}")),
             other => fail(format!("unexpected argument {other}")),

@@ -56,7 +56,7 @@ const outcomeOf = ({ ok, refused, record }) => {
 const HEARTBEAT_INTERVAL_MS = 10_000
 
 /**
- * Execute a single tool call with its own abort controller and timing.
+ * Execute a single tool call, timed.
  */
 async function executeSingle (tc, { toolFns, describe, emitter, signal, logger }) {
   const fn = toolFns[tc.name]

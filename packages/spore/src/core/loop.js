@@ -60,7 +60,7 @@ const DRIFT_FLOOR = 2_000
  * @param {Function} [opts.describe] — (name, args) => { title, category, detail }, carried on `tool_start`
  * @param {object} opts.limits — {rounds,cost,wall} soft/hard pairs, declared in a .cmk, never here
  * @param {Map<string, {stopReason: string, says: boolean}>} [opts.terminalTools] — tools that end the turn
- * @param {object} [opts.emitter]  — event emitter for harness
+ * @param {object} [opts.emitter]  — what the turn emits, to the event log
  * @param {object} [opts.logger]
  * @returns {{ output: string|null, messages: Array, rounds: number, usage: object }}
  */
@@ -207,9 +207,8 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
     if (reasoning.includes('summaries')) answerOpts.reasoningSummaries = true
     if (reasoning.includes('raw')) answerOpts.rawReasoning = true
     // Without this the deadline and the user's cancel can only take effect between
-    // rounds: a request already in flight runs to completion, and a hung one holds
-    // the turn open indefinitely. It is also what makes the model broker's cancel
-    // reachable, since that client acts on `options.signal`.
+    // rounds: the turn waits on a request already in flight, and a hung one holds it
+    // open indefinitely. The client stops waiting on it; the call itself runs on.
     if (signal) answerOpts.signal = signal
     if (parentSpan) answerOpts.parentSpan = parentSpan
     if (streamHandler) {
@@ -271,16 +270,16 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
       // Observed, not filtered: the guard reports and the loop decides. What it
       // decides is the wrap above, on the next round.
       guard.observe(res.toolCalls)
-      const allowed = res.toolCalls
+      const calls = res.toolCalls
 
       // A terminal tool ends the turn, so nothing after it in the batch may run.
       // The kernel schedules readers together and mutators after them, so batch
       // order is not execution order: `[ask, wsexec]` wrote the file and only then
       // returned the question — which matters most when the question is asking for
       // permission to do exactly that.
-      const terminalAt = terminalTools ? allowed.findIndex(tc => terminalTools.has(tc.name)) : -1
-      const running = terminalAt === -1 ? allowed : allowed.slice(0, terminalAt + 1)
-      const shelved = terminalAt === -1 ? [] : allowed.slice(terminalAt + 1)
+      const terminalAt = terminalTools ? calls.findIndex(tc => terminalTools.has(tc.name)) : -1
+      const running = terminalAt === -1 ? calls : calls.slice(0, terminalAt + 1)
+      const shelved = terminalAt === -1 ? [] : calls.slice(terminalAt + 1)
 
       const toolResults = await executeTools({
         toolCalls: running, toolFns, describe, emitter, mutators, signal, logger
@@ -294,7 +293,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
       // transcript malformed for the next turn that replays it.
       for (const tc of shelved) {
         emitter.emit('tool_block', { name: tc.name, reason: 'turn ended' })
-        const skipped = refusedResult(tc.id, tc.name, `not run — "${allowed[terminalAt].name}" ended the turn before it. Ask again next turn if it is still what you want.`)
+        const skipped = refusedResult(tc.id, tc.name, `not run — "${calls[terminalAt].name}" ended the turn before it. Ask again next turn if it is still what you want.`)
         messages.push(skipped)
         if (onMessage) onMessage(skipped)
       }
@@ -307,7 +306,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
       }
 
       if (terminalAt !== -1) {
-        const terminated = allowed[terminalAt]
+        const terminated = calls[terminalAt]
         const { stopReason, says } = terminalTools.get(terminated.name)
         const terminalResult = toolResults.find(tr => tr.toolCallId === terminated.id)
         const text = terminalResult ? textOf(terminalResult) : null

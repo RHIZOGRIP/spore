@@ -88,7 +88,7 @@ function grantedPrograms (from) {
 /**
  * Copy one spore's capability into another directory, which must already exist and which
  * `openWorkspace` has not yet seeded — `seedPrecursors` skips what is already there, so
- * carrying first is what lets an authored precursor win over the shipped one of that name.
+ * carrying first is what keeps the source's `precursors/README.md` over the shipped one.
  *
  * @returns {{ precursors: string[], programs: string[] }} what was carried, workspace-relative
  */

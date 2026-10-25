@@ -478,7 +478,7 @@ export function makeTools (WS, maxOutput, trail, {
       return runCommand({ tool: 'wsexec', command, inPath, out, err, confined: false, timeoutMs, idleMs: callIdleMs, sig })
     },
 
-    // The one tool that ends the turn. Its result is the question itself, not a
+    // A tool that ends the turn, as `quiet` does. Its result is the question itself, not a
     // call record: the loop returns a terminal tool's result as the turn's
     // output, and what reaches the user has to be the question.
     ask: async ({ question, ...rest }) => {

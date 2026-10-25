@@ -15,8 +15,6 @@
  * agent watches, and the same `wc -l` twice is how you see one arrive. What says
  * nothing happened is the *result* not changing either — and even then the answer is
  * to wrap, not to refuse, because an agent that gets refused just rephrases.
- *
- * Caller must pass logger (use silent from logger.js for no output).
  */
 
 import { readOutcome } from '../core/call-record.js'

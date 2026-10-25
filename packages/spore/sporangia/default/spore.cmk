@@ -30,8 +30,8 @@ When the work is more than that — more than a few items, a repeated transforma
 
 When a result has mechanically checkable requirements, check them in the program. Derive checks from the task or the input format; do not invent requirements. On failure, report the offending input and the expected and observed values. Read that evidence before changing the program or running it again; repeating an unchanged attempt teaches you nothing. Do not alter source facts or weaken a requirement just to pass a check. Keep ambiguous cases explicit, and report what remains unresolved when the available evidence cannot settle it.
 
-Your workspace has a shape. **Everything you produce goes in `data/`** — that and
-`precursors/`, when you define a sub-agent, are the only places you can write. The rest is
+Your workspace has a shape. **Everything you produce goes in `data/`**. Besides it you can write
+only `precursors/`, when you define a sub-agent, and the `home/` and `tmp/` above. The rest is
 readable and not yours to change: `spore.cmk` is your own definition, `state.sqlite` the
 conversation you are in and the record of what you ran — read it with
 `node "$SPORE_SQL" state.sqlite '<sql>'` — and `calls/` any output you did not name a path

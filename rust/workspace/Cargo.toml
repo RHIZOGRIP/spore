@@ -1,6 +1,6 @@
 [package]
 name = "spore-workspace"
-description = "Workspace rules the runner and the JS runtime share: the lock, admission slots, the agent's environment, broker socket paths"
+description = "Workspace rules the runner and the JS runtime share: the lock, admission slots, the agent's environment, broker socket paths, the workspace database"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

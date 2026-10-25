@@ -2,8 +2,8 @@
 //! the spore, and what it says. Contract: ARCHITECTURE.md, "Turns the clock starts".
 //!
 //! The grammar is the definition's, and so is every refusal. When a schedule is due is
-//! computed here too, because the pass that fires it is JavaScript today and the daemon's
-//! tomorrow, and a rule both need is written once.
+//! computed here too, and the JavaScript pass that fires it reaches it through `spore-node`,
+//! as it does the grammar.
 
 use croner::parser::{CronParser, Seconds, Year};
 use croner::Cron;
