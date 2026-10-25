@@ -34,7 +34,7 @@ const bot = (name) => {
   writeFileSync(join(CONFIG_DIR, 'relay', `${name}.json`), '{}')
 }
 
-const RELAY = { what: 'a relay of yours, each bot reaching its spore', program: './bin/relay.js', instances: { dir: 'relay', ext: '.json', called: 'bot' }, check: ['--check'] }
+const RELAY = { what: 'a relay of yours, each bot reaching its spore', program: './bin/relay.js', instances: { called: 'bot' }, check: ['--check'] }
 
 /** A plugin offering services, installed in the test's own node_modules with its own spore, as a global install lays one out. */
 const plugin = (name, services, version = '0.1.0') => {

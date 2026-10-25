@@ -1208,6 +1208,32 @@ The directory of spore's host configuration: `$XDG_CONFIG_HOME/spore`, else `~/.
 
 `config.json` in `CONFIG_DIR`.
 
+### `instancesDir`
+
+```
+instancesDir(service, configFile = CONFIG_FILE) → path
+```
+
+Where the instances of a service with `instances` live: the folder named after the service beside
+`configFile`, one `<instance>.json` each. A chat connector's bot files are these, by its `kind`.
+
+### `instanceFile`
+
+```
+instanceFile(service, instance, configFile = CONFIG_FILE) → path
+```
+
+The file of one instance: `<instance>.json` in `instancesDir(service, configFile)`.
+
+### `instanceNames`
+
+```
+instanceNames(service, configFile = CONFIG_FILE) → string[]
+```
+
+The instances of `service`, sorted: each `.json` file in `instancesDir(service, configFile)`, by
+name without `.json`; none when the folder does not exist.
+
 ### `NAME`
 
 The pattern a spore name matches: a letter or digit, then up to 63 letters, digits, `.`, `_` and

@@ -20,10 +20,9 @@
  * name or `{ spore, … }`, and `called` how that person is identified, as "their member id".
  */
 
-import { existsSync, readdirSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { existsSync } from 'node:fs'
 
-import { CONFIG_FILE, readJson } from '../library/config.js'
+import { CONFIG_FILE, instanceFile, instanceNames, instancesDir, readJson } from '../library/config.js'
 import { native } from '../native.js'
 import { NAMES } from '../core/names.js'
 import { variableOf } from '../core/variables.js'
@@ -35,20 +34,16 @@ const EVERY_BOT = ['brief', 'files']
 
 const typeOf = (spec, what) => `${spec.kind.toUpperCase()}_${what}`
 
-export const botsDir = (spec, configFile = CONFIG_FILE) => resolve(dirname(configFile), spec.kind)
+export const botsDir = (spec, configFile = CONFIG_FILE) => instancesDir(spec.kind, configFile)
 
 export function botPath (spec, name, configFile = CONFIG_FILE) {
   if (!NAMES.bot.pattern.test(name)) {
     throw new SporeError(`"${name}" cannot be a bot's name`, { type: typeOf(spec, 'BOT_INVALID'), detail: NAMES.bot.says })
   }
-  return join(botsDir(spec, configFile), `${name}.json`)
+  return instanceFile(spec.kind, name, configFile)
 }
 
-export function botNames (spec, configFile = CONFIG_FILE) {
-  const dir = botsDir(spec, configFile)
-  if (!existsSync(dir)) return []
-  return readdirSync(dir).filter(file => file.endsWith('.json')).map(file => basename(file, '.json')).sort()
-}
+export const botNames = (spec, configFile = CONFIG_FILE) => instanceNames(spec.kind, configFile)
 
 export function readBot (spec, path) {
   if (!existsSync(path)) {

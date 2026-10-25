@@ -43,8 +43,6 @@
         "what": "a bot of yours in Slack, each direct message and channel reaching its spore",
         "program": "./bin/spore-slack.js",
         "instances": {
-          "dir": "slack",
-          "ext": ".json",
           "called": "bot"
         },
         "check": [

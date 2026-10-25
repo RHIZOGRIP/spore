@@ -15,7 +15,7 @@
  * workspaces beside it.
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, resolve, join } from 'node:path'
 
@@ -31,6 +31,17 @@ export const CONFIG_DIR = process.env.XDG_CONFIG_HOME
   : join(homedir(), '.config', 'spore')
 
 export const CONFIG_FILE = join(CONFIG_DIR, 'config.json')
+
+/** The folder beside `configFile` holding a service's instances, `<instance>.json` each: a connector's bots. */
+export const instancesDir = (service, configFile = CONFIG_FILE) => resolve(dirname(configFile), service)
+
+export const instanceFile = (service, instance, configFile = CONFIG_FILE) => join(instancesDir(service, configFile), `${instance}.json`)
+
+export function instanceNames (service, configFile = CONFIG_FILE) {
+  const dir = instancesDir(service, configFile)
+  if (!existsSync(dir)) return []
+  return readdirSync(dir).filter(file => file.endsWith('.json')).map(file => file.slice(0, -'.json'.length)).sort()
+}
 
 /**
  * What a source name means, host-side, beside `config.json`. It holds credentials, so the

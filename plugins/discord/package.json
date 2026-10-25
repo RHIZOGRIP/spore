@@ -60,8 +60,6 @@
         "what": "a bot of yours in Discord channels, where people and spores talk",
         "program": "./bin/spore-discord.js",
         "instances": {
-          "dir": "discord",
-          "ext": ".json",
           "called": "bot"
         },
         "check": [

@@ -7,10 +7,10 @@
  * an allowlist the runner builds; this is what the runner and a cell's supervisor hold.
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import { API_FILE, CONFIG_FILE, HOOKS_FILE, MEMORY_FILE, SOURCES_FILE, loadEnvironment, readConfig } from '../library/config.js'
+import { API_FILE, CONFIG_FILE, HOOKS_FILE, MEMORY_FILE, SOURCES_FILE, instanceFile, instanceNames, loadEnvironment, readConfig } from '../library/config.js'
 import { pluginRoots, pluginServices } from './plugins.js'
 import { variablesIn } from './variables.js'
 
@@ -24,13 +24,9 @@ const textOf = (path) => existsSync(path) ? readFileSync(path, 'utf8') : ''
 export function serviceSecrets (configFile = CONFIG_FILE, { roots = pluginRoots() } = {}) {
   const dir = dirname(configFile)
   const texts = [textOf(join(dir, HOOKS_FILE)), textOf(join(dir, API_FILE)), JSON.stringify(readConfig(configFile).approvals ?? {})]
-  for (const { instances } of pluginServices(roots).services) {
+  for (const { name, instances } of pluginServices(roots).services) {
     if (!instances) continue
-    const at = join(dir, instances.dir)
-    if (!existsSync(at)) continue
-    for (const file of readdirSync(at)) {
-      if (file.endsWith(instances.ext)) texts.push(textOf(join(at, file)))
-    }
+    for (const instance of instanceNames(name, configFile)) texts.push(textOf(instanceFile(name, instance, configFile)))
   }
   return new Set(texts.flatMap(variablesIn))
 }

@@ -529,8 +529,8 @@ own `SPORE_<NAME>` and `SPORE_<NAME>_*` — and two plugins setting one variable
 names.
 
 **A service is the one thing a plugin runs on the host.** `services` names each by `what` it
-is and the Node `program` that starts it; `instances`, optionally, a folder beside `config.json`
-holding one file per instance; and `check`, the arguments that make the program test that it can
+is and the Node `program` that starts it; `instances`, optionally, what one instance is called,
+each an `<instance>.json` in the folder named after the service beside `config.json`; and `check`, the arguments that make the program test that it can
 start, then exit. Plugin services are offered beside the ones spore ships, from every installed
 plugin, allowed or not: allowing is what spores may use, and defining a service is the operator's
 consent to run a program outside every sandbox. Spore writes the unit — the manifest names a
@@ -894,7 +894,7 @@ same one. `show` answers from the files alone — `stateOf()` for what it is doi
 definition for what it is, the transcript and the `turns` view for what it has done — and never
 calls `openWorkspace`, which seeds files and links modules.
 
-The management verbs — `ls`, `show`, `log`, `precursor ls`, `config` and the rest — run in the
+The management verbs — `ls`, `show`, `log`, `config` and the rest — run in the
 command (`packages/spore-cli/src/dispatch.js`), on the host, and start nothing. They answer from
 `src/library/verbs.js`, which is a library: an embedder asking the same questions needs no
 command and gets no less.

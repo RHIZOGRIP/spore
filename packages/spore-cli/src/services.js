@@ -14,12 +14,12 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir, userInfo } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { CONFIG_DIR, NAMES, pluginRoots, pluginServices, SERVICE_STATE_DIR, SporeError, versionAt } from '@rhizogrip/spore'
+import { CONFIG_DIR, instanceFile, instanceNames, instancesDir, NAMES, pluginRoots, pluginServices, SERVICE_STATE_DIR, SporeError, versionAt } from '@rhizogrip/spore'
 
 const SPORE_PACKAGE = '@rhizogrip/spore'
 const ROOT = dirname(createRequire(import.meta.url).resolve(`${SPORE_PACKAGE}/package.json`))
@@ -88,7 +88,7 @@ const sluiceCheck = (binary, rules) => [
  * service's own start-up checks and exits, so one that cannot start is refused before its unit
  * is written.
  *
- * A service with `instances` runs once per file in that folder beside `config.json`, as
+ * A service with `instances` runs once per `<instance>.json` in the folder named after it beside `config.json`, as
  * `<name>@<instance>`: one template unit, and an instance of it per file, each started, enabled and
  * logged on its own.
  */
@@ -268,7 +268,7 @@ function parsed (name, catalog, { instanceOptional = false, verb } = {}) {
   if (service.instances && instance === null && !instanceOptional) {
     throw new SporeError(`${base} runs once per ${service.instances.called}: name one`, {
       type: 'SERVICE_NEEDS_INSTANCE',
-      detail: `spore service ${verb} ${base}@<${service.instances.called}>, for the ${service.instances.called} in ${service.instances.dir}/<${service.instances.called}>${service.instances.ext} beside config.json`
+      detail: `spore service ${verb} ${base}@<${service.instances.called}>, for the ${service.instances.called} in ${base}/<${service.instances.called}>.json beside config.json`
     })
   }
   if (instance !== null && !NAMES.bot.pattern.test(instance)) {
@@ -326,13 +326,7 @@ export function createServices ({ roots = pluginRoots() } = {}) {
   }
   const written = ({ base, service }) => Object.keys(unitsOf(service)).every(file => ours(base, file))
 
-  const instanceFile = ({ service, instance }) => join(CONFIG_DIR, service.instances.dir, `${instance}${service.instances.ext}`)
-  const instancesOf = (service) => {
-    const dir = join(CONFIG_DIR, service.instances.dir)
-    if (!existsSync(dir)) return []
-    return readdirSync(dir).filter(file => file.endsWith(service.instances.ext)).map(file => file.slice(0, -service.instances.ext.length)).sort()
-  }
-  const defined = (one) => written(one) && (one.instance === null || existsSync(instanceFile(one)))
+  const defined = (one) => written(one) && (one.instance === null || existsSync(instanceFile(one.base, one.instance)))
 
   const foreign = ({ base, service }) => Object.keys(unitsOf(service))
     .find(file => existsSync(pathOf(file)) && !ours(base, file)) ?? null
@@ -352,8 +346,8 @@ export function createServices ({ roots = pluginRoots() } = {}) {
     if (!defined(one)) {
       throw new SporeError(`${name} is not defined`, {
         type: 'SERVICE_NOT_DEFINED',
-        detail: one.instance !== null && !existsSync(instanceFile(one))
-          ? `there is no ${instanceFile(one)}`
+        detail: one.instance !== null && !existsSync(instanceFile(one.base, one.instance))
+          ? `there is no ${instanceFile(one.base, one.instance)}`
           : `spore service define ${name} writes its unit`
       })
     }
@@ -417,9 +411,9 @@ export function createServices ({ roots = pluginRoots() } = {}) {
   const rows = (base) => {
     const service = serviceOf(base, catalog)
     if (!service.instances) return [row(base)]
-    const names = instancesOf(service)
+    const names = instanceNames(base)
     if (!names.length) {
-      return [{ name: base, what: service.what, defined: false, none: `no ${service.instances.called} yet — ${join(CONFIG_DIR, service.instances.dir)}/<${service.instances.called}>${service.instances.ext}, then spore service define ${base}@<${service.instances.called}>` }]
+      return [{ name: base, what: service.what, defined: false, none: `no ${service.instances.called} yet — ${instancesDir(base)}/<${service.instances.called}>.json, then spore service define ${base}@<${service.instances.called}>` }]
     }
     return names.map(instance => row(`${base}@${instance}`))
   }
@@ -502,7 +496,7 @@ export function createServices ({ roots = pluginRoots() } = {}) {
           throw new SporeError(`${name} is not defined`, { type: 'SERVICE_NOT_DEFINED', detail: `spore service define ${name}${service.instances ? `@<${service.instances.called}>` : ''} writes its unit` })
         }
       }
-      const instances = instance !== null ? [instance] : service.instances ? instancesOf(service) : [null]
+      const instances = instance !== null ? [instance] : service.instances ? instanceNames(one.base) : [null]
       const running = instances.filter(each => !['inactive', 'failed'].includes(stateOf(unitOf('primary', { service, instance: each })).active))
       if (running.length && !yes) {
         const named = running.map(each => (each === null ? one.base : `${one.base}@${each}`))

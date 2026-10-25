@@ -40,8 +40,6 @@
         "what": "a console of yours, each person it maps reaching their spore through loopback HTTP",
         "program": "./bin/spore-console.js",
         "instances": {
-          "dir": "console",
-          "ext": ".json",
           "called": "console"
         },
         "check": [

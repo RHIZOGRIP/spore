@@ -484,7 +484,7 @@ says why.
 
 Spore writes the unit itself, under `~/.config/systemd/user/`: restarted on failure and not after
 exit code 2 (`RestartPreventExitStatus=2`), with `KillMode=process`. A plugin service with
-instances keeps one file per instance in a folder beside `config.json`, as
+instances keeps one file per instance in the folder named after it beside `config.json`, as
 `telegram/<bot>.json`.
 
 A running service records the plugin version it started with, and the spore version it loaded;

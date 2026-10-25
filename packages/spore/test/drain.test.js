@@ -64,7 +64,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
 })
 `
 
-const said = () => existsSync(marks) ? readFileSync(marks, 'utf8').trim().split('\n').map(line => JSON.parse(line)) : []
+const said = () => existsSync(marks) ? readFileSync(marks, 'utf8').split('\n').slice(0, -1).map(line => JSON.parse(line)) : []
 
 // The root's one call starts a detached cell and then keeps its agent busy in a tool, so the
 // runner's single session is free for the cell's call, which is slow. The prompt tells them

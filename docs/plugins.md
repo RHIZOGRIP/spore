@@ -140,7 +140,7 @@ A plugin using every key:
       "ledger": {
         "what": "posts each spore's entries to the book it names",
         "program": "./bin/spore-ledger.js",
-        "instances": { "dir": "ledger", "ext": ".json", "called": "book" },
+        "instances": { "called": "book" },
         "check": ["--check"]
       }
     }
@@ -459,7 +459,7 @@ It may not name `plugins`, nor grant `ask` or `quiet`, as no precursor may.
   "telegram": {
     "what": "a bot of yours in Telegram chats, each chat reaching its spore",
     "program": "./bin/spore-telegram.js",
-    "instances": { "dir": "telegram", "ext": ".json", "called": "bot" },
+    "instances": { "called": "bot" },
     "check": ["--check"]
   }
 }
@@ -474,7 +474,7 @@ every sandbox. `spore service` offers the services of every installed plugin, al
 | (the name) | | | lowercase letters, digits and `-`, starting with a letter |
 | `what` | non-empty text | required | the line `spore service ls` shows, and the unit's description |
 | `program` | `"./<path>"` | required | a file in the plugin, started with `node`; it needs no executable bit |
-| `instances` | `{ "dir", "ext", "called" }` | optional | one instance per file in a folder beside `config.json` |
+| `instances` | `{ "called" }` | optional | one instance per `<instance>.json` in the folder named after the service beside `config.json` |
 | `check` | `["<arg>", …]` | optional | arguments that make the program test that it can start, then exit |
 
 Any other key is refused, and so is a name, an `instances` or a `check` outside these shapes. A
@@ -522,13 +522,14 @@ rewrites it. The program:
 ### Instances
 
 ```json
-"instances": { "dir": "telegram", "ext": ".json", "called": "bot" }
+"instances": { "called": "bot" }
 ```
 
-`dir` is a folder beside `config.json` (`~/.config/spore/telegram/`): letters, digits, `.`, `-`
-and `_`, starting with a letter or a digit. Each file in it ending in `ext` (a dot, then letters
-and digits) is an instance, named by the file without `ext`. `called` is what an instance is called
-in messages, as the service name is written.
+The instances of a service are the files of the folder named after it beside `config.json`
+(`~/.config/spore/telegram/`): each `<instance>.json` is one, named by the file without `.json`.
+`called` is what an instance is called in messages, as the service name is written, and
+`instances` takes nothing else. A chat connector's relay reads its bot files from the same folder
+by its adapter's `kind`, so a connector's service is named as its `kind`.
 
 The operator names an instance as `<service>@<instance>`: `spore service define telegram@triage`.
 The unit for it is `spore-<service>@<instance>.service`, and the program is given the instance's

@@ -286,7 +286,7 @@ describe('checking a plugin', () => {
 })
 
 describe('the services a plugin offers', () => {
-  const RELAY = { what: 'a relay, each bot reaching its spore', program: './bin/relay.js', instances: { dir: 'relay', ext: '.json', called: 'bot' }, check: ['--check'] }
+  const RELAY = { what: 'a relay, each bot reaching its spore', program: './bin/relay.js', instances: { called: 'bot' }, check: ['--check'] }
   const relay = (services) => plugin('spore-plugin-relay', { services }, { files: { 'bin/relay.js': '' } })
 
   it('are the program the host runs, found in the plugin, and offered without the plugin being allowed', () => {
@@ -305,7 +305,9 @@ describe('the services a plugin offers', () => {
     expect(refused({ ...RELAY, what: '' })).toMatch(/does not say what it is/)
     expect(refused({ ...RELAY, program: './bin/gone.js' })).toMatch(/names \.\/bin\/gone\.js, which it does not contain/)
     expect(refused({ ...RELAY, program: '../elsewhere.js' })).toMatch(/outside itself/)
-    expect(refused({ ...RELAY, instances: { dir: '../up', ext: '.json', called: 'bot' } })).toMatch(/instances spore cannot read/)
+    expect(refused({ ...RELAY, instances: { dir: 'relay', ext: '.json', called: 'bot' } })).toMatch(/instances spore cannot read/)
+    expect(refused({ ...RELAY, instances: {} })).toMatch(/instances spore cannot read/)
+    expect(refused({ ...RELAY, instances: { called: 'Bot' } })).toMatch(/instances spore cannot read/)
     expect(refused({ ...RELAY, check: '--check' })).toMatch(/check is not a list of arguments/)
   })
 

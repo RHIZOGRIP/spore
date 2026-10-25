@@ -40,8 +40,6 @@
         "what": "a bot of yours in Microsoft Teams, each personal chat and channel reaching its spore",
         "program": "./bin/spore-teams.js",
         "instances": {
-          "dir": "teams",
-          "ext": ".json",
           "called": "bot"
         },
         "check": [

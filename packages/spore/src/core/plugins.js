@@ -37,7 +37,6 @@ const MANIFEST_FIELDS = ['works', 'settings', 'programs', 'describe', 'env', 'co
 const CONTAIN_FIELDS = ['hide', 'keep', 'missing']
 const SERVICE_FIELDS = ['what', 'program', 'instances', 'check']
 const SERVICE_NAME = /^[a-z][a-z0-9-]*$/
-const FILE_NAME = /^[a-z0-9][a-z0-9._-]*$/i
 const SETTING_KINDS = ['port', 'text']
 const PLACEHOLDERS = ['name', 'ws', 'data', 'sockets']
 const PLACEHOLDER = /\{([^{}]*)\}/g
@@ -367,8 +366,8 @@ function checkServices (found, declared, refuse) {
     const program = inside(found, spec.program, refuse)
     if (!statSync(program).isFile()) throw refuse(`has a service ${name} whose program is not a file — ${spec.program}`, 'the program is the script Node starts')
     const instances = spec.instances ?? null
-    if (instances !== null && !(isRecord(instances) && FILE_NAME.test(instances.dir ?? '') && /^\.[a-z0-9]+$/i.test(instances.ext ?? '') && SERVICE_NAME.test(instances.called ?? ''))) {
-      throw refuse(`has a service ${name} with instances spore cannot read`, 'instances names the folder beside config.json holding one file per instance, as { "dir": "relay", "ext": ".json", "called": "bot" }')
+    if (instances !== null && !(isRecord(instances) && Object.keys(instances).join() === 'called' && SERVICE_NAME.test(instances.called))) {
+      throw refuse(`has a service ${name} with instances spore cannot read`, `instances takes what one is called and nothing else, as { "called": "bot" }: each one is ${name}/<instance>.json beside config.json`)
     }
     const check = spec.check ?? null
     if (check !== null && !(Array.isArray(check) && check.every(arg => typeof arg === 'string' && arg))) {

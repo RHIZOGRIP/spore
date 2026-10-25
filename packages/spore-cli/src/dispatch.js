@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
-import { addTo, allowPlugin, annotate, billingFor, bytesText, changeText, define, defaultModel, disallowPlugin, durationText, edit, extend, getKey, jobs, list, listApprovals, listPlugins, log, pause, precursors, remake, remove, removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings, show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM, errorText } from '@rhizogrip/spore'
+import { addTo, allowPlugin, annotate, billingFor, bytesText, changeText, define, defaultModel, disallowPlugin, durationText, edit, extend, getKey, jobs, list, listApprovals, listPlugins, log, pause, remake, remove, removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings, show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM, errorText } from '@rhizogrip/spore'
 import { diagnose, renderDoctor } from './doctor.js'
 import { hook } from './hooks.js'
 import { createServices } from './services.js'
@@ -755,17 +755,6 @@ export async function manage (verb, argv) {
     }
     if (verb === 'ls') return emit(list({ where: argv._[1], disk: true }), renderList, listExit)
     if (verb === 'show') return emit(show({ ws: argv._[1] }), renderShow)
-    if (verb === 'precursor') {
-      const sub = argv._[1]
-      if (sub && sub !== 'ls') {
-        console.error(`spore: precursor has no "${sub}" — only ls`)
-        return 2
-      }
-      return emit(precursors({ ws: argv._[2] }), (result) => {
-        for (const name of result.precursors) console.log(name)
-        if (!result.precursors.length) console.log('none — this workspace delegates to nothing')
-      })
-    }
   } catch (err) {
     console.error(`spore: ${errorText(err)}`)
     return 2

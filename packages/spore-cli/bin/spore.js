@@ -61,7 +61,6 @@ const VERBS = `Usage:
   spore sql [<name> [<query>|-]]            its records, read with SQL; .tables lists the views, - the query on stdin
   spore usage [<name>] [--days 7]           what it spent per day, by origin, model, outcome, precursor
   spore usage --since <d> [--until <d>]     over those local days; --tz <zone>, --by <axis>, every spore without a name
-  spore precursor ls [<name>]               what it can delegate to
   spore upgrade <name>|--all                its root docs replaced by what is installed
   spore plugin ls                           plugins installed beside spore, and which are allowed
   spore plugin allow <plugin> [k=v …]       checked, then recorded in config.json; disallow undoes it
@@ -149,7 +148,6 @@ const SHAPES = {
   show: withJson(1),
   log: withJson(1),
   sql: withJson(ALL),
-  precursor: { bare: 'ls', subs: { ls: withJson(1) } },
   upgrade: withJson(1, 'all'),
   plugin: { bare: 'ls', subs: { ls: withJson(0), show: withJson(1), allow: withJson(ALL), disallow: withJson(1) } },
   schedule: { bare: 'ls', subs: { set: withJson(3), rm: withJson(2), ls: withJson(1) } },

@@ -28,7 +28,7 @@ beforeEach(() => {
   write(join(relay, 'package.json'), {
     name: 'spore-plugin-relay',
     version: '0.1.0',
-    spore: { works: '^1', services: { relay: { what: 'a relay, each bot reaching its spore', program: './bin/relay.js', instances: { dir: 'relay', ext: '.json', called: 'bot' } } } }
+    spore: { works: '^1', services: { relay: { what: 'a relay, each bot reaching its spore', program: './bin/relay.js', instances: { called: 'bot' } } } }
   })
   write(join(relay, 'bin', 'relay.js'), '')
   write(beside('relay/triage.json'), { token: ref('RELAY_TOKEN') })

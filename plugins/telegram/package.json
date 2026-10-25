@@ -43,8 +43,6 @@
         "what": "a bot of yours in Telegram chats, each chat reaching its spore",
         "program": "./bin/spore-telegram.js",
         "instances": {
-          "dir": "telegram",
-          "ext": ".json",
           "called": "bot"
         },
         "check": [
