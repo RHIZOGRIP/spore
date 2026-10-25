@@ -1,6 +1,6 @@
 # test:model — can a model drive this runtime?
 
-Seventeen small tasks with knowable outcomes, one per feature, graded from the workspace
+Nineteen small tasks with knowable outcomes, one per feature, graded from the workspace
 rather than from prose. It answers two questions with the same run:
 
 - **Has something changed?** Every case passed once, on the models in the baseline. A
@@ -348,8 +348,8 @@ the suite lie in the direction nobody checks.
 
 ## Two things it deliberately does not do
 
-**It does not measure quality.** Every case is pass/fail against a known answer. Accuracy
-benchmarks belong in `bench/`, and ten of those cannot separate a real difference from
+**It does not measure quality.** Every case is pass/fail against a known answer. Accuracy is a
+benchmark's job, not this suite's, and ten runs of one cannot separate a real difference from
 run-to-run noise anyway.
 
 **It does not retry.** A model that passes only sometimes has not passed. If a case is

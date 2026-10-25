@@ -19,7 +19,7 @@ What the operator authors, never granted to an agent:
 | `hooks.json` | the webhook service's hooks |
 | `api.json` | the HTTP API's socket, address and callers |
 | `environment` | provider keys, `PATH`, the bots' tokens |
-| `<dir>/<instance><ext>` | one file per instance of a plugin service, in the folder its manifest names, as `telegram/<bot>.json` |
+| `<service>/<instance>.json` | one file per instance of a plugin service, in the folder named after the service, as `telegram/<bot>.json` |
 | `ssh/` | the private keys the `ssh-agent` service loads |
 
 **`environment`** is read by every spore command at start, in the format systemd's
@@ -51,6 +51,7 @@ The file is written whole and renamed into place.
 | `turns` | how many of your turns may run at once | 8 |
 | `modelSessions` | how many model calls one running turn and its cells may have going at once | 8 |
 | `gate` | the data socket of a mohdel gate every turn calls its models through | each turn starts its own model sessions |
+| `callCeiling` | how long one model call may run before it is cut as stalled, as `3h`, `90m` or `45s` | 1 h |
 | `largestFile` | the largest file a turn may write, as `1GB`, `512MB` or bytes | 1 GB |
 | `freeFloor` | free disk below which a turn is refused | 2 GB |
 | `contain` | `on` or `off`: whether every turn, job, router and prepare step runs in namespaces of its own | on |
@@ -102,6 +103,10 @@ spore config rm largestFile        # back to the default
   not answer, or a gate whose catalog lacks the spore's `model` refuses the turn before it
   starts. An image the agent reads goes to the gate inline, so the gate need not share this
   machine's files. `modelSessions` no longer applies: the gate's pool bounds the calls.
+- **`callCeiling`** — a call still running past it is aborted, on the turn's own sessions or at
+  the gate; it ends on what the provider had reported, which is counted, and the turn's record
+  carries `cut`. Nothing else cuts a call that has started: raise it for a model that thinks for
+  longer than an hour.
 - **`largestFile`** — a write past it fails with `EFBIG` ("File too large"), or the command
   writing it ends on `SIGXFSZ`; the call record shows which. It bounds each file, not a turn's
   total.

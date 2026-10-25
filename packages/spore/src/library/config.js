@@ -22,7 +22,7 @@ import { dirname, resolve, join } from 'node:path'
 import { isWorkspace, sporesInHome } from './discover.js'
 import { native } from '../native.js'
 import { NAMES } from '../core/names.js'
-import { sizeSpelling } from '../core/units.js'
+import { durationSpelling, sizeSpelling } from '../core/units.js'
 import { variableOf } from '../core/variables.js'
 import { SporeError } from '../observability/errors.js'
 
@@ -228,6 +228,14 @@ function validate (raw, file) {
       })
     }
   }
+  for (const key of DURATIONS) {
+    if (raw[key] !== undefined && !(typeof raw[key] === 'string' && native.durationMs(raw[key]) >= 1000)) {
+      throw new SporeError(`${file} has a ${key} that is not a duration`, {
+        type: 'CONFIG_INVALID',
+        detail: `${key} is a duration such as 3h, 90m or 45s, from 1s`
+      })
+    }
+  }
 }
 
 const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -253,6 +261,9 @@ export const followingDocs = (config) => (config.docs ?? DEFAULTS.docs) === 'fol
 /** A size setting in bytes, or null where the file leaves it to the runner's default. */
 export const bytesOf = (config, key) => (config[key] === undefined ? null : Math.floor(native.sizeBytes(config[key])))
 
+/** A duration setting in whole seconds, or null where the file leaves it to the runner's default. */
+export const secondsOf = (config, key) => (config[key] === undefined ? null : Math.ceil(native.durationMs(config[key]) / 1000))
+
 /**
  * A path in config outliving its directory is ordinary — a cleared scratch dir, a detached
  * worktree — and gets the same bargain an unreadable note gets from recall: say so, carry
@@ -265,13 +276,14 @@ export function existing (paths) {
   return { live, missing }
 }
 
-const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'largestFile', 'freeFloor', 'contain', 'docs'])
+const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'callCeiling', 'largestFile', 'freeFloor', 'contain', 'docs'])
 const DOCS = ['follow', 'kept']
 const APPROVALS_DETAIL = `approvals names each hook an approval may call, by a name of ${NAMES.approval.says}, as { "kpi": { "url": "https://…", "secret": "\${KPI_HOOK_SECRET}" } } — the secret set in environment beside config.json`
 const DOCS_DETAIL = 'docs says whether a runner starts by replacing the root documents that differ from what is installed (follow) or leaves them to spore upgrade (kept) — spore config set docs follow|kept'
 const SWITCHES = { on: true, off: false }
 const COUNTS = new Set(['turns', 'modelSessions', 'homeSplit'])
 const SIZES = new Set(['largestFile', 'freeFloor'])
+const DURATIONS = new Set(['callCeiling'])
 const LISTS = new Set(['workspaces'])
 
 /**
@@ -420,6 +432,7 @@ export const DEFAULTS = Object.freeze({
   modelSessions: native.defaultModelSessions(),
   largestFile: native.defaultLargestFile(),
   freeFloor: native.defaultFreeFloor(),
+  callCeiling: native.defaultCallCeilingMs(),
   contain: true,
   docs: 'kept'
 })
@@ -432,7 +445,7 @@ export function settings (file = CONFIG_FILE) {
   const current = raw(file)
   return [...KEYS].map(key => {
     if (current[key] !== undefined) return { key, value: current[key], from: 'set' }
-    if (key in DEFAULTS) return { key, value: SIZES.has(key) ? sizeSpelling(DEFAULTS[key]) : DEFAULTS[key], from: 'default' }
+    if (key in DEFAULTS) return { key, value: SIZES.has(key) ? sizeSpelling(DEFAULTS[key]) : DURATIONS.has(key) ? durationSpelling(DEFAULTS[key]) : DEFAULTS[key], from: 'default' }
     return { key, value: LISTS.has(key) ? [] : null, from: 'unset' }
   }).concat(current.plugins === undefined ? [] : [{ key: 'plugins', value: Object.keys(current.plugins), from: 'set' }])
     .concat(current.replyTo === undefined ? [] : [{ key: 'replyTo', value: current.replyTo, from: 'set' }])
@@ -450,7 +463,7 @@ export function setKey (key, value, file = CONFIG_FILE) {
   if (key === 'homeSplit' && Number(value) !== (current.homeSplit ?? null)) refuseRelayout(current, Number(value))
   const next = LISTS.has(key)
     ? value.split(',').map(v => store(v.trim())).filter(Boolean)
-    : COUNTS.has(key) ? Number(value) : SIZES.has(key) ? value : key === 'contain' ? switchOf(value) : key === 'docs' ? docsOf(value) : store(value)
+    : COUNTS.has(key) ? Number(value) : SIZES.has(key) || DURATIONS.has(key) ? value : key === 'contain' ? switchOf(value) : key === 'docs' ? docsOf(value) : store(value)
   const written = { ...current, [key]: next }
   validate(written, file)
   if (key === 'home') checkLayout(expand(next), written.homeSplit ?? null, file)

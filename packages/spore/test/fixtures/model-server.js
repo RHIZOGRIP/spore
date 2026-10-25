@@ -125,12 +125,15 @@ export function createModelServer ({ mo, socketPath, limit, key }) {
  * calls through when `config.json` names a `gate` (mohdel's PROTOCOL.md §10), so the runner holds
  * every bound it holds for a real host. `POST /v1/info` answers `mo.use(model).info()`;
  * `POST /v1/call` streams `mo.use(model).answer(prompt, { tools, realtimeHandler })` — each delta,
- * then the result completed to what a gate sends, or its error; `POST /v1/embed` answers
+ * then the result completed to what a gate sends, or its error; `POST /v1/abort` ends a call still
+ * streaming on an aborted `done`, as a gate does; `POST /v1/embed` answers
  * `mo.use(model).embed(input, { inputType })` the same way. Every envelope is kept, `authId` and
- * all, and `spent` is the cost of every result it sent.
+ * all, every abort taken, and `spent` is the cost of every result it sent.
  */
 export function createGate ({ mo, socketPath }) {
   const envelopes = []
+  const aborts = []
+  const streaming = new Map()
   const ledger = { spent: 0, calls: 0 }
   const now = () => String(process.hrtime.bigint())
   const typed = (err) => ({
@@ -146,8 +149,14 @@ export function createGate ({ mo, socketPath }) {
     const envelope = await readBody(req)
     envelopes.push(envelope)
     res.writeHead(200, { 'content-type': 'application/x-ndjson', 'mohdel-gate': 'scripted' })
+    res.flushHeaders()
     const send = (event) => { if (!res.writableEnded && !res.destroyed) res.write(JSON.stringify(event) + '\n') }
     const start = now()
+    const key = `${envelope.authId}/${envelope.callId}`
+    streaming.set(key, () => {
+      send({ type: 'done', result: { status: 'incomplete', warning: 'aborted', inputTokens: 0, outputTokens: 0, thinkingTokens: 0, cost: 0, timestamps: { start, first: start, end: now() } } })
+      res.end()
+    })
     try {
       const result = await mo.use(envelope.model).answer(envelope.prompt, {
         tools: envelope.tools,
@@ -160,7 +169,19 @@ export function createGate ({ mo, socketPath }) {
     } catch (err) {
       send({ type: 'error', error: typed(err) })
     }
+    streaming.delete(key)
     if (!res.destroyed) res.end()
+  }
+
+  const abort = async (req, res) => {
+    const request = await readBody(req)
+    if (request.gate !== 'scripted') return json(res, 421, { message: 'abort sent to a gate that did not stream the call', type: 'CALL_MISDIRECTED', severity: 'error', retryable: false })
+    const ending = streaming.get(`${request.authId}/${request.callId}`)
+    if (!ending) return json(res, 404, { message: 'no such call in flight', type: 'CALL_NOT_FOUND', severity: 'warn', retryable: false })
+    streaming.delete(`${request.authId}/${request.callId}`)
+    aborts.push(request)
+    ending()
+    res.writeHead(202).end()
   }
 
   const embed = async (req, res) => {
@@ -180,6 +201,7 @@ export function createGate ({ mo, socketPath }) {
   const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/v1/call') return call(req, res)
     if (req.method === 'POST' && req.url === '/v1/embed') return embed(req, res)
+    if (req.method === 'POST' && req.url === '/v1/abort') return abort(req, res)
     if (req.method === 'POST' && req.url === '/v1/info') return json(res, 200, mo.use((await readBody(req)).model).info())
     json(res, 404, { message: 'unknown route', type: 'PROTOCOL_NOT_FOUND', severity: 'error', retryable: false })
   })
@@ -187,6 +209,7 @@ export function createGate ({ mo, socketPath }) {
   return {
     socketPath,
     envelopes,
+    aborts,
     ledger,
     listen: () => new Promise(resolve => server.listen(socketPath, resolve)),
     close: () => new Promise(resolve => {

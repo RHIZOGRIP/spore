@@ -18,7 +18,7 @@ import { preparePlugins, upgradeDocs } from './plugins.js'
 import { enqueue, ERR_FILE, heldIn, inboxRequest, OUT_FILE, PLUGIN_ENV, releaseHeld } from './spore-dir.js'
 import { RUNNING, stateOf } from './state.js'
 import { turnEnv } from './turn-env.js'
-import { bytesOf, CONFIG_FILE, containing, followingDocs, MEMORY_FILE, readConfig, SOURCES_FILE } from '../library/config.js'
+import { bytesOf, CONFIG_FILE, containing, followingDocs, MEMORY_FILE, readConfig, secondsOf, SOURCES_FILE } from '../library/config.js'
 
 const RUNNER = resolve(dirname(fileURLToPath(import.meta.url)), '../../native/spore-runner')
 // mohdel's session program, resolved the way Node resolves the package this runs with.
@@ -186,16 +186,18 @@ export function startRunner (workspace, { slot, plugins, debug = false, continui
 /**
  * The flags the runner and a cell outside any turn are both given by the host: the Node and the
  * mohdel helpers they run, whether to contain, what the spore's plugins keep in view of a contained
- * process, and the gate.
+ * process, the gate, and when a model call is cut.
  */
 export function hostFlags (config, keep) {
+  const callCeiling = secondsOf(config, 'callCeiling')
   return [
     '--node', process.execPath,
     '--session', SESSION,
     '--chatgpt-helper', CHATGPT_HELPER,
     ...(containing(config) ? [] : ['--no-contain']),
     ...(keep.length ? ['--contain-keep', JSON.stringify(keep)] : []),
-    ...(config.gate ? ['--gate', config.gate] : [])
+    ...(config.gate ? ['--gate', config.gate] : []),
+    ...(callCeiling === null ? [] : ['--call-ceiling', String(callCeiling)])
   ]
 }
 

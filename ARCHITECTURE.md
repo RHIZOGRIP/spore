@@ -461,8 +461,8 @@ workspace** when absent and never overwritten.
 The list reaches the agent through **`rules`** — each precursor's name, first line, the
 tools it grants and its model. That slot is concatenated with the identity *inside* the cached
 foundation block, so writing a precursor invalidates the cache once. Anything
-that changes from turn to turn stays out of the system prompt: the `dynamic` tail is a constant
-note, and the time is the `Now:` line in front of the turn's message (§The clock line stays out of
+that changes from turn to turn stays out of the system prompt: the `note` after it is a constant
+line, and the time is the `Now:` line in front of the turn's message (§The clock line stays out of
 the prefix). A malformed one is
 listed as unusable with its parse error rather than quietly omitted
 ([principle 21](PRINCIPLES.md#21-when-something-fails-it-says-so)).
@@ -542,7 +542,8 @@ plugins claim, goes to neither plugin. A service records the plugin's version an
 outdated, the spore found from the plugin's directory as node finds it. A service that imports
 the library is the one place a plugin declares `@rhizogrip/spore` as a peer, and the copy it gets
 in a global install is the cost: it may be another version within the range, and a workspace
-another version made is refused at open. Telegram and Discord are such plugins (`plugins/telegram/`, `plugins/discord/`).
+another version made is refused at open. Every connector is such a plugin (`plugins/telegram/`,
+`discord/`, `teams/`, `slack/`, `console/`).
 
 **What a plugin offers is not a boundary.** Its programs run under the agent's sandbox like
 any other, and under a step's confinement where a definition binds one to deliveries; a plugin whose resource the sandbox cannot close — the browser's debugging port —
@@ -839,7 +840,7 @@ a limit is. A precursor may leave it out and run on its parent's. The parent's m
 cell as `$MODEL`: a spawning agent's environment carries its own model there, and the cell's
 supervisor and worker take the precursor's model or else that variable (`rust/runner/src/spawn.rs`,
 `bin/spawn-worker.js`). That is the only place `$MODEL` is read at runtime; elsewhere it is how
-the conformance suite and the benchmarks pick what to write into the definitions they stage.
+the conformance suite picks what to write into the definitions it stages.
 
 **A spore is made from a sporangium.** A sporangium is laid out as a spore is, with nothing run
 yet: its `spore.cmk`, and any `precursors/`, `schedules/`, `data/`, `home/` and root documents.
@@ -1000,8 +1001,7 @@ broken enzyme at its first spawn.
 
 **A clone is not told it is one.** Nothing in its prompt or its reference says it inherited
 anything, so whether it finds and uses its precursors is a property of how its origin left them. The
-command reports the cut to whoever ran it, not to the agent. An experiment's `origin.json` sits in
-the clone's root, where the agent can read it.
+command reports the cut to whoever ran it, not to the agent.
 
 ### Removing a spore
 
@@ -1409,8 +1409,8 @@ has no transcript to replay and needs none.
 read and write the same transcript. `openWorkspace()` is what the entry points have in common:
 it resolves the directory, refuses a granted path, installs a `--definition` given for a
 workspace that has none, reads the definition, stages its grants, seeds the root documents and
-the precursor catalog, and returns the identity, grants and domain rules. What differs between
-entry points is presentation, not state, so a conversation started in the console continues
+the precursor catalog, and returns the identity, grants and rules. What differs between
+entry points is presentation, not state, so a conversation started in the TUI continues
 under `spore` and back again.
 
 **An entry is `{ at, kind, role, message, marks }`, `kind` a message or a compaction.**
@@ -1419,7 +1419,7 @@ and the gate refuses a field its `Message` does not define. Spore's own facts si
 `at`, and `marks` for what the message is to spore. In memory the marks live in a side table
 keyed by the message object (`src/core/marks.js`): `wrap` for the notice a soft limit adds,
 `compacted` for the summary that replaces a compacted head, `context-notice` for recovery's note
-after a drop, and `refused` and `record` (§One reading of what a call did).
+after a drop — which lives only in the turn that made it, never written to the transcript — and `refused` and `record` (§One reading of what a call did).
 
 **The transcript is replayed; the trail is not.** The agent reads both and can rewrite neither
 ([principle 13](PRINCIPLES.md#13-a-spore-cannot-rewrite-its-own-history)).
@@ -2053,9 +2053,9 @@ up reads 500 events at a time, each batch its own short read.
 
 **The log is written by every turn** through its channel, as the transcript is, and numbered by
 the supervisor: `seq` is the workspace's count, kept beside the events so pruning never hands a
-number out twice. It listens on an emitter of its own and forwards to the caller's, so an
-embedder keeps whatever shape it passed, and the record is written whether or not anyone asked
-for it, because what a turn did belongs to the workspace.
+number out twice. It listens on an emitter of the turn's own, and the record is written whether
+or not anyone is watching, because what a turn did belongs to the workspace: a watcher reads it
+from the log.
 
 ### The event schema is a contract
 
@@ -2246,7 +2246,8 @@ the cell, through `read` and `exec cat` alike
 **This holds only if the workspace sits outside every path the sandbox grants.** `sandbox()`
 grants read on the system paths and on **the runtime** — `bin/`, `src/`, `build/`, `native/`,
 `package.json` and the dependencies, since a cell's worker is a node process that loads spore's
-own modules, and `sporangia/`, from which opening a cell's workspace restores its root documents.
+own modules, and `sporangia/`, from which the agent restores a missing root document when it
+opens its workspace.
 **`/tmp` is not granted**: an agent writes its islands, the directories its definition `writes`,
 and its spore's socket directory, nothing else. A workspace under `/tmp` is still refused, since
 every spore's sockets live there. A cell confined beneath a granted path could read and write its
@@ -2254,7 +2255,7 @@ parent's whole tree, so agent workspaces belong somewhere granted to nobody, whi
 `spore config set home` names.
 
 The runtime is granted and the checkout is not. The checkout also holds the tests, the
-conformance graders, the plans and the benchmark fixtures. The checkout is still refused as a place
+conformance graders and the plans. The checkout is still refused as a place
 for a workspace, as a whole: it is the runtime's tree, and `sporangia/` in it holds what every spore
 is made from. Sporangia live in `sporangia/` rather than at the root so that the checkout does not
 itself read as a workspace.
@@ -2536,7 +2537,7 @@ through `mohdel/client`'s `call` and `coalesce`, and returns the `done` result, 
 `error` event as a typed error. `info()` stays synchronous — the loop asks for context limits
 that way — by fetching each model's entry once, when the client is made.
 
-The **ledger** is one object shared by the broker and the loop: `own` is what the agent
+The **ledger** is the model client's, a mirror of the runner's: `own` is what the agent
 spent, `children` is everything else drawn on the same allowance. The loop's cost
 dimension reads the sum, so a cell's spend comes out of its parent's — the spore's ceiling is a
 bound on the whole tree rather than on one loop. The runner adds each call's cost as its
@@ -2616,11 +2617,12 @@ rounds into the turn as `byPrecursor`; what no call named — a program of the a
 the socket, an embedding for memory — stays in the tree and in nobody's share. The marks are
 self-reported, which is right for accounting inside one tree and would not be for a limit.
 
-**Only the operator cuts a model call**: `MODEL_CALL_CEILING` (`model.rs`), an hour from its
-start, above the longest healthy call measured (44 min). Past it the runner aborts the call on the
-session pool by the id the client repeats in `x-spore-model-call`; the call ends on an aborted
-`done` carrying what the provider had reported, which is counted, and the turn's record carries
-`cut: n`. That turn's `ownMicros` and `treeMicros` are lower bounds, and the loss is the
+**Only the operator cuts a model call**: the host's `callCeiling`, an hour from its start unless
+config says otherwise (`DEFAULT_CALL_CEILING_SECS`, `rust/workspace`), passed to the runner and to
+a cell outside any turn as `--call-ceiling`. Past it the runner aborts the call on the session
+pool by the id the client repeats in `x-spore-model-call`, or at the gate that streams it; the
+call ends on an aborted `done` carrying what the provider had reported, which is counted, and the
+turn's record carries `cut: n`. That turn's `ownMicros` and `treeMicros` are lower bounds, and the loss is the
 operator's by design. A stall before the provider answers at all is mohdel's 60 s headers
 timeout.
 
@@ -2628,7 +2630,7 @@ timeout.
 same key and the same stop, and by a call's rules: until it has a session it belongs to its
 connection and a turn ending drops it unstarted; once dispatched, the exchange mohdel hands
 back is awaited on a task of the runner's, and its cost is added to the ledger — spend, not a
-round. `MODEL_CALL_CEILING` does not reach it: a one-shot exchange has no abort, and what bounds
+round. The call ceiling does not reach it: a one-shot exchange has no abort, and what bounds
 an embedding is the session's own request timeouts. Embeddings do not pass through the route
 policy.
 
@@ -2711,7 +2713,7 @@ https. A spore using a plugin is granted the sources it describes; a name a plug
 A turn re-sends everything it has already sent: the tool schemas, the system prompt and the whole
 conversation go up again on every round, and again on the next turn. A provider caches a
 *prefix*, matched byte for byte, so the request is ordered by how often each part changes —
-tool schemas, fixed for a grant (§The suite); the system blocks, identity and domain rules first;
+tool schemas, fixed for a grant (§The suite); the system blocks, identity and rules first;
 then the conversation, stable behind its growing end — and **nothing volatile goes ahead of what
 is cacheable**: a value that changes in the system prompt would invalidate the whole conversation
 behind it on every turn.
@@ -2738,7 +2740,7 @@ turn to turn, and `test/transcript-persistence.test.js` fails the day it does no
 
 ## Memory
 
-A workspace remembers in two tiers. **Short-term memory is the transcript**: in context, bounded
+A workspace remembers in two places. **Short-term memory is the transcript**: in context, bounded
 by the window, and meant to be small. **Long-term memory is the store**: on disk, unbounded, and
 never in context. What crosses from the store is a *view* — a few lines chosen for the turn in
 front of the model — while the store grows without limit behind it
@@ -3077,8 +3079,8 @@ What keeps them apart there:
 
 `runSpore` is the confined half of a pair. It **requires** a model client — `MODEL_CLIENT_REQUIRED`
 is what a caller gets for supplying none — hosts no broker, and reads nothing about its situation
-out of the environment. The socket and the ledger are parameters, passed by whoever owns them:
-`bin/spore-agent.js` and `bin/spawn-worker.js` pass the supervisor's. Hosting is the
+out of the environment. The socket is a parameter and the ledger comes with the model client, both
+from whoever owns them: `bin/spore-agent.js` and `bin/spawn-worker.js` pass the supervisor's. Hosting is the
 supervisor's job in both shapes.
 
 The core does not know what a cell is: nothing in it branches on cell-ness. The cell supervisor

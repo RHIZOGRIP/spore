@@ -2,7 +2,7 @@
  * Grading a finished case, from the workspace rather than from prose.
  *
  * The runtime's own claim is that the answer is what is on disk, so that is what is
- * checked: exact bytes in a named file, the stop reason in `turns.jsonl`, a call in the
+ * checked: exact bytes in a named file, the stop reason in the `turns` view, a call in the
  * trail matched to its tool and target, a cell's spawn frame. A judge model would be slower, dearer and less
  * certain than reading the file the task named.
  */

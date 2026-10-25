@@ -14,8 +14,8 @@ import { caseLimits } from './cases.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
-export function stage (MYC, item, model, limits = caseLimits(item)) {
-  const ws = resolve(MYC, 'cases', item.id)
+export function stage (root, item, model, limits = caseLimits(item)) {
+  const ws = resolve(root, 'cases', item.id)
   mkdirSync(resolve(ws, 'data'), { recursive: true })
 
   for (const [path, body] of Object.entries(item.files || {})) {
@@ -39,7 +39,7 @@ export function stage (MYC, item, model, limits = caseLimits(item)) {
 
   // One identity per case, granting only what the case is about: a tool the case does
   // not name is a tool it cannot accidentally pass with.
-  const cmk = resolve(MYC, `${item.id}.cmk`)
+  const cmk = resolve(root, `${item.id}.cmk`)
   writeFileSync(cmk, [
     '---',
     `name: ${item.id}`,

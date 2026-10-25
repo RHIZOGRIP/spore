@@ -221,6 +221,9 @@ pub const DEFAULT_MODEL_SESSIONS: u32 = 8;
 pub const DEFAULT_LARGEST_FILE: u64 = 1 << 30;
 /// Below this much free space on a workspace's filesystem, no turn starts there.
 pub const DEFAULT_FREE_FLOOR: u64 = 2 << 30;
+/// How long a model call may run before the runner cuts it as stalled, unless the host's config
+/// says otherwise.
+pub const DEFAULT_CALL_CEILING_SECS: u64 = 60 * 60;
 /// How far an agent and everything it starts stand back from the host: scheduled after it,
 /// and killed before it when memory runs out.
 pub const AGENT_NICE: i32 = 10;
@@ -314,8 +317,9 @@ pub const PROVISIONED_MODULES: [&str; 9] = [
 ];
 
 /// What a confined agent reads of the runtime itself: the programs it runs, what they
-/// import, the native binaries, and `sporangia/`, which a cell's workspace is seeded from. Not
-/// the checkout — tests, benchmark fixtures, graders and plans are not the agent's to read.
+/// import, the native binaries, and `sporangia/`, which the agent restores a missing root
+/// document from when it opens its workspace. Not the checkout — tests, graders and plans are
+/// not the agent's to read.
 pub const RUNTIME_PATHS: [&str; 6] = ["bin", "src", "build", "native", "package.json", "sporangia"];
 
 const SYSTEM_READ_PATHS: [&str; 9] = [

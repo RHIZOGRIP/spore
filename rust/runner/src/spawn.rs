@@ -90,6 +90,7 @@ struct Standalone {
     contain: bool,
     kept: Vec<Kept>,
     gate: Option<(PathBuf, String)>,
+    call_ceiling: Duration,
 }
 
 fn fail(problem: impl std::fmt::Display) -> ! {
@@ -286,6 +287,7 @@ async fn main() {
                 .gate
                 .clone()
                 .map(|gate| (gate, args.auth.clone().expect("checked above"))),
+            call_ceiling: args.host.call_ceiling(),
         }
     });
     if let Some(problem) = standalone
@@ -404,7 +406,12 @@ async fn main() {
                         ))
                     }
                 };
-                let model = Model::new(key.clone(), plan.precursor.limits.cost.hard, upstream);
+                let model = Model::new(
+                    key.clone(),
+                    plan.precursor.limits.cost.hard,
+                    own.call_ceiling,
+                    upstream,
+                );
                 let path = broker_socket_path("model")
                     .map_err(|e| format!("cannot make the model socket's directory — {e}"))?
                     .map_err(|refused| format!("{} — {}", refused.message, refused.detail))?;

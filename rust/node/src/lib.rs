@@ -278,6 +278,11 @@ pub fn default_free_floor() -> f64 {
 }
 
 #[napi]
+pub fn default_call_ceiling_ms() -> f64 {
+    (workspace::DEFAULT_CALL_CEILING_SECS * 1000) as f64
+}
+
+#[napi]
 pub fn take_slot(turns: u32, dir: String) -> napi::Result<String> {
     Ok(
         match workspace::take_slot(turns, Path::new(&dir)).map_err(failed)? {

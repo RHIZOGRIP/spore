@@ -640,7 +640,12 @@ async fn main() {
                     .map(|handle| served.push(handle))
                     .map_err(|e| format!("cannot bind the {kind} socket {path} — {e}"))
             };
-            let model = model::Model::new(key.clone(), def.limits.cost.hard, upstream.clone());
+            let model = model::Model::new(
+                key.clone(),
+                def.limits.cost.hard,
+                args.host.call_ceiling(),
+                upstream.clone(),
+            );
             let path = socket(&sockets, "model")?;
             bind(
                 "model",

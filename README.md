@@ -18,8 +18,7 @@ the limits you set, and keeps a record of everything it did.
   ([INTEGRATION.md](INTEGRATION.md)).
 - **Safe to run for other people.** Each turn is confined by the kernel and runs in namespaces of
   its own. It writes only the folders it was given, provider keys stay out of its reach, and spend
-  stops at a per-turn limit and at a daily or monthly limit across all spores
-  ([SECURITY.md](SECURITY.md)).
+  stops at each turn's limit ([SECURITY.md](SECURITY.md)).
 - **No server to run.** A spore is its folder: no daemon, no database server, no queue. Nothing
   runs while nothing is asked, so a million idle spores cost only the disk they take.
 - **Works unattended.** A spore can be woken by a schedule, a webhook or the end of a long job it
@@ -110,8 +109,8 @@ and accept that nothing can be undone.
   need to.
 - **It never holds your keys.** Calls to the model go through a part of spore it cannot reach,
   which holds the key and counts every cent.
-- **It stops at its limits**: rounds, money and time for each turn, and if you set one, a daily
-  or monthly limit on all your spores together.
+- **It stops at its limits**: rounds, money and time for each turn. A total across your spores is
+  yours to keep: each turn's spend is on record, and `spore pause` stops them all.
 - **Everything it did is on record**, in its workspace, and it cannot rewrite that record.
 
 The details are in [SECURITY.md](SECURITY.md).

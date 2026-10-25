@@ -9,7 +9,7 @@
 //!
 //! A call runs to its end on a task of its own, whatever becomes of the connection that asked
 //! for it, and is counted there: nothing spore does stops a call, and the
-//! turn that made it pays for all of it. Only `MODEL_CALL_CEILING` cuts one.
+//! turn that made it pays for all of it. Only the host's call ceiling cuts one.
 
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
@@ -48,8 +48,6 @@ pub const MODEL_CALL_HEADER: &str = "x-spore-model-call";
 const AUTH_ID: &str = "spore";
 /// What a mohdel gate reads of one request at most.
 const MAX_CALL_BODY_BYTES: usize = 16 * 1024 * 1024;
-/// Above the longest healthy call measured (44 min), so what it cuts has stalled.
-pub const MODEL_CALL_CEILING: Duration = Duration::from_secs(60 * 60);
 
 /// Settled spend and answered rounds of the whole tree, cells included, and the root
 /// agent's share of them.
@@ -94,6 +92,7 @@ pub struct Remote {
 pub struct Model {
     key: String,
     limit: Mutex<f64>,
+    ceiling: Duration,
     upstream: Upstream,
     ledger: Mutex<Ledger>,
     entries: Mutex<HashMap<String, Value>>,
@@ -135,10 +134,11 @@ fn caller(req: &Request<Incoming>) -> Caller {
 }
 
 impl Model {
-    pub fn new(key: String, limit: f64, upstream: Upstream) -> Arc<Model> {
+    pub fn new(key: String, limit: f64, ceiling: Duration, upstream: Upstream) -> Arc<Model> {
         Arc::new(Model {
             key,
             limit: Mutex::new(limit),
+            ceiling,
             upstream,
             ledger: Mutex::default(),
             entries: Mutex::default(),
@@ -260,14 +260,10 @@ impl Model {
                 .abort(&call_id, AUTH_ID);
             Box::pin(async move { aborted })
         });
-        tokio::spawn(self.clone().carry(
-            data_of(body),
-            tx,
-            caller,
-            MODEL_CALL_CEILING,
-            abort,
-            carrying,
-        ));
+        tokio::spawn(
+            self.clone()
+                .carry(data_of(body), tx, caller, self.ceiling, abort, carrying),
+        );
         Response::from_parts(parts, Relay(rx).boxed())
     }
 
@@ -302,7 +298,7 @@ impl Model {
         let carrying = InFlight::new(self);
         tokio::spawn(
             self.clone()
-                .carry(frames, tx, caller, MODEL_CALL_CEILING, abort, carrying),
+                .carry(frames, tx, caller, self.ceiling, abort, carrying),
         );
         Response::builder()
             .status(StatusCode::OK)
@@ -348,7 +344,7 @@ impl Model {
 
     /// An embedding is spend but not a round, and runs by a call's rules: dropped with its
     /// connection until it has a session, read to its end and counted from then on. What
-    /// bounds it is the session's own, not `MODEL_CALL_CEILING`: a one-shot exchange has no abort.
+    /// bounds it is the session's own, not the call ceiling: a one-shot exchange has no abort.
     async fn embed(self: &Arc<Self>, req: Request<Incoming>) -> Response<Body> {
         if let Some(stopped) = self.stopped() {
             return stopped;
@@ -872,7 +868,12 @@ mod tests {
 
     fn model() -> Arc<Model> {
         let (_tx, rx) = watch::channel(None);
-        Model::new("k".repeat(64), 1.0, Upstream::Pool(rx))
+        Model::new(
+            "k".repeat(64),
+            1.0,
+            Duration::from_secs(60),
+            Upstream::Pool(rx),
+        )
     }
 
     #[test]
@@ -943,7 +944,7 @@ mod tests {
             data_of(body),
             tx,
             Caller::Own,
-            MODEL_CALL_CEILING,
+            Duration::from_secs(60),
             never,
             carrying,
         ));

@@ -147,7 +147,7 @@ afterwards.
 ### 14. The computer's limits belong to its owner
 
 Limits that protect the computer — how many spores work at once, how big a file may grow, how much
-disk must stay free, how much may be spent in a day — are set by the computer's owner, once for all
+disk must stay free, how long a model call may run — are set by the computer's owner, once for all
 spores, and not in each spore's file. A spore writing a helper must not decide how safe the computer
 is. When a limit is reached, spore says no; it keeps no waiting line. Whoever asked decides when to
 try again.

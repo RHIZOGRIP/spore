@@ -67,12 +67,12 @@ if (!process.env.MODEL) fail('$MODEL is not set — this runs a model and costs 
 
 // One directory per run, kept. It used to be one directory, emptied at the start of
 // every run: the evidence for "it passed yesterday" was deleted by the run asking.
-const MYC = runDir(resolve(argv.ws), { model: process.env.MODEL })
-mkdirSync(MYC, { recursive: true })
+const RUN_DIR = runDir(resolve(argv.ws), { model: process.env.MODEL })
+mkdirSync(RUN_DIR, { recursive: true })
 const latest = resolve(resolve(argv.ws), LATEST)
 rmSync(latest, { recursive: true, force: true })
 try {
-  symlinkSync(MYC, latest)
+  symlinkSync(RUN_DIR, latest)
 } catch {
   // A filesystem without symlinks. The run directory is named in the output anyway.
 }
@@ -84,7 +84,7 @@ const deadline = runDeadline(wanted, { concurrency: Number(argv.concurrency), li
 // Every case staged and opened before any starts, so a definition that does not parse stops
 // the run before anything has been spent.
 const runs = wanted.map(item => {
-  const { ws, cmk } = stage(MYC, item, process.env.MODEL)
+  const { ws, cmk } = stage(RUN_DIR, item, process.env.MODEL)
   const opened = openWorkspace(ws, { definition: cmk })
   if (opened.error) fail(`${item.id}: ${opened.error}`)
   return { ws, messages: [item.prompt], label: item.id, id: ws }
@@ -99,7 +99,7 @@ for (const run of left) {
 }
 
 const results = wanted.map(item => {
-  const ws = resolve(MYC, 'cases', item.id)
+  const ws = resolve(RUN_DIR, 'cases', item.id)
   const turn = turnSummary(ws).last
   return {
     ...item,
@@ -126,7 +126,7 @@ for (const tier of TIERS) {
 const spend = results.reduce((total, r) => total + r.spend, 0)
 const elapsedMs = Date.now() - started
 
-writeFileSync(resolve(MYC, MANIFEST), JSON.stringify({
+writeFileSync(resolve(RUN_DIR, MANIFEST), JSON.stringify({
   ...provenance({ root: ROOT, model: process.env.MODEL, spore: version }),
   startedAt: new Date(started).toISOString(),
   elapsedMs,
@@ -149,5 +149,5 @@ writeFileSync(resolve(MYC, MANIFEST), JSON.stringify({
 }, null, 2) + '\n')
 
 console.log(`\n${passed.length}/${results.length} · $${spend.toFixed(4)} · ${(elapsedMs / 1000).toFixed(0)}s · ${process.env.MODEL}`)
-console.log(`this run at ${MYC}`)
+console.log(`this run at ${RUN_DIR}`)
 process.exit(passed.length === results.length ? 0 : 1)

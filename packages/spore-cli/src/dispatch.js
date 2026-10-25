@@ -1,6 +1,6 @@
 /**
- * Rendering for the read-only verbs. Parsing lives in `bin/spore.js`, the answers live in
- * `verbs.js`, and this is only the part that decides what a person sees.
+ * Rendering for every verb but the ones that run a turn. Parsing lives in `bin/spore.js`, the
+ * answers live in the library's verbs, and this is only the part that decides what a person sees.
  *
  * `--json` prints the library's own shape, one object, so anything scripting against this
  * reads the same thing an embedder would and does not parse a table. A verb's exit code is a
