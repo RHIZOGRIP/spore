@@ -1,14 +1,7 @@
 /**
- * The environment an agent is given — the same list for the root and for a cell, because the
- * question is the same one: a confined agent gets what it needs to run and no
- * credential it could spend with. Environment variables and, below, the libraries
- * its programs may import.
- *
- * Built up rather than filtered down. `{ ...process.env }` handed an agent every
- * provider key its supervisor held, and a denylist of key names goes stale the day
- * a provider is added — so nothing crosses that is not named here. `wsexec` passes
- * this on to everything the agent runs, which makes it the environment of the
- * whole subtree.
+ * The libraries an agent's programs may import, the same for the root and for a cell. The
+ * variables it is given are `PASSED_THROUGH` in `rust/workspace`, which the runner and
+ * `spore-spawn` build its environment from.
  */
 
 import { dirname, resolve } from 'node:path'
@@ -42,9 +35,4 @@ export function provisionModules (ws) {
     })
   }
   return answer.linked
-}
-
-/** The list is `rust/workspace`'s `PASSED_THROUGH`, shared with the Rust runner. */
-export function agentEnv (env) {
-  return JSON.parse(native.agentEnv(JSON.stringify(env)))
 }

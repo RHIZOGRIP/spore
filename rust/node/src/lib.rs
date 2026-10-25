@@ -314,14 +314,6 @@ pub fn unpause(dir: String) -> napi::Result<bool> {
 }
 
 #[napi]
-pub fn agent_env(env_json: String) -> napi::Result<String> {
-    let env: std::collections::BTreeMap<String, String> =
-        serde_json::from_str(&env_json).map_err(failed)?;
-    let passed = workspace::agent_env(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
-    Ok(serde_json::to_string(&passed).map_err(failed)?)
-}
-
-#[napi]
 pub fn spore_socket_dir(ws: String) -> napi::Result<String> {
     Ok(workspace::spore_socket_dir(Path::new(&ws))
         .map_err(failed)?

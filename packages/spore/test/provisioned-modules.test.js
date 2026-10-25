@@ -5,11 +5,13 @@ import { tmpdir } from 'node:os'
 import { resolve, join } from 'node:path'
 import { promisify } from 'node:util'
 
-import { PROVISIONED_MODULES, agentEnv } from '../src/delegation/agent-env.js'
+import { PROVISIONED_MODULES } from '../src/delegation/agent-env.js'
+import { PASSED_THROUGH } from '../src/core/spore-dir.js'
 import { openWorkspace } from '../src/core/workspace.js'
 import { definitionWith } from '../src/testing.js'
 
 const run = promisify(execFile)
+const AGENT_ENV = Object.fromEntries(PASSED_THROUGH.filter(name => name in process.env).map(name => [name, process.env[name]]))
 
 // Outside the repo, unlike every other suite here, and that is the point: node walks
 // up from the importing file, so a workspace under this checkout would resolve every
@@ -46,14 +48,14 @@ describe('the libraries an agent\'s programs may import', () => {
     `)
 
     // The environment the agent's own shell hands on, not this test runner's.
-    const { stdout } = await run(process.execPath, ['data/probe.mjs'], { cwd: WS, env: agentEnv(process.env) })
+    const { stdout } = await run(process.execPath, ['data/probe.mjs'], { cwd: WS, env: AGENT_ENV })
     expect(stdout.split('\n').filter(Boolean)).toEqual(PROVISIONED_MODULES)
   }, 30000)
 
   it('offers only what is declared', async () => {
     openWorkspace('ws', { cwd: ROOT, allowGranted: true })
     writeFileSync(resolve(WS, 'data', 'probe.mjs'), "await import('chalk')")
-    await expect(run(process.execPath, ['data/probe.mjs'], { cwd: WS, env: agentEnv(process.env) }))
+    await expect(run(process.execPath, ['data/probe.mjs'], { cwd: WS, env: AGENT_ENV }))
       .rejects.toThrow(/ERR_MODULE_NOT_FOUND/)
   }, 30000)
 })

@@ -5,11 +5,12 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
-import { PROVISIONED_MODULES, agentEnv, provisionModules } from '../src/delegation/agent-env.js'
-import { writeTurnRecords } from '../src/core/spore-dir.js'
+import { PROVISIONED_MODULES, provisionModules } from '../src/delegation/agent-env.js'
+import { PASSED_THROUGH, writeTurnRecords } from '../src/core/spore-dir.js'
 import { SHIPPED_SPORANGIA, knownSporangia } from '../src/core/sporangia.js'
 
 const run = promisify(execFile)
+const AGENT_ENV = Object.fromEntries(PASSED_THROUGH.filter(name => name in process.env).map(name => [name, process.env[name]]))
 const LIBRARIES = knownSporangia()
   .map(one => [one, join(SHIPPED_SPORANGIA, one, 'libraries.md')])
   .filter(([, path]) => existsSync(path))
@@ -63,7 +64,7 @@ describe.each(LIBRARIES)('the examples in the %s sporangium\'s libraries.md', (s
     async (i, _label, ex) => {
       const file = resolve(WS, 'data', `example-${sporangium}-${i}.mjs`)
       writeFileSync(file, ex.code)
-      const { stdout } = await run(process.execPath, [file], { cwd: WS, env: agentEnv(process.env) })
+      const { stdout } = await run(process.execPath, [file], { cwd: WS, env: AGENT_ENV })
       expect(stdout.trim()).toBe(ex.output.trim())
     },
     30000

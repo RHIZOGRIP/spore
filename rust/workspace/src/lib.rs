@@ -240,7 +240,7 @@ pub const SUN_PATH_MAX: usize = 107;
 /// Named here rather than filtered out: a denylist of key names goes stale the day a
 /// provider is added, so nothing reaches an agent that is not on this list. Not `HOME`: the
 /// host's is not granted, so its supervisor sets the workspace's own (`HOME_DIR`).
-pub const PASSED_THROUGH: [&str; 17] = [
+pub const PASSED_THROUGH: [&str; 12] = [
     "PATH",
     "LANG",
     "LC_ALL",
@@ -251,18 +251,13 @@ pub const PASSED_THROUGH: [&str; 17] = [
     "OTEL_EXPORTER_OTLP_ENDPOINT",
     "OTEL_SERVICE_NAME",
     "OTEL_INIT_TIMEOUT_MS",
-    "SPORE_SPAWN",
-    "SPORE_FANOUT",
-    "SPORE_RECALL",
-    "SPORE_SOURCE",
-    "SPORE_SQL",
     "SPORE_OWNERS",
     CELL_MODELS_ENV,
 ];
 
-/// What the runtime itself sets in the environment of what it starts — the agent, a cell, a job —
-/// which no variable a plugin declares may set.
-pub const RUNTIME_ENV: [&str; 23] = [
+/// What the runtime itself sets in the environment of what it starts — the agent, a cell, a job,
+/// a command — which no variable a plugin declares may set.
+pub const RUNTIME_ENV: [&str; 28] = [
     "HOME",
     "TMPDIR",
     "TRACEPARENT",
@@ -273,14 +268,19 @@ pub const RUNTIME_ENV: [&str; 23] = [
     "SPORE_DEBUG",
     "SPORE_ENZYME",
     "SPORE_ENZYMES",
+    "SPORE_FANOUT",
     "SPORE_JOB",
     "SPORE_JOB_DIR",
     "SPORE_JOB_NAME",
     "SPORE_JOB_SOCKET",
     "SPORE_MODEL_SOCKET",
     "SPORE_NODE",
+    "SPORE_RECALL",
+    "SPORE_SOURCE",
     "SPORE_SOURCES",
     "SPORE_SOURCE_SOCKET",
+    "SPORE_SPAWN",
+    "SPORE_SQL",
     "SPORE_STATE_FD",
     "SPORE_STORE_SOCKET",
     PLUGIN_READS,
@@ -1584,11 +1584,21 @@ mod tests {
     fn passes_on_only_what_is_named() {
         let env = [
             ("PATH", "/usr/bin"),
+            ("MODEL", "anthropic/claude-haiku-4-5"),
+            (
+                "TRACEPARENT",
+                "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+            ),
             ("HOME", "/home/someone"),
+            ("SPORE_SPAWN", "/opt/spore/native/spore-spawn"),
             ("ANTHROPIC_API_SK", "sk"),
             ("BRAVE_API_SK", "b"),
+            ("SOME_FUTURE_PROVIDER_API_SK", "sk"),
         ];
-        assert_eq!(agent_env(env).keys().collect::<Vec<_>>(), ["PATH"]);
+        assert_eq!(
+            agent_env(env).keys().collect::<Vec<_>>(),
+            ["MODEL", "PATH", "TRACEPARENT"]
+        );
     }
 
     #[test]
