@@ -49,10 +49,6 @@ material actually supports.
 | `reads` | corpora it may read and never write — `name=path`, linked in under that name |
 | `sources` | endpoints it may call by name through `$SPORE_SOURCE` |
 | `<source>.<param>` | the values it may ask that source for — one value is filled for it |
-| `memory` | `bm25` or `vectors` — long-term memory over its notes and transcript. Absent means none, which is the default |
-| `push` / `pull` | required with `memory`: how many chunks recall brings back on its own, and how many `$SPORE_RECALL` returns — at most four times the memory budget in text, however many you ask for |
-| `floor` | optional with `memory` — the score below which a hit is not worth returning. Absent takes anything above zero |
-| `embedding` | with `memory: vectors` only, and required there: the model that turns text into vectors, as `openai/text-embedding-3-small` |
 | `images` | `[count, size]`, as `[4, 10MB]` — how many pictures the sub-agent may look at with `read` in its turn, and their total size. Absent means none |
 | `enzymes` | programs the sub-agent may call that are not built in — `name=path`, or a bare path taking its basename, which must then be a name itself (`tools/plot`, not `tools/plot.py`) |
 

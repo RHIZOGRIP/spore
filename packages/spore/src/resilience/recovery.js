@@ -169,10 +169,8 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
 }
 
 /**
- * Classify error for recovery. Uses CS-MESSAGE-FORMAT conventions:
- * - message = machine key for programmatic branching
- * - retryable = boolean retry signal
- * - detail !== undefined = typed error (duck-typing check)
+ * Classify error for recovery: `type` names a typed error, which retries only when `retryable`
+ * says so; `detail` is optional on one and says nothing about it.
  *
  * Untyped errors (socket transport, system) use status code fallback.
  *
@@ -186,7 +184,7 @@ function classify (err) {
   if (err.type === 'OPERATION_CANCELLED') return 'cancelled'
   if (err.type === 'CONTEXT_OVERFLOW') return 'overflow'
   if (err.retryable) return 'retryable'
-  if (err.detail !== undefined) return 'fatal'
+  if (err.type) return 'fatal'
 
   // Untyped errors (socket transport, system errors): status code fallback
   const status = err.status || err.statusCode

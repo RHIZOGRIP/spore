@@ -7,7 +7,8 @@ import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'nod
 import { resolve } from 'node:path'
 
 import { CALLS_ROOT, callRuns, readCalls } from './call-record.js'
-import { WRAP, marked } from './marks.js'
+import { marksOf } from './marks.js'
+import { textOf } from './message.js'
 import { DATA_DIR, readTranscript } from './spore-dir.js'
 import { PRECURSOR_DIR, PRECURSOR_EXT } from '../delegation/definition.js'
 
@@ -47,7 +48,7 @@ export function buildContinuation (ws, { stopReason, spent, precursor }) {
   const ran = runId ? readCalls(ws, runId).filter(call => call.record).map(call => call.record) : []
   const files = produced(ws)
   const transcript = readTranscript(ws)
-  const lastAsk = [...transcript].reverse().find(m => m.role === 'user' && !marked(m, WRAP))
+  const lastAsk = [...transcript].reverse().find(m => m.role === 'user' && !marksOf(m).length)
 
   // A soft stop only reaches here when an answer was reached and then judged
   // unfinished — `on-wrap: discard`. Every other path had nothing to discard.
@@ -61,7 +62,7 @@ export function buildContinuation (ws, { stopReason, spent, precursor }) {
     ''
   ]
 
-  if (lastAsk) lines.push('## Asked', '', String(lastAsk.content).trim().slice(0, 500), '')
+  if (lastAsk) lines.push('## Asked', '', textOf(lastAsk).trim().slice(0, 500), '')
 
   if (ran.length) {
     lines.push(`## Last ${Math.min(RECENT_CALLS, ran.length)} of ${ran.length} calls`, '')

@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url'
 import { buildContinuation } from '../src/core/continuation.js'
 import { writeCall } from '../src/core/call-record.js'
 import { appendTranscript, writableDirs } from '../src/core/spore-dir.js'
-import { WRAP, mark } from '../src/core/marks.js'
+import { COMPACTED, WRAP, mark } from '../src/core/marks.js'
+import { resolveEmptyCompletion } from '../src/core/answer-result.js'
+import { silent } from '../src/observability/logger.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WS = resolve(__dirname, '.continuation-workspace')
@@ -75,6 +77,15 @@ describe('the continuation record', () => {
     const { text } = buildContinuation(WS, { stopReason: 'hard:rounds', spent: { rounds: 45, cost: 0, wall: 1 } })
     expect(text).toMatch(/the real question/)
     expect(text).not.toMatch(/\[System: this turn has reached/)
+  })
+
+  it('reports what the person asked, never what the runtime said after it', () => {
+    appendTranscript(WS, mark({ role: 'user', content: 'a summary of the earlier turns' }, COMPACTED))
+    appendTranscript(WS, { role: 'user', content: [{ type: 'text', text: 'the real question' }, { type: 'image', fileUri: 'file:///x.png', mimeType: 'image/png' }] })
+    resolveEmptyCompletion({ output: '' }, { emptyState: { retries: 0 }, emit: () => {}, append: (message) => appendTranscript(WS, message), logger: silent, round: 1 })
+    const { text } = buildContinuation(WS, { stopReason: 'hard:rounds', spent: { rounds: 45, cost: 0, wall: 1 } })
+    expect(text).toMatch(/## Asked\n\nthe real question\n/)
+    expect(text).not.toMatch(/previous response was empty/)
   })
 
   it('tells a cell to be respawned rather than resumed', () => {

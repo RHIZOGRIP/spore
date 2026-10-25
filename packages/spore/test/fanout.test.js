@@ -164,6 +164,18 @@ describe('what a retry is given', () => {
     expect(existsSync(resolve(ws, 'spawn.json'))).toBe(false)
     expect(existsSync(resolve(ws, 'data/out.json'))).toBe(false)
   })
+
+  it('keeps the part\'s own files that a spore would have, since a cell run makes none of them', () => {
+    const from = resolve(PARTS, 'three')
+    mkdirSync(from, { recursive: true })
+    writeFileSync(resolve(from, 'in.md'), 'go')
+    writeFileSync(resolve(from, 'reference.md'), 'the part\'s reference')
+    writeFileSync(resolve(from, 'spawn.json'), '{}')
+
+    const ws = stageAttempt({ ws: resolve(PARTS, 'three--2'), from }, 'in.md')
+
+    expect(readFileSync(resolve(ws, 'reference.md'), 'utf8')).toBe('the part\'s reference')
+  })
 })
 
 describe('what a retry costs', () => {

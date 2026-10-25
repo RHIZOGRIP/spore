@@ -104,7 +104,7 @@ export function planFanout (partsDir, { prompt }) {
 
 // What a run leaves behind, which a retry must not inherit: a workspace holding any of
 // these has already been used, and `planSpawn` refuses it.
-const SPENT = new Set([...RUNTIME_FILES, 'spore.cmk', 'calls', 'home', 'node_modules', 'reference.md', 'libraries.md', 'enzyme.js'])
+const SPENT = new Set([...RUNTIME_FILES, 'calls', 'home', 'node_modules', 'enzyme.js'])
 
 /**
  * Copy that keeps a hardlink a hardlink.

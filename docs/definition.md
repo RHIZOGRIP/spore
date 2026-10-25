@@ -121,11 +121,11 @@ that level. **Absent** says what leaving the field out means where it is accepte
 | [`writes`](#writes) | list of `name=path` | optional | refused | none | directories linked in and changed in place | same |
 | [`sources`](#sources) | list of names | optional | optional | none | endpoints called by name through the source broker | same |
 | [`<source>.<param>`](#sourceparam) | list | optional | optional | parameter free | the values a source may be asked for | same |
-| [`memory`](#memory) | `bm25` or `vectors` | optional | optional | no long-term memory | the recall backend | [Memory](../ARCHITECTURE.md#what-a-definition-declares) |
-| [`push`](#push-and-pull) | whole number | with `memory` | with `memory` | — | chunks recalled unasked before each turn | same |
-| [`pull`](#push-and-pull) | whole number | with `memory` | with `memory` | — | chunks `$SPORE_RECALL` retrieves | same |
-| [`floor`](#floor) | number ≥ 0 | optional | optional | any score above zero | the score a hit must pass | same |
-| [`embedding`](#embedding) | model id | with `vectors` | with `vectors` | — | the model that makes the vectors | same |
+| [`memory`](#memory) | `bm25` or `vectors` | optional | refused | no long-term memory | the recall backend | [Memory](../ARCHITECTURE.md#what-a-definition-declares) |
+| [`push`](#push-and-pull) | whole number | with `memory` | refused | — | chunks recalled unasked before each turn | same |
+| [`pull`](#push-and-pull) | whole number | with `memory` | refused | — | chunks `$SPORE_RECALL` retrieves | same |
+| [`floor`](#floor) | number ≥ 0 | optional | refused | any score above zero | the score a hit must pass | same |
+| [`embedding`](#embedding) | model id | with `vectors` | refused | — | the model that makes the vectors | same |
 | [`retain`](#retain) | whole number | optional | refused | every turn's trail kept | turns of trail kept | [Retention](../ARCHITECTURE.md#retention) |
 | [`history`](#history) | whole number | optional | refused | 256k tokens | tokens of earlier turns re-sent word for word | [Retention](../ARCHITECTURE.md#retention) |
 | [`images`](#images) | `[count, size]` | optional | optional | cannot look at images | images `read` may show per turn | [Looking at a picture is a read](../ARCHITECTURE.md#looking-at-a-picture-is-a-read) |
@@ -446,7 +446,8 @@ non-empty list. A plugin's source is narrowed the same way, once the file lists 
 
 ## Memory
 
-`memory`, `push`, `pull`, `floor` and `embedding` are accepted at both levels.
+`memory`, `push`, `pull`, `floor` and `embedding` are the root definition's: a precursor declaring
+`memory` is refused, since a cell runs once and has nothing earlier to recall.
 [ARCHITECTURE §Memory](../ARCHITECTURE.md#what-a-definition-declares) explains how recall uses
 them. Declaring `push`, `pull`, `floor` or `embedding` without `memory` is refused.
 

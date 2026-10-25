@@ -3,6 +3,8 @@
  * empty-completion retry.
  */
 
+import { NUDGE, mark } from './marks.js'
+
 // A model can return a degenerate completion: end_turn with no text and no
 // tool call (mohdel `output: null`). That is never a usable answer, so rather
 // than return it as final, nudge the model a bounded number of times. Capped so
@@ -72,7 +74,7 @@ export function resolveEmptyCompletion (res, { emptyState, emit, append, logger,
     logger.warn({ round, retry: emptyState.retries }, '[loop] empty completion — nudging for a response')
     emit('empty_completion', { round, retry: emptyState.retries })
     append({ role: 'assistant', content: '(no response)' })
-    append({ role: 'user', content: 'Your previous response was empty. Provide your response now.' })
+    append(mark({ role: 'user', content: 'Your previous response was empty. Provide your response now.' }, NUDGE))
     return true
   }
   return false

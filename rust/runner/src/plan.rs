@@ -313,7 +313,6 @@ impl Plan {
             .as_object_mut()
             .expect("a definition is an object");
         fields.remove("retain");
-        fields.remove("memory");
         fields.insert(
             "enzymes".into(),
             Value::Array(

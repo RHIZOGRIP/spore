@@ -1412,6 +1412,9 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
     // than defaulted for the reason the limits are: each came from one sweep over one
     // dataset, and a number buried in code is a number nobody benchmarks.
     let memory = match fields.get("memory") {
+        Some(_) if opts.cell => {
+            return Err("declares memory, which is the root definition's — a cell runs once, so it has nothing earlier to recall".into());
+        }
         Some(_) => {
             let backend = trim(scalar(&fields, "memory")?.unwrap_or_default()).to_string();
             if !MEMORY_BACKENDS.contains(&backend.as_str()) {
@@ -1671,6 +1674,23 @@ mod tests {
             },
         )
         .unwrap_err();
+        assert!(refused.contains("a cell runs once"));
+    }
+
+    #[test]
+    fn refuses_memory_in_a_cell() {
+        let known: Vec<String> = TOOLS.iter().map(|t| t.to_string()).collect();
+        let source = "---\nname: c\nmemory: bm25\npush: 5\npull: 20\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\non-wrap: keep\n---\n\nYou work.\n";
+        let refused = parse_definition(
+            source,
+            &Options {
+                known_tools: &known,
+                cell: true,
+                seed: false,
+            },
+        )
+        .unwrap_err();
+        assert!(refused.contains("declares memory"));
         assert!(refused.contains("a cell runs once"));
     }
 

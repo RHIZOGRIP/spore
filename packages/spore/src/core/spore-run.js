@@ -439,7 +439,7 @@ export async function runSpore ({
     // to infer it from structures that exist for other reasons.
     // A child that finished after our last response is invisible in a ledger that
     // only refreshes on one. Ask once, here, before the turn is written down.
-    if (mo.spend) await mo.spend().catch(() => {})
+    if (mo.spend) await mo.spend().catch(err => logger.warn({ err: err.message }, '[spore] cannot read what the cells spent; the runner settles the record from its own ledger'))
     if (result.stopReason === 'cancelled' && wallHit) result.stopReason = 'hard:wall'
 
     // What the turn hands back, read from `data/out/` rather than from the trail: a call

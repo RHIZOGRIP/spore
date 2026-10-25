@@ -456,6 +456,15 @@ describe('recovery supervisor', () => {
     expect(model.callCount).toBe(1)
   })
 
+  it('throws a typed error that carries no detail at once, as one that does', async () => {
+    const model = mockModel(() => {
+      throw new SporeError('the model call ended without an answer', { type: 'BROKER_FAILED' })
+    })
+    const wrapped = withRecovery(model, { messages: [] })
+    await expect(onTheClock(wrapped.answer({}, {}))).rejects.toMatchObject({ type: 'BROKER_FAILED' })
+    expect(model.callCount).toBe(1)
+  })
+
   it('passes a cancellation on as it came, logging no error', async () => {
     const errors = []
     const logger = { child: () => logger, trace: () => {}, debug: () => {}, info: () => {}, warn: () => {}, error: (obj, msg) => errors.push(msg), fatal: () => {} }
