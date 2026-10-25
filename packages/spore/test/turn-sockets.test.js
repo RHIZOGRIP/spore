@@ -3,8 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { createModelServer } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { startGate } from './fixtures/model-server.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { definitionPath, readTurns } from '../src/core/spore-dir.js'
 import { CONFIG_DIR } from '../src/library/config.js'
@@ -12,7 +11,7 @@ import { send } from '../src/core/send.js'
 import { RUNNING, stateOf } from '../src/core/state.js'
 
 let ws
-let broker
+let gate
 let round
 
 const until = async (done, limitMs = 15000) => {
@@ -49,18 +48,17 @@ beforeEach(async () => {
   writeFileSync(definitionPath(ws), readFileSync(definitionPath(ws), 'utf8').replace('\n---', '\nsources: [ledger]\n---'))
   mkdirSync(CONFIG_DIR, { recursive: true })
   writeFileSync(resolve(CONFIG_DIR, 'sources.json'), JSON.stringify({ ledger: { url: 'http://ledger.invalid' } }))
-  broker = createModelServer({ mo: scripted, socketPath: brokerSocketPath('turn-sockets'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo: scripted, name: 'turn-sockets' })
 })
 
 afterEach(async () => {
-  await broker.close()
+  await gate.close()
   rmSync(ws, { recursive: true, force: true })
 })
 
 describe('the sockets a runner serves', () => {
   it('belong to a turn: the next turn of the same runner is served on new ones, and the last are gone', async () => {
-    const env = { PATH: process.env.PATH, HOME: process.env.HOME, SPORE_MODEL_SOCKET: broker.socketPath }
+    const env = { PATH: process.env.PATH, HOME: process.env.HOME }
     expect(send(ws, 'first', { env }).started).toBe(true)
     await until(() => round === 2)
     expect(send(ws, 'second', { env }).started).toBe(false)

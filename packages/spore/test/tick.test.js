@@ -5,10 +5,9 @@ import { closeSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, wri
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer } from './fixtures/model-server.js'
+import { startGate } from './fixtures/model-server.js'
 import { calls, answers, scriptedMo } from './fixtures/scripted-model.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { native } from '../src/native.js'
 import { acquireLock, enqueue, heldIn, holdDelivery, readInbox, readTurns, releaseLock, hostState, writeOutcome, writeTurnRecords } from '../src/core/spore-dir.js'
 import { RUNNING, stateOf } from '../src/core/state.js'
@@ -20,10 +19,10 @@ const EVERY_MINUTE = '---\nwhen: * * * * *\ntz: UTC\n---\n\nCheck the queue.\n'
 let ws
 let home
 let config
-let broker
+let gate
 let mo
 
-const env = () => ({ PATH: process.env.PATH, HOME: process.env.HOME, ...(broker ? { SPORE_MODEL_SOCKET: broker.socketPath } : {}) })
+const env = () => ({ PATH: process.env.PATH, HOME: process.env.HOME })
 
 const until = async (done, limitMs = 15000) => {
   const deadline = Date.now() + limitMs
@@ -45,8 +44,8 @@ const schedule = (name, source, { ago = 10 * 60_000 } = {}) => {
 
 const start = async (reply) => {
   mo = scriptedMo(reply)
-  broker = createModelServer({ mo, socketPath: brokerSocketPath('tick'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo, name: 'tick' })
+  gate.configure({ workspaces: [ws] }, config)
 }
 
 const pass = (now = Date.now()) => tick({ now, configFile: config, env: env() })
@@ -59,8 +58,8 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-  await broker?.close()
-  broker = null
+  await gate?.close()
+  gate = null
   rmSync(ws, { recursive: true, force: true })
   rmSync(home, { recursive: true, force: true })
 })
@@ -134,8 +133,7 @@ describe('a pass', () => {
   it('fires once when several passes start together', async () => {
     await start(() => answers('done'))
     schedule('queue', EVERY_MINUTE)
-    mkdirSync(resolve(home, 'spore'), { recursive: true })
-    writeFileSync(resolve(home, 'spore', 'config.json'), JSON.stringify({ workspaces: [ws] }))
+    gate.configure({ workspaces: [ws] }, resolve(home, 'spore', 'config.json'))
 
     const passes = Array.from({ length: 3 }, () => {
       const child = spawn(process.execPath, [SPORE, 'tick'], {

@@ -11,8 +11,7 @@ import { join, resolve, dirname } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { startGate } from './fixtures/model-server.js'
 import { acquireLock, copyInbox, readState, readTranscript, releaseLock, readTranscriptEntries, readTurns, hostState, writeOutcome, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
 import { callRuns, readCall, readCalls, writeCall } from '../src/core/call-record.js'
 import { forkWorkspace, readFork } from '../src/core/fork.js'
@@ -25,20 +24,19 @@ const SPORE = resolve(dirname(fileURLToPath(import.meta.url)), '../../spore-cli/
 
 let root
 let original
-let broker
+let gate
 let mo
 
 const serve = async (reply) => {
-  await broker?.close()
+  await gate?.close()
   mo = scriptedMo(reply)
-  broker = createModelServer({ mo, socketPath: brokerSocketPath('fork-test'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo, name: 'fork-test' })
 }
 
 const spore = async (...args) => {
   try {
     const { stdout, stderr } = await run(process.execPath, [SPORE, ...args], {
-      env: { PATH: process.env.PATH, HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, SPORE_MODEL_SOCKET: broker.socketPath }
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME }
     })
     return { code: 0, stdout, stderr }
   } catch (e) {
@@ -67,7 +65,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await broker?.close()
+  await gate?.close()
   rmSync(root, { recursive: true, force: true })
   rmSync(original, { recursive: true, force: true })
 })

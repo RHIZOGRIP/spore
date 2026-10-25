@@ -23,6 +23,9 @@ const base = () => process.env.SPORE_TEST_DIR ||
 
 export const outsideRoot = (name) => outsideRootIn(name, base())
 
+/** A definition with the `auth` a gate needs, which a host without one never reads. */
+export const withAuth = (source) => source.replace(/^---\n/, '---\nauth: tests\n')
+
 /**
  * The same, already holding the shipped definition. `spore run` opens a workspace and no
  * longer makes one — that is `spore define` — so a test driving the real command needs the
@@ -30,6 +33,6 @@ export const outsideRoot = (name) => outsideRootIn(name, base())
  */
 export function outsideWorkspace (name, model = 'anthropic/claude-haiku-4-5') {
   const dir = outsideRoot(name)
-  writeFileSync(resolve(dir, 'spore.cmk'), definitionWith(model))
+  writeFileSync(resolve(dir, 'spore.cmk'), withAuth(definitionWith(model)))
   return dir
 }

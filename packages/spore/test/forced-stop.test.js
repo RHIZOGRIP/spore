@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer, suppliedKey } from './fixtures/model-server.js'
+import { createModelServer, startGate, suppliedKey } from './fixtures/model-server.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { readLock, readTurns } from '../src/core/spore-dir.js'
@@ -15,7 +15,7 @@ import { RUNNING, stateOf, stop } from '../src/core/state.js'
 const SPAWN = resolve(dirname(fileURLToPath(import.meta.url)), '../native/spore-spawn')
 
 let ws
-let broker
+let gate
 
 const until = async (done, limitMs = 15000) => {
   const deadline = Date.now() + limitMs
@@ -40,18 +40,17 @@ const ticking = {
 
 beforeEach(async () => {
   ws = outsideWorkspace('forced-stop')
-  broker = createModelServer({ mo: ticking, socketPath: brokerSocketPath('forced-stop'), limit: 10, key: suppliedKey(ws) })
-  await broker.listen()
+  gate = await startGate({ mo: ticking, name: 'forced-stop' })
 })
 
 afterEach(async () => {
-  await broker.close()
+  await gate.close()
   rmSync(ws, { recursive: true, force: true })
 })
 
 describe('an agent that will not stop', () => {
   it('is killed with the tools it started, so nothing outlives the lock', { timeout: 30000 }, async () => {
-    send(ws, 'tick', { env: { PATH: process.env.PATH, HOME: process.env.HOME, SPORE_MODEL_SOCKET: broker.socketPath } })
+    send(ws, 'tick', { env: { PATH: process.env.PATH, HOME: process.env.HOME } })
     const tick = resolve(ws, 'data/tick.txt')
     await until(() => existsSync(tick))
 
@@ -79,10 +78,14 @@ describe('a cell that is stopped', () => {
     const cell = resolve(ws, 'data/cell')
     mkdirSync(cell, { recursive: true })
     writeFileSync(resolve(cell, 'in.md'), 'tick')
+    // Started as an agent starts one, so the model socket is one standing where the runner's would.
+    const socket = createModelServer({ mo: ticking, socketPath: brokerSocketPath('forced-stop-cell'), key: suppliedKey(ws) })
+    await socket.listen()
+    onTestFinished(() => socket.close())
 
     const started = spawn(SPAWN, ['--precursor', 'ticker', '--ws', 'data/cell', '--prompt', 'in.md', '--answer', 'data/out.txt', '--detach'], {
       cwd: ws,
-      env: { PATH: process.env.PATH, HOME: process.env.HOME, MODEL: 'anthropic/claude-haiku-4-5', SPORE_MODEL_SOCKET: broker.socketPath },
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, MODEL: 'anthropic/claude-haiku-4-5', SPORE_MODEL_SOCKET: socket.socketPath },
       stdio: ['ignore', 'pipe', 'pipe']
     })
     let out = ''

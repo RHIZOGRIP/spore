@@ -5,8 +5,7 @@ import { promisify } from 'node:util'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { startGate } from './fixtures/model-server.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { readSaidSoFar, readTurns } from '../src/core/spore-dir.js'
 import { show } from '../src/library/verbs.js'
@@ -15,11 +14,11 @@ const run = promisify(execFile)
 const SPORE = resolve(dirname(fileURLToPath(import.meta.url)), '../../spore-cli/bin/spore.js')
 
 let ws
-let broker
+let gate
 let seen
 
 const spore = (args) => run(process.execPath, [SPORE, ...args], {
-  env: { PATH: process.env.PATH, HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, SPORE_MODEL_SOCKET: broker.socketPath }
+  env: { PATH: process.env.PATH, HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME }
 })
 
 // Slow enough that a message sent from the test lands between two of its rounds, which
@@ -53,12 +52,11 @@ const scripted = (rounds) => ({
 beforeEach(async () => {
   seen = []
   ws = outsideWorkspace('interject')
-  broker = createModelServer({ mo: scripted(5), socketPath: brokerSocketPath('interject'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo: scripted(5), name: 'interject' })
 })
 
 afterEach(async () => {
-  await broker.close()
+  await gate.close()
   rmSync(ws, { recursive: true, force: true })
 })
 

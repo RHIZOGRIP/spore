@@ -1,24 +1,27 @@
 /**
- * A tree's model socket, served from a script instead of from the runner and a provider.
+ * A tree's model socket, served from a script instead of from the runner and a provider, for a
+ * test that stands where a runner would: one starting `spore-spawn` or `fanout.js` as an agent
+ * does, or calling the model client. A turn a test starts goes through `startGate` instead.
  *
  * It speaks what the runner speaks — mohdel's call protocol (`POST /v1/call`, NDJSON events
  * ending in `done` or `error`, answered to its end and counted whether or not anyone is still
  * reading, as the root's own when marked so; `POST /v1/embed`, one JSON result),
  * `POST /spore/info` and `GET /spore/spend` — and answers each call from `mo.use(model).answer(prompt, { tools,
  * realtimeHandler })`, the shape `scriptedMo` gives, and each embedding from
- * `mo.use(model).embed(input, { inputType })`. A test hands its socket to `spore` as
- * SPORE_MODEL_SOCKET.
+ * `mo.use(model).embed(input, { inputType })`.
  */
 
 import http from 'node:http'
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 
 import { CALLER_HEADER, KEY_HEADER, ROOT_CALLER } from '../../src/infra/socket-request.js'
 import { MODEL_KEY_FILE } from '../../src/core/spore-dir.js'
+import { CONFIG_FILE } from '../../src/library/config.js'
+import { brokerSocketPath } from '../../src/infra/broker-socket.js'
 
-/** The key a supplier of the model socket leaves in the workspace, which the runner keeps as found. */
+/** The key a runner leaves in the workspace for its cells, for a test standing where the runner would. */
 export function suppliedKey (ws) {
   const key = randomBytes(32).toString('hex')
   mkdirSync(ws, { recursive: true })
@@ -118,30 +121,65 @@ export function createModelServer ({ mo, socketPath, limit, key }) {
 }
 
 /**
- * A host's mohdel gate, answering from a script: what a cell outside any turn calls through when
- * `config.json` names a `gate` (mohdel's PROTOCOL.md §10). `POST /v1/info` answers
- * `mo.use(model).info()`, `POST /v1/call` streams `mo.use(model).answer(prompt, { tools })`
- * completed to the result a gate sends, or its error. Every envelope is kept, `authId` and all.
+ * A host's mohdel gate, answering from a script: what a runner, and a cell outside any turn,
+ * calls through when `config.json` names a `gate` (mohdel's PROTOCOL.md §10), so the runner holds
+ * every bound it holds for a real host. `POST /v1/info` answers `mo.use(model).info()`;
+ * `POST /v1/call` streams `mo.use(model).answer(prompt, { tools, realtimeHandler })` — each delta,
+ * then the result completed to what a gate sends, or its error; `POST /v1/embed` answers
+ * `mo.use(model).embed(input, { inputType })` the same way. Every envelope is kept, `authId` and
+ * all, and `spent` is the cost of every result it sent.
  */
 export function createGate ({ mo, socketPath }) {
   const envelopes = []
+  const ledger = { spent: 0, calls: 0 }
+  const now = () => String(process.hrtime.bigint())
+  const typed = (err) => ({
+    message: err.message,
+    type: err.type ?? 'PROVIDER_ERROR',
+    ...(err.detail === undefined ? {} : { detail: err.detail }),
+    retryable: Boolean(err.retryable),
+    ...(err.retryAfterMs === undefined ? {} : { retryAfterMs: err.retryAfterMs }),
+    severity: 'error'
+  })
 
   const call = async (req, res) => {
     const envelope = await readBody(req)
     envelopes.push(envelope)
     res.writeHead(200, { 'content-type': 'application/x-ndjson', 'mohdel-gate': 'scripted' })
-    const start = String(process.hrtime.bigint())
+    const send = (event) => { if (!res.writableEnded && !res.destroyed) res.write(JSON.stringify(event) + '\n') }
+    const start = now()
     try {
-      const result = await mo.use(envelope.model).answer(envelope.prompt, { tools: envelope.tools })
-      const end = String(process.hrtime.bigint())
-      res.end(JSON.stringify({ type: 'done', result: { inputTokens: 0, outputTokens: 0, thinkingTokens: 0, timestamps: { start, first: start, end }, ...result } }) + '\n')
+      const result = await mo.use(envelope.model).answer(envelope.prompt, {
+        tools: envelope.tools,
+        realtimeHandler: (delta) => send({ type: 'delta', delta })
+      })
+      const done = { inputTokens: 0, outputTokens: 0, thinkingTokens: 0, cost: 0, timestamps: { start, first: start, end: now() }, ...result }
+      ledger.spent += done.cost
+      ledger.calls += 1
+      send({ type: 'done', result: done })
     } catch (err) {
-      res.end(JSON.stringify({ type: 'error', error: { message: err.message, type: err.type ?? 'PROVIDER_ERROR', detail: err.detail, retryable: false, severity: 'error' } }) + '\n')
+      send({ type: 'error', error: typed(err) })
+    }
+    if (!res.destroyed) res.end()
+  }
+
+  const embed = async (req, res) => {
+    const envelope = await readBody(req)
+    envelopes.push(envelope)
+    try {
+      const result = await mo.use(envelope.model).embed(envelope.input, { inputType: envelope.inputType })
+      const at = now()
+      const done = { status: 'completed', dimensions: result.vectors[0].length, inputType: envelope.inputType ?? null, inputTokens: 0, cost: 0, timestamps: { start: at, first: at, end: at }, ...result }
+      ledger.spent += done.cost
+      json(res, 200, done)
+    } catch (err) {
+      json(res, 400, typed(err))
     }
   }
 
   const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/v1/call') return call(req, res)
+    if (req.method === 'POST' && req.url === '/v1/embed') return embed(req, res)
     if (req.method === 'POST' && req.url === '/v1/info') return json(res, 200, mo.use((await readBody(req)).model).info())
     json(res, 404, { message: 'unknown route', type: 'PROTOCOL_NOT_FOUND', severity: 'error', retryable: false })
   })
@@ -149,6 +187,7 @@ export function createGate ({ mo, socketPath }) {
   return {
     socketPath,
     envelopes,
+    ledger,
     listen: () => new Promise(resolve => server.listen(socketPath, resolve)),
     close: () => new Promise(resolve => {
       server.closeAllConnections()
@@ -158,4 +197,20 @@ export function createGate ({ mo, socketPath }) {
       })
     })
   }
+}
+
+/**
+ * A scripted gate, listening, and named as the host's in this test file's `config.json` — what
+ * every turn a test starts through `send` then calls through. `configure(fields, file)` writes a
+ * config holding `fields` and the gate.
+ */
+export async function startGate ({ mo, name }) {
+  const gate = createGate({ mo, socketPath: brokerSocketPath(name) })
+  await gate.listen()
+  gate.configure = (fields = {}, file = CONFIG_FILE) => {
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, JSON.stringify({ ...fields, gate: gate.socketPath }))
+  }
+  gate.configure()
+  return gate
 }

@@ -1,18 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { rmSync } from 'node:fs'
 
-import { createModelServer } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { startGate } from './fixtures/model-server.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { readInbox, readTurns } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 import { RUNNING, stateOf, stop } from '../src/core/state.js'
 
 let ws
-let broker
+let gate
 let seen
 
-const env = () => ({ PATH: process.env.PATH, HOME: process.env.HOME, SPORE_MODEL_SOCKET: broker.socketPath })
+const env = () => ({ PATH: process.env.PATH, HOME: process.env.HOME })
 
 // The first call is slow, so a message sent while it runs lands after the loop last read the
 // inbox: the turn answers without it, and nothing in the turn will look again.
@@ -44,8 +43,7 @@ const unread = () => {
 }
 
 const start = async (firstMs) => {
-  broker = createModelServer({ mo: slowFirst(firstMs), socketPath: brokerSocketPath('stranded'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo: slowFirst(firstMs), name: 'stranded' })
 }
 
 beforeEach(() => {
@@ -54,8 +52,8 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-  await broker?.close()
-  broker = null
+  await gate?.close()
+  gate = null
   rmSync(ws, { recursive: true, force: true })
 })
 

@@ -10,6 +10,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { conformance } from './fixtures/relay-conformance.js'
+import { withAuth } from './fixtures/outside-ws.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
 import { readInbox } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
@@ -192,7 +193,7 @@ conformance(harness, (ctx) => {
 
     const channel = (entry, fields = {}) => {
       mkdirSync(ledger(), { recursive: true })
-      writeFileSync(join(ledger(), 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5'))
+      writeFileSync(join(ledger(), 'spore.cmk'), withAuth(definitionWith('anthropic/claude-haiku-4-5')))
       writeFileSync(join(ctx.root, 'discord', 'triage.json'), JSON.stringify({ token: '${DISCORD_BOT_TOKEN}', channels: { [CHANNEL]: entry }, ...fields })) // eslint-disable-line no-template-curly-in-string
     }
     const posts = () => ctx.platform.sent.filter(one => one.op === 'post')

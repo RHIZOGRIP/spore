@@ -5,15 +5,14 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFile } from 'node:child_process'
-import { mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { rmSync, statSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer } from './fixtures/model-server.js'
+import { startGate } from './fixtures/model-server.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { callRuns, readCalls } from '../src/core/call-record.js'
 import { readInbox, readTurns } from '../src/core/spore-dir.js'
 
@@ -22,13 +21,11 @@ const SPORE = resolve(dirname(fileURLToPath(import.meta.url)), '../../spore-cli/
 
 let ws
 let home
-let broker
+let gate
 let mo
+let settings
 
-const configure = (settings) => {
-  mkdirSync(resolve(home, 'spore'), { recursive: true })
-  writeFileSync(resolve(home, 'spore', 'config.json'), JSON.stringify(settings))
-}
+const configure = (given) => { settings = given }
 
 const spore = async (prompt) => {
   try {
@@ -37,8 +34,7 @@ const spore = async (prompt) => {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
         XDG_STATE_HOME: process.env.XDG_STATE_HOME,
-        XDG_CONFIG_HOME: home,
-        SPORE_MODEL_SOCKET: broker.socketPath
+        XDG_CONFIG_HOME: home
       }
     })
     return { code: 0, stdout, stderr }
@@ -49,8 +45,8 @@ const spore = async (prompt) => {
 
 const start = async (reply) => {
   mo = scriptedMo(reply)
-  broker = createModelServer({ mo, socketPath: brokerSocketPath('disk-limits'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo, name: 'disk-limits' })
+  gate.configure(settings, resolve(home, 'spore', 'config.json'))
 }
 
 beforeEach(() => {
@@ -59,8 +55,8 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-  await broker?.close()
-  broker = null
+  await gate?.close()
+  gate = null
   rmSync(ws, { recursive: true, force: true })
   rmSync(home, { recursive: true, force: true })
 })

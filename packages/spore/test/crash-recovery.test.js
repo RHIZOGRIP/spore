@@ -2,21 +2,19 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { createModelServer } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { startGate } from './fixtures/model-server.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { readEvents, readPending, readTurns } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 import { RUNNING, stateOf } from '../src/core/state.js'
 
 let ws
-let broker
+let gate
 let asked
 
 const env = (crashAt) => ({
   PATH: process.env.PATH,
   HOME: process.env.HOME,
-  SPORE_MODEL_SOCKET: broker.socketPath,
   ...(crashAt ? { SPORE_CRASH_AT: crashAt } : {})
 })
 
@@ -41,12 +39,11 @@ beforeEach(async () => {
       answer: async () => ({ status: 'completed', output: `answer ${++asked}`, cost: 0.01 })
     })
   }
-  broker = createModelServer({ mo, socketPath: brokerSocketPath('crash-recovery'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo, name: 'crash-recovery' })
 })
 
 afterEach(async () => {
-  await broker.close()
+  await gate.close()
   rmSync(ws, { recursive: true, force: true })
 })
 

@@ -2,15 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { createModelServer } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { startGate } from './fixtures/model-server.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { readTurns } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 import { RUNNING, stateOf } from '../src/core/state.js'
 
 let ws
-let broker
+let gate
 let seen
 
 const until = async (done, limitMs = 15000) => {
@@ -38,18 +37,17 @@ beforeEach(async () => {
       }
     })
   }
-  broker = createModelServer({ mo, socketPath: brokerSocketPath('recall-send'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo, name: 'recall-send' })
 })
 
 afterEach(async () => {
-  await broker.close()
+  await gate.close()
   rmSync(ws, { recursive: true, force: true })
 })
 
 describe('recall on a turn started by send', () => {
   it('surfaces what the message brings to mind, as a turn given its prompt directly does', async () => {
-    const env = { PATH: process.env.PATH, HOME: process.env.HOME, SPORE_MODEL_SOCKET: broker.socketPath }
+    const env = { PATH: process.env.PATH, HOME: process.env.HOME }
     send(ws, 'Which camera accessories would suit my Sony?', { env })
     await until(() => readTurns(ws).length === 1 && stateOf(ws).state !== RUNNING)
 

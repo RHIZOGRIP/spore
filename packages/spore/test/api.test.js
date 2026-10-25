@@ -8,10 +8,9 @@ import { request } from 'node:http'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { createModelServer } from './fixtures/model-server.js'
+import { startGate } from './fixtures/model-server.js'
 import { answers, scriptedMo } from './fixtures/scripted-model.js'
-import { outsideRoot } from './fixtures/outside-ws.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { outsideRoot, withAuth } from './fixtures/outside-ws.js'
 import { pauseSpores, unpauseSpores } from '../src/core/admission.js'
 import { CONFIG_DIR, CONFIG_FILE } from '../src/library/config.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
@@ -39,13 +38,13 @@ const NARROW = 'n'.repeat(40)
 const TRACE = '0af7651916cd43dd8448eb211c80319c'
 
 let root
-let broker
+let gate
 let server
 let socket
 
 const configure = () => {
   mkdirSync(CONFIG_DIR, { recursive: true })
-  writeFileSync(CONFIG_FILE, JSON.stringify({ home: join(root, 'home') }))
+  gate.configure({ home: join(root, 'home') })
   writeFileSync(join(CONFIG_DIR, 'api.json'), JSON.stringify({
     socket: join(root, 'run', 'api.sock'),
     callers: {
@@ -69,13 +68,12 @@ beforeEach(async () => {
   root = outsideRoot('api')
   const ws = join(root, 'home', 'alpha')
   mkdirSync(ws, { recursive: true })
-  writeFileSync(join(ws, 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5'))
+  writeFileSync(join(ws, 'spore.cmk'), withAuth(definitionWith('anthropic/claude-haiku-4-5')))
+  gate = await startGate({ mo: scriptedMo(async () => answers('hello back')), name: 'api-test' })
   configure()
   const secrets = { API_APP: APP, API_NARROW: NARROW }
   const api = loadApi(join(CONFIG_DIR, 'api.json'), secrets)
-  broker = createModelServer({ mo: scriptedMo(async () => answers('hello back')), socketPath: brokerSocketPath('api-test'), limit: 10 })
-  await broker.listen()
-  const env = { PATH: process.env.PATH, HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, MODEL: 'anthropic/claude-haiku-4-5', SPORE_MODEL_SOCKET: broker.socketPath, ...secrets }
+  const env = { PATH: process.env.PATH, HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, MODEL: 'anthropic/claude-haiku-4-5', ...secrets }
   mkdirSync(join(root, 'run'), { recursive: true, mode: 0o700 })
   socket = api.socket
   server = createApiServer({ api, env })
@@ -84,7 +82,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await new Promise(resolve => server.close(resolve))
-  await broker?.close()
+  await gate?.close()
   Object.assign(given, { release: null, programOf: null, prepare: null })
   rmSync(root, { recursive: true, force: true })
   rmSync(CONFIG_FILE, { force: true })
@@ -206,7 +204,7 @@ describe('a program\'s delivery through the API', () => {
     expect(readInbox(alpha())).toEqual([])
   })
 
-  const preparing = (extra = '') => writeFileSync(join(alpha(), 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5').replace('\nretain:', `\nprepare: [api:app=pdf/SPORE_PDF_PAGES]\nprepare.timeout: 30s\nprepare.attach: [4, 1MB]\n${extra}retain:`))
+  const preparing = (extra = '') => writeFileSync(join(alpha(), 'spore.cmk'), withAuth(definitionWith('anthropic/claude-haiku-4-5')).replace('\nretain:', `\nprepare: [api:app=pdf/SPORE_PDF_PAGES]\nprepare.timeout: 30s\nprepare.attach: [4, 1MB]\n${extra}retain:`))
 
   it('runs the program the spore binds to the caller on its payload, reading what its reads: grant, and the delivery carries what it attached', async () => {
     const docs = join(root, 'docs')

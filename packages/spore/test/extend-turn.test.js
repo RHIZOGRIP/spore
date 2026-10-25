@@ -2,9 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { createModelServer, suppliedKey } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
-import { outsideWorkspace } from './fixtures/outside-ws.js'
+import { startGate } from './fixtures/model-server.js'
+import { outsideWorkspace, withAuth } from './fixtures/outside-ws.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
 import { readTurns, runningLimits } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
@@ -12,7 +11,7 @@ import { RUNNING, stateOf } from '../src/core/state.js'
 import { changeText, extendTurn } from '../src/core/limits.js'
 
 let ws
-let broker
+let gate
 
 const until = async (done, limitMs = 20000) => {
   const deadline = Date.now() + limitMs
@@ -37,19 +36,18 @@ const slow = () => {
 
 beforeEach(async () => {
   ws = outsideWorkspace('extend-turn')
-  writeFileSync(resolve(ws, 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5').replace(/^wall: .*$/m, 'wall: [1s, 4s]\nextend.wall: 1m'))
-  broker = createModelServer({ mo: slow(), socketPath: brokerSocketPath('extend-turn'), limit: 10, key: suppliedKey(ws) })
-  await broker.listen()
+  writeFileSync(resolve(ws, 'spore.cmk'), withAuth(definitionWith('anthropic/claude-haiku-4-5')).replace(/^wall: .*$/m, 'wall: [1s, 4s]\nextend.wall: 1m'))
+  gate = await startGate({ mo: slow(), name: 'extend-turn' })
 })
 
 afterEach(async () => {
-  await broker.close()
+  await gate.close()
   rmSync(ws, { recursive: true, force: true })
 })
 
 describe('a turn whose owner raises its wall', () => {
   it('runs past the wall it started with, and ends on its own terms', { timeout: 40000 }, async () => {
-    send(ws, 'count to six', { env: { PATH: process.env.PATH, HOME: process.env.HOME, SPORE_MODEL_SOCKET: broker.socketPath } })
+    send(ws, 'count to six', { env: { PATH: process.env.PATH, HOME: process.env.HOME } })
     await until(() => runningLimits(ws) !== null)
     expect(changeText(extendTurn(ws, 'wall', '30s'))).toBe('its wall now wraps at 31s and stops at 34s')
     await until(() => stateOf(ws).state !== RUNNING && readTurns(ws).length === 1)

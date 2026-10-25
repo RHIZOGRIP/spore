@@ -10,20 +10,19 @@ import { once } from 'node:events'
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { createModelServer } from './fixtures/model-server.js'
+import { startGate } from './fixtures/model-server.js'
 import { answers, scriptedMo } from './fixtures/scripted-model.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { enqueue, readInbox, readTurns, statePath } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 import { RUNNING, stateOf } from '../src/core/state.js'
 
 let ws
-let broker
+let gate
 let reply
 let held = null
 
-const env = () => ({ PATH: process.env.PATH, HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, SPORE_MODEL_SOCKET: broker.socketPath })
+const env = () => ({ PATH: process.env.PATH, HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME })
 
 const until = async (done, limitMs = 15000) => {
   const deadline = Date.now() + limitMs
@@ -60,14 +59,13 @@ const release = async () => {
 beforeEach(async () => {
   ws = outsideWorkspace('busy-database')
   reply = async () => answers('hello back')
-  broker = createModelServer({ mo: scriptedMo((...args) => reply(...args)), socketPath: brokerSocketPath('busy-db'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo: scriptedMo((...args) => reply(...args)), name: 'busy-db' })
 })
 
 afterEach(async () => {
   await release()
   await until(() => stateOf(ws).state !== RUNNING, 60_000)
-  await broker.close()
+  await gate.close()
   rmSync(ws, { recursive: true, force: true })
 }, 70_000)
 

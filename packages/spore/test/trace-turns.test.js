@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { readFileSync, rmSync } from 'node:fs'
 
-import { createModelServer } from './fixtures/model-server.js'
+import { startGate } from './fixtures/model-server.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { readInbox, readLock, readTurns } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 import { RUNNING, stateOf } from '../src/core/state.js'
@@ -12,10 +11,10 @@ const T1 = '00-11111111111111111111111111111111-1111111111111111-01'
 const T2 = '00-22222222222222222222222222222222-2222222222222222-01'
 
 let ws
-let broker
+let gate
 let waiting
 
-const env = (extra = {}) => ({ PATH: process.env.PATH, HOME: process.env.HOME, SPORE_MODEL_SOCKET: broker.socketPath, ...extra })
+const env = (extra = {}) => ({ PATH: process.env.PATH, HOME: process.env.HOME, ...extra })
 
 // Every model call waits until the test lets it answer, so the agent is alive to be looked at.
 const held = () => ({
@@ -53,14 +52,13 @@ const idle = () => until(() => stateOf(ws).state !== RUNNING)
 beforeEach(async () => {
   waiting = []
   ws = outsideWorkspace('trace-turns')
-  broker = createModelServer({ mo: held(), socketPath: brokerSocketPath('trace'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo: held(), name: 'trace' })
 })
 
 afterEach(async () => {
   for (const release of waiting) release()
   await idle().catch(() => {})
-  await broker?.close()
+  await gate?.close()
   rmSync(ws, { recursive: true, force: true })
 })
 

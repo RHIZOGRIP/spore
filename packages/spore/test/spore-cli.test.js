@@ -5,8 +5,8 @@ import { promisify } from 'node:util'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { startGate } from './fixtures/model-server.js'
+import { withAuth } from './fixtures/outside-ws.js'
 import { definitionWith } from '../src/core/identity-defaults.js'
 import { readInbox, readTurns } from '../src/core/spore-dir.js'
 
@@ -32,9 +32,9 @@ const scriptedMo = () => {
 
 // A workspace under the repo is inside a path the sandbox grants, and the runtime refuses to
 // confine one there.
-const definition = () => definitionWith('anthropic/claude-haiku-4-5').replace('\nmodel: ', '\nunconfined: true\nmodel: ')
+const definition = () => withAuth(definitionWith('anthropic/claude-haiku-4-5')).replace('\nmodel: ', '\nunconfined: true\nmodel: ')
 
-let broker
+let gate
 
 const spore = (args, env = {}) => run(process.execPath, [SPORE, ...args], {
   env: {
@@ -43,7 +43,6 @@ const spore = (args, env = {}) => run(process.execPath, [SPORE, ...args], {
     XDG_STATE_HOME: process.env.XDG_STATE_HOME,
     XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
     MODEL: 'anthropic/claude-haiku-4-5',
-    SPORE_MODEL_SOCKET: broker.socketPath,
     ANTHROPIC_API_SK: 'sk-supervisor-secret',
     OPENAI_API_SK: 'sk-supervisor-secret',
     BRAVE_API_SK: 'brave-supervisor-secret',
@@ -55,12 +54,11 @@ beforeEach(async () => {
   rmSync(WS, { recursive: true, force: true })
   mkdirSync(WS, { recursive: true })
   writeFileSync(resolve(WS, 'spore.cmk'), definition())
-  broker = createModelServer({ mo: scriptedMo(), socketPath: brokerSocketPath('cli-test'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo: scriptedMo(), name: 'cli-test' })
 })
 
 afterEach(async () => {
-  await broker.close()
+  await gate.close()
   rmSync(WS, { recursive: true, force: true })
 })
 
@@ -70,13 +68,14 @@ describe('the spore command as two processes', () => {
     expect(stdout.trim()).toBe('THE ANSWER')
   })
 
-  it('gives the agent no key it could spend with, only the socket', async () => {
+  it('gives the agent no key it could spend with, only the runner\'s socket, never the gate\'s', async () => {
     await spore(['send', WS, 'hello'])
     const env = readFileSync(resolve(WS, 'data/env.txt'), 'utf8').split('\n')
 
     expect(env.some(line => line.startsWith('ANTHROPIC_API_SK'))).toBe(false)
     expect(env.some(line => line.startsWith('OPENAI_API_SK'))).toBe(false)
-    expect(env.some(line => line.startsWith(`SPORE_MODEL_SOCKET=${broker.socketPath}`))).toBe(true)
+    expect(env.some(line => line.startsWith('SPORE_MODEL_SOCKET='))).toBe(true)
+    expect(env.some(line => line.includes(gate.socketPath))).toBe(false)
     expect(env.some(line => line.startsWith('MODEL=anthropic/'))).toBe(true)
   })
 
@@ -186,7 +185,8 @@ describe('the spore command as two processes', () => {
 
   it('counts the agent\'s own spend where the agent cannot reach it', async () => {
     await spore(['send', WS, 'hello'])
-    // Two rounds through the broker, and the agent never touched the total.
-    expect(broker.ledger.children).toBeCloseTo(0.02)
+    // Two rounds through the runner, and the agent never touched the total.
+    expect(gate.ledger.spent).toBeCloseTo(0.02)
+    expect(readTurns(WS).at(-1).treeMicros).toBeCloseTo(20_000, 0)
   })
 })

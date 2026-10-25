@@ -15,12 +15,12 @@ import { promisify } from 'node:util'
 import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { startGate } from './fixtures/model-server.js'
 import { outcome } from '../src/library/watch.js'
 import { SLOT_DIR, takeSlot } from '../src/core/admission.js'
 import { containCheck } from '../src/core/command.js'
 import { allowPlugin } from '../src/core/plugins.js'
+import { hostFlags } from '../src/core/send.js'
 import { enqueue, readEvents, readLock, readTranscript, readTranscriptEntries, readTurns } from '../src/core/spore-dir.js'
 import { callRuns, readCalls } from '../src/core/call-record.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
@@ -33,7 +33,7 @@ const RUNNER = resolve(__dirname, '../native/spore-runner')
 const CONTAINED = containCheck().contained
 
 let ws
-let broker
+let gate
 let mo
 
 // Enough of a PNG for the sniffer; nothing decodes it, and the scripted provider never
@@ -68,7 +68,6 @@ const spore = async (prompt, env = {}) => {
         XDG_STATE_HOME: process.env.XDG_STATE_HOME,
         XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
         MODEL: 'anthropic/claude-haiku-4-5',
-        SPORE_MODEL_SOCKET: broker.socketPath,
         ...env
       }
     })
@@ -80,8 +79,7 @@ const spore = async (prompt, env = {}) => {
 
 const start = async (reply) => {
   mo = scriptedMo(reply)
-  broker = createModelServer({ mo, socketPath: brokerSocketPath('cli-confined'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo, name: 'cli-confined' })
 }
 
 beforeEach(() => {
@@ -89,8 +87,8 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-  await broker?.close()
-  broker = null
+  await gate?.close()
+  gate = null
   rmSync(ws, { recursive: true, force: true })
 })
 
@@ -250,7 +248,8 @@ describe('a confined turn', () => {
     expect(first.code, first.stderr).toBe(0)
     expect(first.stdout.trim()).toBe('a red square')
 
-    expect(imageParts(mo.seen[1])).toEqual([{ type: 'image', fileUri: `file://${resolve(ws, 'data/shot.png')}`, mimeType: 'image/png' }])
+    // A gate need not share this machine's files, so the picture reaches it inline.
+    expect(imageParts(mo.seen[1])).toEqual([{ type: 'image', fileUri: `data:image/png;base64,${PNG.toString('base64')}`, mimeType: 'image/png' }])
 
     const second = await spore('and now?')
     expect(second.code, second.stderr).toBe(0)
@@ -343,10 +342,9 @@ describe('a confined turn', () => {
 
   it('runs uncontained on a host that cannot contain it once the operator turned containment off', async () => {
     const config = resolve(process.env.XDG_CONFIG_HOME, 'spore', 'config.json')
-    mkdirSync(dirname(config), { recursive: true })
-    writeFileSync(config, JSON.stringify({ contain: false }))
     try {
       await start(async (input, round) => round === 0 ? calls('wsexec', { command: 'unshare -U true', out: 'data/u.txt', err: 'data/u.err' }) : answers('ran'))
+      gate.configure({ contain: false }, config)
       const result = await spore('hello', { SPORE_CRASH_AT: 'contain-check' })
       expect(result.code, result.stderr).toBe(0)
       expect(readTurns(ws)[0].stopReason).toBe('answer')
@@ -365,11 +363,10 @@ describe('a confined turn', () => {
       mkdirSync(resolve(hide, 'spores', 'theirs'), { recursive: true })
       writeFileSync(resolve(hide, 'agent.sock'), '')
       writeFileSync(resolve(hide, 'spores', 'theirs', 'sluice.sock'), '')
-      mkdirSync(dirname(config), { recursive: true })
-      allowPlugin('sluice', [`dir=${hide}`], { configFile: config })
-      writeFileSync(resolve(ws, 'spore.cmk'), readFileSync(resolve(ws, 'spore.cmk'), 'utf8').replace(/^---\n/, '---\nplugins: [sluice]\n'))
       const probe = ['agent.sock', 'spores/theirs/sluice.sock', `spores/${name}/sluice.sock`].map(path => `test -e ${resolve(hide, path)} && echo ${path}`).join('; ')
       await start(async (input, round) => round === 0 ? calls('wsexec', { command: `${probe}; true`, out: 'data/seen.txt' }) : answers('looked'))
+      allowPlugin('sluice', [`dir=${hide}`], { configFile: config })
+      writeFileSync(resolve(ws, 'spore.cmk'), readFileSync(resolve(ws, 'spore.cmk'), 'utf8').replace(/^---\n/, '---\nplugins: [sluice]\n'))
 
       const refused = await spore('look')
       expect(refused.code).not.toBe(0)
@@ -392,7 +389,7 @@ describe('a confined turn', () => {
   it.skipIf(!CONTAINED)('is refused as root, its message left for a turn run as an ordinary user', async () => {
     await start(async () => answers('should not be asked'))
     const asRoot = await run('unshare', ['-r', process.execPath, SPORE, 'send', ws, 'hello'], {
-      env: { PATH: process.env.PATH, HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, MODEL: 'anthropic/claude-haiku-4-5', SPORE_MODEL_SOCKET: broker.socketPath }
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, MODEL: 'anthropic/claude-haiku-4-5' }
     }).catch(e => e)
     expect(asRoot.code).not.toBe(0)
     expect(mo.seen).toHaveLength(0)
@@ -428,10 +425,10 @@ describe('a confined turn', () => {
     const slot = takeSlot()
     enqueue(ws, 'look')
     try {
-      spawn(RUNNER, ['--ws', ws, '--slot', slot.path, '--node', process.execPath], {
+      spawn(RUNNER, ['--ws', ws, '--slot', slot.path, ...hostFlags({ gate: gate.socketPath }, [])], {
         detached: true,
         stdio: ['ignore', 'ignore', 'ignore', slot.fd],
-        env: { PATH: process.env.PATH, HOME: process.env.HOME, MODEL: 'anthropic/claude-haiku-4-5', SPORE_MODEL_SOCKET: broker.socketPath, SPORE_PLUGIN_ENV: JSON.stringify({ FIXTURE_GREETING: 'hello = there' }) }
+        env: { PATH: process.env.PATH, HOME: process.env.HOME, MODEL: 'anthropic/claude-haiku-4-5', SPORE_PLUGIN_ENV: JSON.stringify({ FIXTURE_GREETING: 'hello = there' }) }
       }).unref()
     } finally {
       closeSync(slot.fd)

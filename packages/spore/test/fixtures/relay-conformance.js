@@ -54,12 +54,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHmac } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 
-import { createModelServer } from './model-server.js'
+import { startGate } from './model-server.js'
 import { answers, calls, scriptedMo } from './scripted-model.js'
-import { outsideRoot } from './outside-ws.js'
-import { brokerSocketPath } from '../../src/infra/broker-socket.js'
+import { outsideRoot, withAuth } from './outside-ws.js'
 import { definitionWith } from '../../src/core/identity-defaults.js'
 import { approvalOf, outbox, readInbox, readLock, readTurns, saidOf, statePath as databaseOf } from '../../src/core/spore-dir.js'
 import { answerApproval } from '../../src/library/approvals.js'
@@ -80,7 +79,7 @@ export function conformance (harness, platformTests = () => {}) {
   let ws
   let configFile
   let saved
-  let broker
+  let gate
   let reply
   let platform
   let logs
@@ -126,8 +125,7 @@ export function conformance (harness, platformTests = () => {}) {
     writeFileSync(join(root, spec.kind, 'other.json'), JSON.stringify(harness.botFile('other', other)))
   }
   const defaultReplyTo = (conversation) => {
-    mkdirSync(dirname(CONFIG_FILE), { recursive: true })
-    writeFileSync(CONFIG_FILE, JSON.stringify({ replyTo: { triage: `${spec.kind}:triage/${conversation}` } }))
+    gate.configure({ replyTo: { triage: `${spec.kind}:triage/${conversation}` } })
   }
   const savedState = () => (existsSync(saved) ? JSON.parse(readFileSync(saved, 'utf8')) : { cursors: {}, pending: {} })
   const say = (what) => harness.say(platform, what)
@@ -162,9 +160,8 @@ export function conformance (harness, platformTests = () => {}) {
       const home = join(root, 'home')
       ws = join(home, 'triage')
       mkdirSync(ws, { recursive: true })
-      writeFileSync(join(ws, 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5'))
+      writeFileSync(join(ws, 'spore.cmk'), withAuth(definitionWith('anthropic/claude-haiku-4-5')))
       configFile = join(root, 'config.json')
-      writeFileSync(configFile, JSON.stringify({ home }))
       saved = join(root, 'state', `${spec.kind}.json`)
       routes({ 1: { spore: 'triage' } })
       logs = []
@@ -173,25 +170,24 @@ export function conformance (harness, platformTests = () => {}) {
       platform = harness.platform()
       reply = async () => answers('hello back')
       tests += 1
-      broker = createModelServer({ mo: scriptedMo((input, round, options) => reply(input, round, options)), socketPath: brokerSocketPath(`${spec.kind}-relay-${tests}`), limit: 10 })
-      await broker.listen()
+      gate = await startGate({ mo: scriptedMo((input, round, options) => reply(input, round, options)), name: `${spec.kind}-relay-${tests}` })
+      gate.configure({ home }, configFile)
       env = {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
         XDG_STATE_HOME: process.env.XDG_STATE_HOME,
         XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
-        SPORE_MODEL_SOCKET: broker.socketPath,
         ...harness.credentials
       }
     })
 
     afterEach(async () => {
-      const test = { root, ws, broker }
+      const test = { root, ws, gate }
       release?.()
       await Promise.allSettled(running.splice(0).map(handle => handle.stop()))
       if (stateOf(test.ws).state === RUNNING) stop(test.ws)
       await until(() => stateOf(test.ws).state !== RUNNING, 20_000)
-      await test.broker.close()
+      await test.gate.close()
       rmSync(test.root, { recursive: true, force: true })
       rmSync(CONFIG_FILE, { force: true })
     }, 30_000)
@@ -210,7 +206,7 @@ export function conformance (harness, platformTests = () => {}) {
         const [note] = notes('1')
         expect(posts('1').find(one => one.text === 'hello back').answering).toBe(replyOf(asked))
         await until(() => seen('1').some(one => one.op === 'remove' && one.note === note.note))
-        expect(environ).toContain('SPORE_MODEL_SOCKET=')
+        expect(environ).toContain(`HOME=${process.env.HOME}`)
         for (const variable of Object.keys(harness.credentials)) expect(environ).not.toContain(variable)
       })
 
@@ -389,8 +385,8 @@ export function conformance (harness, platformTests = () => {}) {
 
       it('is marked taken and typed while it runs, and the mark comes off with the answer', async () => {
         routes({ 1: { spore: 'triage', show: 'react' } })
-        const gate = new Promise(resolve => { release = resolve })
-        reply = async () => { await gate; return answers('hello back') }
+        const opened = new Promise(resolve => { release = resolve })
+        reply = async () => { await opened; return answers('hello back') }
         start()
         const asked = say({ conversation: '1', text: 'hello' })
         await until(() => seen('1').some(one => one.op === 'typing'))
@@ -553,11 +549,11 @@ export function conformance (harness, platformTests = () => {}) {
 
       it('drops progress under a rate limit, so the answer is not held behind it', async () => {
         const waited = []
-        const gate = new Promise(resolve => { release = resolve })
+        const opened = new Promise(resolve => { release = resolve })
         harness.fail(platform, 'edit', harness.retryable(30))
         reply = async (input, round) => {
           if (round === 0) return calls('wsexec', { command: 'echo one > data/one.txt', out: 'data/log.txt' })
-          await gate
+          await opened
           return answers('done')
         }
         start({ sleep: (ms) => { waited.push(ms); return new Promise(resolve => setTimeout(resolve, 5)) } })
@@ -676,8 +672,8 @@ export function conformance (harness, platformTests = () => {}) {
 
     describe('a restart', () => {
       it('in the middle of a turn still answers', async () => {
-        const gate = new Promise(resolve => { release = resolve })
-        reply = async () => { await gate; return answers('late answer') }
+        const opened = new Promise(resolve => { release = resolve })
+        reply = async () => { await opened; return answers('late answer') }
         const first = start()
         const asked = say({ conversation: '1', text: 'take your time' })
         await until(() => savedState().pending[ws]?.[0]?.note)
@@ -764,9 +760,9 @@ export function conformance (harness, platformTests = () => {}) {
       })
 
       it('sets aside what waited when the turn is stopped during its model call', async () => {
-        const gate = new Promise(resolve => { release = resolve })
+        const opened = new Promise(resolve => { release = resolve })
         let asked = 0
-        reply = async () => { asked += 1; await gate; return answers('late') }
+        reply = async () => { asked += 1; await opened; return answers('late') }
         start()
         say({ conversation: '1', text: 'first' })
         await until(() => asked === 1 && notes('1').length === 1)
@@ -780,9 +776,9 @@ export function conformance (harness, platformTests = () => {}) {
       })
 
       it('is written down, having read what it read, when stopped from elsewhere as its model call ends', async () => {
-        const gate = new Promise(resolve => { release = resolve })
+        const opened = new Promise(resolve => { release = resolve })
         let asked = 0
-        reply = async () => { asked += 1; await gate; return answers('late') }
+        reply = async () => { asked += 1; await opened; return answers('late') }
         start()
         say({ conversation: '1', text: 'first' })
         await until(() => asked === 1 && notes('1').length === 1)
@@ -850,7 +846,7 @@ export function conformance (harness, platformTests = () => {}) {
         })
         await new Promise(resolve => hook.listen(0, '127.0.0.1', resolve))
         const secret = '${KPI_HOOK_SECRET}' // eslint-disable-line no-template-curly-in-string
-        writeFileSync(configFile, JSON.stringify({ home: join(root, 'home'), approvals: { kpi: { url: `http://127.0.0.1:${hook.address().port}/hook`, secret } } }))
+        gate.configure({ home: join(root, 'home'), approvals: { kpi: { url: `http://127.0.0.1:${hook.address().port}/hook`, secret } } }, configFile)
         env.KPI_HOOK_SECRET = SECRET
       })
 

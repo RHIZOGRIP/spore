@@ -9,14 +9,14 @@
  * place.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelServer, suppliedKey } from './fixtures/model-server.js'
+import { createModelServer, startGate, suppliedKey } from './fixtures/model-server.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { readTurns } from '../src/core/spore-dir.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
@@ -27,7 +27,7 @@ const SPORE = resolve(__dirname, '../../spore-cli/bin/spore.js')
 const SPAWN = resolve(__dirname, '../native/spore-spawn')
 
 let ws
-let broker
+let gate
 let mo
 
 const env = () => ({
@@ -36,7 +36,6 @@ const env = () => ({
   XDG_STATE_HOME: process.env.XDG_STATE_HOME,
   XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
   MODEL: 'anthropic/claude-haiku-4-5',
-  SPORE_MODEL_SOCKET: broker.socketPath,
   SPORE_SPAWN: SPAWN
 })
 
@@ -51,8 +50,7 @@ const until = async (condition, ms = 15_000) => {
 
 const start = async (reply) => {
   mo = scriptedMo(reply)
-  broker = createModelServer({ mo, socketPath: brokerSocketPath('cancel-turn'), limit: 10, key: suppliedKey(ws) })
-  await broker.listen()
+  gate = await startGate({ mo, name: 'cancel-turn' })
 }
 
 const held = (dir) => existsSync(resolve(dir, 'lock')) && readFileSync(resolve(dir, 'lock'), 'utf8').trim() !== ''
@@ -75,18 +73,20 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-  await broker?.close()
-  broker = null
+  await gate?.close()
+  gate = null
   rmSync(ws, { recursive: true, force: true })
 })
 
 describe('a turn stopped from outside', () => {
   it('records how it ended, releases the lock, and takes its cell with it', async () => {
     // The spore stages a cell, starts it, and is still waiting when the signal arrives. The
-    // cell's own model call never returns, so everything below is about the stopping.
+    // cell's own model call returns only once the stop has been sent, and the runner reads it to
+    // its end before it writes the turn down.
+    let release
     await start(async (input, round) => {
       const asked = String(input.find(m => m.role === 'user')?.content ?? '')
-      if (asked.includes('cell work')) return new Promise(() => {})
+      if (asked.includes('cell work')) return new Promise(resolve => { release = () => resolve(answers('too late')) })
       if (round === 0) return calls('write', { path: 'data/cell/in.md', content: 'cell work' })
       if (round === 1) return calls('wsexec', { command: `"${SPAWN}" --precursor worker --ws data/cell --prompt in.md --answer data/out.txt`, out: 'data/spawn.log' })
       return answers('never reached')
@@ -103,6 +103,7 @@ describe('a turn stopped from outside', () => {
     // cancelling. Stopping is its own verb, and it reaches the runner through the lock.
     const stopper = spawn(process.execPath, [SPORE, 'stop', ws], { env: env(), stdio: 'ignore' })
     await once(stopper, 'close')
+    release()
     const [code] = await once(child, 'close')
     // No answer, so the turn is a failure to its caller — but a recorded one.
     expect(code).toBe(1)
@@ -110,6 +111,8 @@ describe('a turn stopped from outside', () => {
     const [turn] = readTurns(ws)
     expect(turn.stopReason).toBe('cancelled')
     expect(turn.concluded).toBe(false)
+    // The call the cell was waiting on when it stopped is paid for, beside the root's two.
+    expect(turn.treeMicros).toBeCloseTo(30_000, 0)
     // The lock at both levels is free: the cell's supervisor took the signal and
     // cleaned up rather than being killed with its lock still held.
     expect(held(ws)).toBe(false)
@@ -132,13 +135,16 @@ describe('a turn stopped from outside', () => {
   })
 
   it('cleans up after a detached cell when the pid it printed is signalled', async () => {
-    await start(async () => new Promise(() => {}))
+    // Started as an agent starts one, so the model socket is one standing where the runner's would.
+    const socket = createModelServer({ mo: scriptedMo(async () => new Promise(() => {})), socketPath: brokerSocketPath('cancel-turn-cell'), key: suppliedKey(ws) })
+    await socket.listen()
+    onTestFinished(() => socket.close())
     mkdirSync(resolve(ws, 'data/detached'), { recursive: true })
     writeFileSync(resolve(ws, 'data/detached/in.md'), 'slow work')
 
     const started = spawn(SPAWN, [
       '--precursor', 'worker', '--ws', 'data/detached', '--prompt', 'in.md', '--answer', 'data/out.txt', '--detach'
-    ], { cwd: ws, env: env(), stdio: ['ignore', 'pipe', 'pipe'] })
+    ], { cwd: ws, env: { ...env(), SPORE_MODEL_SOCKET: socket.socketPath }, stdio: ['ignore', 'pipe', 'pipe'] })
 
     let out = ''
     started.stdout.on('data', chunk => { out += chunk })

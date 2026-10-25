@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { createModelServer } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { startGate } from './fixtures/model-server.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { readInbox, readLock, readSaidSoFar, readTurns } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
@@ -11,11 +10,11 @@ import { runBatch } from '../src/core/batch.js'
 import { RUNNING, stateOf } from '../src/core/state.js'
 
 let ws
-let broker
+let gate
 let seen
 let reply
 
-const env = () => ({ PATH: process.env.PATH, HOME: process.env.HOME, SPORE_MODEL_SOCKET: broker.socketPath })
+const env = () => ({ PATH: process.env.PATH, HOME: process.env.HOME })
 
 const until = async (done, limitMs = 15000) => {
   const deadline = Date.now() + limitMs
@@ -49,12 +48,11 @@ beforeEach(async () => {
       }
     })
   }
-  broker = createModelServer({ mo, socketPath: brokerSocketPath('turn-records'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo, name: 'turn-records' })
 })
 
 afterEach(async () => {
-  await broker.close()
+  await gate.close()
   rmSync(ws, { recursive: true, force: true })
 })
 
@@ -77,13 +75,16 @@ describe('a turn the agent never recorded', () => {
   })
 
   it('is recorded by the runner when the agent dies without a record', async () => {
-    reply = () => new Promise(() => {})
+    let release
+    reply = () => new Promise(resolve => { release = () => resolve({ status: 'completed', output: 'late', cost: 0.01 }) })
     send(ws, 'first', { env: env() })
     await until(() => seen.length === 1)
 
     const runner = readLock(ws).pid
     const agent = Number(readFileSync(`/proc/${runner}/task/${runner}/children`, 'utf8').trim().split(/\s+/)[0])
     process.kill(agent, 'SIGKILL')
+    // The runner reads the call the agent died during to its end before it writes the turn down.
+    release()
     await until(() => stateOf(ws).state !== RUNNING)
 
     const [turn] = readTurns(ws)

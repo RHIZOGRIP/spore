@@ -1,23 +1,29 @@
 import './fixtures/own-config.js'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { DatabaseSync } from 'node:sqlite'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 
-import { createModelServer } from './fixtures/model-server.js'
-import { brokerSocketPath } from '../src/infra/broker-socket.js'
+import { startGate } from './fixtures/model-server.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { outbox, readInbox, readTurns, statePath } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 import { RUNNING, stateOf, stop } from '../src/core/state.js'
-import { CONFIG_FILE } from '../src/library/config.js'
 
 let ws
-let broker
+let gate
 let asked
-let release
+let open
+let waiting
 
-const env = () => ({ PATH: process.env.PATH, HOME: process.env.HOME, SPORE_MODEL_SOCKET: broker.socketPath })
+// Ends the call that is waiting, and lets every later one through: a stopped turn's runner reads
+// the call it stopped during to its end before it writes the turn down.
+const release = () => {
+  open = true
+  waiting?.()
+}
+
+const env = () => ({ PATH: process.env.PATH, HOME: process.env.HOME })
 
 const held = () => ({
   use: (modelId) => ({
@@ -25,7 +31,7 @@ const held = () => ({
     info: () => ({ contextTokenLimit: 200000 }),
     answer: async () => {
       asked += 1
-      await new Promise(resolve => { release = resolve })
+      if (!open) await new Promise(resolve => { waiting = resolve })
       return { status: 'completed', output: 'late', cost: 0.01 }
     }
   })
@@ -60,24 +66,23 @@ const unread = () => readInbox(ws, { after: readTurns(ws).at(-1)?.inboxTo ?? 0 }
 
 beforeEach(async () => {
   asked = 0
-  release = null
+  open = false
+  waiting = null
   ws = outsideWorkspace('stop-mid-call')
-  broker = createModelServer({ mo: held(), socketPath: brokerSocketPath('stop-mid-call'), limit: 10 })
-  await broker.listen()
+  gate = await startGate({ mo: held(), name: 'stop-mid-call' })
 })
 
 afterEach(async () => {
-  release?.()
+  release()
   if (stateOf(ws).state === RUNNING) stop(ws)
   await until(() => stateOf(ws).state !== RUNNING, 20_000)
-  await broker.close()
+  await gate.close()
   rmSync(ws, { recursive: true, force: true })
 })
 
 describe.each([true, false])('a turn stopped while its model call is still open, contained: %s', (contain) => {
   beforeEach(() => {
-    mkdirSync(dirname(CONFIG_FILE), { recursive: true })
-    writeFileSync(CONFIG_FILE, JSON.stringify({ contain }))
+    gate.configure({ contain })
   })
 
   const relayed = (n) => ({ replyTo: 'telegram:triage/1', from: { name: 'U1 (@u1)', id: 'telegram:1', where: 'a private chat on Telegram' }, requestId: `telegram:triage:${n}` })
@@ -120,7 +125,7 @@ describe.each([true, false])('a turn stopped while its model call is still open,
       await new Promise(resolve => setImmediate(resolve))
     }
     expect(stop(ws).stopped).toBe(true)
-    release?.()
+    release()
     await until(() => readTurns(ws).length === 1 && stateOf(ws).state !== RUNNING)
     expect([stateOf(ws).state, readTurns(ws)[0].stopReason], shown()).toEqual(['cancelled', 'cancelled'])
   })

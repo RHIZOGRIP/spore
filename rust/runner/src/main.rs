@@ -2,11 +2,10 @@
 //! waiting on the confined agent it starts. Contract: ARCHITECTURE.md §The spore command.
 //!
 //! Started detached by `send()` or `fork()`, with its streams on `spore.out` and `spore.err`
-//! and its admission slot on fd 3. It holds the provider keys and serves the model path
-//! (`model.rs`) unless a model socket is given, which is how a test or an embedder that keeps
-//! its own keys runs a turn. It serves the store (`store.rs`) for `memory: vectors`, holding
-//! the vector store's credential, and the source broker (`source.rs`) for granted `sources`,
-//! holding their secrets.
+//! and its admission slot on fd 3. It holds the provider keys, or reaches the host's gate, and
+//! serves the model path (`model.rs`) every turn calls through. It serves the store
+//! (`store.rs`) for `memory: vectors`, holding the vector store's credential, and the source
+//! broker (`source.rs`) for granted `sources`, holding their secrets.
 
 use std::collections::BTreeMap;
 use std::os::fd::AsRawFd;
@@ -32,7 +31,7 @@ use spore_workspace::{
     spore_socket_path, start_limits, turn_limits, turn_state, unanswered, unanswered_traceparents,
     unread, write_lock, write_model_key, write_outcome, writes_refusal, yield_to_host, Acquired,
     Unanswered, CELL_MODELS_ENV, DEFAULT_FREE_FLOOR, DEFAULT_LARGEST_FILE, DEFAULT_MODEL_SESSIONS,
-    DEFINITION_FILE, HOME_DIR, MODEL_KEY_FILE, PLUGIN_ENV, PLUGIN_READS, STATE_FD,
+    DEFINITION_FILE, HOME_DIR, PLUGIN_ENV, PLUGIN_READS, STATE_FD,
 };
 use tokio::process::Command;
 use tokio::signal::unix::{signal, Signal, SignalKind};
@@ -309,7 +308,7 @@ async fn follow_limits(
     ws: PathBuf,
     turn: String,
     raise_wall: watch::Sender<Duration>,
-    model: Option<Arc<model::Model>>,
+    model: Arc<model::Model>,
 ) {
     let mut cost = None;
     loop {
@@ -338,9 +337,7 @@ async fn follow_limits(
                     });
                 }
                 "cost" if cost != Some(hard) => {
-                    if let Some(model) = &model {
-                        model.raise_limit(hard);
-                    }
+                    model.raise_limit(hard);
                     cost = Some(hard);
                 }
                 _ => {}
@@ -356,8 +353,7 @@ async fn main() {
     let node = args.host.node.clone().unwrap_or_else(|| fail("a runner is told which node to start the agent with — start it through send() or fork()"));
     let ws = std::path::absolute(&args.ws)
         .unwrap_or_else(|e| fail(format!("{} — {e}", args.ws.display())));
-    let given = std::env::var("SPORE_MODEL_SOCKET").ok();
-    if given.is_none() && (args.host.session.is_none() || args.host.chatgpt_helper.is_none()) {
+    if args.host.session.is_none() || args.host.chatgpt_helper.is_none() {
         fail("a runner is told mohdel's session program and its ChatGPT helper — start it through send() or fork()")
     }
     if !ws.is_dir() {
@@ -538,37 +534,34 @@ async fn main() {
             .chain(def.cell_models.iter().map(|named| &named.model))
             .cloned()
             .collect();
-        let upstream = match (&given, &args.host.gate) {
-            (Some(_), _) => None,
-            (None, Some(gate)) => {
+        let upstream = match &args.host.gate {
+            Some(gate) => {
                 let Some(auth) = def.auth.clone() else {
                     return Err(format!(
                         "this host calls its models through the gate at {}, and spore.cmk names no auth — add auth: <id>, whom its model calls are for",
                         gate.display()
                     ));
                 };
-                Some(
-                    model::reach_gate(
-                        gate,
-                        auth,
-                        allowed,
-                        media_root_paths(&ws, &def),
-                        def.model.as_deref(),
-                    )
-                    .await?,
+                model::reach_gate(
+                    gate,
+                    auth,
+                    allowed,
+                    media_root_paths(&ws, &def),
+                    def.model.as_deref(),
                 )
+                .await?
             }
-            (None, None) => {
+            None => {
                 std::env::set_var("MOHDEL_MEDIA_ROOTS", media_roots(&ws, &def));
                 let session = args.host.session.clone().expect("checked above");
                 let helper = args.host.chatgpt_helper.clone().expect("checked above");
-                Some(model::Upstream::Pool(model::start_pool(
+                model::Upstream::Pool(model::start_pool(
                     node.clone(),
                     session,
                     helper,
                     args.model_sessions,
                     allowed,
-                )))
+                ))
             }
         };
         let store = match vectors {
@@ -583,22 +576,10 @@ async fn main() {
                 Some(store::Store::new(vectors, &ws, &embedding))
             }
         };
-        // A supplied model socket is its supplier's, and so is its key: kept as found, or
-        // minted once when the supplier keeps none, and not turned over between turns.
-        let supplied_key = match &given {
-            None => None,
-            Some(_) => Some(match std::fs::read_to_string(ws.join(MODEL_KEY_FILE)) {
-                Ok(key) => key.trim().to_string(),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    write_model_key(&ws).map_err(|e| format!("cannot write the model key — {e}"))?
-                }
-                Err(e) => return Err(format!("cannot read {MODEL_KEY_FILE} — {e}")),
-            }),
-        };
-        Ok::<_, String>((upstream, store, supplied_key))
+        Ok::<_, String>((upstream, store))
     };
 
-    let (upstream, store, supplied_key) = tokio::select! {
+    let (upstream, store) = tokio::select! {
         biased;
         _ = sigterm.recv() => leave(&ws, lock, &started_at),
         _ = sigint.recv() => leave(&ws, lock, &started_at),
@@ -623,72 +604,92 @@ async fn main() {
     // A turn's own key and sockets. When the turn ends they are stopped: a cell it detached
     // holds this key and these paths, and its next call fails rather than spending the next
     // turn's allowance.
-    let open_turn = || -> Result<(BTreeMap<String, String>, Option<Arc<model::Model>>, Vec<Served>), String> {
-        let key = match &supplied_key {
-            Some(key) => key.clone(),
-            None => write_model_key(&ws).map_err(|e| format!("cannot write the model key — {e}"))?,
-        };
-        let env: Vec<(String, String)> = std::env::vars().collect();
-        let mut passed = agent_env(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
-        // What the plugins this spore uses give its agent, resolved and checked by `send`; set
-        // before the runtime's own, so a value of the runtime's always wins.
-        passed.extend(args.env.iter().cloned());
-        passed.insert("HOME".into(), ws.join(HOME_DIR).display().to_string());
-        let sockets = spore_socket_dir(&ws).map_err(|e| format!("cannot resolve {} — {e}", ws.display()))?;
-        make_spore_socket_dir(&sockets)
-            .map_err(|e| format!("cannot make {} — {e}", sockets.display()))?
-            .map_err(|refused| format!("{} — {}", refused.message, refused.detail))?;
-        passed.insert("SPORE_SOCKET_DIR".into(), sockets.display().to_string());
-        if !def.cell_models.is_empty() {
-            let named: BTreeMap<&str, &str> = def
-                .cell_models
-                .iter()
-                .map(|named| (named.name.as_str(), named.model.as_str()))
-                .collect();
-            passed.insert(
-                CELL_MODELS_ENV.into(),
-                serde_json::to_string(&named).expect("a map of strings serializes"),
-            );
-        }
-        let mut served = Vec::new();
-        let bind = |kind: &str, served: &mut Vec<Served>, serving: Result<Served, std::io::Error>, path: &str| {
-            serving
-                .map(|handle| served.push(handle))
-                .map_err(|e| format!("cannot bind the {kind} socket {path} — {e}"))
-        };
-        let model = match &upstream {
-            Some(upstream) => {
-                let model = model::Model::new(key.clone(), def.limits.cost.hard, upstream.clone());
-                let path = socket(&sockets, "model")?;
-                bind("model", &mut served, model::serve(model.clone(), Path::new(&path)), &path)?;
-                passed.insert("SPORE_MODEL_SOCKET".into(), path);
-                Some(model)
+    let open_turn =
+        || -> Result<(BTreeMap<String, String>, Arc<model::Model>, Vec<Served>), String> {
+            let key =
+                write_model_key(&ws).map_err(|e| format!("cannot write the model key — {e}"))?;
+            let env: Vec<(String, String)> = std::env::vars().collect();
+            let mut passed = agent_env(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+            // What the plugins this spore uses give its agent, resolved and checked by `send`; set
+            // before the runtime's own, so a value of the runtime's always wins.
+            passed.extend(args.env.iter().cloned());
+            passed.insert("HOME".into(), ws.join(HOME_DIR).display().to_string());
+            let sockets = spore_socket_dir(&ws)
+                .map_err(|e| format!("cannot resolve {} — {e}", ws.display()))?;
+            make_spore_socket_dir(&sockets)
+                .map_err(|e| format!("cannot make {} — {e}", sockets.display()))?
+                .map_err(|refused| format!("{} — {}", refused.message, refused.detail))?;
+            passed.insert("SPORE_SOCKET_DIR".into(), sockets.display().to_string());
+            if !def.cell_models.is_empty() {
+                let named: BTreeMap<&str, &str> = def
+                    .cell_models
+                    .iter()
+                    .map(|named| (named.name.as_str(), named.model.as_str()))
+                    .collect();
+                passed.insert(
+                    CELL_MODELS_ENV.into(),
+                    serde_json::to_string(&named).expect("a map of strings serializes"),
+                );
             }
-            None => {
-                passed.insert("SPORE_MODEL_SOCKET".into(), given.clone().expect("supplied"));
-                None
+            let mut served = Vec::new();
+            let bind = |kind: &str,
+                        served: &mut Vec<Served>,
+                        serving: Result<Served, std::io::Error>,
+                        path: &str| {
+                serving
+                    .map(|handle| served.push(handle))
+                    .map_err(|e| format!("cannot bind the {kind} socket {path} — {e}"))
+            };
+            let model = model::Model::new(key.clone(), def.limits.cost.hard, upstream.clone());
+            let path = socket(&sockets, "model")?;
+            bind(
+                "model",
+                &mut served,
+                model::serve(model.clone(), Path::new(&path)),
+                &path,
+            )?;
+            passed.insert("SPORE_MODEL_SOCKET".into(), path);
+            if let Some(store) = &store {
+                let path = socket(&sockets, "store")?;
+                let store = store.clone();
+                bind(
+                    "store",
+                    &mut served,
+                    broker::serve(Path::new(&path), key.clone(), move |req| {
+                        store.clone().route(req)
+                    }),
+                    &path,
+                )?;
+                passed.insert("SPORE_STORE_SOCKET".into(), path);
             }
+            if let Some(sources) = &sources {
+                let path = socket(&sockets, "source")?;
+                let sources = sources.clone();
+                bind(
+                    "source",
+                    &mut served,
+                    broker::serve(Path::new(&path), key.clone(), move |req| {
+                        sources.clone().route(req)
+                    }),
+                    &path,
+                )?;
+                passed.insert("SPORE_SOURCE_SOCKET".into(), path);
+            }
+            if let Some(jobs) = &jobs {
+                let path = socket(&sockets, "job")?;
+                let jobs = jobs.clone();
+                bind(
+                    "job",
+                    &mut served,
+                    broker::serve(Path::new(&path), key.clone(), move |req| {
+                        jobs.clone().route(req)
+                    }),
+                    &path,
+                )?;
+                passed.insert("SPORE_JOB_SOCKET".into(), path);
+            }
+            Ok((passed, model, served))
         };
-        if let Some(store) = &store {
-            let path = socket(&sockets, "store")?;
-            let store = store.clone();
-            bind("store", &mut served, broker::serve(Path::new(&path), key.clone(), move |req| store.clone().route(req)), &path)?;
-            passed.insert("SPORE_STORE_SOCKET".into(), path);
-        }
-        if let Some(sources) = &sources {
-            let path = socket(&sockets, "source")?;
-            let sources = sources.clone();
-            bind("source", &mut served, broker::serve(Path::new(&path), key.clone(), move |req| sources.clone().route(req)), &path)?;
-            passed.insert("SPORE_SOURCE_SOCKET".into(), path);
-        }
-        if let Some(jobs) = &jobs {
-            let path = socket(&sockets, "job")?;
-            let jobs = jobs.clone();
-            bind("job", &mut served, broker::serve(Path::new(&path), key.clone(), move |req| jobs.clone().route(req)), &path)?;
-            passed.insert("SPORE_JOB_SOCKET".into(), path);
-        }
-        Ok((passed, model, served))
-    };
 
     let run_turn = |passed: &BTreeMap<String, String>,
                     token: &str,
@@ -894,11 +895,9 @@ async fn main() {
                 eprintln!("spore: cannot record the turn — {e}");
             }
         }
-        if let Some(model) = &model {
-            model.drained().await;
-        }
-        let settled = model.as_ref().map(|model| model.settled());
-        turn.end(settled.as_ref().map_or(0.0, |settled| settled.tree));
+        model.drained().await;
+        let settled = model.settled();
+        turn.end(settled.tree);
         let code = ended
             .status
             .as_ref()
@@ -906,7 +905,7 @@ async fn main() {
             .and_then(|s| s.code())
             .unwrap_or(1);
         crash_at("before-finalize");
-        let finalized = match finalize_turn(&ws, &turn_id, settled.as_ref()) {
+        let finalized = match finalize_turn(&ws, &turn_id, Some(&settled)) {
             Ok(row) => Some(row),
             Err(e) => {
                 eprintln!("spore: cannot record the turn — {e}");

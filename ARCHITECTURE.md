@@ -2519,10 +2519,11 @@ answer for its `model`, is refused before it starts; the runner never falls back
 gate checks no caller, and an agent can connect to a gate socket mounted where it runs, so a
 gate shared between tenants is only as separate as its socket's reach.
 
-`runSpore` hosts nothing (§The supervisor builds, the worker runs): the confined half is handed a
-socket and a ledger as parameters. A runner started with `SPORE_MODEL_SOCKET` — a test, or an
-embedder that keeps its own keys — serves no model socket and passes that one on; its key is the
-supplier's, read from `model.key` or minted once there, and not turned over between turns.
+`runSpore` hosts nothing (§The supervisor builds, the worker runs): the confined half is handed
+the runner's model socket. Every turn calls through the runner's own model path, on its pool or
+through the host's gate, so its hard cost, the models its definition names and the call ceiling
+hold for every turn, and its key is minted for that turn. An embedder that keeps its own keys
+serves a gate and names it as the host's `gate`.
 
 **A cell's environment is assembled by name** — `PATH`, `HOME`, `MODEL`, `TRACEPARENT`, the
 `SPORE_*` it needs (`PASSED_THROUGH`, `rust/workspace`) — and holds no provider key
