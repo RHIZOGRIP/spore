@@ -84,7 +84,7 @@ describe('a cell that is stopped', () => {
 
     const started = spawn(SPAWN, ['--precursor', 'ticker', '--ws', 'data/cell', '--prompt', 'in.md', '--answer', 'data/out.txt', '--detach'], {
       cwd: ws,
-      env: { PATH: process.env.PATH, HOME: process.env.HOME, MODEL: 'anthropic/claude-haiku-4-5', SPORE_MODEL_SOCKET: socket.socketPath },
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, MODEL: 'anthropic/claude-haiku-4-5', SPORE_MODEL_SOCKET: socket.socketPath, SPORE_NODE: process.execPath },
       stdio: ['ignore', 'pipe', 'pipe']
     })
     let out = ''

@@ -49,7 +49,8 @@ const fanout = async (args) => {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
         MODEL: 'anthropic/claude-haiku-4-5',
-        SPORE_MODEL_SOCKET: broker.socketPath
+        SPORE_MODEL_SOCKET: broker.socketPath,
+        SPORE_NODE: process.execPath
       }
     })
     return { code: 0, report: JSON.parse(stdout), stderr }

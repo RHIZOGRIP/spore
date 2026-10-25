@@ -143,7 +143,7 @@ describe('a turn stopped from outside', () => {
 
     const started = spawn(SPAWN, [
       '--precursor', 'worker', '--ws', 'data/detached', '--prompt', 'in.md', '--answer', 'data/out.txt', '--detach'
-    ], { cwd: ws, env: { ...env(), SPORE_MODEL_SOCKET: socket.socketPath }, stdio: ['ignore', 'pipe', 'pipe'] })
+    ], { cwd: ws, env: { ...env(), SPORE_MODEL_SOCKET: socket.socketPath, SPORE_NODE: process.execPath }, stdio: ['ignore', 'pipe', 'pipe'] })
 
     let out = ''
     started.stdout.on('data', chunk => { out += chunk })

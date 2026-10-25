@@ -622,6 +622,7 @@ async fn main() {
                 .map_err(|e| format!("cannot make {} — {e}", sockets.display()))?
                 .map_err(|refused| format!("{} — {}", refused.message, refused.detail))?;
             passed.insert("SPORE_SOCKET_DIR".into(), sockets.display().to_string());
+            passed.insert("SPORE_NODE".into(), node.clone());
             if !def.cell_models.is_empty() {
                 let named: BTreeMap<&str, &str> = def
                     .cell_models

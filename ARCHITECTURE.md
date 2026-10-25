@@ -1979,7 +1979,9 @@ wakes itself on every read and spins.
 one inside the Node that runs the agent. Both need the WAL-reset fix, so the Rust build is held to
 3.51.3 or later, and the Node side's `sqlite_version()` is checked against the same minimum the
 first time a process reads a workspace (`src/core/sqlite.js`). A live database is never opened
-with `immutable=1`.
+with `immutable=1`. A turn runs on one Node: the runner starts the agent and every job's
+supervisor on the host's `--node` and names it to the agent as `SPORE_NODE`, which a cell's
+worker runs on — never a `node` found on `PATH`.
 
 **Within one process the two builds never hold the file at once.** A host process — the CLI, the
 TUI, the Telegram service — writes through the addon and reads through `node:sqlite`, and file

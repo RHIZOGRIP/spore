@@ -305,6 +305,12 @@ async fn main() {
             fail("SPORE_MODEL_SOCKET is not set — spawn runs under a spore, which is what serves the model socket a cell calls through")
         })),
     };
+    let node = match &standalone {
+        Some(own) => own.node.clone(),
+        None => std::env::var("SPORE_NODE").unwrap_or_else(|_| {
+            fail("SPORE_NODE is not set — spawn runs under a spore, whose runner names the Node a cell runs on")
+        }),
+    };
     if standalone.is_some() && !plan.precursor.sources.is_empty() {
         fail(format!(
             "precursor {} names sources, and a cell outside any turn reaches none — its tree's sources are served by a turn",
@@ -517,8 +523,8 @@ async fn main() {
         let serving = serve(&plan.ws, turn_id.clone(), ours);
         let fd = theirs.as_raw_fd();
         let mut command = match &standalone {
-            Some(own) => confined(&root, &own.node, own.contain, &own.kept),
-            None => Command::new("node"),
+            Some(own) => confined(&root, &node, own.contain, &own.kept),
+            None => Command::new(&node),
         };
         command
             .arg(root.join("bin").join("spawn-worker.js"))
