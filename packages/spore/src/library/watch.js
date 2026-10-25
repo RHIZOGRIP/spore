@@ -11,7 +11,7 @@
 
 import { watch as onChange } from 'node:fs'
 
-import { RECORD_FILES, asked, databaseOf, lastEventSeq, readEvents, readInbox, turnSummary, turnsAfter } from '../core/spore-dir.js'
+import { COMMITTED_TO, LOCK_FILE, asked, databaseOf, lastEventSeq, readEvents, readInbox, turnSummary, turnsAfter } from '../core/spore-dir.js'
 import { RUNNING, stateOf } from '../core/state.js'
 
 // The longest a follower goes without looking. It wakes as soon as a file it follows changes,
@@ -117,7 +117,7 @@ export async function * watch (ws, { after = 0, tick = TICK_MS, grace = 5000, si
   }
   let started = false
   const deadline = Date.now() + grace
-  const changes = waker(new Set([...RECORD_FILES.events, ...RECORD_FILES.lock]))
+  const changes = waker(new Set([...COMMITTED_TO, LOCK_FILE]))
   changes.add(ws)
 
   try {
@@ -179,7 +179,7 @@ export function turnsSince (ws, turn) {
 export async function * watchAll (spores, { cursors = {}, tick = TICK_MS, signal } = {}) {
   const current = () => (typeof spores === 'function' ? spores() : spores)
   const at = new Map()
-  const changes = waker(new Set([...RECORD_FILES.events, ...RECORD_FILES.turns]))
+  const changes = waker(new Set(COMMITTED_TO))
   try {
     for (;;) {
       const now = new Set(current())

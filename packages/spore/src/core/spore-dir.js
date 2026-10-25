@@ -53,19 +53,13 @@ export const OVERHEARD_KEPT = 100
 /**
  * The storage API's promise: nothing outside this module and `call-record.js` names where a
  * workspace keeps its records. These two lists are what the rest of the runtime needs to know
- * about the files themselves — which ones signal that records of a kind may have arrived, and
+ * about the files themselves — which ones a commit touches, so a follower wakes on them, and
  * which ones a run leaves behind that a fresh run must not inherit.
  */
 const STATE_FILES = [STATE_FILE, `${STATE_FILE}-wal`, `${STATE_FILE}-shm`, `${STATE_FILE}-journal`]
 // A reader changes `-shm` too, rebuilding the WAL index when it is the only connection, so a
 // follower waking on it would wake itself on every read.
-const COMMITTED_TO = [STATE_FILE, `${STATE_FILE}-wal`, `${STATE_FILE}-journal`]
-
-export const RECORD_FILES = Object.freeze({
-  events: COMMITTED_TO,
-  turns: COMMITTED_TO,
-  lock: [LOCK_FILE]
-})
+export const COMMITTED_TO = Object.freeze([STATE_FILE, `${STATE_FILE}-wal`, `${STATE_FILE}-journal`])
 
 /** A turn's scratch, as the agent names it: a link the runtime points at a directory of the turn's run. */
 export const TMP_DIR = 'tmp'
