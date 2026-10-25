@@ -77,9 +77,16 @@ describe('the event log', () => {
   })
 
   it('does not listen for what nothing produces yet', () => {
-    expect(PROMISED).toEqual(['mohdel_idle'])
-    for (const promised of PROMISED) expect(EVENTS).not.toContain(promised)
-    expect(EVENTS).toContain('stream')
+    expect(PROMISED).toEqual([])
+    expect(EVENTS).toContain('mohdel_idle')
+  })
+
+  it('carries a provider\'s silence as mohdel reports it', () => {
+    const { emitter, close } = logging()
+    emitter.emit('mohdel_idle', { sinceMs: 30000 })
+    close()
+
+    expect(readEvents(WS)).toMatchObject([{ event: 'mohdel_idle', sinceMs: 30000 }])
   })
 
   it('names the supervisor\'s turn_end and an embedder\'s annotation, and never writes either for the agent', () => {

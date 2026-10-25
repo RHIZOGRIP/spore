@@ -211,6 +211,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
     // open indefinitely. The client stops waiting on it; the call itself runs on.
     if (signal) answerOpts.signal = signal
     if (parentSpan) answerOpts.parentSpan = parentSpan
+    answerOpts.idleHandler = (sinceMs) => emitter.emit('mohdel_idle', { sinceMs })
     if (streamHandler) {
       answerOpts.realtimeHandler = streamHandler
       answerOpts.bufferOpts = { maxChars: 50, maxMs: 500 }

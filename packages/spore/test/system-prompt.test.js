@@ -44,7 +44,7 @@ describe('composeSystem', () => {
   it('puts the note after the foundation, with no breakpoint of its own', () => {
     const blocks = composeSystem({ identity: 'I', note: 'NOTE' })
     expect(blocks).toHaveLength(2)
-    expect(blocks[0].text).toContain('CACHED PREFIX BOUNDARY')
+    expect(blocks[0].text).toBe('I')
     expect(blocks[0].cache).toBe('5m')
     expect(blocks[1]).toEqual({ text: 'NOTE' })
   })

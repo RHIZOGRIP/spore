@@ -602,7 +602,7 @@ Every event carries `v` (the schema version, `1`, exported as `EVENT_SCHEMA`), `
   cursor older than what is kept gets what is left.
 - **Fields are only added, and names never change meaning.** Ignore an event or a field you do not
   know.
-- `PROMISED` lists names the schema reserves and nothing emits yet (`mohdel_idle`).
+- `PROMISED` lists names the schema reserves and nothing emits yet; none today.
 
 ### The event schema
 
@@ -617,7 +617,8 @@ embedder, from outside the turn. `turn_end` is written by the supervisor.
 | `tool_end` | `name`, `callId`, `durationMs`, `error`, `outcome`, `result` (its first 200 characters) — `outcome` is `ok`; `exit` with `exit`, a command that ran to its end and exited non-zero; `killed` with `killed` (`deadline` or `idle`); `signal` with `signal`; `spawn`; or `refused` |
 | `tool_block` | `name`, `reason` |
 | `heartbeat` | `phase` (`answer` or `tool`), `elapsedMs`, `tool` |
-| `usage` | one model call of the loop's own: `model`, `input`, `output`, `thinking`, `cacheWrite`, `cacheRead`, `cost` (as the provider priced it, unsettled), `elapsedMs` |
+| `mohdel_idle` | `sinceMs`: the provider has said nothing for that long in a model call, reported every 30 s while it stays silent |
+| `usage` | one model call of the loop's own: `model`, `input`, `output`, `thinking`, `cacheWrite`, `cacheRead`, `cost` (as the provider priced it, unsettled), `elapsedMs`, `maxInterFrameMs` (the provider's longest silence in the call), `idleEventCount` and `idleMaxMs` (its `mohdel_idle` reports) |
 | `wrap` | `dimension`, the spend at that point, and for a stall `tool` and `because` |
 | `unwrap` | `dimension`, `soft`, `hard`: the limit the turn was wrapping at was raised, and it carries on |
 | `interject` | `round`: a message reached the running turn |

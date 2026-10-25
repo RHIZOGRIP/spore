@@ -537,6 +537,21 @@ describe('tool loop', () => {
     expect(Object.keys(m.calls[0].opts).filter(name => !CALL_OPTIONS.has(name))).toEqual([])
   })
 
+  it('carries what mohdel says of a silent provider as mohdel_idle', async () => {
+    const m = {
+      calls: [],
+      answer: async (prompt, opts) => {
+        opts.idleHandler(30_000)
+        return { ...completed('done'), idleEventCount: 1, idleMaxMs: 30_000 }
+      }
+    }
+    const seen = []
+    const emitter = { emit: (event, data) => { if (event === 'mohdel_idle' || event === 'usage') seen.push([event, data]) }, on () {}, has: () => false }
+    await loop({ limits: { rounds: { soft: 10, hard: 12 } }, model: m, system: 'sys', prompt: 'q', tools: TOOLS, toolFns: makeToolFns(), emitter })
+    expect(seen[0]).toEqual(['mohdel_idle', { sinceMs: 30_000 }])
+    expect(seen[1][1]).toMatchObject({ idleEventCount: 1, idleMaxMs: 30_000 })
+  })
+
   it('says nothing when the estimate holds', async () => {
     const m = mockModel([{ status: 'completed', output: 'done', inputTokens: 300 }])
     const seen = []

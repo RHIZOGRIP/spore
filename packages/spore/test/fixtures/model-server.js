@@ -59,7 +59,8 @@ export function createModelServer ({ mo, socketPath, limit, key }) {
     try {
       const result = await mo.use(envelope.model).answer(envelope.prompt, {
         tools: envelope.tools,
-        realtimeHandler: (chunk) => send({ type: 'delta', delta: chunk })
+        realtimeHandler: (chunk) => send({ type: 'delta', delta: chunk }),
+        idle: (sinceMs) => send({ type: 'idle', sinceMs })
       })
       ledger.children += result?.cost || 0
       ledger.rounds += 1
@@ -124,7 +125,7 @@ export function createModelServer ({ mo, socketPath, limit, key }) {
  * A host's mohdel gate, answering from a script: what a runner, and a cell outside any turn,
  * calls through when `config.json` names a `gate` (mohdel's PROTOCOL.md §10), so the runner holds
  * every bound it holds for a real host. `POST /v1/info` answers `mo.use(model).info()`;
- * `POST /v1/call` streams `mo.use(model).answer(prompt, { tools, realtimeHandler })` — each delta,
+ * `POST /v1/call` streams `mo.use(model).answer(prompt, { tools, realtimeHandler, idle })` — each delta and idle,
  * then the result completed to what a gate sends, or its error; `POST /v1/abort` ends a call still
  * streaming on an aborted `done`, as a gate does; `POST /v1/embed` answers
  * `mo.use(model).embed(input, { inputType })` the same way. Every envelope is kept, `authId` and
@@ -160,7 +161,8 @@ export function createGate ({ mo, socketPath }) {
     try {
       const result = await mo.use(envelope.model).answer(envelope.prompt, {
         tools: envelope.tools,
-        realtimeHandler: (delta) => send({ type: 'delta', delta })
+        realtimeHandler: (delta) => send({ type: 'delta', delta }),
+        idle: (sinceMs) => send({ type: 'idle', sinceMs })
       })
       const done = { inputTokens: 0, outputTokens: 0, thinkingTokens: 0, cost: 0, timestamps: { start, first: start, end: now() }, ...result }
       ledger.spent += done.cost

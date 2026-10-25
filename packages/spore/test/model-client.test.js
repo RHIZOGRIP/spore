@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createModelClient } from '../src/infra/model-client.js'
+import { createModelClient, IDLE_HEARTBEAT_MS } from '../src/infra/model-client.js'
 import { CALLER_HEADER, MODEL_CALL_HEADER, KEY_HEADER, PRECURSOR_CALLER, ROOT_CALLER } from '../src/infra/socket-request.js'
 import { brokerSocketPath } from '../src/infra/broker-socket.js'
 import { createModelServer } from './fixtures/model-server.js'
@@ -97,6 +97,20 @@ describe('the model client', () => {
     const chunks = []
     await mo.use(MODEL).answer(PROMPT, { realtimeHandler: (chunk) => chunks.push(chunk), bufferOpts: { maxChars: 50, maxMs: 500 } })
     expect(chunks).toEqual([{ type: 'message', delta: 'hello' }])
+  })
+
+  it('asks mohdel to report a silent provider, and counts each report on the result', async () => {
+    await serve(async (input, round, options) => {
+      options.idle(30_000)
+      options.idle(60_000)
+      return answers('late')
+    })
+    const mo = await createModelClient({ socketPath: server.socketPath, key: KEY, workspace: WS })
+    const reported = []
+    const result = await mo.use(MODEL).answer(PROMPT, { idleHandler: (sinceMs) => reported.push(sinceMs) })
+    expect(server.envelopes[0].envelope.idleHeartbeatMs).toBe(IDLE_HEARTBEAT_MS)
+    expect(reported).toEqual([30_000, 60_000])
+    expect(result).toMatchObject({ output: 'late', idleEventCount: 2, idleMaxMs: 60_000 })
   })
 
   it('throws an error event as a typed error, so recovery can classify it', async () => {

@@ -24,7 +24,11 @@ import { formatTraceparent } from '../observability/tracing.js'
 import { SporeError } from '../observability/errors.js'
 import { CALLER_HEADER, MODEL_CALL_HEADER, KEY_HEADER, PRECURSOR_CALLER, ROOT_CALLER, request, typedError } from './socket-request.js'
 
-export const CALL_OPTIONS = new Set(['tools', 'signal', 'parentSpan', 'realtimeHandler', 'bufferOpts', 'reasoningSummaries', 'rawReasoning'])
+export const CALL_OPTIONS = new Set(['tools', 'signal', 'parentSpan', 'realtimeHandler', 'idleHandler', 'bufferOpts', 'reasoningSummaries', 'rawReasoning'])
+
+// How long the provider may be silent before mohdel says so, and again each time this passes.
+// Longer than the turn's own 10-second heartbeat, so an idle event marks a stall, not liveness.
+export const IDLE_HEARTBEAT_MS = 30_000
 
 const ask = (socketPath, key, method, path, body) => request(socketPath, { key, method, path, body, what: 'model socket' })
 
@@ -71,7 +75,7 @@ export async function createModelClient ({ socketPath, modelIds = [], key, logge
               detail: `the envelope carries ${[...CALL_OPTIONS].join(', ')}`
             })
           }
-          const { tools, signal, parentSpan, realtimeHandler, bufferOpts, reasoningSummaries, rawReasoning } = options
+          const { tools, signal, parentSpan, realtimeHandler, idleHandler, bufferOpts, reasoningSummaries, rawReasoning } = options
           const traceparent = formatTraceparent(parentSpan)
           const envelope = {
             callId: randomUUID(),
@@ -79,6 +83,7 @@ export async function createModelClient ({ socketPath, modelIds = [], key, logge
             model: modelId,
             identifier,
             prompt,
+            idleHeartbeatMs: IDLE_HEARTBEAT_MS,
             ...(tools?.length ? { tools } : {}),
             ...(reasoningSummaries ? { reasoningSummaries: true } : {}),
             ...(rawReasoning ? { rawReasoning: true } : {}),
@@ -93,6 +98,8 @@ export async function createModelClient ({ socketPath, modelIds = [], key, logge
           const stopped = new Promise(resolve => { stopWaiting = () => resolve(null) })
           signal?.addEventListener('abort', stopWaiting, { once: true })
           let result = null
+          let idleEventCount = 0
+          let idleMaxMs = 0
           try {
             while (true) {
               // Left unread on an abort: the connection goes with this process, and the
@@ -102,7 +109,11 @@ export async function createModelClient ({ socketPath, modelIds = [], key, logge
               if (next.done) break
               const event = next.value
               if (event.type === 'delta') realtimeHandler?.(event.delta)
-              else if (event.type === 'error') throw typedError(event.error)
+              else if (event.type === 'idle') {
+                idleEventCount += 1
+                idleMaxMs = Math.max(idleMaxMs, event.sinceMs)
+                idleHandler?.(event.sinceMs)
+              } else if (event.type === 'error') throw typedError(event.error)
               else if (event.type === 'done') result = event.result
             }
           } finally {
@@ -110,7 +121,7 @@ export async function createModelClient ({ socketPath, modelIds = [], key, logge
           }
           if (!result) throw new SporeError('the model call ended without an answer', { type: 'BROKER_FAILED' })
           if (tracksTree) await settle()
-          return result
+          return { ...result, idleEventCount, idleMaxMs }
         },
         // Not marked as the root's own: the loop counts only answers as its own, so an
         // embedding reaches the tree's ledger through `children` on the next settle.

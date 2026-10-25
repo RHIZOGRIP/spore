@@ -13,8 +13,6 @@
  * mohdel converts `cache: '5m' | '1h'` to provider-specific cache_control.
  */
 
-const BOUNDARY_FOUNDATION = '\n\n──── CACHED PREFIX BOUNDARY ────\n\n'
-
 /**
  * @param {object} slots
  * @param {string} [slots.identity] - who the agent is told it is: the definition's body
@@ -35,7 +33,7 @@ export function composeSystem (slots = {}, opts = {}) {
   if (rules) foundationParts.push(rules)
   if (foundationParts.length) {
     blocks.push({
-      text: foundationParts.join('\n\n') + BOUNDARY_FOUNDATION,
+      text: foundationParts.join('\n\n'),
       cache: cacheTtl
     })
   }

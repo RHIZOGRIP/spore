@@ -37,18 +37,17 @@ export const SCHEMA = EVENT_SCHEMA
  */
 const CARRIED = [
   'round', 'tool_start', 'tool_end', 'tool_block', 'wrap', 'unwrap', 'interject', 'inbox_read',
-  'heartbeat', 'stream', 'usage', 'complete', 'deliverables', 'recall', 'compaction_started', 'compaction', 'compaction_failed',
+  'heartbeat', 'mohdel_idle', 'stream', 'usage', 'complete', 'deliverables', 'recall', 'compaction_started', 'compaction', 'compaction_failed',
   'estimate_drift', 'empty_completion', 'recovery'
 ]
 
 export const EVENTS = [...CARRIED, 'annotation', 'turn_end']
 
 /**
- * Named by the schema and not produced: nothing on the model path reports an idle stream, so
- * there is nothing to carry. It joins the carried events once the model path does, and every
- * consumer of the log has it without changing.
+ * Names the schema reserves before anything produces them. One joins the carried events when
+ * it is produced, and every consumer of the log has it without changing.
  */
-export const PROMISED = ['mohdel_idle']
+export const PROMISED = []
 
 // Streamed text is the one event that arrives in hundreds. The log is a client of it like
 // any other, so it batches its own lines — one per burst of one kind — and what the emitter

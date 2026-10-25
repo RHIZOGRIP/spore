@@ -2087,10 +2087,10 @@ and emitted by `loop` one chunk at a time, its `kind` the provider's delta type 
 it — `message` for the answer's text, `function_call` for a call's arguments, `commentary` for what
 the model writes for the person while it works, `reasoning_summary` and `reasoning` (raw) when the
 definition's `reasoning` asks for them — at mohdel's granularity, which
-the loop sets with `bufferOpts` to at most 50 characters or half a second. `mohdel_idle` is named by
-the schema and **not produced** (`PROMISED`): nothing on the model path reports an idle stream,
-so there is nothing to carry. It joins `EVENTS` once the model path does, and every consumer has
-it without changing.
+the loop sets with `bufferOpts` to at most 50 characters or half a second. `mohdel_idle` is mohdel's
+own report of a silent provider: every call asks for it at 30 s (`idleHeartbeatMs`), longer than
+the turn's 10-second `heartbeat`, so it marks a stall rather than liveness, and `usage` counts
+the call's reports.
 
 **The stream and the log are two layers.** The transport delivers every chunk to the turn's emitter,
 and anything listening there hears each one. The log is one listener among them and batches its own
