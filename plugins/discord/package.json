@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-discord",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Discord for spores: people and spores in one channel, each spore addressed by its role, run as a service",
   "author": {
     "name": "Christophe Le Bars",
@@ -29,7 +29,7 @@
     "NOTICE"
   ],
   "peerDependencies": {
-    "@rhizogrip/spore": "^1.36.0"
+    "@rhizogrip/spore": "^1.37.0"
   },
   "scripts": {
     "test": "vitest run"
