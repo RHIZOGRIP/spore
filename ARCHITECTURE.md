@@ -2497,8 +2497,8 @@ other grant it is a rail against accident, not against an agent that means other
 
 The agent's model access is on the far side of a socket, and the socket speaks **mohdel's
 call protocol**. The runner serves it (`rust/runner/src/model.rs`): `POST /v1/call` and
-`POST /v1/embed` go to thin-gate's public `handle_call` and `dispatch_embed` over an embedded
-pool of mohdel sessions — one started alongside the agent, another each time every one is busy,
+`POST /v1/embed` go to thin-gate's public `handle_call` and `dispatch_embed` over a
+pool of mohdel sessions, Node processes the runner starts — one alongside the agent, another each time every one is busy,
 up to `modelSessions` (§CPU and memory on one machine) — and two routes are spore's own,
 `POST /spore/info` (a model's catalog entry, answered by a session) and `GET /spore/spend`. What
 spore adds around mohdel's protocol is the tree key, the ledger and the hard stop, and a route
@@ -2946,20 +2946,19 @@ rather than a field in a definition. Two callers together are bounded by the use
 records; the answer is the workspace's transcript and whatever its turn's `deliverables` hold.
 `runSpore`, the synchronous confined half, is not exported.
 
-### What a turn costs
+### What a turn holds
 
-**Cost is O(concurrent turns), not O(spores).** A defined spore that is not running is 0
-processes; a running turn is 2 — the runner and `spore-agent.js` — and each concurrent cell 2
-more, `spore-spawn` and `spawn-worker.js`. A contained turn adds `confine` and the namespaces'
-first process, two small C processes. Brokers are socket servers inside the runner, not
-processes. A thousand idle spores cost disk.
+**Processes scale with concurrent turns, not with spores.** A defined spore that is not running
+is no process. A running turn is the runner and `spore-agent.js`, and the mohdel sessions the
+runner starts for it when the host has no gate: each a Node process, one starting with the turn
+and another whenever every one is busy, up to `modelSessions` (§CPU and memory on one machine).
+A host with a gate starts none. Each concurrent cell adds `spore-spawn` and `spawn-worker.js`,
+and a standalone cell its own sessions. A contained turn adds `confine` and its namespaces'
+first process. Brokers are sockets inside the runner, not processes. A thousand idle spores
+cost disk.
 
-**Measured** against a scripted provider: **149 MB** combined RSS for a turn, about 75 MB for a
-Node process with the runtime loaded, and **~450 ms** from `spore send` to the first model call,
-all of it module loading — `openWorkspace` is 1–4 ms. A mohdel session is Node too, since the
-provider SDKs are JavaScript: 56 MB with mohdel loaded (40 MB bare, ~85 ms of import). The
-runner embeds one session for its turn, more only while cells call at once (§CPU and memory on
-one machine).
+What a turn takes in memory and time depends on its model, its provider and its task, so no
+figure is given here.
 
 **Two limits:**
 
