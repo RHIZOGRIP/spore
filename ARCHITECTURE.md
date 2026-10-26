@@ -291,6 +291,17 @@ cache served, and `spore ls` marks a spore whose last turn went more than a tent
 The loop compares its estimate with what the provider counted after each call, and says so once a
 turn, `estimate_drift`, when the count is more than a quarter higher.
 
+**A flush starts the conversation over and forgets nothing.** `flush()` — `spore flush`, `/flush` in
+the terminal or a conversation — appends a compaction entry that keeps none of the history
+(`append_flush`, `rust/workspace/src/state.rs`): its summary is a fixed note saying who flushed and
+what is still open from before — the question the last turn asked, approvals not yet settled, jobs
+still running — and `flushed: { by, at }`. The next turn replays that note and nothing before it.
+No model writes the note, since a flush is asked for when what is in front of the model is the
+problem. It runs between turns under the spore's lock, as a model switch does, and is refused while
+a turn runs or after a crash. Every entry stays in the transcript, `data/` is untouched, and memory
+indexes all that was said before the flush, since it has left the context; `spore log` shows each
+flush among the turns.
+
 The trail never holds a copy of a workspace file beyond the short text the inline rule allows —
 only paths and hashes. Work product lives in the workspace, the record in `calls`, and they have
 different lifetimes, so pruning can never destroy anything but the record.

@@ -51,6 +51,7 @@ const VERBS = `Usage:
   spore wrap <name> [10m]                   ask the running turn to wrap up, now or in a while
   spore annotate <name> <line>|--clear      a line of yours under the running turn's header, wherever it is shown
   spore model [<name> [<model>]]            what it runs on and may switch to; with a model, switch from the next turn
+  spore flush <name>                        its next turn starts over, replaying nothing said before; nothing is forgotten
   spore ls [<dir>]                          your spores and their state
   spore tui [<name>]                        talk to a spore in a terminal screen; the last one opened without a name
   spore here [<dir>]                        the spore that works in this directory, in place — made the first time
@@ -140,6 +141,7 @@ const SHAPES = {
   wrap: withJson(2),
   annotate: withJson(ALL, 'clear'),
   model: withJson(2),
+  flush: withJson(1),
   define: withJson(1, 'definition', 'from', 'sporangium', 'model', 'plugin'),
   edit: withJson(1),
   remake: withJson(1),

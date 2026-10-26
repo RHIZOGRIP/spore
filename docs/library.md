@@ -522,12 +522,13 @@ any. Throws `NOT_A_WORKSPACE`, `DEFINITION_INVALID`.
 ### `log`
 
 ```
-log({ ws, configFile }) → { ws, turns, waiting, held }
+log({ ws, configFile }) → { ws, turns, waiting, held, flushes }
 ```
 
 One entry per finished turn, `{ endedAt, stopReason, concluded, rounds, treeUsd, workUnits,
 error, detail, asked }`, where `asked` is the inbox entries it answered. `waiting` is the unread
-inbox entries; `held` is the schedules `held` or `refused`.
+inbox entries; `held` is the schedules `held` or `refused`; `flushes` is each flush,
+`{ entryNo, at, by }`.
 Throws `NOT_A_WORKSPACE`, `DEFINITION_INVALID`.
 
 ### `usage`
@@ -769,6 +770,20 @@ Sets the model the spore runs on from its next turn, among those its definition 
 and `models:`); the one it leaves stays offered. Only between turns, under the spore's lock. Throws
 `MODEL_NOT_OFFERED`, `DEFINITION_INVALID`, `NOT_A_WORKSPACE`, `SPORE_RUNNING` while a turn runs,
 and `SPORE_CRASHED` when its last runner died without recording its turn.
+
+### `flush`
+
+```
+flush({ ws, by, configFile }) → { ws, entryNo, by, open: { question, approvals, jobs } }
+```
+
+Starts the spore's conversation over from its next turn, which replays a note in place of all that
+was said before; the transcript keeps every entry, and memory reaches what was said. `by` is who
+asked, as the note and `log` name it. The note lists what is still open, which `open` returns: the
+question the last turn asked or null, approvals not yet settled `{ id, place, until }`, and running
+jobs `{ name, startedAt }`. No model is called. Only between turns, under the spore's lock. Throws
+`FLUSH_INVALID` without `by`, `NOT_A_WORKSPACE`, `SPORE_RUNNING` while a turn runs, and
+`SPORE_CRASHED` when its last runner died without recording its turn.
 
 ### `setDefaultModel`
 

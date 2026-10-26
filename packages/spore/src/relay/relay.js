@@ -13,7 +13,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
-import { attemptOutbox, changeText, extendTurn, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf, errorText } from '../index.js'
+import { attemptOutbox, changeText, extendTurn, flush, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf, errorText } from '../index.js'
 import { createApprovals } from './approvals.js'
 import { filesOf, reactionsOf, routesOf, traceOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
@@ -24,7 +24,7 @@ import { isZone, runningLimits } from '../core/spore-dir.js'
 import { loadState, saveState } from './state.js'
 
 const TAKES_ARGUMENTS = new Set(['extend', 'wrap'])
-const OPERATING = new Set(['stop', 'wrap', 'extend'])
+const OPERATING = new Set(['stop', 'wrap', 'extend', 'flush'])
 const WORKING = 'working…'
 const STILL_WORKING = 'heard you — still working…'
 const ANSWERED = 'answered below'
@@ -171,7 +171,15 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     }
   }
 
-  const obey = (conversation, ws, name, verb, args, brief) => {
+  const obey = (conversation, ws, name, verb, args, brief, person) => {
+    if (verb === 'flush') {
+      try {
+        flush({ ws, by: `${person.name} in ${where(conversation)}` })
+      } catch (err) {
+        return tell(conversation, `not flushed — ${errorText(err)}`, name)
+      }
+      return tell(conversation, 'flushed — what comes next starts over; nothing is forgotten', name)
+    }
     if (verb === 'stop') {
       stopTurn(conversation, ws, name)
       return
@@ -404,7 +412,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         log(`refused ${verb} from ${message.person.name} (${message.person.id}) in ${where(conversation)} — only someone its people name may ${verb} a turn: ${allow}`)
         return tell(conversation, `only the people this ${noun} lists may ${verb} a turn`, first.name)
       }
-      return obey(conversation, first.ws, first.name, verb, message.command.args ?? '', routed.brief)
+      return obey(conversation, first.ws, first.name, verb, message.command.args ?? '', routed.brief, message.person)
     }
     const attach = message.files.length ? await gather(message, read.files, first.name) : []
     for (const { name, ws } of reached) pass(message, name, ws, read, attach)

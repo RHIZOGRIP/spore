@@ -8,7 +8,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readSync, 
 import { basename, relative, resolve } from 'node:path'
 
 import { headAndTail } from './preview.js'
-import { compactionSummaryMessage } from '../resilience/compaction.js'
+import { compactionSummaryMessage, flushedMessage } from '../resilience/compaction.js'
 import { mark, marksOf } from './marks.js'
 import { native } from '../native.js'
 import { parseTraceparent } from '../observability/tracing.js'
@@ -1030,7 +1030,8 @@ export function readTranscript (ws) {
     const entries = new Map(db.prepare('SELECT * FROM transcript WHERE entryNo IN (SELECT value FROM json_each(?))').all(JSON.stringify(live)).map(row => [row.entryNo, transcriptEntry(row)]))
     return live.map(entryNo => {
       const entry = entries.get(entryNo)
-      return entry.kind === 'compaction' ? compactionSummaryMessage(entry.message.summary) : mark(entry.message, ...(entry.marks || []))
+      if (entry.kind === 'message') return mark(entry.message, ...(entry.marks || []))
+      return entry.message.flushed ? flushedMessage(entry.message.summary) : compactionSummaryMessage(entry.message.summary)
     })
   })
 }
@@ -1044,6 +1045,15 @@ export function appendTranscript (target, message) {
   writerOf(target).request('transcript.append', {
     entries: [{ at: new Date().toISOString(), kind: 'message', role: message.role, message, ...(marks.length ? { marks } : {}) }]
   })
+}
+
+/** A flush, by a caller holding the lock: `note` stands in for all `replayed` messages of the history. */
+export function appendFlush (ws, note, replayed, by) {
+  return native.appendFlush(ws, note, replayed, by)
+}
+
+export function flushesIn (ws) {
+  return reading(ws, [], db => db.prepare("SELECT entryNo, message ->> '$.flushed.at' AS at, message ->> '$.flushed.by' AS by FROM transcript WHERE kind = 'compaction' AND message ->> '$.flushed' IS NOT NULL ORDER BY entryNo").all())
 }
 
 export function appendCompaction (target, entry) {

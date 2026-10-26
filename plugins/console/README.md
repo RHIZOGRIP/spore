@@ -43,7 +43,7 @@ curl -s -H "authorization: Bearer $LAB_CONSOLE_TOKEN" -H 'content-type: applicat
 `POST /messages` takes `{ person, text, id, files }`: `id` is yours, and a message sent twice
 under one id is said once — the second answer carries the first one's `seq` and `repeated: true`.
 `files` are `[{ name, mime, data }]`, `data` in base64. A `traceparent` header is the trace the
-turn answering it is parented on. `/status`, `/stop`, `/wrap [10m]` and `/extend wall 30m` work
+turn answering it is parented on. `/status`, `/stop`, `/wrap [10m]`, `/extend wall 30m` and `/flush` work
 as typed text. The answer is `{ seq, repeated }`, `seq` the message's place in the conversation.
 
 With `?wait=<seconds>` (at most 900) it waits for the answer to that message and says what led to

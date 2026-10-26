@@ -3,6 +3,7 @@ export const COMMANDS = [
   { name: 'wrap', description: 'ask the running turn to wrap up, now or in a while', argumentHint: '[10m]' },
   { name: 'extend', description: 'give the running turn more, as far as its spore.cmk allows', argumentHint: '<rounds|cost|wall> <amount>' },
   { name: 'model', description: 'switch the model this spore runs on, from the next turn — a list to pick from, or one named', argumentHint: '[<model>]' },
+  { name: 'flush', description: 'start the conversation over from the next turn; nothing is forgotten' },
   { name: 'curate', description: 'add a model a provider lists to your mohdel catalog — this spore\'s provider unless one is named', argumentHint: '[<provider>]' },
   { name: 'pause', description: 'stop every turn and job of your spores, and start none' },
   { name: 'unpause', description: 'let turns start again' },

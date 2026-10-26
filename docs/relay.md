@@ -62,10 +62,12 @@ import { runService } from '@rhizogrip/spore/relay'
 - **The answer is formatted.** It goes to the adapter as Markdown, cut at a line under the platform's
   limit, a code block a piece ends inside closed and opened again in the next; what the relay says
   itself — status, notices — is plain.
-- **Commands**: `status`, `stop`, `wrap [10m]`, `extend <dimension> <amount>`, and a help line for
-  anything else. `stop` also sets aside what that conversation sent and no turn had read, once the
-  stopped turn has ended, and says how many — with nothing running, what waited. In a conversation
-  many people share, `stop`, `wrap` and `extend` are for someone its `people` name by id or role —
+- **Commands**: `status`, `stop`, `wrap [10m]`, `extend <dimension> <amount>`, `flush`, and a help
+  line for anything else. `stop` also sets aside what that conversation sent and no turn had read, once the
+  stopped turn has ended, and says how many — with nothing running, what waited. `flush` starts the
+  spore's conversation over between turns, naming the person and the conversation as who asked, and
+  is refused while a turn runs. In a conversation
+  many people share, `stop`, `wrap`, `extend` and `flush` are for someone its `people` name by id or role —
   not everyone `"*"` lets talk; anyone else is told so, and the log says the line to add.
 - **A brief conversation is told what it asked and nothing of how the spore runs,** where the
   routing says `brief`: `status` is the spore's state — `working`, `idle`, `paused`, how many

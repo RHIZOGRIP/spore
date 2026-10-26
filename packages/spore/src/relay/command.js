@@ -1,5 +1,5 @@
 /** The commands the relay obeys in a conversation; any other it answers with the help. */
-export const VERBS = new Set(['status', 'stop', 'wrap', 'extend', 'help'])
+export const VERBS = new Set(['status', 'stop', 'wrap', 'extend', 'flush', 'help'])
 
 const COMMAND = /^\/([a-z]+)(?:\s+(.+))?$/is
 

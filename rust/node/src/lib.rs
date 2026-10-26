@@ -660,6 +660,12 @@ pub fn finalize_turn(ws: String, turn: String) -> napi::Result<()> {
         .map_err(failed)
 }
 
+/// The `entryNo` of a flush appended to the transcript, by a caller holding the workspace's lock.
+#[napi]
+pub fn append_flush(ws: String, note: String, replayed: i64, by: String) -> napi::Result<i64> {
+    workspace::append_flush(Path::new(&ws), &note, replayed, &by).map_err(failed)
+}
+
 /// A workspace's transcript, replaced — host side, for a fork and for fixtures.
 #[napi]
 pub fn write_transcript(ws: String, entries: String) -> napi::Result<()> {

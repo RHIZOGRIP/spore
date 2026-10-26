@@ -113,10 +113,11 @@ person and to the spore.
 /spore stop              end the turn it is running, and set aside what you sent that it had not read
 /spore wrap [10m]        ask the running turn to wrap up, now or in a while
 /spore extend wall 30m   give it more — wall, cost or rounds — up to the extend.<limit> its spore.cmk grants
+/spore flush             start the conversation over from the next turn; nothing is forgotten
 ```
 
 Slack takes no app's slash command in a thread: there, mention the bot and write `/status`,
-`/stop`, `/wrap` or `/extend`. In a channel, `stop`, `wrap` and `extend` are for the people the
+`/stop`, `/wrap`, `/extend` or `/flush`. In a channel, `stop`, `wrap`, `extend` and `flush` are for the people the
 channel lists by id, not everyone `"*"` lets talk.
 
 ## Turns nobody in Slack started

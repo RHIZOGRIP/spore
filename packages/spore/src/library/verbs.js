@@ -13,7 +13,7 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 
 import { readConfig, existing, addTo, workspaceFor, CONFIG_FILE, containing, recordLayout } from './config.js'
 import { isWorkspace, sporesInHome } from './discover.js'
-import { acquireLock, approvalsIn, asked, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readLock, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
+import { acquireLock, appendFlush, approvalsIn, asked, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readLock, flushesIn, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
 import { askApproval } from './approvals.js'
 import { sqlLines } from './sql.js'
 import { TOOL_NAMES } from '../core/tool-names.js'
@@ -112,18 +112,57 @@ export function setDefaultModel (model, { configFile = CONFIG_FILE } = {}) {
  */
 export function switchModel ({ ws, model, configFile = CONFIG_FILE } = {}) {
   const path = here(ws, configFile)
+  return betweenTurns(path, ws, { then: 'switch', what: 'the model switches' }, () => switched(path, model))
+}
+
+function betweenTurns (path, ws, { then, what }, act) {
   if (!isRunning(path) && readLock(path)?.pid) {
-    throw new SporeError(`${path} crashed in its last turn`, { type: 'SPORE_CRASHED', detail: `that turn was never recorded — spore send ${ws} records it, then switch` })
+    throw new SporeError(`${path} crashed in its last turn`, { type: 'SPORE_CRASHED', detail: `that turn was never recorded — spore send ${ws} records it, then ${then}` })
   }
   const taken = acquireLock(path)
   if (taken.error) {
-    throw new SporeError(taken.error, { type: 'SPORE_RUNNING', detail: `the model switches between turns — wait for this one to end, or spore stop ${ws}` })
+    throw new SporeError(taken.error, { type: 'SPORE_RUNNING', detail: `${what} between turns — wait for this one to end, or spore stop ${ws}` })
   }
   try {
-    return switched(path, model)
+    return act()
   } finally {
     releaseLock(path)
   }
+}
+
+/**
+ * A new flush of the spore at `ws`: the next turn replays none of what was said before, and the
+ * agent is told what is still open from then. `by` is who asked, as the record and the agent read it.
+ */
+export function flush ({ ws, by, configFile = CONFIG_FILE } = {}) {
+  if (typeof by !== 'string' || !by.trim()) throw new SporeError('a flush says who asked for it', { type: 'FLUSH_INVALID', detail: 'by is who asked, as the record and the agent read it' })
+  const path = here(ws, configFile)
+  return betweenTurns(path, ws, { then: 'flush', what: 'a spore is flushed' }, () => {
+    const open = openWork(path)
+    const note = flushNote({ by, memory: Boolean(sporeDefinition(path).memory), open })
+    const entryNo = appendFlush(path, note, readTranscript(path).length, by)
+    return { ws: path, entryNo, by, open }
+  })
+}
+
+function openWork (path) {
+  const { last } = turnSummary(path)
+  return {
+    question: last?.stopReason === 'question' ? last.output : null,
+    approvals: approvalsIn(path).filter(one => !one.settledAt).map(({ id, place, until }) => ({ id, place, until })),
+    jobs: jobsIn(path, { running: true }).map(({ name, startedAt }) => ({ name, startedAt }))
+  }
+}
+
+function flushNote ({ by, memory, open }) {
+  const kept = `data/ and your notes in data/memory/ are as they were${memory ? ', recall still reaches what was said' : ''}, and the transcript view through $SPORE_SQL holds all of it`
+  const still = [
+    ...(open.question ? [`- the question you asked: ${open.question}`] : []),
+    ...open.approvals.map(one => `- approval ${one.id} in ${one.place}, open until ${one.until}`),
+    ...open.jobs.map(one => `- job ${one.name}, running since ${one.startedAt}`)
+  ]
+  return `${by} flushed the conversation: what was said before this point is no longer in front of you. Nothing is forgotten — ${kept}.` +
+    (still.length ? `\n\nStill open from before:\n${still.join('\n')}` : '')
 }
 
 function switched (path, model) {
@@ -820,7 +859,7 @@ export function log ({ ws, configFile = CONFIG_FILE } = {}) {
   const held = survey(path, { spore, grant: definition.schedules ?? null })
     .filter(row => row.state === 'held' || row.state === 'refused')
     .map(({ message, ...row }) => row)
-  return { ws: path, turns, waiting: waitingIn(path, spore.state === RUNNING), setAside: said.filter(entry => entry.setAside), held }
+  return { ws: path, turns, flushes: flushesIn(path), waiting: waitingIn(path, spore.state === RUNNING), setAside: said.filter(entry => entry.setAside), held }
 }
 
 /** What a workspace can delegate to. */

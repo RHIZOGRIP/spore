@@ -2661,6 +2661,29 @@ pub fn replace_transcript(ws: &Path, entries: &[Record]) -> Result<(), String> {
     })
 }
 
+/// A flush, written by whoever holds the workspace's lock between turns: a compaction entry that
+/// keeps none of the `replayed` messages the history holds, `note` standing in for them. Its
+/// `entryNo`.
+pub fn append_flush(ws: &Path, note: &str, replayed: i64, by: &str) -> Result<i64, String> {
+    let at = crate::iso_now();
+    let message = json!({
+        "summary": note,
+        "firstKeptIndex": replayed,
+        "flushed": { "by": by, "at": at },
+    });
+    writing(ws, |conn| {
+        let tx = immediate(conn)?;
+        tx.execute(
+            "INSERT INTO t_transcript (at, kind, message) VALUES (?1, 'compaction', ?2)",
+            (&at, message.to_string()),
+        )
+        .map_err(failed_to("flush the transcript"))?;
+        let entry_no = tx.last_insert_rowid();
+        tx.commit().map_err(failed_to("flush the transcript"))?;
+        Ok(entry_no)
+    })
+}
+
 fn finalize_in(tx: &Connection, record: &mut Record, announce: bool) -> Result<(), String> {
     let failed = failed_to("finalize the turn");
     let turn_id: String = record
@@ -4457,6 +4480,30 @@ mod tests {
             (json!("refused"), json!("chat 42 blocked the bot"))
         );
         assert!(!settle_outbox(&ws, 99, None).unwrap());
+    }
+
+    #[test]
+    fn flushes_as_a_compaction_entry_keeping_none_of_the_history_and_saying_who_asked() {
+        let ws = scratch("flush");
+        replace_transcript(
+            &ws,
+            &[Record::from_value(&json!({ "at": "a", "kind": "message", "role": "user", "message": { "role": "user", "content": "hi" } }))],
+        )
+        .unwrap();
+        let entry_no = append_flush(&ws, "the note", 1, "its operator").unwrap();
+        assert_eq!(entry_no, 2);
+        let flushed = row(
+            &ws,
+            "SELECT kind, role, turnId, message FROM transcript WHERE entryNo = 2",
+        );
+        assert_eq!(flushed["kind"], "compaction");
+        assert_eq!(flushed["role"], Value::Null);
+        assert_eq!(flushed["turnId"], Value::Null);
+        let message: Value = serde_json::from_str(flushed["message"].as_str().unwrap()).unwrap();
+        assert_eq!(message["summary"], "the note");
+        assert_eq!(message["firstKeptIndex"], 1);
+        assert_eq!(message["flushed"]["by"], "its operator");
+        assert!(message["flushed"]["at"].is_string());
     }
 
     #[test]

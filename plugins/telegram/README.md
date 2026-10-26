@@ -71,6 +71,7 @@ says so in your `working…` message, and the next turn answers it.
 /stop      end the turn it is running, and set aside what you sent that it had not read
 /wrap [10m]        ask the running turn to wrap up, now or in a while
 /extend wall 30m   give it more — wall, cost or rounds — up to the extend.<limit> its spore.cmk grants
+/flush             start the conversation over from the next turn; nothing is forgotten
 ```
 
 A photo, a document, a voice note, a video or a sticker reaches the spore with its caption, fetched
@@ -192,7 +193,7 @@ Anything else said there is not for the spore, and the bot's mention is not part
 is told. Someone the entry does not list who addresses the bot gets silence, and the log gets the
 line that would let them in.
 
-`/status` is for anyone listed; `/stop`, `/wrap` and `/extend` are for the people the entry names
+`/status` is for anyone listed; `/stop`, `/wrap`, `/extend` and `/flush` are for the people the entry names
 by id — not everyone `"*"` lets talk — and anyone else is told so.
 
 A group can let its spore hear what is said there that is not to it:

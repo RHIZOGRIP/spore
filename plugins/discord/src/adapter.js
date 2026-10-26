@@ -46,7 +46,7 @@ function check (raw, path) {
   }
 }
 
-const HELP = 'Address a spore by its role — @triage — or by replying to its post. "@triage status" says what it is doing; "@triage stop" ends the turn it is running and sets aside what you sent that it had not read; "@triage wrap 10m" asks it to wrap up'
+const HELP = 'Address a spore by its role — @triage — or by replying to its post. "@triage status" says what it is doing; "@triage stop" ends the turn it is running and sets aside what you sent that it had not read; "@triage wrap 10m" asks it to wrap up; "@triage flush" starts the conversation over, forgetting nothing'
 const EXTEND = '"@triage extend wall 30m" gives it more, as far as its spore.cmk allows'
 
 export const DISCORD = {

@@ -6,8 +6,8 @@ import { resolve, dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { acquireLock, appendEvents, appendTranscript, countSaidSoFar, dataDir, definitionPath, HOST_TURNS_ENV, hostState, lastSent, readLock, readSaidAround, readSaidSoFar, readTranscript, readTranscriptEntries, readTreeKey, releaseLock, statePath, TREE_KEY_FILE, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
-import { compactionSummaryMessage, createCompactionEntry } from '../src/resilience/compaction.js'
+import { acquireLock, appendEvents, appendFlush, appendTranscript, countSaidSoFar, dataDir, definitionPath, flushesIn, HOST_TURNS_ENV, hostState, lastSent, readLock, readSaidAround, readSaidSoFar, readTranscript, readTranscriptEntries, readTreeKey, releaseLock, statePath, TREE_KEY_FILE, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
+import { compactionSummaryMessage, createCompactionEntry, flushedMessage } from '../src/resilience/compaction.js'
 import { COMPACTED, WRAP, mark, marked } from '../src/core/marks.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -135,6 +135,21 @@ describe('readTranscript', () => {
       { role: 'assistant', content: 'four' },
       { role: 'user', content: 'five' }
     ])
+  })
+
+  it('replays nothing from before a flush but its note, and keeps the record whole', () => {
+    writeTranscript([
+      said({ role: 'user', content: 'one' }),
+      said({ role: 'assistant', content: 'two' })
+    ])
+    const entryNo = appendFlush(WS, 'its operator flushed the conversation', readTranscript(WS).length, 'its operator')
+    appendTranscript(WS, { role: 'user', content: 'three' })
+
+    const replayed = readTranscript(WS)
+    expect(replayed).toEqual([flushedMessage('its operator flushed the conversation'), { role: 'user', content: 'three' }])
+    expect(marked(replayed[0], COMPACTED)).toBe(true)
+    expect(readSaidSoFar(WS).map(message => message.content)).toEqual(['one', 'two', 'three'])
+    expect(flushesIn(WS)).toEqual([{ entryNo, at: expect.any(String), by: 'its operator' }])
   })
 
   it('refuses an entry that is neither a message nor a compaction entry', () => {

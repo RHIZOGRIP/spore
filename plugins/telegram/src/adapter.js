@@ -64,7 +64,7 @@ const CONVERSATIONS = {
   }
 }
 
-const HELP = 'Anything you write to me in private goes to the spore; in a group, mention me or reply to me. /status says what it is doing; /stop ends the turn it is running and sets aside what you sent that it had not read; /wrap [10m] asks it to wrap up'
+const HELP = 'Anything you write to me in private goes to the spore; in a group, mention me or reply to me. /status says what it is doing; /stop ends the turn it is running and sets aside what you sent that it had not read; /wrap [10m] asks it to wrap up; /flush starts the conversation over, forgetting nothing'
 const EXTEND = '/extend wall 30m gives it more, as far as its spore.cmk allows'
 
 export const TELEGRAM = {

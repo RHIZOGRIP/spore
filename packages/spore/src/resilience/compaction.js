@@ -202,6 +202,13 @@ export function compactionSummaryMessage (summary) {
   }, COMPACTED)
 }
 
+export function flushedMessage (note) {
+  return mark({
+    role: 'user',
+    content: `[The conversation was flushed]\n\n${note}`
+  }, COMPACTED)
+}
+
 /**
  * Create a compaction entry for the transcript. `firstKeptIndex` is
  * an offset into the message array as it stood when compaction ran, so

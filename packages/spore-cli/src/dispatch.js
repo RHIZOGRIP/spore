@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
-import { addTo, allowPlugin, annotate, billingFor, bytesText, changeText, define, defaultModel, disallowPlugin, durationText, edit, extend, getKey, jobs, list, listApprovals, listPlugins, log, pause, remake, remove, removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings, show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM, errorText } from '@rhizogrip/spore'
+import { addTo, allowPlugin, annotate, billingFor, bytesText, changeText, define, defaultModel, disallowPlugin, durationText, edit, extend, flush, getKey, jobs, list, listApprovals, listPlugins, log, pause, remake, remove, removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings, show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM, errorText } from '@rhizogrip/spore'
 import { diagnose, renderDoctor } from './doctor.js'
 import { hook } from './hooks.js'
 import { createServices } from './services.js'
@@ -67,6 +67,16 @@ const listExit = (result) => (result.configured ? 0 : 2)
 function renderModels ({ model, models }) {
   console.log(`runs on ${model}`)
   console.log(models.length ? `or: ${models.join(', ')} — spore model <name> <model> switches from the next turn` : 'offers no other — models: [<provider>/<name>, …] in its spore.cmk adds some')
+}
+
+function renderFlush ({ open }) {
+  console.log('flushed — its next turn starts over, replaying nothing said before; nothing is forgotten')
+  const still = [
+    ...(open.question ? [`the question it asked: ${cut(open.question)}`] : []),
+    ...open.approvals.map(one => `approval ${one.id} in ${one.place}, open until ${when(one.until)}`),
+    ...open.jobs.map(one => `job ${one.name}, running since ${when(one.startedAt)}`)
+  ]
+  if (still.length) console.log(`still open, and it is told so:\n${still.map(line => `  ${line}`).join('\n')}`)
 }
 
 function renderSwitch ({ model, was }) {
@@ -298,7 +308,7 @@ const cut = (text) => (text.length > 60 ? text.slice(0, 57) + '…' : text)
 const quoted = (entries) => entries.map(entry => `${saidBy(entry) ? `${saidBy(entry)}: ` : ''}${JSON.stringify(cut(saidText(entry)))}`).join(' ')
 
 function renderLog (result) {
-  if (!result.turns.length && !result.waiting.length && !result.setAside.length && !result.held.length) {
+  if (!result.turns.length && !result.flushes.length && !result.waiting.length && !result.setAside.length && !result.held.length) {
     console.log('nothing has been said here yet')
     return
   }
@@ -308,10 +318,17 @@ function renderLog (result) {
     const text = `${turn.error}${detail}`
     return `${text.length > 100 ? `${text.slice(0, 99)}…` : text}  `
   }
-  for (const turn of result.turns) {
-    console.log(`  ${when(turn.endedAt)}  ${(turn.stopReason || '—').padEnd(12)} ${String(turn.rounds).padStart(3)}r ` +
-      `${('$' + turn.treeUsd.toFixed(4)).padStart(9)} ${String(turn.workUnits).padStart(4)}u  ${why(turn)}${quoted(turn.asked)}`)
-  }
+  const timeline = [
+    ...result.turns.map(turn => ({
+      at: turn.endedAt,
+      line: `  ${when(turn.endedAt)}  ${(turn.stopReason || '—').padEnd(12)} ${String(turn.rounds).padStart(3)}r ` +
+        `${('$' + turn.treeUsd.toFixed(4)).padStart(9)} ${String(turn.workUnits).padStart(4)}u  ${why(turn)}${quoted(turn.asked)}`
+    })),
+    ...result.flushes.map(one => ({ at: one.at, line: `  ${when(one.at)}  ${'flushed'.padEnd(12)} ${' '.repeat(19)}  by ${one.by}` }))
+  ]
+  const order = (at) => at ?? '\uffff'
+  timeline.sort((a, b) => order(a.at) < order(b.at) ? -1 : order(a.at) > order(b.at) ? 1 : 0)
+  for (const { line } of timeline) console.log(line)
   // The time column is when a turn ended, and a waiting message has not been answered by
   // one. Blank says that; when it was said is in the record for anyone who needs it.
   for (const entry of result.setAside) {
@@ -652,6 +669,14 @@ export async function manage (verb, argv) {
       if (model) return emit(switchModel({ ws, model }), renderSwitch)
       const shown = show({ ws })
       return emit({ ws: shown.ws, model: shown.model, models: shown.models }, renderModels)
+    }
+    if (verb === 'flush') {
+      const ws = argv._[1]
+      if (!ws) {
+        console.error('spore: flush needs a spore — spore flush <name>')
+        return 2
+      }
+      return emit(flush({ ws: String(ws), by: 'its operator' }), renderFlush)
     }
     if (verb === 'extend') {
       const [, ws, dimension, amount] = argv._.map(String)

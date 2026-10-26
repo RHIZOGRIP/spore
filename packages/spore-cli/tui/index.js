@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
 import { CombinedAutocompleteProvider, Input, isKeyRelease, Markdown, matchesKey, ProcessTerminal, ScrollView, SelectList, truncateToWidth, TuiAltScreen, visibleWidth, VStack, wrapTextWithAnsi } from '@earendil-works/pi-tui'
-import { applyEvent, changeText, createLive, curate, durationText, errorText, extendTurn, grantOf, list, liveIn, loadMohdelEnvironment, outbox, pause, paused, readInbox, readTurns, RUNNING, send, SERVICE_STATE_DIR, show, sporePaths, stateOf, stop, switchModel, unpause, upstream, watchAll, wrapTurn } from '@rhizogrip/spore'
+import { applyEvent, changeText, createLive, curate, durationText, errorText, extendTurn, flush, grantOf, list, liveIn, loadMohdelEnvironment, outbox, pause, paused, readInbox, readTurns, RUNNING, send, SERVICE_STATE_DIR, show, sporePaths, stateOf, stop, switchModel, unpause, upstream, watchAll, wrapTurn } from '@rhizogrip/spore'
 import chalk from 'chalk'
 
 import { runningJob, scheduleLine } from '../src/dispatch.js'
@@ -464,6 +464,15 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
         onSelect: (item) => { closeOverlay(); switchTo(item.value) },
         onCancel: closeOverlay
       }))
+    }
+    if (name === 'flush') {
+      try {
+        const { open } = flush({ ws: state.ws, by: 'its operator' })
+        const still = (open.question ? 1 : 0) + open.approvals.length + open.jobs.length
+        return notice(`flushed — the next turn starts over; nothing is forgotten${still ? `, and it is told of ${still} thing${still > 1 ? 's' : ''} still open` : ''}`)
+      } catch (err) {
+        return notice(errorText(err))
+      }
     }
     if (name === 'curate') {
       const provider = args[0] ?? show({ ws: state.ws }).model.split('/')[0]

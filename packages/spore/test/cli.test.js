@@ -6,13 +6,13 @@ import { fileURLToPath } from 'node:url'
 
 import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, workspaceFor, containing, followingDocs, secondsOf } from '../src/library/config.js'
 import { workspacesIn, isWorkspace } from '../src/library/discover.js'
-import { define, defaultModel, defaultSporangiumPath, switchModel, edit, grantOf, list, log, pause, show, sporePaths, precursors, schedules, setDefaultModel, setSchedule, removeSchedule, sql, unpause, usage } from '../src/library/verbs.js'
+import { define, defaultModel, defaultSporangiumPath, switchModel, edit, flush, grantOf, list, log, pause, show, sporePaths, precursors, schedules, setDefaultModel, setSchedule, removeSchedule, sql, unpause, usage } from '../src/library/verbs.js'
 import { billingOf } from 'mohdel/providers'
 import { definitionWith } from '../src/testing.js'
 import { takeSlot } from '../src/core/admission.js'
 import { send } from '../src/core/send.js'
 import { tick } from '../src/core/tick.js'
-import { acquireLock, appendTurn, enqueue, readInbox, readTranscriptEntries, releaseLock, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
+import { acquireLock, appendTurn, enqueue, readInbox, readTranscript, readTranscriptEntries, releaseLock, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 import { allowPlugin } from '../src/core/plugins.js'
 import { linkGrants, openWorkspace } from '../src/core/workspace.js'
@@ -649,6 +649,51 @@ describe('editing a spore\'s definition', () => {
     expect(readFileSync(kept, 'utf8')).toMatch(/you are mine\./)
     rmSync(dirname(kept), { recursive: true })
     expect(held()).toMatch(/you are theirs\./)
+  })
+})
+
+describe('flushing a spore', () => {
+  const said = (role, content) => ({ at: '2026-10-26T00:00:00.000Z', kind: 'message', role, message: { role, content } })
+  let ws
+
+  beforeEach(() => {
+    setKey('home', resolve(DIR, 'home'), CONFIG)
+    ws = workspace(resolve(DIR, 'home', 'test'))
+  })
+
+  it('starts the next turn over, keeping every entry of the record', () => {
+    writeTranscriptEntries(ws, [said('user', 'my locker code is 4417'), said('assistant', 'noted')])
+    expect(flush({ ws: 'test', by: 'its operator', configFile: CONFIG }).open).toEqual({ question: null, approvals: [], jobs: [] })
+
+    const replayed = readTranscript(ws)
+    expect(replayed).toHaveLength(1)
+    expect(replayed[0].content).toMatch(/^\[The conversation was flushed\]\n\nits operator flushed the conversation: what was said before this point is no longer in front of you\./)
+    expect(replayed[0].content).not.toMatch(/recall|Still open/)
+    expect(readTranscriptEntries(ws).map(entry => entry.kind)).toEqual(['message', 'message', 'compaction'])
+    expect(log({ ws: 'test', configFile: CONFIG }).flushes).toEqual([{ entryNo: 3, at: expect.any(String), by: 'its operator' }])
+  })
+
+  it('tells the agent the question the last turn asked, which it would otherwise no longer see', () => {
+    const asked = enqueue(ws, 'what next').inbox
+    writeTurnRecords(ws, [{ startedAt: 'S', stopReason: 'question', concluded: true, output: 'Which branch?', endedAt: 'E', inboxTo: asked }])
+    expect(flush({ ws: 'test', by: 'its operator', configFile: CONFIG }).open.question).toBe('Which branch?')
+    expect(readTranscript(ws)[0].content).toMatch(/\n\nStill open from before:\n- the question you asked: Which branch\?$/)
+  })
+
+  it('flushes only between turns, and not over a crash it would hide', () => {
+    acquireLock(ws)
+    try {
+      expect(() => flush({ ws: 'test', by: 'its operator', configFile: CONFIG })).toThrow(expect.objectContaining({ type: 'SPORE_RUNNING', detail: expect.stringMatching(/flushed between turns/) }))
+    } finally {
+      releaseLock(ws)
+    }
+    writeFileSync(resolve(ws, 'lock'), JSON.stringify({ pid: 2 ** 22 + 7, startedAt: 'then' }))
+    expect(() => flush({ ws: 'test', by: 'its operator', configFile: CONFIG })).toThrow(expect.objectContaining({ type: 'SPORE_CRASHED', detail: expect.stringMatching(/then flush$/) }))
+    expect(readTranscriptEntries(ws)).toEqual([])
+  })
+
+  it('says who asked for it', () => {
+    expect(() => flush({ ws: 'test', configFile: CONFIG })).toThrow(expect.objectContaining({ type: 'FLUSH_INVALID' }))
   })
 })
 

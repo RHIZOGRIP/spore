@@ -71,7 +71,9 @@ lists what there is to read and `.schema turns` shows one:
   ended (see `approvals`).
 - `transcript` — this conversation, every entry by `entryNo`: `at`, `role`, and `message`, the
   message itself as JSON. An entry of `kind` `compaction` is where earlier turns were
-  summarized; the entries before it are still there. How much of the past you are shown word
+  summarized; the entries before it are still there. One whose `message` carries `flushed` is
+  where someone started the conversation over: what came before reaches you through recall, your
+  notes and this view, not as history. How much of the past you are shown word
   for word is your definition's `history`; what is older reaches you as that summary, so a fact
   you will need later belongs in your notes in `data/`, not only in the conversation.
 - `calls` — one row per tool call, by `runId` and `callNo`: `tool`, `startedAt`, `exit`,

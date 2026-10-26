@@ -57,7 +57,7 @@ function check (raw, path) {
   if (typeof raw.team !== 'string' || !TEAM.test(raw.team)) throw invalid(path, 'has no team', 'team is the workspace\'s id, T…, which auth.test answers for the bot\'s token')
 }
 
-const HELP = 'Anything you write to me in a direct message goes to the spore; in a channel, mention me. /spore status says what it is doing; /spore stop ends the turn it is running and sets aside what you sent that it had not read; /spore wrap [10m] asks it to wrap up. In a thread, where Slack takes no /spore, mention me and write /status, /stop or /wrap'
+const HELP = 'Anything you write to me in a direct message goes to the spore; in a channel, mention me. /spore status says what it is doing; /spore stop ends the turn it is running and sets aside what you sent that it had not read; /spore wrap [10m] asks it to wrap up; /spore flush starts the conversation over, forgetting nothing. In a thread, where Slack takes no /spore, mention me and write /status, /stop, /wrap or /flush'
 const EXTEND = '/spore extend wall 30m gives it more, as far as its spore.cmk allows'
 
 export const SLACK = {

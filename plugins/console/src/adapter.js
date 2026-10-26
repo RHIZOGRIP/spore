@@ -35,7 +35,7 @@ const CONVERSATIONS = {
   }
 }
 
-const HELP = 'Anything said to me as a person goes to their spore. /status says what it is doing; /stop ends the turn it is running and sets aside what was sent that it had not read; /wrap [10m] asks it to wrap up'
+const HELP = 'Anything said to me as a person goes to their spore. /status says what it is doing; /stop ends the turn it is running and sets aside what was sent that it had not read; /wrap [10m] asks it to wrap up; /flush starts the conversation over, forgetting nothing'
 const EXTEND = '/extend wall 30m gives it more, as far as its spore.cmk allows'
 
 export const CONSOLE = {

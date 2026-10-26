@@ -88,7 +88,8 @@ it and to the spore.
 
 `@triage status` says what it is doing; `@triage stop` ends the turn it is running and sets aside
 what you sent that it had not read; `@triage wrap 10m` asks it to wrap up; `@triage extend wall
-30m` gives it more, as far as its `spore.cmk` allows. Stopping, wrapping and extending are for the
+30m` gives it more, as far as its `spore.cmk` allows; `@triage flush` starts its conversation over
+from the next turn, forgetting nothing. Stopping, wrapping, extending and flushing are for the
 people the channel lists by id or role — not everyone `"*"` lets talk; anyone else is told so.
 
 A spore is told who spoke and where, never the rest of the channel; it reads what came before

@@ -124,9 +124,10 @@ chat. A file that does not come is told, to the person and to the spore.
 /stop      end the turn it is running, and set aside what you sent that it had not read
 /wrap [10m]        ask the running turn to wrap up, now or in a while
 /extend wall 30m   give it more — wall, cost or rounds — up to the extend.<limit> its spore.cmk grants
+/flush             start the conversation over from the next turn; nothing is forgotten
 ```
 
-In a channel, after the mention; there `/stop`, `/wrap` and `/extend` are for the people the
+In a channel, after the mention; there `/stop`, `/wrap`, `/extend` and `/flush` are for the people the
 channel lists by id, not everyone `"*"` lets talk.
 
 ## Turns nobody in Teams started

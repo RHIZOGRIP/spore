@@ -86,6 +86,11 @@ gives a long turn more time, as far as its definition allows. `spore pause` stop
 and job of your spores and lets none start until `spore unpause`: a message or a webhook sent meanwhile is
 refused, and schedules wait.
 
+`spore flush q3` starts its conversation over, between turns: the next turn replays none of what
+was said before, only a note of who flushed it and what is still open, and nothing is forgotten —
+the transcript, `data/` and recall keep all of it. `/flush` does the same in the terminal or a
+conversation.
+
 `spore define` says what a spore is —
 and given `--definition` again, revises one, keeping its conversation and everything in
 `data/`. `spore edit` opens its `spore.cmk` in your editor and saves it only once it parses.
