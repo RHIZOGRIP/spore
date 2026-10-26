@@ -2962,12 +2962,13 @@ figure is given here.
 
 **Two limits:**
 
-- **The transcript is read whole.** Every other record is a query on `state.sqlite` — a status
+- **`memory: bm25` reads everything said.** Every record is a query on `state.sqlite` — a status
   read is the workspace's totals and its last turn, a round boundary reads only the inbox past
-  its position, a follower only the events past its sequence. But the transcript is read whole
-  whenever a turn starts or memory opens its store, since the replay is the whole of it, and
-  `retain` does not bound it. Harmless at today's sizes; the thing to watch for a long-lived
-  spore that is talked to often.
+  its position, a follower only the events past its sequence, and a turn start replays the
+  compactions over entry numbers and reads only the entries the history keeps. The transcript is
+  never pruned and `retain` does not bound it, so what reads all of it grows with the spore's
+  life: the bm25 store keeps no index and builds one over every message that has left the
+  context, at every turn start. `memory: vectors` indexes each message once.
 - **`/tmp/spore-<uid>` accumulates.** Sockets are named by pid and time and unlinked on a clean
   close; a runner that is killed leaves its files, and nothing sweeps them.
 

@@ -6,7 +6,7 @@ import { resolve, dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { acquireLock, appendEvents, appendTranscript, dataDir, definitionPath, HOST_TURNS_ENV, hostState, lastSent, readLock, readTranscript, readTranscriptEntries, readTreeKey, releaseLock, statePath, TREE_KEY_FILE, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
+import { acquireLock, appendEvents, appendTranscript, countSaidSoFar, dataDir, definitionPath, HOST_TURNS_ENV, hostState, lastSent, readLock, readSaidAround, readSaidSoFar, readTranscript, readTranscriptEntries, readTreeKey, releaseLock, statePath, TREE_KEY_FILE, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
 import { compactionSummaryMessage, createCompactionEntry } from '../src/resilience/compaction.js'
 import { COMPACTED, WRAP, mark, marked } from '../src/core/marks.js'
 
@@ -119,6 +119,24 @@ describe('readTranscript', () => {
     expect(marked(replayed[0], COMPACTED)).toBe(true)
   })
 
+  it('keeps, past a second compaction, what the first one kept', () => {
+    writeTranscript([
+      said({ role: 'user', content: 'one' }),
+      said({ role: 'assistant', content: 'two' }),
+      said({ role: 'user', content: 'three' }),
+      compacted(createCompactionEntry('first summary', 2)),
+      said({ role: 'assistant', content: 'four' }),
+      compacted(createCompactionEntry('second summary', 1)),
+      said({ role: 'user', content: 'five' })
+    ])
+    expect(readTranscript(WS)).toEqual([
+      compactionSummaryMessage('second summary'),
+      { role: 'user', content: 'three' },
+      { role: 'assistant', content: 'four' },
+      { role: 'user', content: 'five' }
+    ])
+  })
+
   it('refuses an entry that is neither a message nor a compaction entry', () => {
     expect(() => writeTranscript([{ at: 'then', kind: 'gossip', message: { role: 'user', content: 'x' } }])).toThrow()
     expect(readTranscript(WS)).toEqual([])
@@ -131,6 +149,42 @@ describe('readTranscript', () => {
   it('offers no way to shorten the record', async () => {
     const dir = await import('../src/core/spore-dir.js')
     expect(dir.clearTranscript).toBeUndefined()
+  })
+})
+
+describe('what was said', () => {
+  const stocked = () => {
+    writeTranscript([
+      said({ role: 'user', content: 'one' }, '2026-09-08T00:00:01.000Z'),
+      said({ role: 'assistant', content: 'two' }, '2026-09-08T00:00:02.000Z'),
+      compacted(createCompactionEntry('a summary', 1)),
+      said({ role: 'user', content: 'three' }, '2026-09-08T00:00:03.000Z')
+    ])
+    return readTranscriptEntries(WS).map(entry => entry.entryNo)
+  }
+
+  it('counts the messages and not the compaction entries', () => {
+    stocked()
+    expect(countSaidSoFar(WS)).toBe(3)
+    expect(countSaidSoFar(WS)).toBe(readSaidSoFar(WS).length)
+  })
+
+  it('reads the messages either side of one, across a compaction entry', () => {
+    const [, two] = stocked()
+    expect(readSaidAround(WS, two, 1).map(message => message.content)).toEqual(['one', 'two', 'three'])
+    expect(readSaidAround(WS, two, 1)).toEqual(readSaidSoFar(WS))
+  })
+
+  it('stops at either end of the transcript', () => {
+    const [one, , , three] = stocked()
+    expect(readSaidAround(WS, one, 1).map(message => message.content)).toEqual(['one', 'two'])
+    expect(readSaidAround(WS, three, 1).map(message => message.content)).toEqual(['two', 'three'])
+  })
+
+  it('reads nothing around an entry that is not a message', () => {
+    const [, , summary] = stocked()
+    expect(readSaidAround(WS, summary, 1)).toEqual([])
+    expect(readSaidAround(WS, 999, 1)).toEqual([])
   })
 })
 

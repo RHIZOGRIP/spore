@@ -23,7 +23,7 @@ import { relative, resolve } from 'node:path'
 
 import { textOf } from '../core/message.js'
 
-import { isTranscriptAnchor, readSaidSoFar, transcriptAnchor } from '../core/spore-dir.js'
+import { isTranscriptAnchor, readSaidAround, readSaidSoFar, transcriptAnchor } from '../core/spore-dir.js'
 
 export const SENTENCE = 'sentence'
 export const TURN = 'turn'
@@ -168,13 +168,7 @@ const NEIGHBOURS = 1
  */
 export function expand (ws, anchor) {
   if (isTranscriptAnchor(anchor)) {
-    // Anchors are entry numbers, so find the message that has one rather than counting into
-    // the array — the two differ by every compaction entry in the transcript.
-    const messages = readSaidSoFar(ws)
-    const at = messages.findIndex(message => message.entryNo === anchor.line)
-    if (at === -1) return ''
-    const from = Math.max(0, at - NEIGHBOURS)
-    return messages.slice(from, at + NEIGHBOURS + 1)
+    return readSaidAround(ws, anchor.line, NEIGHBOURS)
       .map(message => (message.role ? `${message.role}: ${said(message)}` : said(message)))
       .filter(Boolean).join('\n').trim()
   }

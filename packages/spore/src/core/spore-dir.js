@@ -993,21 +993,46 @@ export function writableDirs (ws) {
 export function readSaidSoFar (ws) {
   return readTranscriptEntries(ws)
     .filter(entry => entry.kind === 'message')
-    .map(({ at, entryNo, message }) => ({ ...message, at, entryNo }))
+    .map(saidOfEntry)
 }
 
+const saidOfEntry = ({ at, entryNo, message }) => ({ ...message, at, entryNo })
+
+export function countSaidSoFar (ws) {
+  return reading(ws, 0, db => db.prepare("SELECT count(*) AS n FROM transcript WHERE kind = 'message'").get().n)
+}
+
+/**
+ * The message at `entryNo` and the `around` messages said either side of it, in order, as
+ * `readSaidSoFar` answers them; none when `entryNo` is not a message.
+ */
+export function readSaidAround (ws, entryNo, around) {
+  return reading(ws, [], db => {
+    const before = db.prepare("SELECT * FROM transcript WHERE kind = 'message' AND entryNo <= ? ORDER BY entryNo DESC LIMIT ?").all(entryNo, around + 1)
+    if (before[0]?.entryNo !== entryNo) return []
+    const after = db.prepare("SELECT * FROM transcript WHERE kind = 'message' AND entryNo > ? ORDER BY entryNo LIMIT ?").all(entryNo, around)
+    return [...before.reverse(), ...after].map(transcriptEntry).map(saidOfEntry)
+  })
+}
+
+/**
+ * What the model last saw: each compaction entry replaces the head it summarized. Replayed
+ * over entry numbers, so only the entries kept are read.
+ */
 export function readTranscript (ws) {
-  let messages = []
-  for (const entry of readTranscriptEntries(ws)) {
-    // A compaction entry replaces the head it summarized rather than adding to it, so
-    // replaying the transcript rebuilds what the model last saw.
-    if (entry.kind === 'compaction') {
-      messages = [compactionSummaryMessage(entry.message.summary), ...messages.slice(entry.message.firstKeptIndex)]
-      continue
+  return reading(ws, [], db => {
+    let live = []
+    for (const { entryNo, kind, firstKeptIndex } of db.prepare("SELECT entryNo, kind, CASE kind WHEN 'compaction' THEN message ->> '$.firstKeptIndex' END AS firstKeptIndex FROM transcript ORDER BY entryNo").all()) {
+      if (kind === 'compaction') live = [entryNo, ...live.slice(firstKeptIndex)]
+      else live.push(entryNo)
     }
-    messages.push(mark(entry.message, ...(entry.marks || [])))
-  }
-  return messages
+    if (!live.length) return []
+    const entries = new Map(db.prepare('SELECT * FROM transcript WHERE entryNo IN (SELECT value FROM json_each(?))').all(JSON.stringify(live)).map(row => [row.entryNo, transcriptEntry(row)]))
+    return live.map(entryNo => {
+      const entry = entries.get(entryNo)
+      return entry.kind === 'compaction' ? compactionSummaryMessage(entry.message.summary) : mark(entry.message, ...(entry.marks || []))
+    })
+  })
 }
 
 /**
