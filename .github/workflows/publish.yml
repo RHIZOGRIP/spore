@@ -1,8 +1,9 @@
 name: Publish spore
 
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - 'v*'
 
 # spore ships its native code prebuilt, inside the package: `native/<arch>/` holds the Rust
 # addon, the runner, spore-spawn, the sandbox addon and confine, one directory per architecture,
@@ -120,3 +121,23 @@ jobs:
         # Only until every package has a trusted publisher on npmjs; a package must exist first.
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Created here, with this workflow's own token, so cutting a release needs nothing on the machine
+  # that pushed the tag; and only once the packages are on npm.
+  release:
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create the GitHub release from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          awk -v head="## [$version]" 'index($0, head) == 1 { flag = 1; next } /^## \[/ { flag = 0 } flag' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "::error::CHANGELOG.md has no ## [$version] section"; exit 1; }
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "spore $GITHUB_REF_NAME" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}

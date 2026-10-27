@@ -171,7 +171,8 @@ npm test             # every package's suite
 npm run test:rust    # the crates' own tests
 ```
 
-Linux x64 or arm64, Node 24 or newer, a C compiler and cargo.
+Linux x64 or arm64, Node 24 or newer, a C compiler and cargo. Code style, schema changes, tests
+and releases: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
