@@ -3,9 +3,9 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { annotateTurn, applyEvent, createLive, liveOf, renderLive } from '../src/library/live.js'
+import { annotateTurn, applyEvent, createLive, liveIn, liveOf, renderLive } from '../src/library/live.js'
 import { describeCall } from '../src/core/call-table.js'
-import { readEvents } from '../src/core/spore-dir.js'
+import { acquireLock, appendEvents, appendTurn, readEvents, releaseLock } from '../src/core/spore-dir.js'
 import { native } from '../src/native.js'
 
 const BRAVE = [{ name: 'brave/1', tools: ['exec', 'wsexec'], program: '^"?\\$SPORE_BRAVE"?\\s*(.*)$', title: 'searching the web', category: 'search', detail: 'search $1' }]
@@ -142,5 +142,34 @@ describe('a line of the embedder\'s own', () => {
     for (const line of ['', '  ', 'x'.repeat(201), 3, undefined]) {
       expect(() => annotateTurn(WS, line)).toThrow(expect.objectContaining({ type: 'ANNOTATION_INVALID' }))
     }
+  })
+})
+
+describe('the turn a spore is running', () => {
+  const WS = resolve(dirname(fileURLToPath(import.meta.url)), '.live-running-workspace')
+  const event = (fields) => appendEvents(WS, [{ v: 1, at: STARTED, runId: 'r1', ...fields }])
+
+  beforeEach(() => {
+    rmSync(WS, { recursive: true, force: true })
+    mkdirSync(WS, { recursive: true })
+  })
+
+  afterEach(() => {
+    releaseLock(WS)
+    rmSync(WS, { recursive: true, force: true })
+  })
+
+  it('is none while the runner still holds the lock past the turn it made final, until the next turn says something', () => {
+    acquireLock(WS)
+    event({ event: 'round', index: 0 })
+    event({ event: 'complete', stopReason: 'answer', output: 'done' })
+    appendTurn(WS, { startedAt: STARTED, runId: 'r1', stopReason: 'answer', concluded: true, output: 'done' })
+    event({ event: 'turn_end' })
+    expect(liveIn(WS)).toBe(null)
+
+    event({ event: 'round', index: 0 })
+    const running = liveIn(WS)
+    expect(running.live).toMatchObject({ rounds: 1, complete: null })
+    expect(running.seq).toBe(readEvents(WS).at(-1).seq)
   })
 })

@@ -144,15 +144,18 @@ export function liveOf (events, options) {
 
 /**
  * The turn `ws` is running, from its events since the last turn ended and timed from its own start,
- * with the `seq` of the last event read for a caller following on; null when nothing runs.
+ * with the `seq` of the last event read for a caller following on; null when nothing runs, and
+ * before the running turn has an event — the runner holds the lock a moment past the record it
+ * made final, and an empty turn then would be the one that just ended.
  */
 export function liveIn (ws) {
   if (stateOf(ws).state !== RUNNING) return null
   const ended = readEvents(ws, { event: 'turn_end' }).at(-1)?.seq ?? 0
   const events = readEvents(ws, { after: ended })
+  if (!events.length) return null
   const live = createLive({ startedAt: runningLimits(ws)?.startedAt ?? null })
   for (const event of events) applyEvent(live, event)
-  return { live, seq: events.at(-1)?.seq ?? ended }
+  return { live, seq: events.at(-1).seq }
 }
 
 /**
