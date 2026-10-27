@@ -498,7 +498,8 @@ is checked, not at the agent's first call.
 **A plugin is a manifest.** The `spore` field of its `package.json` says what it gives:
 `works`, the `@rhizogrip/spore` versions it works with, which is required; and, each optional,
 `settings` the host must supply, each a `port` or `text`; `programs`, a variable naming an
-executable in the plugin or in a package it depends on, which the agent runs, and which a spore's
+executable in the plugin or in a package it depends on, `{arch}` in its path standing for this
+machine's architecture, which the agent runs, and which a spore's
 definition may also bind for the runtime to run on the deliveries of an origin (`prepare:`,
 §Deliveries nobody typed); `describe`, how a call of each of its
 programs is shown ([§Describing a call](#describing-a-call)); `env`, more variables from `{name}`,

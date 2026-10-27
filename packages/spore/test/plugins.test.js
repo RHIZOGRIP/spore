@@ -120,8 +120,8 @@ describe('checking a plugin', () => {
     for (const file of ['package.json', 'reference.md']) copyFileSync(resolve(__dirname, '../../../plugins/browser', file), join(dir, file))
     mkdirSync(join(MODULES, 'agent-browser/bin'), { recursive: true })
     writeFileSync(join(MODULES, 'agent-browser/package.json'), JSON.stringify({ name: 'agent-browser', version: '0.38.1' }))
-    writeFileSync(join(MODULES, 'agent-browser/bin/agent-browser-linux-x64'), '#!/bin/sh\n')
-    chmodSync(join(MODULES, 'agent-browser/bin/agent-browser-linux-x64'), 0o755)
+    writeFileSync(join(MODULES, `agent-browser/bin/agent-browser-linux-${process.arch}`), '#!/bin/sh\n')
+    chmodSync(join(MODULES, `agent-browser/bin/agent-browser-linux-${process.arch}`), 0o755)
     useIn(WS, ['browser'])
 
     const { env: { [PLUGIN_CALLS]: calls, ...env } } = preparePlugins(WS, { config: { plugins: { browser: allowed('browser', { cdp: 9222 }) } }, roots })
@@ -136,7 +136,7 @@ describe('checking a plugin', () => {
     }])
     expect(env).toEqual({
       [PLUGIN_READS]: JSON.stringify([realpathSync(dir), realpathSync(join(MODULES, 'agent-browser'))]),
-      SPORE_BROWSER: join(MODULES, 'agent-browser/bin/agent-browser-linux-x64'),
+      SPORE_BROWSER: join(MODULES, `agent-browser/bin/agent-browser-linux-${process.arch}`),
       AGENT_BROWSER_CDP: '9222',
       AGENT_BROWSER_SESSION: 'ws',
       AGENT_BROWSER_PIN_TAB: '1',
@@ -228,6 +228,16 @@ describe('checking a plugin', () => {
     chmodSync(join(MODULES, 'engine', 'bin', 'run'), 0o755)
     expect(checkPlugin(found).programs.SPORE_BROWSER).toBe(join(MODULES, 'engine/bin/run'))
     expect(refusal(() => checkPlugin(browser({ programs: { SPORE_BROWSER: 'absent/bin/run' } }))).message).toMatch(/in absent, which is not installed/)
+  })
+
+  it('names the build for this machine with {arch}, and no other placeholder in a program', () => {
+    const builds = { 'bin/browse-x64': 0o755, 'bin/browse-arm64': 0o755 }
+    const found = browser({ programs: { SPORE_BROWSER: './bin/browse-{arch}' } }, { programs: builds })
+    expect(checkPlugin(found, { cdp: 9222 }).programs.SPORE_BROWSER).toBe(join(found.dir, `bin/browse-${process.arch}`))
+    rmSync(join(found.dir, `bin/browse-${process.arch}`))
+    expect(refusal(() => checkPlugin(found, { cdp: 9222 })).message).toMatch(`names ./bin/browse-${process.arch}, which it does not contain`)
+    expect(refusal(() => checkPlugin(browser({ programs: { SPORE_BROWSER: './bin/browse-{name}' } }, { programs: builds }), { cdp: 9222 })).message)
+      .toMatch(/names a program SPORE_BROWSER with \{name\}, which spore does not fill in a program/)
   })
 
   it('refuses a variable the runtime sets, and allows its own prefix', () => {

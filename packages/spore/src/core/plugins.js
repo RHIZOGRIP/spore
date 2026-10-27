@@ -228,7 +228,7 @@ export function checkPlugin (found, settings = null) {
   if (!isRecord(manifest.programs ?? {})) throw refuse('has programs that are not a map', 'programs maps a variable to the program it names, as { "SPORE_X": "./bin/x" }')
   for (const [name, spec] of Object.entries(manifest.programs ?? {})) {
     checkEnvName(found, name, refuse)
-    programs[name] = runnable(found, `a program ${name}`, spec, reads, refuse)
+    programs[name] = runnable(found, `a program ${name}`, forThisMachine(name, spec, refuse), reads, refuse)
   }
 
   const env = {}
@@ -264,6 +264,15 @@ export function checkPlugin (found, settings = null) {
   const describe = checkDescribe(found, manifest.describe ?? [], Object.keys(programs), refuse)
 
   return { name: found.name, package: found.package, version: pkg.version, dir: found.dir, range, kinds, settings, programs, describe, env, contain, modules, sources, reference, precursors, reads, services }
+}
+
+/** A program's path with `{arch}` filled as Node names this machine's, x64 or arm64: the one placeholder a program takes. */
+function forThisMachine (name, spec, refuse) {
+  if (typeof spec !== 'string') return spec
+  for (const [, key] of spec.matchAll(PLACEHOLDER)) {
+    if (key !== 'arch') throw refuse(`names a program ${name} with {${key}}, which spore does not fill in a program`, 'a program takes {arch}, this machine\'s as Node names it — x64 or arm64')
+  }
+  return spec.replaceAll('{arch}', process.arch)
 }
 
 /** `spec` located and checked as something run: there, executable, inside the plugin's reads. */

@@ -116,7 +116,7 @@ A plugin using every key:
     "settings": { "port": "port", "book": "text" },
     "programs": {
       "SPORE_LEDGER": "./bin/ledger.js",
-      "SPORE_LEDGER_CLI": "ledger-bin/bin/ledger-linux-x64"
+      "SPORE_LEDGER_CLI": "ledger-bin/bin/ledger-linux-{arch}"
     },
     "env": {
       "SPORE_LEDGER_URL": "http://127.0.0.1:{settings.port}/{settings.book}",
@@ -201,8 +201,12 @@ absolute path. A program is either:
 
   ```json
   "dependencies": { "agent-browser": "0.38.1" },
-  "spore": { "programs": { "SPORE_BROWSER": "agent-browser/bin/agent-browser-linux-x64" } }
+  "spore": { "programs": { "SPORE_BROWSER": "agent-browser/bin/agent-browser-linux-{arch}" } }
   ```
+
+A program's path takes one placeholder, `{arch}`: this machine's architecture as Node names it,
+`x64` or `arm64`, so a package that ships a build for each is named once. No other placeholder is
+filled in a program (*with {name}, which spore does not fill in a program*).
 
 A program must be a file with its executable bit set, and its real path must lie inside the
 plugin or a package it depends on: its `dependencies` and `optionalDependencies`, and theirs, as

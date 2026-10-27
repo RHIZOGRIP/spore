@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.41.0] — Feature: a plugin names the program built for this machine
+
+### Added
+
+- A plugin's program path takes `{arch}`, this machine's architecture as Node names it — `x64`
+  or `arm64` — so a plugin whose program comes in a build for each names it once, as
+  `agent-browser/bin/agent-browser-linux-{arch}`. Any other placeholder in a program is refused.
+
 ## [1.40.0] — Feature: spore runs in a Linux VM
 
 ### Added
