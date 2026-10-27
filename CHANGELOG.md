@@ -4,6 +4,26 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.42.1] — Fix: a release reaches npm from its tag again
+
+No change to the runtime.
+
+### Fixed
+
+- Pushing a `v*` tag publishes `@rhizogrip/spore` and `@rhizogrip/spore-cli` again. Since 1.39.0
+  only a GitHub release did, and 1.40.0 to 1.42.0 were tagged without one, so they reached npm
+  late, once their releases were made by hand.
+
+### Changed
+
+- The GitHub release is made by the publish workflow, once both packages are on npm, with the
+  version's section of this file as its notes.
+
+### Added
+
+- `CONTRIBUTING.md`: code style, the CLI's shape, changing the workspace database, tests and
+  releases.
+
 ## [1.42.0] — Feature: the operator sets how long a prepare step may run
 
 ### Changed
