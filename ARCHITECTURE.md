@@ -1744,7 +1744,8 @@ the log says why.
 **What a prepare step attaches is data.** A spore's definition binds one of a plugin's `programs`
 to an origin, by its variable, root only: `prepare: [hook:scans=pdf-pages/SPORE_PDF_PAGES]`, the
 plugin allowed on the machine, with one `prepare.timeout` and one `prepare.attach` for every step
-(at most 60 s, 100 files, 256 MB). The binding grants that program to the step alone: the spore's
+(at most 100 files and 256 MB; the timeout is bounded by the host's `prepareCeiling`, an hour
+unless the operator sets it, and a step asking more does not run). The binding grants that program to the step alone: the spore's
 turns get nothing of the plugin unless `plugins:` names it too, though what the plugin hides
 (`contain`) is hidden from every process of the spore. The agent can write neither the definition nor the plugin. The step does
 work no turn should spend a round on, before any turn reads the delivery. It runs as the router
@@ -1756,7 +1757,8 @@ payload. It never delays. It reads the plugin, the delivery's files and the spor
 carrying a line that the step did not answer, until its timeout, and its answer replaces that line
 with what it attached, or with why it attached nothing (`attachHeld`) — so a step that fails, or a
 service that stops while it runs, still releases the delivery, and the turn reads that nothing was
-prepared rather than an empty set. A step that wrote past its bounds attaches nothing: a partial
+prepared rather than an empty set. That wait is why the ceiling on the timeout is the operator's:
+a service that stops mid-step leaves the delivery held for as long as the spore asked. A step that wrote past its bounds attaches nothing: a partial
 result is not handed on as a whole one. A spore's own router does not attach: it may have been
 written while reading attacker text.
 

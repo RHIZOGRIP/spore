@@ -116,8 +116,7 @@ static SIZE: LazyLock<Regex> =
 static COUNT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9]+$").unwrap());
 static AMOUNT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9]+(\.[0-9]+)?$").unwrap());
 
-/// The most a prepare step may run, and attach, whatever a definition asks.
-pub const PREPARE_MOST_MS: f64 = 60_000.0;
+/// The most a prepare step may attach, whatever a definition asks.
 pub const PREPARE_MOST_FILES: u64 = 100;
 pub const PREPARE_MOST_BYTES: u64 = 256 * 1024 * 1024;
 
@@ -1050,11 +1049,10 @@ fn parse_prepare(fields: &Fields, cell: bool) -> Result<Option<Prepare>, String>
     }
     let timeout = match scalar(fields, "prepare.timeout")? {
         Some(text) => match duration_ms(text) {
-            Some(ms) if ms > 0.0 && ms <= PREPARE_MOST_MS => ms,
+            Some(ms) if ms > 0.0 => ms,
             _ => {
                 return Err(format!(
-                    "has a prepare.timeout it cannot take — got \"{text}\", expected how long one program may run, at most {}s, as 45s",
-                    PREPARE_MOST_MS / 1000.0
+                    "has a prepare.timeout it cannot take — got \"{text}\", expected how long one program may run, as 45s"
                 ));
             }
         },
@@ -2171,7 +2169,18 @@ mod tests {
         assert!(bounded("prepare.attach: [20, 200MB]\n").contains("without prepare.timeout"));
         assert!(bounded("prepare.timeout: 45s\n").contains("without prepare.attach"));
         assert!(
-            bounded("prepare.timeout: 2m\nprepare.attach: [20, 200MB]\n").contains("at most 60s")
+            bounded("prepare.timeout: 0s\nprepare.attach: [20, 200MB]\n")
+                .contains("prepare.timeout it cannot take")
+        );
+        assert_eq!(
+            with(&format!(
+                "plugins: [pdf]\nprepare: [hook:scans=pdf/SPORE_PDF_PAGES]\nprepare.timeout: 2h\nprepare.attach: [20, 200MB]\n"
+            ))
+            .unwrap()
+            .prepare
+            .unwrap()
+            .timeout,
+            7_200_000.0
         );
         assert!(
             bounded("prepare.timeout: 45s\nprepare.attach: [101, 1MB]\n")

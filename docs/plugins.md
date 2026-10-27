@@ -274,8 +274,8 @@ describing only what it offers. On a delivery, its contract is:
   letters, digits, `.`, `_` and `-`. They are attached to the delivery under
   `inbox.d/<delivery>/<VARIABLE>/`, within the spore's `prepare.attach`, and the turn reads them as
   files sent with it. Its stdout is not read.
-- **Exit 0 is success.** A non-zero exit, a run past the spore's `prepare.timeout`, a file past the
-  bounds, a directory in `out/`, or a program the plugin no longer has attaches nothing, and the
+- **Exit 0 is success.** A non-zero exit, a run past the spore's `prepare.timeout`, a timeout past
+  the host's `prepareCeiling`, a file past the bounds, a directory in `out/`, or a program the plugin no longer has attaches nothing, and the
   delivery carries one line saying why instead.
 - **It runs confined**, as a spore's router does, by the same runner: it reads the plugin and what
   it depends on, the delivery's own files and the spore's `reads:` grants; it writes nothing but

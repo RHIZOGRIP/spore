@@ -718,8 +718,10 @@ typed](../ARCHITECTURE.md#deliveries-nobody-typed)).
 
 ### `prepare.timeout`
 
-A single duration greater than zero and at most `60s`: how long one step may run before it is
-stopped and the delivery goes on without what it would have attached.
+A single duration greater than zero: how long one step may run before it is stopped and the
+delivery goes on without what it would have attached. A timeout past the host's `prepareCeiling`
+(an hour unless the operator sets it, [operating](operating.md)) runs no step: the delivery says
+so and goes on.
 
 ### `prepare.attach`
 

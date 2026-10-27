@@ -15,6 +15,7 @@ import { errorText, SporeError } from '../observability/errors.js'
 import { release } from './send.js'
 import { pluginProgram } from './plugins.js'
 import { prepareFor, runPrepare } from './prepare.js'
+import { readConfig } from '../library/config.js'
 import { INBOX_DIR, attachHeld, enqueue, holdDelivery, originOfOptions, releaseHeld as releaseDue, rescheduleHeld, startingSince } from './spore-dir.js'
 import { ROUTE_TIMEOUT_MS, routerFor, runRouter } from './router.js'
 import { precursorFor, triage, triageIn, TRIAGE_PER_DAY } from './triage.js'
@@ -100,7 +101,7 @@ export function deliver ({
   const start = perHour === null || startingSince(ws, origin, iso(Date.now() - HOUR_MS)) < perHour
   const options = start ? given : { ...given, startsTurn: false }
   const past = start ? '' : ` — ${perHour} turns started in the last hour`
-  const prepare = prepareFor(ws, origin)
+  const prepare = prepareFor(ws, origin, readConfig(configFile))
   if (!start && !prepare) {
     const sent = enqueue(ws, said, options)
     return { outcome: `${sent.repeated ? 'already received' : 'said, not started'}${past}`, judged: Promise.resolve(), started: false, prepared: false }
@@ -108,7 +109,7 @@ export function deliver ({
   const judges = start ? judgesOf(ws, origin) : {}
   const timed = Boolean(judges.router || judges.precursor)
   const arrived = Date.now()
-  const preparing = prepare ? prepare.timeoutMs + PREPARE_GRACE_MS : 0
+  const preparing = prepare ? (prepare.refused ? 0 : prepare.timeoutMs) + PREPARE_GRACE_MS : 0
   const deciding = timed ? decidingMs(judges) : 0
   const label = prepare && `what "${prepare.plugin}/${prepare.program}" prepares`
   const untold = prepare && { path: null, name: label, mime: null, bytes: null, missing: 'it did not answer: what ran it stopped first' }
@@ -154,25 +155,29 @@ async function prepareStep ({ ws, kept, prepare, untold, stdin, headers: headers
   const into = `${delivery}/${prepare.program}`
   const what = `${prepare.plugin}/${prepare.program}`
   let attached
-  try {
-    const { program, reads } = pluginProgram(prepare.plugin, prepare.program)
-    attached = await runPrepare({
-      program,
-      programReads: reads,
-      ws,
-      delivery: first ? join(ws, delivery) : null,
-      payload: payload ? join(ws, payload.path) : null,
-      headers: headers ? join(ws, headers.path) : null,
-      origin,
-      event,
-      ref,
-      into,
-      timeoutMs: prepare.timeoutMs,
-      attach: prepare.attach,
-      reads: prepare.reads
-    })
-  } catch (err) {
-    attached = { failed: `could not start — ${errorText(err)}` }
+  if (prepare.refused) {
+    attached = { failed: prepare.refused }
+  } else {
+    try {
+      const { program, reads } = pluginProgram(prepare.plugin, prepare.program)
+      attached = await runPrepare({
+        program,
+        programReads: reads,
+        ws,
+        delivery: first ? join(ws, delivery) : null,
+        payload: payload ? join(ws, payload.path) : null,
+        headers: headers ? join(ws, headers.path) : null,
+        origin,
+        event,
+        ref,
+        into,
+        timeoutMs: prepare.timeoutMs,
+        attach: prepare.attach,
+        reads: prepare.reads
+      })
+    } catch (err) {
+      attached = { failed: `could not start — ${errorText(err)}` }
+    }
   }
   const told = attached.failed ? [{ ...untold, missing: `it ${attached.failed}` }] : attached.files
   if (!attachHeld(ws, kept.held, [...files, ...told])) {

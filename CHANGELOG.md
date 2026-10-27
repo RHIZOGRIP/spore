@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.42.0] — Feature: the operator sets how long a prepare step may run
+
+### Changed
+
+- `prepare.timeout` in `spore.cmk` is no longer capped at 60 s. The host bounds it instead:
+  `spore config set prepareCeiling 15m`, an hour when unset. A delivery whose spore asks more than
+  the host allows runs no step, and carries a line saying so and what to set.
+
 ## [1.41.0] — Feature: a plugin names the program built for this machine
 
 ### Added

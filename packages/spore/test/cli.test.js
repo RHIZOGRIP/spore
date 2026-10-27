@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, workspaceFor, containing, followingDocs, secondsOf } from '../src/library/config.js'
+import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, workspaceFor, containing, followingDocs, prepareCeilingMs, secondsOf } from '../src/library/config.js'
 import { workspacesIn, isWorkspace } from '../src/library/discover.js'
 import { define, defaultModel, defaultSporangiumPath, switchModel, edit, flush, grantOf, list, log, pause, show, sporePaths, precursors, schedules, setDefaultModel, setSchedule, removeSchedule, sql, unpause, usage } from '../src/library/verbs.js'
 import { billingOf } from 'mohdel/providers'
@@ -173,6 +173,14 @@ describe('editing where to look', () => {
     expect(getKey('callCeiling', CONFIG)).toEqual({ callCeiling: '3h' })
   })
 
+  it('bounds how long a prepare step may be asked to run, an hour unless the operator says', () => {
+    expect(prepareCeilingMs(readConfig(CONFIG))).toBe(60 * 60 * 1000)
+    setKey('prepareCeiling', '15m', CONFIG)
+    expect(getKey('prepareCeiling', CONFIG)).toEqual({ prepareCeiling: '15m' })
+    expect(prepareCeilingMs(readConfig(CONFIG))).toBe(15 * 60 * 1000)
+    expect(() => setKey('prepareCeiling', '0s', CONFIG)).toThrow(/not a duration/)
+  })
+
   it('contains turns unless the operator turns it off, by name', () => {
     expect(containing(readConfig(CONFIG))).toBe(true)
     setKey('contain', 'off', CONFIG)
@@ -195,7 +203,7 @@ describe('editing where to look', () => {
 
   it('says the value in effect for every setting, and whether it is the runtime\'s default', () => {
     const shown = () => Object.fromEntries(settings(CONFIG).map(({ key, value, from }) => [key, [value, from]]))
-    expect(shown()).toMatchObject({ turns: [8, 'default'], modelSessions: [8, 'default'], largestFile: ['1GB', 'default'], freeFloor: ['2GB', 'default'], callCeiling: ['1h', 'default'], home: [null, 'unset'], workspaces: [[], 'unset'] })
+    expect(shown()).toMatchObject({ turns: [8, 'default'], modelSessions: [8, 'default'], largestFile: ['1GB', 'default'], freeFloor: ['2GB', 'default'], callCeiling: ['1h', 'default'], prepareCeiling: ['1h', 'default'], home: [null, 'unset'], workspaces: [[], 'unset'] })
     setKey('turns', '3', CONFIG)
     setKey('freeFloor', '512MB', CONFIG)
     expect(shown()).toMatchObject({ turns: [3, 'set'], freeFloor: ['512MB', 'set'], largestFile: ['1GB', 'default'] })

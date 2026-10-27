@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-browser",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A browser for spores: the agents' own Chrome, reached over CDP and driven by agent-browser",
   "author": {
     "name": "Christophe Le Bars",
@@ -15,7 +15,8 @@
     "linux"
   ],
   "cpu": [
-    "x64"
+    "x64",
+    "arm64"
   ],
   "files": [
     "reference.md",
@@ -26,12 +27,12 @@
     "agent-browser": "0.39.1"
   },
   "spore": {
-    "works": "^1.27.0",
+    "works": "^1.41.0",
     "settings": {
       "cdp": "port"
     },
     "programs": {
-      "SPORE_BROWSER": "agent-browser/bin/agent-browser-linux-x64"
+      "SPORE_BROWSER": "agent-browser/bin/agent-browser-linux-{arch}"
     },
     "describe": [
       {

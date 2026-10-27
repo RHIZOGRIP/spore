@@ -248,6 +248,9 @@ const switchOf = (value) => {
 /** Whether turns, jobs, routers and prepare steps must run contained: on unless the operator turned it off. */
 export const containing = (config) => config.contain ?? DEFAULTS.contain
 
+/** The longest `prepare.timeout` a spore may ask of this host, in ms: what the operator set, or an hour. */
+export const prepareCeilingMs = (config) => config.prepareCeiling === undefined ? DEFAULTS.prepareCeiling : native.durationMs(config.prepareCeiling)
+
 const docsOf = (value) => {
   if (DOCS.includes(value)) return value
   throw new SporeError(`docs is follow or kept, not "${value}"`, { type: 'CONFIG_INVALID', detail: DOCS_DETAIL })
@@ -276,14 +279,14 @@ export function existing (paths) {
   return { live, missing }
 }
 
-const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'callCeiling', 'largestFile', 'freeFloor', 'contain', 'docs'])
+const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'callCeiling', 'prepareCeiling', 'largestFile', 'freeFloor', 'contain', 'docs'])
 const DOCS = ['follow', 'kept']
 const APPROVALS_DETAIL = `approvals names each hook an approval may call, by a name of ${NAMES.approval.says}, as { "kpi": { "url": "https://…", "secret": "\${KPI_HOOK_SECRET}" } } — the secret set in environment beside config.json`
 const DOCS_DETAIL = 'docs says whether a runner starts by replacing the root documents that differ from what is installed (follow) or leaves them to spore upgrade (kept) — spore config set docs follow|kept'
 const SWITCHES = { on: true, off: false }
 const COUNTS = new Set(['turns', 'modelSessions', 'homeSplit'])
 const SIZES = new Set(['largestFile', 'freeFloor'])
-const DURATIONS = new Set(['callCeiling'])
+const DURATIONS = new Set(['callCeiling', 'prepareCeiling'])
 const LISTS = new Set(['workspaces'])
 
 /**
@@ -433,6 +436,7 @@ export const DEFAULTS = Object.freeze({
   largestFile: native.defaultLargestFile(),
   freeFloor: native.defaultFreeFloor(),
   callCeiling: native.defaultCallCeilingMs(),
+  prepareCeiling: 3_600_000,
   contain: true,
   docs: 'kept'
 })

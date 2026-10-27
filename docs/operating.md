@@ -52,6 +52,7 @@ The file is written whole and renamed into place.
 | `modelSessions` | how many model calls one running turn and its cells may have going at once | 8 |
 | `gate` | the data socket of a mohdel gate every turn calls its models through | each turn starts its own model sessions |
 | `callCeiling` | how long one model call may run before it is cut as stalled, as `3h`, `90m` or `45s` | 1 h |
+| `prepareCeiling` | the longest `prepare.timeout` a spore may ask, as `15m` or `90s` | 1 h |
 | `largestFile` | the largest file a turn may write, as `1GB`, `512MB` or bytes | 1 GB |
 | `freeFloor` | free disk below which a turn is refused | 2 GB |
 | `contain` | `on` or `off`: whether every turn, job, router and prepare step runs in namespaces of its own | on |
@@ -107,6 +108,10 @@ spore config rm largestFile        # back to the default
   the gate; it ends on what the provider had reported, which is counted, and the turn's record
   carries `cut`. Nothing else cuts a call that has started: raise it for a model that thinks for
   longer than an hour.
+- **`prepareCeiling`** — a delivery whose spore asks a longer `prepare.timeout` is not prepared:
+  it carries a line saying so and goes on at once. It is also how long a delivery can stay held
+  when the service running its step stops mid-run, since the delivery waits out the step's
+  timeout before it is released.
 - **`largestFile`** — a write past it fails with `EFBIG` ("File too large"), or the command
   writing it ends on `SIGXFSZ`; the call record shows which. It bounds each file, not a turn's
   total.

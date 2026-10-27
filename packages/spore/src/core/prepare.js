@@ -12,22 +12,27 @@ import { SporeError } from '../observability/errors.js'
 import { mimeOf } from './call-record.js'
 import { runStep } from './router.js'
 import { definitionPath } from './spore-dir.js'
-import { bytesText, sizeSpelling } from './units.js'
-import { containing, readConfig } from '../library/config.js'
+import { bytesText, durationSpelling, sizeSpelling } from './units.js'
+import { containing, prepareCeilingMs, readConfig } from '../library/config.js'
 import { parsedDefinition } from '../delegation/definition.js'
 
 const ATTACHED_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 
 /**
  * What prepares deliveries from `origin` in the spore at `ws`: `{ plugin, program, timeoutMs, attach,
- * reads }`, `reads` its definition's read-only grants — or null when its definition binds nothing to it.
+ * reads, refused }`, `reads` its definition's read-only grants, `refused` why the step does not run
+ * on this host or null — or null when its definition binds nothing to it.
  */
-export function prepareFor (ws, origin) {
+export function prepareFor (ws, origin, config) {
   const definition = parsedDefinition(ws)
   if (definition.error) throw new SporeError(`${definitionPath(ws)} does not parse, so what prepares its deliveries is unknown`, { type: 'DEFINITION_INVALID', detail: definition.error })
   const step = definition.prepare?.steps.find(one => one.origin === origin)
   if (!step) return null
-  return { plugin: step.plugin, program: step.program, timeoutMs: definition.prepare.timeout, attach: definition.prepare.attach, reads: definition.reads.map(grant => grant.path) }
+  const ceiling = prepareCeilingMs(config)
+  const refused = definition.prepare.timeout > ceiling
+    ? `asks a prepare.timeout of ${durationSpelling(definition.prepare.timeout)}, more than this host's prepareCeiling of ${durationSpelling(ceiling)} — spore config set prepareCeiling ${durationSpelling(definition.prepare.timeout)}`
+    : null
+  return { plugin: step.plugin, program: step.program, timeoutMs: definition.prepare.timeout, attach: definition.prepare.attach, reads: definition.reads.map(grant => grant.path), refused }
 }
 
 /** What `out/` holds, checked against `attach`: `{ found: [{ name, path, bytes }] }` or `{ failed }`. */

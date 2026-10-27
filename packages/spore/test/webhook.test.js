@@ -645,6 +645,27 @@ describe('the service', () => {
       expect(ran).toEqual([])
     })
 
+    it('runs for as long as the spore asks, up to the host\'s prepareCeiling, and not at all past it', async () => {
+      answer = writes('pages.json', '[]')
+      configure({ prepareCeiling: '10s' })
+      await withPrepare()
+      await fetch(`${base}/hook/forge`, signed('{}'))
+      await server.routed()
+      const [one] = delivered()
+      expect(ran).toEqual([])
+      expect(one.files.at(-1).missing).toBe('it asks a prepare.timeout of 30s, more than this host\'s prepareCeiling of 10s — spore config set prepareCeiling 30s')
+      expect(released).toHaveLength(1)
+      expect(logs.join('\n')).toMatch(/pdf\/SPORE_PDF_PAGES asks a prepare\.timeout of 30s, more than this host's prepareCeiling of 10s/)
+
+      await new Promise(resolve => server.close(resolve))
+      configure({ prepareCeiling: '30s' })
+      await withPrepare()
+      await fetch(`${base}/hook/forge`, signed('{"n":2}', { 'x-forgejo-delivery': 'd-2' }))
+      await server.routed()
+      expect(ran).toHaveLength(1)
+      expect(delivered().find(row => row.hookDelivery === 'd-2').files.map(file => file.name)).toEqual(['payload.json', 'headers.json', 'pages.json'])
+    })
+
     it('still prepares past the hourly limit, saying the delivery without starting a turn', async () => {
       answer = writes('pages.json', '[]')
       await withPrepare({ hookFields: { perHour: 1 } })
