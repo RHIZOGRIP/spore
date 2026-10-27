@@ -317,7 +317,14 @@ pub const PROVISIONED_MODULES: [&str; 9] = [
 /// import, the native binaries, and `sporangia/`, which the agent restores a missing root
 /// document from when it opens its workspace. Not the checkout — tests, graders and plans are
 /// not the agent's to read.
-pub const RUNTIME_PATHS: [&str; 6] = ["bin", "src", "build", "native", "package.json", "sporangia"];
+pub const RUNTIME_PATHS: [&str; 5] = ["bin", "src", "native", "package.json", "sporangia"];
+
+/// The directory of `native/` holding this build's binaries, named as Node names the
+/// architecture (`process.arch`): one package carries every architecture's.
+#[cfg(target_arch = "x86_64")]
+pub const NATIVE_ARCH: &str = "x64";
+#[cfg(target_arch = "aarch64")]
+pub const NATIVE_ARCH: &str = "arm64";
 
 const SYSTEM_READ_PATHS: [&str; 9] = [
     "/usr", "/lib", "/lib64", "/etc", "/bin", "/sbin", "/proc", "/dev", "/run",

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '../../..')
 const REPO = resolve(ROOT, '../..')
-const BUILT = ['spore.node', 'spore-runner', 'spore-spawn'].map(name => join(ROOT, 'native', name))
+const BUILT = ['spore.node', 'spore-runner', 'spore-spawn'].map(name => join(ROOT, 'native', process.arch, name))
 
 function sources (dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {

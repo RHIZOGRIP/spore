@@ -1,13 +1,12 @@
 import { closeSync, fstatSync, openSync, readFileSync, statSync } from 'node:fs'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { systemReadPaths } from '../isolation/sandbox.js'
-import { native } from '../native.js'
+import { native, NATIVE_DIR } from '../native.js'
 import { durationText } from './units.js'
 
-export const CONFINE_BIN = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'build', 'Release', 'confine')
+export const CONFINE_BIN = resolve(NATIVE_DIR, 'confine')
 
 /**
  * How a program that did not exit 0 ended: `exited <code or signal>`, for how long when `took` is

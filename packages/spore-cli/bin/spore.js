@@ -4,7 +4,7 @@
  * Contract: ARCHITECTURE.md, "The spore command".
  *
  * This is the follower and holds nothing: `send` appends to the inbox and races
- * for the lock, the runner (native/spore-runner) holds the lock and the slot, and
+ * for the lock, the runner (native/<arch>/spore-runner) holds the lock and the slot, and
  * bin/spore-agent.js is the confined half. Ctrl-C here leaves the turn running.
  */
 

@@ -11,16 +11,16 @@
 
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, relative, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { relative, resolve } from 'node:path'
 
 import minimist from 'minimist'
 
 import { parseDefinition } from '../src/delegation/definition.js'
 import { TOOL_NAMES } from '../src/core/tool-names.js'
 import { attemptOf, failingAlike, planFanout, stageAttempt } from '../src/delegation/fanout.js'
+import { NATIVE_DIR } from '../src/native.js'
 
-const SPAWN = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'native', 'spore-spawn')
+const SPAWN = resolve(NATIVE_DIR, 'spore-spawn')
 const FAIL_ALIKE = 3
 const WAVE_SLACK_MS = 30_000
 const SPAWN_ERR = 'spawn.err'

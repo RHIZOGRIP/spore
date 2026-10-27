@@ -117,7 +117,7 @@ The details are in [SECURITY.md](SECURITY.md).
 
 ## What you need
 
-- **Linux** (x64), kernel 5.13 or newer with Landlock enabled; 6.12 or newer is best. On macOS or
+- **Linux** (x64 or arm64), kernel 5.13 or newer with Landlock enabled; 6.12 or newer is best. On macOS or
   Windows, run it in a Linux VM.
 - **Unprivileged user namespaces**, so each turn runs shut off from your other processes. Most
   distributions allow them; Ubuntu restricts them through AppArmor, and `spore doctor` says how to
@@ -171,7 +171,7 @@ npm test             # every package's suite
 npm run test:rust    # the crates' own tests
 ```
 
-Linux x64, Node 24 or newer, a C compiler and cargo.
+Linux x64 or arm64, Node 24 or newer, a C compiler and cargo.
 
 ## License
 

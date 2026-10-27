@@ -18,14 +18,14 @@ use tokio::signal::unix::Signal;
 use tokio::sync::watch;
 use tokio::time::{sleep, Instant};
 
-use spore_workspace::crash_asked;
 pub use spore_workspace::kept::{kept_from, kept_refusal, Kept};
 pub use spore_workspace::owners::{owner_token, owners_with, sweep, OWNERS};
+use spore_workspace::{crash_asked, NATIVE_ARCH};
 
 pub const GRACE: Duration = Duration::from_secs(5);
 
 fn confine(root: &Path) -> PathBuf {
-    root.join("build").join("Release").join("confine")
+    root.join("native").join(NATIVE_ARCH).join("confine")
 }
 
 /// `program` started through spore's `confine`, under the syscall filter every confined process

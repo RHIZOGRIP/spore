@@ -11,7 +11,6 @@ import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { closeSync, openSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { withSlot } from './admission.js'
 import { preparePlugins, upgradeDocs } from './plugins.js'
@@ -19,8 +18,9 @@ import { enqueue, ERR_FILE, heldIn, inboxRequest, OUT_FILE, PLUGIN_ENV, releaseH
 import { RUNNING, stateOf } from './state.js'
 import { turnEnv } from './turn-env.js'
 import { bytesOf, CONFIG_FILE, containing, followingDocs, MEMORY_FILE, readConfig, secondsOf, SOURCES_FILE } from '../library/config.js'
+import { NATIVE_DIR } from '../native.js'
 
-const RUNNER = resolve(dirname(fileURLToPath(import.meta.url)), '../../native/spore-runner')
+const RUNNER = resolve(NATIVE_DIR, 'spore-runner')
 // mohdel's session program, resolved the way Node resolves the package this runs with.
 export const SESSION = createRequire(import.meta.url).resolve('mohdel/session/bin')
 export const CHATGPT_HELPER = createRequire(import.meta.url).resolve('mohdel/chatgpt/bin')

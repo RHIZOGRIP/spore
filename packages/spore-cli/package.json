@@ -32,7 +32,8 @@
     "linux"
   ],
   "cpu": [
-    "x64"
+    "x64",
+    "arm64"
   ],
   "bin": {
     "spore": "bin/spore.js"

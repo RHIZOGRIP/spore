@@ -5,15 +5,15 @@
 
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { mkdirSync, realpathSync } from 'node:fs'
 import { silent } from '../observability/logger.js'
 import { safePath } from './safe-path.js'
-import { native as rules } from '../native.js'
+import { native as rules, NATIVE_DIR } from '../native.js'
 import { SporeError } from '../observability/errors.js'
 
 const require = createRequire(import.meta.url)
-const native = require('../../build/Release/sandbox.node')
+const native = require(join(NATIVE_DIR, 'sandbox.node'))
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const sporeRoot = resolve(__dirname, '..', '..')

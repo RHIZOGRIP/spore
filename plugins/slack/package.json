@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-slack",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Slack for spores: a bot of yours in direct messages and channels, each reaching its spore, run as a service",
   "author": {
     "name": "Christophe Le Bars",
@@ -19,7 +19,8 @@
     "linux"
   ],
   "cpu": [
-    "x64"
+    "x64",
+    "arm64"
   ],
   "files": [
     "bin/",
@@ -31,7 +32,7 @@
     "ws": "^8.22.0"
   },
   "peerDependencies": {
-    "@rhizogrip/spore": "^1.37.0"
+    "@rhizogrip/spore": "^1.38.0"
   },
   "scripts": {
     "test": "vitest run"

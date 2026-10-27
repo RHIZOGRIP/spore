@@ -246,15 +246,15 @@ fn socket(dir: &Path, kind: &str) -> Result<String, String> {
         .map_err(|refused| format!("{} — {}", refused.message, refused.detail))
 }
 
-/// The spore root: this binary sits in `<root>/native/`.
+/// The spore root: this binary sits in `<root>/native/<arch>/`.
 fn root() -> PathBuf {
     let exe = std::env::current_exe()
         .and_then(std::fs::canonicalize)
         .unwrap_or_else(|e| fail(format!("cannot find this binary — {e}")));
-    exe.parent()
-        .and_then(Path::parent)
+    exe.ancestors()
+        .nth(3)
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| fail("this binary is not in <spore>/native/"))
+        .unwrap_or_else(|| fail("this binary is not in <spore>/native/<arch>/"))
 }
 
 const ROOT_REFUSED_DETAIL: &str = "spore runs no turn as root: an agent's commands would hold every right on the host — run it as an ordinary user (in a container, USER or --user)";

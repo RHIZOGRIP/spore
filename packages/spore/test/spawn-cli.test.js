@@ -12,7 +12,7 @@ import { outsideWorkspace } from './fixtures/outside-ws.js'
 
 const run = promisify(execFile)
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const SPAWN = resolve(__dirname, '../native/spore-spawn')
+const SPAWN = resolve(__dirname, '../native', process.arch, 'spore-spawn')
 const ROOT = resolve(__dirname, '.spawn-cli-workspace')
 
 const spawnCli = async (args, env = {}) => {

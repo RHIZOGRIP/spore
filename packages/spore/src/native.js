@@ -5,5 +5,10 @@
  */
 
 import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-export const native = createRequire(import.meta.url)('../native/spore.node')
+/** This machine's binaries, the addon among them: the package carries one directory per architecture. */
+export const NATIVE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'native', process.arch)
+
+export const native = createRequire(import.meta.url)(join(NATIVE_DIR, 'spore.node'))

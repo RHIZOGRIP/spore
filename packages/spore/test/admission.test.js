@@ -12,7 +12,7 @@ import { CONFIG_FILE } from '../src/library/config.js'
 import { enqueue, statePath } from '../src/core/spore-dir.js'
 
 const run = promisify(execFile)
-const RUNNER = resolve(dirname(fileURLToPath(import.meta.url)), '../native/spore-runner')
+const RUNNER = resolve(dirname(fileURLToPath(import.meta.url)), '../native', process.arch, 'spore-runner')
 
 let dir
 beforeEach(() => {

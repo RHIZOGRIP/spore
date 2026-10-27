@@ -74,7 +74,7 @@ is cached, and most of a long conversation is then billed as new input
 **A tool that cannot work is not offered**
 ([principle 21](PRINCIPLES.md#21-when-something-fails-it-says-so)): the suite's tools a definition
 does not grant are taken off what the model is offered (`src/core/spore-run.js`). When
-`build/Release/confine` is missing, `exec` is still offered and refuses, naming the binary and the
+`native/<arch>/confine` is missing, `exec` is still offered and refuses, naming the binary and the
 rebuild.
 
 **Readers run together, mutators one at a time.** `tool-kernel.js` runs readers through
@@ -590,7 +590,7 @@ file is replaced by a rename, so a reader sees the old copy or the new one.
 
 It is **three processes**, and only the middle one is the turn. `packages/spore-cli/bin/spore.js`
 says what is wanted and then follows, holding nothing. The runner — `rust/runner`, built to
-`native/spore-runner` — is spawned detached so the turn outlives the terminal that asked for it,
+`native/<arch>/spore-runner` — is spawned detached so the turn outlives the terminal that asked for it,
 and holds the lock, the admission slot, the provider keys and the model broker.
 `bin/spore-agent.js` is the confined half: it opens the same workspace through the same
 `openWorkspace()` and reaches the model only through the broker's socket.
@@ -2205,7 +2205,7 @@ share:
 ## Spawn
 
 A cell is started by a **binary the agent's own programs call**, `$SPORE_SPAWN`
-(`native/spore-spawn`), not by a tool, so a fan-out is a shell loop and the OS is the scheduler
+(`native/<arch>/spore-spawn`), not by a tool, so a fan-out is a shell loop and the OS is the scheduler
 ([principle 4](PRINCIPLES.md#4-only-seven-built-in-tools)). Its flags are in
 `reference.md` §Sub-agents and `precursors/README.md`.
 
@@ -2256,7 +2256,7 @@ the cell, through `read` and `exec cat` alike
 ([principle 2](PRINCIPLES.md#2-one-general-assistant-which-creates-specialists)).
 
 **This holds only if the workspace sits outside every path the sandbox grants.** `sandbox()`
-grants read on the system paths and on **the runtime** — `bin/`, `src/`, `build/`, `native/`,
+grants read on the system paths and on **the runtime** — `bin/`, `src/`, `native/`,
 `package.json` and the dependencies, since a cell's worker is a node process that loads spore's
 own modules, and `sporangia/`, from which the agent restores a missing root document when it
 opens its workspace.
@@ -2431,7 +2431,7 @@ it can name an environment variable.
 `spawn` is two processes, because a broker inside the confinement could not reach the enzymes it
 serves.
 
-- **the supervisor** (`native/spore-spawn`, the runner crate's second binary,
+- **the supervisor** (`native/<arch>/spore-spawn`, the runner crate's second binary,
   `rust/runner/src/spawn.rs`) stays outside. It plans, stages `enzyme.js` into the cell's
   workspace — which it can write and the cell cannot — binds an enzyme broker when the precursor
   declares `enzymes`, starts the worker, and closes the broker when it exits. It is run directly,

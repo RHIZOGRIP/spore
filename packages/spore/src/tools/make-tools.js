@@ -8,6 +8,7 @@ import { CONFINE_BIN, runShell } from '../core/command.js'
 import { contextView, dropIfEmpty, fileRecord, hashFile, recorded } from '../core/call-record.js'
 import { isRefusal, refuse } from '../core/refusal.js'
 import { SNIFF_BYTES, sniffImage } from '../core/media.js'
+import { NATIVE_DIR } from '../native.js'
 
 async function readHead (absPath, n) {
   const chunks = []
@@ -81,7 +82,7 @@ const EXEC_TIMEOUT_MAX_MS = 3600000
 const EXEC_IDLE_MS = 120000
 
 const SPORE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const SPAWN_BIN = resolve(SPORE_ROOT, 'native', 'spore-spawn')
+const SPAWN_BIN = resolve(NATIVE_DIR, 'spore-spawn')
 const FANOUT_BIN = resolve(SPORE_ROOT, 'bin', 'fanout.js')
 const RECALL_BIN = resolve(SPORE_ROOT, 'bin', 'recall.js')
 const SOURCE_BIN = resolve(SPORE_ROOT, 'bin', 'source.js')

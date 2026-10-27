@@ -28,10 +28,10 @@ On a server nobody opens a terminal screen on, `npm install -g --omit=optional @
 leaves out the one `spore tui` and `spore here` open, and its dependencies; every other command,
 `spore setup` included, works without it.
 
-Node 24+ whose bundled SQLite is 3.51.3 or newer, on Linux x64, kernel 5.13+ (Landlock), glibc.
+Node 24+ whose bundled SQLite is 3.51.3 or newer, on Linux x64 or arm64, kernel 5.13+ (Landlock), glibc.
 spore refuses an older SQLite (`SQLITE_TOO_OLD`); `node -p "new (require('node:sqlite').DatabaseSync)(':memory:').prepare('select sqlite_version() v').get().v"`
 prints the one your Node carries. The native parts come prebuilt in the
-package, so installing needs no compiler. Building from a checkout does: a C compiler and
+package, for both architectures, so installing needs no compiler. Building from a checkout does: a C compiler and
 cargo, which `npm install` runs through `prepare`.
 
 ### On macOS or Windows

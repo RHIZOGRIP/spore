@@ -141,15 +141,15 @@ fn parse_args(given: &[String]) -> Args {
     args
 }
 
-/// The spore root: this binary sits in `<root>/native/`.
+/// The spore root: this binary sits in `<root>/native/<arch>/`.
 fn root() -> PathBuf {
     let exe = std::env::current_exe()
         .and_then(std::fs::canonicalize)
         .unwrap_or_else(|e| fail(format!("cannot find this binary — {e}")));
-    exe.parent()
-        .and_then(Path::parent)
+    exe.ancestors()
+        .nth(3)
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| fail("this binary is not in <spore>/native/"))
+        .unwrap_or_else(|| fail("this binary is not in <spore>/native/<arch>/"))
 }
 
 fn relative(from: &Path, to: &Path) -> PathBuf {

@@ -11,7 +11,7 @@ import { readLock, readTurns } from '../src/core/spore-dir.js'
 import { send } from '../src/core/send.js'
 import { RUNNING, stateOf, stop } from '../src/core/state.js'
 
-const SPAWN = resolve(dirname(fileURLToPath(import.meta.url)), '../native/spore-spawn')
+const SPAWN = resolve(dirname(fileURLToPath(import.meta.url)), '../native', process.arch, 'spore-spawn')
 
 let ws
 let gate

@@ -21,7 +21,7 @@ import { stateOf, stop } from '../src/core/state.js'
 import { KEY_HEADER } from '../src/infra/socket-request.js'
 import { outsideRoot, outsideWorkspace } from './fixtures/outside-ws.js'
 
-const RUNNER = resolve(dirname(fileURLToPath(import.meta.url)), '../native/spore-runner')
+const RUNNER = resolve(dirname(fileURLToPath(import.meta.url)), '../native', process.arch, 'spore-runner')
 const CHATGPT_HELPER = createRequire(import.meta.url).resolve('mohdel/chatgpt/bin')
 
 let root

@@ -19,7 +19,7 @@ const under = (p) => p.startsWith(ROOT + '/') ? p.slice(ROOT.length + 1) : null
 describe('what a confined agent may read of the checkout', () => {
   it('is the runtime and nothing else', () => {
     const granted = systemReadPaths().map(under).filter(Boolean).filter(path => path !== 'node_modules').sort()
-    expect(granted).toEqual(['bin', 'build', 'native', 'package.json', 'sporangia', 'src'])
+    expect(granted).toEqual(['bin', 'native', 'package.json', 'sporangia', 'src'])
     expect(systemReadPaths()).not.toContain(ROOT)
     expect(systemReadPaths()).toContain(getNodeModulesRoot())
   })

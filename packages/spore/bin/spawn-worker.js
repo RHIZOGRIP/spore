@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * The confined half of a spawn: applies the sandbox, runs the sub-agent, and
- * writes its answer. Started by native/spore-spawn, which stays outside to host the
+ * writes its answer. Started by native/<arch>/spore-spawn, which stays outside to host the
  * enzyme broker — a broker inside the confinement could not reach the enzymes.
  */
 

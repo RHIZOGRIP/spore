@@ -29,7 +29,7 @@ import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 const run = promisify(execFile)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const SPORE = resolve(__dirname, '../../spore-cli/bin/spore.js')
-const RUNNER = resolve(__dirname, '../native/spore-runner')
+const RUNNER = resolve(__dirname, '../native', process.arch, 'spore-runner')
 const CONTAINED = containCheck().contained
 
 let ws

@@ -12,10 +12,10 @@ import { randomBytes } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { parsedDefinition, parseDefinition } from '../delegation/definition.js'
 import { CONFIG_FILE, readConfig } from '../library/config.js'
+import { NATIVE_DIR } from '../native.js'
 import { errorText } from '../observability/errors.js'
 import { paused } from './admission.js'
 import { containOf } from './plugins.js'
@@ -25,7 +25,7 @@ import { turnEnv } from './turn-env.js'
 import { PRECURSOR_DIR, readTurns, recordCell } from './spore-dir.js'
 import { TOOL_NAMES } from './tool-names.js'
 
-export const SPAWN_BIN = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'native', 'spore-spawn')
+export const SPAWN_BIN = join(NATIVE_DIR, 'spore-spawn')
 
 const PROMPT = 'in.md'
 const ANSWER = 'data/answer.md'

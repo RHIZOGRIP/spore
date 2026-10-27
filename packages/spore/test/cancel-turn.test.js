@@ -23,7 +23,7 @@ import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const SPORE = resolve(__dirname, '../../spore-cli/bin/spore.js')
-const SPAWN = resolve(__dirname, '../native/spore-spawn')
+const SPAWN = resolve(__dirname, '../native', process.arch, 'spore-spawn')
 
 let ws
 let gate

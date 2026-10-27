@@ -3,7 +3,7 @@
  *
  * The other delegation tests establish their pieces: planning refuses what it should,
  * the enzyme broker answers a confined shell, the fan-out helpers pick the next part.
- * None of them starts `native/spore-spawn`, so nothing has established that confinement,
+ * None of them starts `native/<arch>/spore-spawn`, so nothing has established that confinement,
  * staging, the two brokers, the child's completion, the accounting and the final
  * records work when they run together.
  *
@@ -29,7 +29,7 @@ import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 
 const run = promisify(execFile)
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const SPAWN = resolve(__dirname, '../native/spore-spawn')
+const SPAWN = resolve(__dirname, '../native', process.arch, 'spore-spawn')
 
 const UPPER = '#!/usr/bin/env node\nconst text = process.argv.slice(2).join(" ")\nprocess.stdout.write(text.toUpperCase() + "\\n")\n'
 
