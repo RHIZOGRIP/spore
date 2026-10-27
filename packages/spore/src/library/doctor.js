@@ -4,7 +4,7 @@
  * timer is wanted.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { accessSync, constants as fsConstants, existsSync, readFileSync, realpathSync } from 'node:fs'
 import { constants } from 'node:os'
 import { basename, dirname, resolve } from 'node:path'
 import { getSystemErrorName } from 'node:util'
@@ -14,16 +14,61 @@ import { modelReadiness } from 'mohdel/readiness'
 import { CONFIG_FILE, containing, ENVIRONMENT_FILE, ENVIRONMENT_LINE, environmentLines, MEMORY_FILE, SOURCES_FILE, readConfig, workspaceFor } from './config.js'
 import { isWorkspace } from './discover.js'
 import { list, show, sporangia } from './verbs.js'
-import { containCheck, keptRefusal } from '../core/command.js'
+import { CONFINE_BIN, containCheck, keptRefusal } from '../core/command.js'
 import { containOf, listPlugins, misplaced, pluginProgram, secretsIn, showPlugin } from '../core/plugins.js'
 import { paused, SLOT_DIR } from '../core/admission.js'
 import { DEFAULT_SPORANGIUM } from '../core/sporangia.js'
 import { outbox } from '../core/spore-dir.js'
 import { landlockAbi } from '../isolation/sandbox.js'
+import { appArmorRestricts } from './host.js'
 import { hooksPath, loadHooks } from '../../webhook/hooks.js'
 import { apiPath, loadApi } from '../../api/config.js'
 
 const ASSIGNMENT = /[A-Z][A-Z0-9]*_[A-Z0-9_]+=/
+
+const CONFINE_PROFILE = '/etc/apparmor.d/spore-confine'
+
+const writable = (path) => {
+  try {
+    accessSync(path, fsConstants.W_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Whether this user may replace `path`: write it, or any directory above it. */
+function replaceable (path) {
+  for (let at = path; ; at = dirname(at)) {
+    if (writable(at)) return true
+    if (at === dirname(at)) return false
+  }
+}
+
+/**
+ * How to let this install's `confine` make user namespaces where AppArmor restricts them, as
+ * Ubuntu does from 23.10 — an AppArmor profile for that one binary — or null where AppArmor
+ * does not restrict them.
+ */
+function appArmorFix () {
+  if (!appArmorRestricts()) return null
+  const path = realpathSync(CONFINE_BIN)
+  const profile = existsSync(CONFINE_PROFILE) ? readFileSync(CONFINE_PROFILE, 'utf8') : null
+  if (profile?.includes(`"${path}"`)) return `${CONFINE_PROFILE} names this install's confine and is not in force — sudo apparmor_parser -r ${CONFINE_PROFILE}`
+  return [
+    profile === null ? 'AppArmor restricts them: let this install\'s confine make them, and nothing else' : `${CONFINE_PROFILE} names another confine than this install's — replace it`,
+    `sudo tee ${CONFINE_PROFILE} > /dev/null <<'EOF'`,
+    'abi <abi/4.0>,',
+    'include <tunables/global>',
+    `profile spore-confine "${path}" flags=(unconfined) {`,
+    '  userns,',
+    '}',
+    'EOF',
+    `sudo apparmor_parser -r ${CONFINE_PROFILE}`,
+    ...(replaceable(path) ? [`you may replace ${path}, so the exception goes to whatever is there — on a host others use, install spore where only root writes`] : []),
+    'or spore config set contain off when no one else\'s spores run as this user'
+  ].join('\n')
+}
 
 const are = (names) => `${names.join(', ')}, which ${names.length > 1 ? 'are' : 'is'} not set`
 
@@ -119,7 +164,7 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
   }
 
   if (!containing(config)) note('machine', 'processes', 'turns are not contained (contain off): each sees the processes and command lines of every other spore of this user', 'spore config set contain on, where this host gives unprivileged user namespaces')
-  else if (!contain.contained) problem('machine', 'processes', `every turn, job, router and prepare step is refused: this host cannot give them namespaces of their own (${contain.why})`, 'allow unprivileged user namespaces for spore\'s confine — on Ubuntu an AppArmor profile for it, in Docker seccomp, apparmor and systempaths unconfined (spore filters what it confines itself) — or spore config set contain off when no one else\'s spores run as this user')
+  else if (!contain.contained) problem('machine', 'processes', `every turn, job, router and prepare step is refused: this host cannot give them namespaces of their own (${contain.why})`, appArmorFix() ?? 'allow unprivileged user namespaces for spore\'s confine — in Docker seccomp, apparmor and systempaths unconfined (spore filters what it confines itself) — or spore config set contain off when no one else\'s spores run as this user')
 
   const spores = []
   const { workspaces, missing } = list({ configFile })

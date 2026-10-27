@@ -14,7 +14,7 @@ import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
 import { addTo, allowPlugin, annotate, billingFor, bytesText, changeText, define, defaultModel, disallowPlugin, durationText, edit, extend, flush, getKey, jobs, list, listApprovals, listPlugins, log, pause, remake, remove, removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings, show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM, errorText } from '@rhizogrip/spore'
-import { diagnose, renderDoctor } from './doctor.js'
+import { diagnose, hostReport, renderDoctor, renderReport } from './doctor.js'
 import { hook } from './hooks.js'
 import { createServices } from './services.js'
 import { saidBy, saidText } from '../tui/conversation.js'
@@ -633,7 +633,9 @@ export async function manage (verb, argv) {
     }
     if (verb === 'service') return await service(argv, emit)
     if (verb === 'doctor') {
-      return emit(await diagnose(), renderDoctor, (report) => (report.findings.some(found => found.severity === 'problem') ? 1 : 0))
+      const diagnosed = await diagnose()
+      if (argv.report) return emit(hostReport(diagnosed), renderReport)
+      return emit(diagnosed, renderDoctor, (report) => (report.findings.some(found => found.severity === 'problem') ? 1 : 0))
     }
     if (verb === 'define') {
       // No default to the current directory, unlike the read verbs: those answer about

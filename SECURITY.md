@@ -40,12 +40,16 @@ Every turn's agent, and everything it runs, is held by the kernel, not by the to
 - **Spend**: a turn stops taking new model calls once its settled spend reaches its definition's
   hard cost; a call already running finishes and is paid.
 
-`spore doctor` says which of these the host does not provide. `unconfined: true` in a spore's
-`spore.cmk` turns confinement off deliberately, for that spore's turns; its cells stay confined.
+`spore doctor` says which of these the host does not provide, and tries the boundary itself: a
+command confined as spore confines a job's attempts to read outside its grants, write outside its
+directory, see and signal a process outside it and make namespaces, and doctor lists each
+outcome. `unconfined: true` in a spore's `spore.cmk` turns confinement off deliberately, for that
+spore's turns; its cells stay confined.
 
 Requirements: Linux with Landlock (5.13+; 6.12+ for signal and socket scoping), unprivileged user
-namespaces for spore's `confine` (Ubuntu 24.04 restricts them by default; Docker's default
-profiles refuse them), and a non-root user. The full account is [ARCHITECTURE.md](ARCHITECTURE.md),
+namespaces for spore's `confine` (Ubuntu from 23.10 restricts them through AppArmor, and
+`spore doctor` prints a profile allowing them for `confine` alone; Docker's default profiles
+refuse them), and a non-root user. The full account is [ARCHITECTURE.md](ARCHITECTURE.md),
 §Sandbox and §Spores of different people on one account.
 
 **The HTTP API** (`spore-api`) listens only on a unix socket or a loopback address, demands a

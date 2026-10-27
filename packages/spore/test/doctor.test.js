@@ -1,12 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { constants } from 'node:os'
 import { join } from 'node:path'
 
 import { doctor, modelFindings } from '../src/library/doctor.js'
 import { appendTurn, enqueue } from '../src/core/spore-dir.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
+import { CONFINE_BIN, containCheck } from '../src/core/command.js'
+import { appArmorRestricts } from '../src/library/host.js'
 
+const RESTRICTED = appArmorRestricts() === true
+const CONTAINED = containCheck().contained
 const DEFINITION = (extra = '') => `---\nname: t\nmodel: anthropic/claude-haiku-4-5\ntools: [read]\nrounds: [2, 3]\ncost: [0.1, 0.2]\nwall: [1m, 2m]\n${extra}---\n\nyou are a test.\n`
 
 let root
@@ -167,6 +171,13 @@ describe('spore doctor', () => {
       problem: expect.stringMatching(/refused: .*\(cannot make the namespaces: Operation not permitted\)$/),
       fix: expect.stringMatching(/spore config set contain off/)
     })])
+  })
+
+  it.skipIf(!RESTRICTED || CONTAINED)('gives the AppArmor profile for this install\'s confine where AppArmor restricts user namespaces', () => {
+    const { findings } = doctor({ configFile, env: {}, slots: join(root, 'state', 'slots') })
+    const processes = findings.find(found => found.subject === 'processes')
+    expect(processes.fix).toContain(`profile spore-confine "${realpathSync(CONFINE_BIN)}" flags=(unconfined) {\n  userns,\n}`)
+    expect(processes.fix).toMatch(/^sudo apparmor_parser -r \/etc\/apparmor\.d\/spore-confine$/m)
   })
 
   it('says spore refuses every turn while it runs as root', () => {

@@ -1,0 +1,24 @@
+name: Host report
+description: How spore's confinement fares on a machine, from spore doctor --report
+title: "Host report: "
+labels: [host-report]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `spore doctor --report` fills this in. It describes the machine and what a confined
+        command was refused there, and names no path, user, host, spore or model. Read it before
+        you submit; a report from a machine where everything works is as welcome as one where
+        something does not.
+  - type: textarea
+    id: report
+    attributes:
+      label: Report
+      description: As spore doctor --report printed it.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: What the machine is for, how spore was installed, what you expected to happen.

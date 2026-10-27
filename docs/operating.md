@@ -138,6 +138,65 @@ spore config set contain on
 While it is off, `spore ls` and `spore doctor` say so. The setting is the host's alone; a
 definition cannot change it.
 
+**Where AppArmor restricts user namespaces** — Ubuntu from 23.10, where
+`/proc/sys/kernel/apparmor_restrict_unprivileged_userns` is `1` — there are three ways on, and
+`spore doctor` prints the first with this install's path:
+
+- **A profile for `confine` alone.** It lets that one binary make namespaces and changes nothing
+  for any other program:
+
+  ```bash
+  sudo tee /etc/apparmor.d/spore-confine > /dev/null <<'EOF'
+  abi <abi/4.0>,
+  include <tunables/global>
+  profile spore-confine "<this install's native/<arch>/confine>" flags=(unconfined) {
+    userns,
+  }
+  EOF
+  sudo apparmor_parser -r /etc/apparmor.d/spore-confine
+  ```
+
+  The profile names a path, so it goes to whatever binary is there. Where spore is installed as
+  root, only root can change it. Under nvm or a user's npm prefix, the user can, and the profile
+  then amounts to that user making namespaces; that is no loss on a machine one person uses, and
+  a reason to install as root on one that several do. A new install path — another Node under nvm,
+  or the move to `native/<arch>/` in 1.39.0 — needs the profile again, and `spore doctor` says when
+  it names another `confine` than the installed one.
+- **The restriction off, for every program**, on a machine that runs only spore:
+
+  ```bash
+  echo kernel.apparmor_restrict_unprivileged_userns=0 | sudo tee /etc/sysctl.d/60-spore-userns.conf
+  sudo sysctl --system
+  ```
+
+  The restriction narrows what the kernel shows every unprivileged program, not only spore's;
+  spore's own commands cannot make namespaces either way, its syscall filter refuses them.
+- **`contain off`**, with no change to the machine. Turns are still confined by Landlock and the
+  syscall filter; they see the processes and command lines of this user's other spores, which
+  matters only where spores of different people run as this user.
+
+A Linux VM (`spore setup` on a machine with no `config.json` yet offers one) avoids the question,
+at the cost of the VM.
+
+### The boundary, tried
+
+`spore doctor` ends with what a command confined as spore confines a job's tried on this host —
+reading a file outside its grants, writing outside its directory and into one it may only read,
+seeing and signalling a process outside it, making namespaces of its own — each `refused`,
+`crossed` or `untried`. What it tries varies from host to host, the kernel and its security
+modules; the checks spore's own code makes are the same everywhere and are its test suite's. A
+crossing this host should have refused is a problem; seeing a process outside while `contain` is
+off, or signalling one on a Landlock older than 6 without it, is what those settings mean and is
+shown, not reported. It runs in a directory of its own under `$XDG_STATE_HOME/spore/probe/`,
+removed after, in well under a second, with no model.
+
+`spore doctor --report` prints the same as a GitHub issue: this machine — spore, Node and SQLite,
+the system and its kernel, Landlock, AppArmor, whether it can contain, and any container or VM it
+runs in — the boundary as tried, and what doctor found on the machine, then a link that opens the
+repository's host-report form filled with it. It names no path, user, host, spore, model or
+setting, and spore sends nothing: the issue exists only if you submit it. A report from a machine
+where everything holds is as useful as one from a machine where something does not.
+
 ### `replyTo`
 
 ```json

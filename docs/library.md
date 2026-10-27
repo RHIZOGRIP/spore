@@ -1452,6 +1452,30 @@ operator's files, each spore, the plugins, a pause. `severity` is `problem` or
 pending outbox entries. `abi`, `contain` and `root` override what `doctor` detects: the Landlock
 ABI, whether namespaces work, and whether it runs as root.
 
+### `boundary`
+
+```
+boundary({ configFile }) → Promise<{ boundary: [{ tried, outcome, why }], findings }>
+```
+
+What this host refuses a command confined as a job's is: each way out tried, with no model —
+reading a file outside its grants, writing outside its directory and into one it may only read,
+seeing and signalling a process outside it, making namespaces of its own. `outcome` is
+`refused`, `crossed` or `untried`, `why` what the command said or why it ran nothing. `findings`
+holds a problem for each crossing this host should have refused. With no Landlock, or a
+`config.json` it cannot read, it tries nothing; `doctor` reports both.
+
+### `describeHost`
+
+```
+describeHost() → { spore, node, sqlite, arch, system, kernel, landlock, appArmor, contain, runsIn }
+```
+
+This machine as spore's confinement sees it: the versions running it, the system's name and
+kernel release, the Landlock ABI (or -errno), whether AppArmor restricts unprivileged user
+namespaces (null where the kernel has no such switch), what `confine --contain-check` answers,
+and the container or VM it can tell it runs in. It names no path, user or host.
+
 ### `modelFindings`
 
 ```

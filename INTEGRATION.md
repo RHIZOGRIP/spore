@@ -416,6 +416,8 @@ for (const { errand, turns, crashed } of ended) console.log(errand.label, crashe
 | export | what it does |
 |---|---|
 | `doctor()` | what is wrong on this machine for spore: `{ findings: [{ area, subject, severity, problem, fix }], needsTick, replies }` |
+| `boundary()` | async: each way out a confined command tried on this host, and how it ended: `{ boundary: [{ tried, outcome, why }], findings }` |
+| `describeHost()` | this machine as confinement sees it: versions, system, kernel, Landlock, AppArmor, containment, container or VM |
 | `modelFindings()` | async: each model a spore names that cannot run, or runs unpriced, with the `mo` command that fixes it |
 | `checkSqlite()` | Node's SQLite version, or `SQLITE_TOO_OLD` |
 | `loadEnvironment()` | loads the `environment` file beside `config.json`: `{ path, loaded }`, or `ENVIRONMENT_INVALID` |

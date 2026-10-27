@@ -90,7 +90,7 @@ export async function setup () {
     line('processes', processes.problem)
     log.message('without them, a turn sees the processes and command lines of every other spore of yours —\nwhich matters only when spores of other people run as this user')
     if (!await yes('run your spores uncontained?')) {
-      log.warn(`${processes.fix}, then spore setup again`)
+      log.warn(`${processes.fix}\nthen spore setup again`)
       return 1
     }
     setKey('contain', 'off')
@@ -116,8 +116,13 @@ export async function setup () {
   await tickTimer({ services })
 
   const diagnosed = await diagnose({ services })
-  if (diagnosed.findings.length) renderDoctor(diagnosed)
-  else line('checked', 'this machine, your config and your spores — nothing to fix')
+  if (diagnosed.findings.length) {
+    renderDoctor(diagnosed)
+  } else {
+    line('checked', 'this machine, your config and your spores — nothing to fix')
+    const refused = diagnosed.boundary.filter(one => one.outcome === 'refused').length
+    if (diagnosed.boundary.length) line('boundary', `a turn's commands tried ${diagnosed.boundary.length} ways out here and were refused ${refused === diagnosed.boundary.length ? 'every one' : refused} — spore doctor lists them`)
+  }
   if (diagnosed.findings.some(one => one.severity === 'problem')) {
     log.warn('fix those, then spore setup again — spore doctor checks just that part')
     return 1

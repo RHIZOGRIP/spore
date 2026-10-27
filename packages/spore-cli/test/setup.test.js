@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { CANCEL_SYMBOL } from '@clack/prompts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CONFIG_DIR, defaultModel, getKey, isWorkspace, readConfig } from '@rhizogrip/spore'
+import { CONFIG_DIR, defaultModel, describeHost, getKey, isWorkspace, readConfig } from '@rhizogrip/spore'
 import { outsideRoot } from '@rhizogrip/spore/testing'
 
 import { pickFromList, setup } from '../src/setup.js'
@@ -96,6 +96,8 @@ const servicesWith = (tick) => ({
   act: (verb, name) => { acted.push([verb, name]); if (verb === 'enable') tick.enabled = true }
 })
 
+const HELD = ['read a file outside what it is granted', 'make namespaces of its own'].map(tried => ({ tried, outcome: 'refused', why: 'Permission denied' }))
+
 const run = ({
   answers = {},
   picks = [],
@@ -103,7 +105,7 @@ const run = ({
   onboard = (provider) => { onboarded.push(provider); mohdel.ready.add(provider ?? 'openrouter'); return 0 },
   services = servicesWith({ defined: false, enabled: false }),
   examine = () => ({ findings: [] }),
-  report = async () => ({ findings: [] }),
+  report = async () => ({ findings: [], boundary: HELD, host: describeHost() }),
   sqlite = () => '3.51.3'
 } = {}) => {
   Object.assign(given, { ...person(answers, picks), mohdel, onboard, services, examine, report, sqlite })
@@ -146,12 +148,23 @@ describe('spore setup', () => {
     expect(said.some(text => /another model: \/curate in spore tui, or mo curate openrouter/.test(text))).toBe(true)
   })
 
+  it('says what a turn\'s commands tried on this machine and were refused, once nothing is wrong', async () => {
+    expect(await run({ answers: { 'live\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenRouter', 'openrouter/priced'] })).toBe(0)
+    expect(said).toContain('boundary  a turn\'s commands tried 2 ways out here and were refused every one — spore doctor lists them')
+  })
+
+  it('counts what was refused when a way out was not, as on a host running uncontained', async () => {
+    const crossed = [...HELD, { tried: 'see a process outside it', outcome: 'crossed', why: 'contain is off' }]
+    expect(await run({ answers: { 'live\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenRouter', 'openrouter/priced'], report: async () => ({ findings: [], boundary: crossed, host: describeHost() }) })).toBe(0)
+    expect(said).toContain('boundary  a turn\'s commands tried 3 ways out here and were refused 2 — spore doctor lists them')
+  })
+
   it('stops after spore doctor\'s problems, making no spore and offering no next step', async () => {
     const home = join(root, 'spores')
     const code = await run({
       answers: { 'live\\?': home, 'tick timer': 'n' },
       picks: ['OpenRouter', 'openrouter/priced'],
-      report: async () => ({ findings: [{ area: 'services', subject: 'tick', severity: 'problem', problem: 'is failing', fix: 'spore service log tick' }] })
+      report: async () => ({ findings: [{ area: 'services', subject: 'tick', severity: 'problem', problem: 'is failing', fix: 'spore service log tick' }], boundary: HELD, host: describeHost() })
     })
     expect(code).toBe(1)
     expect(said.at(-1)).toBe('fix those, then spore setup again — spore doctor checks just that part')
@@ -206,7 +219,7 @@ describe('spore setup', () => {
     const processes = { area: 'machine', subject: 'processes', severity: 'problem', problem: 'every turn is refused', fix: 'allow unprivileged user namespaces' }
     expect(await run({ examine: () => ({ findings: [processes] }), answers: { uncontained: 'n' } })).toBe(1)
     expect(getKey('contain')).toEqual({ contain: null })
-    expect(said.at(-1)).toMatch(/allow unprivileged user namespaces, then spore setup again/)
+    expect(said.slice(-2)).toEqual(['allow unprivileged user namespaces', 'then spore setup again'])
 
     expect(await run({ examine: () => ({ findings: [processes] }), answers: { uncontained: 'y', 'live\\?': join(root, 'spores') }, picks: [null] })).toBe(1)
     expect(getKey('contain')).toEqual({ contain: false })

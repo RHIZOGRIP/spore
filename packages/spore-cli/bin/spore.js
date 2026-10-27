@@ -30,7 +30,7 @@ const DEFAULT_TAIL = 50
 
 const argv = minimist(process.argv.slice(2), {
   string: ['_', 'definition', 'from', 'sporangium', 'at', 'model', 'plugin', 'attach', 'request-id', 'after', 'since', 'until', 'tz', 'by', 'n', 'lines'],
-  boolean: ['debug', 'help', 'version', 'yes', 'replay', 'json', 'all', 'outdated', 'f', 'clear'],
+  boolean: ['debug', 'help', 'version', 'yes', 'replay', 'json', 'all', 'outdated', 'f', 'clear', 'report'],
   alias: { h: 'help', n: 'lines' }
 })
 
@@ -94,7 +94,8 @@ const VERBS = `Usage:
   spore config get [<key>]                  every setting in effect, defaults marked
   spore config set|add|rm|path              where workspaces live, and what your spores may use
   spore config set model <provider>/<name>  the model new spores run on, in your default sporangium
-  spore doctor                              what is wrong on this machine, and the command that fixes each`
+  spore doctor                              what is wrong on this machine, and the command that fixes each
+  spore doctor --report                     this machine as a GitHub issue you read, then file or not — spore sends nothing`
 
 if (!process.argv.slice(2).length) {
   console.log(`spore — AI agents you run on your own machines\n\n${VERBS}\n\n  spore --help                              all of it: the flags, and why\n  spore --version                           the installed version\n`)
@@ -180,7 +181,7 @@ const SHAPES = {
   },
   config: { bare: 'get', subs: { get: withJson(1), set: withJson(2), add: withJson(2), rm: withJson(2), path: withJson(0) } },
   usage: withJson(1, 'days', 'since', 'until', 'tz', 'by'),
-  doctor: withJson(0),
+  doctor: withJson(0, 'report'),
   hook: { bare: 'ls', subs: { ls: withJson(0), show: withJson(1) } },
   tui: { flags: [], most: 1 },
   here: { flags: ['sporangium', 'model', 'no-git'], most: 1 },

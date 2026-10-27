@@ -28,6 +28,8 @@ export { describeCall } from './core/call-table.js'
 
 // What exists, what one is, what it has done — the read verbs the `spore` command prints.
 export { doctor, modelFindings } from './library/doctor.js'
+export { boundary } from './library/probe.js'
+export { describeHost } from './library/host.js'
 export { listHooks, showHook } from './library/hooks.js'
 export { answerApproval, callApprovalHook, inputsProblem } from './library/approvals.js'
 export { annotate, define, defaultModel, switchModel, edit, extend, flush, grantOf, jobs, list, listApprovals, log, pause, requestApproval, show, sporePaths, usage, precursors, remake, remove, schedules, setDefaultModel, setSchedule, removeSchedule, sporangia, sql, stopJob, unpause, upgrade, wrap, defaultSporangiumPath } from './library/verbs.js'

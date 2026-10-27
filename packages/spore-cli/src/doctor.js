@@ -1,4 +1,8 @@
-import { doctor, loadMohdelEnvironment, modelFindings } from '@rhizogrip/spore'
+import { createRequire } from 'node:module'
+import { homedir } from 'node:os'
+import { getSystemErrorName } from 'node:util'
+
+import { boundary, describeHost, doctor, loadMohdelEnvironment, modelFindings } from '@rhizogrip/spore'
 
 import { createServices } from './services.js'
 
@@ -56,20 +60,69 @@ function serviceFindings (services, needsTick, replies) {
 export async function diagnose ({ services = createServices() } = {}) {
   loadMohdelEnvironment()
   const { findings, needsTick, replies } = doctor()
-  return { findings: [...findings, ...await modelFindings(), ...serviceFindings(services, needsTick, replies)] }
+  const tried = await boundary()
+  return { findings: [...findings, ...tried.findings, ...await modelFindings(), ...serviceFindings(services, needsTick, replies)], boundary: tried.boundary, host: describeHost() }
 }
 
-export function renderDoctor ({ findings }) {
+const ISSUES = createRequire(import.meta.url)('../package.json').bugs.url
+
+/**
+ * A diagnosis as a GitHub issue its reader files, or not: `{ title, body, url }`, the body this
+ * machine, the boundary as tried and what doctor found on the machine — never a spore, a model or
+ * a setting — with the home directory written `~`, and `url` the issue form filled with it.
+ */
+export function hostReport ({ host, boundary, findings }) {
+  const landlock = host.landlock < 0 ? `not in this kernel (${getSystemErrorName(host.landlock)})` : `ABI ${host.landlock}`
+  const rows = [
+    ['spore', host.spore],
+    ['Node', `${host.node}, SQLite ${host.sqlite}`],
+    ['system', `${host.system}, ${host.arch}, in ${host.runsIn}`],
+    ['kernel', host.kernel],
+    ['Landlock', landlock],
+    ['AppArmor', host.appArmor ?? 'no switch for user namespaces'],
+    ['namespaces', host.contain.contained ? 'contained' : host.contain.why]
+  ]
+  const machine = findings.filter(found => found.area === 'machine')
+  const body = [
+    '| | |',
+    '|---|---|',
+    ...rows.map(([name, value]) => `| ${name} | ${value} |`),
+    '',
+    '**Boundary**',
+    '',
+    ...(boundary.length ? boundary.map(one => `- ${one.outcome} — ${one.tried}${one.outcome === 'refused' ? '' : ` (${one.why})`}`) : ['- not tried']),
+    '',
+    '**Found on the machine**',
+    '',
+    ...(machine.length ? machine.map(found => `- ${found.severity}: ${found.subject} — ${found.problem}`) : ['- nothing'])
+  ].join('\n').split(homedir()).join('~')
+  const title = `Host report: ${host.system}, ${host.kernel}`
+  const url = `${ISSUES}/new?${Object.entries({ template: 'host-report.yml', title, report: body }).map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&')}`
+  return { title, body, url }
+}
+
+export function renderReport ({ body, url }) {
+  console.log(`${body}\n\nto share it, open this and submit the issue — nothing is sent until you do:\n${url}`)
+}
+
+const OUTCOME_WIDTH = 9
+
+export function renderDoctor ({ findings, boundary }) {
   for (const area of AREAS) {
     const here = findings.filter(found => found.area === area)
     if (!here.length) continue
     console.log(area)
     for (const found of here) {
       console.log(`  ${found.severity === 'note' ? 'note: ' : ''}${found.subject} — ${found.problem}`)
-      if (found.fix) console.log(`      ${found.fix}`)
+      if (found.fix) console.log(found.fix.split('\n').map(line => `      ${line}`).join('\n'))
     }
+  }
+  if (boundary.length) {
+    console.log('boundary — what a turn\'s commands tried on this host')
+    for (const one of boundary) console.log(`  ${one.outcome.padEnd(OUTCOME_WIDTH)} ${one.tried}${one.outcome === 'refused' ? '' : ` — ${one.why}`}`)
   }
   const problems = findings.filter(found => found.severity === 'problem').length
   const notes = findings.length - problems
-  console.log(findings.length ? `\n${problems} problem${problems === 1 ? '' : 's'}, ${notes} note${notes === 1 ? '' : 's'}` : 'nothing wrong')
+  const total = findings.length ? `${problems} problem${problems === 1 ? '' : 's'}, ${notes} note${notes === 1 ? '' : 's'}` : 'nothing wrong'
+  console.log(findings.length || boundary.length ? `\n${total}` : total)
 }

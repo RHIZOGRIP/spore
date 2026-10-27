@@ -65,7 +65,7 @@ pub fn contain_refused(root: &Path) -> Option<String> {
 
 /// What a turn refused for want of containment is told, `why` being the step the host refused.
 pub fn uncontained(why: &str) -> String {
-    format!("this host cannot give a turn namespaces of its own ({why}), so the turn would see every other spore's processes — allow unprivileged user namespaces for spore's confine, or spore config set contain off when no one else's spores run as this user")
+    format!("this host cannot give a turn namespaces of its own ({why}), so the turn would see every other spore's processes — allow unprivileged user namespaces for spore's confine (spore doctor says how on this host), or spore config set contain off when no one else's spores run as this user")
 }
 
 pub struct Ended {

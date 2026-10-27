@@ -4,6 +4,32 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.43.0] — Feature: spore doctor tries the boundary, and gives Ubuntu its fix
+
+### Added
+
+- `spore doctor` tries the boundary on this host rather than only reading what the kernel offers:
+  a command confined as spore confines a job's tries to read a file outside its grants, write
+  outside its directory and into one it may only read, see and signal a process outside it, and
+  make namespaces of its own, and doctor lists each as refused, crossed or untried. A crossing the
+  host should have refused is a problem. No model is called, and it takes well under a second.
+  `spore setup` says how many ways out were tried and refused. The library exports it as
+  `boundary()`, and `spore doctor --json` carries it as `boundary`.
+- `spore doctor --report` prints this machine — versions, system, kernel, Landlock, AppArmor,
+  whether it can contain, any container or VM — with the boundary as tried and what doctor found
+  on the machine, as a GitHub issue, and a link opening the repository's host-report form filled
+  with it. It names no path, user, host, spore or model, and spore sends nothing; the reader files
+  it or not. The library exports the machine's description as `describeHost()`.
+
+### Changed
+
+- Where AppArmor restricts unprivileged user namespaces — Ubuntu from 23.10 — `spore doctor` and
+  `spore setup` print the AppArmor profile that lets this install's `confine`, and no other
+  program, make them, with its real path and the command that loads it. They say when an existing
+  profile names another `confine` than the installed one, as one written before 1.39.0 does, and
+  when the path is one this user may replace.
+- A turn refused because the host cannot contain it says `spore doctor` gives the fix.
+
 ## [1.42.1] — Fix: a release reaches npm from its tag again
 
 No change to the runtime.

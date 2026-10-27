@@ -67,6 +67,14 @@ cd ~/code/my-app     # any git repository
 spore here
 ```
 
+**On Ubuntu 23.10 or newer**, AppArmor stops programs from making user namespaces, and spore needs
+them to run each turn apart from your other processes. `spore setup` stops there and prints the fix
+for your install: two commands, run with sudo, that give spore's `confine` — and no other program —
+an AppArmor profile allowing them. On a machine that runs only spore, turning the restriction off
+for every program also works; and where no one else's spores run as your user, `spore config set
+contain off` runs turns without namespaces, still confined by the kernel's Landlock.
+[docs/operating.md](docs/operating.md#contain) weighs the three.
+
 `spore setup` walks you through the first run: it checks the machine, helps you connect a model —
 a ChatGPT plan, OpenRouter, or another provider — and sets what new spores run on.
 
@@ -113,6 +121,23 @@ and accept that nothing can be undone.
   yours to keep: each turn's spend is on record, and `spore pause` stops them all.
 - **Everything it did is on record**, in its workspace, and it cannot rewrite that record.
 
+`spore doctor` checks this on your machine rather than asking you to trust it. A command, confined
+as spore confines everything a spore runs, tries each way out, and doctor lists what happened; on
+a machine that holds, every line says refused:
+
+```
+boundary — what a turn's commands tried on this host
+  refused   read a file outside what it is granted
+  refused   write outside the directory it writes
+  refused   write a directory it may only read
+  refused   see a process outside it
+  refused   signal a process outside it
+  refused   make namespaces of its own
+```
+
+`spore doctor --report` turns the same into a GitHub issue for you to read, then file or not;
+spore itself sends nothing.
+
 The details are in [SECURITY.md](SECURITY.md).
 
 ## What you need
@@ -120,8 +145,7 @@ The details are in [SECURITY.md](SECURITY.md).
 - **Linux** (x64 or arm64), kernel 5.13 or newer with Landlock enabled; 6.12 or newer is best. On macOS,
   `spore setup` runs it in a Linux VM it makes with Lima; on Windows, run it in WSL.
 - **Unprivileged user namespaces**, so each turn runs shut off from your other processes. Most
-  distributions allow them; Ubuntu restricts them through AppArmor, and `spore doctor` says how to
-  allow them, or how to run without.
+  distributions allow them; on Ubuntu, see [above](#try-it-in-a-project).
 - **Node 24 or newer**, with a bundled SQLite of 3.51.3 or newer.
 - **A model**: a ChatGPT plan, an OpenRouter key, or a key for any provider
   [mohdel](https://www.npmjs.com/package/mohdel) supports. `spore setup` connects one.
