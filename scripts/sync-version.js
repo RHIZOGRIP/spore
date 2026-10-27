@@ -45,5 +45,5 @@ rewrite('packages/spore-cli/package.json', /(\n {4}"@rhizogrip\/spore": )"[^"]+"
 for (const pkg of PACKAGES) {
   rewrite('package-lock.json', new RegExp(`(\\n {4}"packages/${pkg}": \\{\\n {6}"name": "@rhizogrip/${pkg}",\\n {6}"version": )"[^"]+"`), `packages/${pkg} entry`)
 }
-rewrite('package-lock.json', /(\n {4}"packages\/spore-cli": \{[^}]*?\n {8}"@rhizogrip\/spore": )"[^"]+"/, 'packages/spore-cli entry\'s dependency on @rhizogrip/spore')
+rewrite('package-lock.json', /(\n {4}"packages\/spore-cli": \{(?:(?!\n {4}\})[\s\S])*?\n {8}"@rhizogrip\/spore": )"[^"]+"/, 'packages/spore-cli entry\'s dependency on @rhizogrip/spore')
 console.log(`sync-version: Cargo.toml, Cargo.lock, package-lock.json and packages/{${PACKAGES.join(',')}} at ${version}`)

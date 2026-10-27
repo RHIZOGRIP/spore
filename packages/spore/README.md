@@ -24,29 +24,31 @@ npm install -g @rhizogrip/spore-cli    # the spore command, with the runtime und
 npm install @rhizogrip/spore           # the library alone, to embed
 ```
 
-On a server nobody opens a terminal screen on, `npm install -g --omit=optional @rhizogrip/spore-cli`
-leaves out the one `spore tui` and `spore here` open, and its dependencies; every other command,
-`spore setup` included, works without it.
-
 Node 24+ whose bundled SQLite is 3.51.3 or newer, on Linux x64 or arm64, kernel 5.13+ (Landlock), glibc.
 spore refuses an older SQLite (`SQLITE_TOO_OLD`); `node -p "new (require('node:sqlite').DatabaseSync)(':memory:').prepare('select sqlite_version() v').get().v"`
 prints the one your Node carries. The native parts come prebuilt in the
 package, for both architectures, so installing needs no compiler. Building from a checkout does: a C compiler and
 cargo, which `npm install` runs through `prepare`.
 
-### On macOS or Windows
+### In a Linux VM: on macOS, or by choice on Linux
 
-spore runs on Linux only. Elsewhere, run it in a Linux VM. On macOS, with
-[Lima](https://lima-vm.io):
+spore runs on Linux. On macOS it runs in a Linux VM made with [Lima](https://lima-vm.io/docs/installation/);
+install Lima, then:
 
 ```bash
-limactl start --name spore template://ubuntu-lts
-limactl shell spore
+npm install -g @rhizogrip/spore-cli
+spore setup
 ```
 
-Then install Node 24+ in the VM, `npm install -g @rhizogrip/spore-cli` as above, and run
-`spore doctor`, which reports a kernel without Landlock. Keep workspaces on the VM's own
-filesystem, not on a directory shared from the host.
+`spore setup` makes the VM — Debian 13, named `spore` — installs the same Node and spore in it,
+and runs spore's own setup there, so your model and its key are chosen inside the VM. From then
+on every `spore` command runs in the VM. `spore vm stop` stops it and `spore vm start` starts it
+again; a command given while it is stopped says so and does nothing. Your spores live on the VM's
+own disk. Lima shows your home inside the VM read-only, so `spore here` works on a directory in
+the VM, not on one of the Mac's.
+
+On Linux, the first `spore setup` asks whether spore runs on this machine — the default — or in a
+VM. On Windows, run spore in WSL; `spore setup` does not prepare it yet.
 
 ## Quick start
 

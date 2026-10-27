@@ -456,9 +456,6 @@ spore, `outside(fn)` runs `fn` on the bare terminal (a pager, an editor) and com
 `renderTool(tool, { expanded, width })` gets `{ callId, name, args, done, durationMs, error }` and
 returns lines, or `null` for the default. `runTui` resolves with an exit code.
 
-The screen needs the package's optional dependency `@earendil-works/pi-tui`. An install made with
-`--omit=optional` leaves it out, and the import then fails with `ERR_MODULE_NOT_FOUND`.
-
 ---
 
 ## The HTTP API

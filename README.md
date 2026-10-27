@@ -117,8 +117,8 @@ The details are in [SECURITY.md](SECURITY.md).
 
 ## What you need
 
-- **Linux** (x64 or arm64), kernel 5.13 or newer with Landlock enabled; 6.12 or newer is best. On macOS or
-  Windows, run it in a Linux VM.
+- **Linux** (x64 or arm64), kernel 5.13 or newer with Landlock enabled; 6.12 or newer is best. On macOS,
+  `spore setup` runs it in a Linux VM it makes with Lima; on Windows, run it in WSL.
 - **Unprivileged user namespaces**, so each turn runs shut off from your other processes. Most
   distributions allow them; Ubuntu restricts them through AppArmor, and `spore doctor` says how to
   allow them, or how to run without.

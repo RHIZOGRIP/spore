@@ -16,7 +16,13 @@ describe('the published command', () => {
   })
 
   it('depends on exactly the core it is released with', () => {
-    expect(pkg.dependencies['@rhizogrip/spore']).toBe(core.version)
+    expect(pkg.optionalDependencies['@rhizogrip/spore']).toBe(core.version)
     expect(pkg.version).toBe(core.version)
+  })
+
+  it('installs on any system, the core only where it is built for', () => {
+    expect(pkg.os).toBeUndefined()
+    expect(pkg.dependencies['@rhizogrip/spore']).toBeUndefined()
+    expect(core.os).toEqual(['linux'])
   })
 })

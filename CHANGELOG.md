@@ -4,6 +4,27 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.40.0] — Feature: spore runs in a Linux VM
+
+### Added
+
+- On macOS, `npm install -g @rhizogrip/spore-cli` and `spore setup` run spore in a Linux VM that
+  setup makes with Lima: Debian 13, the host's Node and the same spore, and spore's own setup run
+  inside it, where the model and its key are chosen. Every `spore` command then runs in the VM.
+- On Linux, the first `spore setup` asks whether spore runs on this machine — the default — or in
+  a VM.
+- `spore vm start|stop` starts and stops the VM. A command given while it is stopped says to start
+  it and does nothing. Where spore runs on the machine itself, `spore vm` says so and succeeds.
+
+### Changed
+
+- `@rhizogrip/spore-cli` installs on any system: it takes `@rhizogrip/spore` as an optional
+  dependency, which npm installs only on Linux x64 and arm64.
+- `spore setup` asks as mohdel's own setup does, which it hands over to midway: a list narrowed as
+  you type, the default already chosen, Esc or Ctrl-C to leave.
+- The terminal screen is always installed. `--omit=optional` no longer leaves out only the
+  screen: it leaves out the core, and `spore` then says so — install without it.
+
 ## [1.39.0] — Feature: spore runs on arm64 Linux
 
 ### Added

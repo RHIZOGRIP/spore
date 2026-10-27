@@ -10,10 +10,8 @@ npm install -g @rhizogrip/spore-cli
 spore                      # what each command does
 ```
 
-The terminal screen (`spore tui`, `spore here`) is an optional dependency: `--omit=optional` leaves it
-out, for a server, and the other commands work without it.
-
-Linux x64 or arm64, Node 24 or newer. How spore works, what a spore is and every command:
+Linux x64 or arm64, Node 24 or newer; on macOS, `spore setup` runs spore in a Linux VM it makes
+with Lima. How spore works, what a spore is and every command:
 [the spore README](https://github.com/RHIZOGRIP/spore/blob/main/packages/spore/README.md).
 
 ## License

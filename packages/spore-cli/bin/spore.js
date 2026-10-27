@@ -14,9 +14,13 @@ import { basename, resolve } from 'node:path'
 
 import minimist from 'minimist'
 
-import { differingDocs, fork, follow, followingDocs, grantOf, isWorkspace, lastEventSeq, loadEnvironment, mimeOf, readConfig, readInbox, RUNNING, send, stateOf, stop, turnOfMessage, turnSummary, watch, workspaceFor, errorText } from '@rhizogrip/spore'
-import { renderHeader } from '../src/dispatch.js'
-import { SERVICES } from '../src/services.js'
+import { host } from '../src/vm.js'
+
+await host(process.argv.slice(2))
+
+const { differingDocs, fork, follow, followingDocs, grantOf, isWorkspace, lastEventSeq, loadEnvironment, mimeOf, readConfig, readInbox, RUNNING, send, stateOf, stop, turnOfMessage, turnSummary, watch, workspaceFor, errorText } = await import('@rhizogrip/spore')
+const { renderHeader } = await import('../src/dispatch.js')
+const { SERVICES } = await import('../src/services.js')
 
 // Detaching is neither success nor failure: the turn is still going, and 0 would claim it
 // answered. `spore show` says what actually happened once it has.
@@ -32,6 +36,7 @@ const argv = minimist(process.argv.slice(2), {
 
 const VERBS = `Usage:
   spore setup                               the first run: this machine, your models, a first spore
+  spore vm start|stop                       the Linux vm spore runs in, where spore setup made one
   spore define <name>                       say what a spore is; . for here
   spore define <name> --model <m> --plugin <p>  the same, with its model and plugins filled in
   spore define <new> --from <name>          the same, cut from one that has learned
@@ -179,7 +184,8 @@ const SHAPES = {
   hook: { bare: 'ls', subs: { ls: withJson(0), show: withJson(1) } },
   tui: { flags: [], most: 1 },
   here: { flags: ['sporangium', 'model', 'no-git'], most: 1 },
-  setup: { flags: [], most: 0 }
+  setup: { flags: [], most: 0 },
+  vm: { subs: { start: { flags: [], most: 0 }, stop: { flags: [], most: 0 } } }
 }
 const verb = argv._[0]
 
@@ -245,7 +251,7 @@ try {
 }
 
 if (verb === 'tui') {
-  const { mostRecentSpore, rememberedSpore, runTui } = await screen('../tui/index.js')
+  const { mostRecentSpore, rememberedSpore, runTui } = await import('../tui/index.js')
   const remembered = rememberedSpore()
   const ws = argv._[1] ? spore(argv._[1]) : remembered && isWorkspace(remembered) ? remembered : mostRecentSpore()
   if (!ws) fail('no spore yet — spore define <name>')
@@ -267,7 +273,7 @@ if (verb === 'setup') {
 }
 
 if (verb === 'here') {
-  const { here } = await screen('../tui/here.js')
+  const { here } = await import('../tui/here.js')
   try {
     process.exit(await here({ dir: argv._[1], sporangium: argv.sporangium, model: argv.model, git: argv.git !== false }))
   } catch (err) {
@@ -306,18 +312,6 @@ async function events (ws, after) {
   process.on('SIGINT', () => leaving.abort())
   for await (const event of watch(ws, { after, signal: leaving.signal })) line(event)
   return leaving.signal.aborted
-}
-
-/** The terminal screen, which an install made with --omit=optional leaves out. */
-async function screen (path) {
-  try {
-    return await import(path)
-  } catch (err) {
-    if (err.code === 'ERR_MODULE_NOT_FOUND' && err.message.includes('@earendil-works/pi-tui')) {
-      fail(`${verb} opens the terminal screen, which this install left out — npm install -g @rhizogrip/spore-cli without --omit=optional adds it`)
-    }
-    throw err
-  }
 }
 
 function fail (problem) {

@@ -5,7 +5,8 @@
 
 import { spawnSync } from 'node:child_process'
 import { basename } from 'node:path'
-import { createInterface } from 'node:readline/promises'
+
+import { autocomplete, cancel, confirm, intro, isCancel, log, note, outro, text } from '@clack/prompts'
 
 import {
   checkSqlite, CONFIG_FILE, defaultModel, define, doctor, list, loadMohdelEnvironment, MO,
@@ -27,43 +28,34 @@ const providerOf = (model) => model.split('/')[0]
 
 const SHOWN = 20
 
-/**
- * A pick from a numbered list on the plain terminal, so setup runs where the screen is not installed:
- * a number picks, words narrow the list, empty leaves it. The value picked, or null when left.
- */
+const line = (label, text) => log.step(`${label.padEnd(10)}${text}`)
+
+/** A pick from a list that words narrow, each matched in the label or the description; null when left. */
 export async function pickFromList ({ title, header = [], items }) {
-  const say = console.log
-  say('')
-  say(title)
-  for (const line of header) say(`  ${line}`)
-  let shown = items
-  while (true) {
-    const width = String(Math.min(shown.length, SHOWN)).length
-    shown.slice(0, SHOWN).forEach((item, i) => say(`  ${String(i + 1).padStart(width)}  ${item.label}${item.description ? ` — ${item.description}` : ''}`))
-    if (shown.length > SHOWN) say(`  … and ${shown.length - SHOWN} more — words narrow the list`)
-    const answer = await ask('a number, or words to narrow the list — empty to leave:')
-    if (!answer) return null
-    if (/^\d+$/.test(answer)) {
-      const chosen = shown.slice(0, SHOWN)[Number(answer) - 1]
-      if (chosen) return chosen.value
-      say(`  ${answer} is not in the list`)
-      continue
-    }
-    const words = answer.toLowerCase().split(/\s+/)
-    const narrowed = items.filter(item => words.every(word => `${item.label} ${item.description ?? ''}`.toLowerCase().includes(word)))
-    if (narrowed.length) shown = narrowed
-    else say(`  nothing matches ${answer}`)
-  }
+  const picked = await autocomplete({
+    message: [title, ...header].join('\n'),
+    options: items.map(({ value, label, description }) => ({ value, label, hint: description })),
+    maxItems: SHOWN,
+    filter: (search, option) => search.toLowerCase().split(/\s+/).every(word => `${option.label} ${option.hint ?? ''}`.toLowerCase().includes(word))
+  })
+  return isCancel(picked) ? null : picked
 }
 
-export async function ask (question, preset = '') {
-  const prompt = createInterface({ input: process.stdin, output: process.stdout })
-  prompt.on('SIGINT', () => process.exit(130))
-  try {
-    return (await prompt.question(preset ? `${question} [${preset}] ` : `${question} `)).trim() || preset
-  } finally {
-    prompt.close()
-  }
+function left () {
+  cancel('left — spore setup again carries on from here')
+  process.exit(130)
+}
+
+async function ask (message, defaultValue) {
+  const answer = await text({ message, placeholder: defaultValue, defaultValue })
+  if (isCancel(answer)) left()
+  return answer.trim()
+}
+
+async function yes (message) {
+  const answer = await confirm({ message, initialValue: false })
+  if (isCancel(answer)) left()
+  return answer
 }
 
 export const onboardWithMo = (provider) => spawnSync(process.execPath, [MO, 'onboard', ...(provider ? [provider] : [])], { stdio: 'inherit' }).status
@@ -77,10 +69,8 @@ const billingText = ({ billing, priced }) => billing === 'plan'
  * before running it again.
  */
 export async function setup () {
-  const say = console.log
   const services = createServices()
-  const yes = async (question) => /^y(es)?$/i.test(await ask(`${question} [y/N]`))
-  const line = (label, text) => say(`${label.padEnd(10)}${text}`)
+  intro('spore setup')
 
   line('node', `${process.version}, SQLite ${checkSqlite()}`)
 
@@ -98,9 +88,9 @@ export async function setup () {
   const processes = machine.find(one => one.subject === 'processes')
   if (processes?.severity === 'problem') {
     line('processes', processes.problem)
-    say(`${''.padEnd(10)}without them, a turn sees the processes and command lines of every other spore of yours —\n${''.padEnd(10)}which matters only when spores of other people run as this user`)
+    log.message('without them, a turn sees the processes and command lines of every other spore of yours —\nwhich matters only when spores of other people run as this user')
     if (!await yes('run your spores uncontained?')) {
-      say(`${''.padEnd(10)}${processes.fix}, then spore setup again`)
+      log.warn(`${processes.fix}, then spore setup again`)
       return 1
     }
     setKey('contain', 'off')
@@ -120,18 +110,16 @@ export async function setup () {
     line('home', `${readConfig().home} — spore config set home <dir> moves where new ones are made`)
   }
 
-  const model = await chooseModel({ line, say })
+  const model = await chooseModel()
   if (model === null) return 1
 
-  await tickTimer({ line, yes, services })
+  await tickTimer({ services })
 
-  say('')
   const diagnosed = await diagnose({ services })
   if (diagnosed.findings.length) renderDoctor(diagnosed)
   else line('checked', 'this machine, your config and your spores — nothing to fix')
-  say('')
   if (diagnosed.findings.some(one => one.severity === 'problem')) {
-    say('fix those, then spore setup again — spore doctor checks just that part')
+    log.warn('fix those, then spore setup again — spore doctor checks just that part')
     return 1
   }
 
@@ -144,26 +132,26 @@ export async function setup () {
     line('made', `main, your first spore, in ${made.ws}`)
   }
   const first = names.includes('main') ? 'main' : names[0]
-  say('')
-  say('next')
-  for (const [command, what] of [
+  note([
     [`spore tui ${first}`, `talk to ${first} in a terminal screen`],
     [`spore send ${first} "…"`, 'or send it one message; the answer is printed'],
     ['cd <project> && spore here', 'a spore that works on that project\'s files — git undoes what it changes'],
     ['spore', 'every command']
-  ]) say(`  ${command.padEnd(30)}${what}`)
+  ].map(([command, what]) => `${command.padEnd(30)}${what}`).join('\n'), 'next')
+  outro('spore setup again checks all of this')
   return 0
 }
 
 /** Where another model comes from, and how a spore is given it: said, never done, by setup. */
-function otherModels (say, provider) {
-  const pad = ''.padEnd(10)
-  say(`${pad}another model: /curate in spore tui, or mo curate ${provider}, adds it to your catalog —`)
-  say(`${pad}then spore config set model <provider>/<name> for new spores, or spore edit <spore> and add it to models:`)
+function otherModels (provider) {
+  log.message([
+    `another model: /curate in spore tui, or mo curate ${provider}, adds it to your catalog —`,
+    'then spore config set model <provider>/<name> for new spores, or spore edit <spore> and add it to models:'
+  ])
 }
 
 /** The default model, ready to run: the one set, or a provider set up through mohdel and one of its models picked. Null stops setup. */
-async function chooseModel ({ line, say }) {
+async function chooseModel () {
   loadMohdelEnvironment()
   const current = defaultModel().model
   if (current) {
@@ -179,7 +167,7 @@ async function chooseModel ({ line, say }) {
       }
     }
     line('model', `${current}, ${ready.priced === false ? `${billingText(ready)} — ${ready.fix}` : 'ready'}`)
-    otherModels(say, providerOf(current))
+    otherModels(providerOf(current))
     return current
   }
 
@@ -218,12 +206,12 @@ async function chooseModel ({ line, say }) {
   const chosen = usable.find(one => one.model === model)
   setDefaultModel(model)
   line('model', `${model}, ${chosen.priced === false ? `${billingText(chosen)} — mo model instructions ${providerOf(model)} fills them` : 'ready'}`)
-  say(`${''.padEnd(10)}new spores run on it`)
-  otherModels(say, providerOf(model))
+  log.message('new spores run on it')
+  otherModels(providerOf(model))
   return model
 }
 
-async function tickTimer ({ line, yes, services }) {
+async function tickTimer ({ services }) {
   let tick
   try {
     tick = services.show('tick')

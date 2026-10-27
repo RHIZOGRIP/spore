@@ -611,6 +611,17 @@ entry already holding it and the command follows, or reports, the turn that read
 appending again. `--json` hands a program the event log (§Watching a spore) in place of the text,
 resumable from the last `seq` it saw.
 
+**On a machine that runs spore in a Linux VM, the command runs there.** `@rhizogrip/spore-cli`
+installs on any system and takes the core as an optional dependency, which npm leaves out where it
+is not built for: macOS and Windows have no other way, and on Linux it is a choice the first
+`spore setup` asks. `vm.json` beside `config.json` names the VM, a Lima instance, and
+`src/vm.js` decides before the core is loaded: `setup` makes or starts the VM, brings it to the
+host's Node and spore-cli version, and runs the VM's own `setup`, where the model and its key are
+chosen; `vm start|stop` start and stop it; every other command goes through `limactl shell`, its
+arguments, terminal and exit status unchanged. Nothing else starts the VM — a command given while
+it is stopped is told `spore vm start`. Where no VM is named, `vm` says spore runs on this machine
+and succeeds, so one script works everywhere.
+
 ### The inbox
 
 **Everything said to a spore goes to its inbox first, and starting a runner is a separate act**
