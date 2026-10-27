@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-sluice",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Host commands for spores, as a sluice broker's rules allow them",
   "author": {
     "name": "Christophe Le Bars",
@@ -24,7 +24,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "sluicify-native": "0.4.0"
+    "sluicify-native": "0.4.1"
   },
   "spore": {
     "works": "^1",
