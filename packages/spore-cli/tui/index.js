@@ -247,12 +247,32 @@ class Panel {
   invalidate () {}
 }
 
+/**
+ * pi-tui gives the terminal back — the alternate screen, mouse reports, the keyboard protocol —
+ * only in `stop()`, so an error nothing caught would leave the shell unusable. Until the screen is
+ * left, such an error stops it first, then is reported and exits as Node would.
+ */
+function stoppedOnCrash (tui) {
+  const crashed = (err) => {
+    tui.stop({ preserveScreen: true })
+    console.error(err)
+    process.exit(1)
+  }
+  process.on('uncaughtException', crashed)
+  process.on('unhandledRejection', crashed)
+  return () => {
+    process.off('uncaughtException', crashed)
+    process.off('unhandledRejection', crashed)
+  }
+}
+
 /** A choice made before any spore is open: the value picked, or null when it was left. */
 export function choose ({ title, header = [], items, terminal = new ProcessTerminal() }) {
   const tui = new TuiAltScreen(terminal)
   return new Promise(resolve => {
     const done = (value) => {
       tui.stop({ preserveScreen: true })
+      released()
       resolve(value)
     }
     const picker = new Picker({ title, header, items, onSelect: (item) => done(item.value), onCancel: () => done(null) })
@@ -265,6 +285,7 @@ export function choose ({ title, header = [], items, terminal = new ProcessTermi
     })
     tui.setLayoutRoot(new VStack([{ component: picker, basis: 'auto' }]))
     tui.setFocus(picker)
+    const released = stoppedOnCrash(tui)
     tui.start()
   })
 }
@@ -304,12 +325,23 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
     state.noticeTimer = setTimeout(() => { status.notice = ''; tui.requestRender() }, Math.max(NOTICE_MS, text.length * 60))
     tui.requestRender()
   }
+  // spore.cmk is edited while the screen is open: one that does not parse is shown until it does.
+  const invalid = (err) => {
+    if (err.type !== 'DEFINITION_INVALID') throw err
+    notice(errorText(err))
+  }
   const notify = (text) => terminal.write(`\x1b]9;${printable(text).replace(/\n/g, ' ')}\x07`)
 
   const refresh = () => {
     const now = stateOf(state.ws)
     if (now.state !== RUNNING) state.limits = null
-    else if (!state.limits) state.limits = show({ ws: state.ws }).turnLimits
+    else if (!state.limits) {
+      try {
+        state.limits = show({ ws: state.ws }).turnLimits
+      } catch (err) {
+        invalid(err)
+      }
+    }
     state.shown = { ws: state.ws, model: state.grant.model, billing: state.grant.billing, ...now, turnLimits: state.limits }
     const live = conversation.live ?? createLive()
     const at = Date.now()
@@ -332,9 +364,10 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
   }
 
   const open = (ws) => {
+    const grant = grantOf(ws)
     state.ws = ws
     state.attention.delete(ws)
-    state.grant = grantOf(ws)
+    state.grant = grant
     state.lastSeq = 0
     remember(ws)
     reload()
@@ -362,7 +395,14 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
         label: `${state.attention.has(row.ws) ? '● ' : ''}${basename(row.ws)}`,
         description: `${row.state} · ${row.lastTurnNo} turns · $${row.treeUsd.toFixed(4)} · ${ago(row.last?.endedAt, now)}`
       })),
-      onSelect: (item) => { closeOverlay(); open(item.value) },
+      onSelect: (item) => {
+        closeOverlay()
+        try {
+          open(item.value)
+        } catch (err) {
+          invalid(err)
+        }
+      },
       onCancel: closeOverlay
     }))
   }
@@ -397,6 +437,7 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
     following.abort()
     clearInterval(ticking)
     tui.stop({ preserveScreen: true })
+    released()
     finish(0)
   }
 
@@ -538,7 +579,7 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
     if (!trimmed) return
     editor.setText('')
     const command = parseCommand(trimmed)
-    if (command) return run(command)
+    if (command) return run(command).catch(invalid)
     say(trimmed.startsWith('//') ? trimmed.slice(1) : trimmed)
   }
 
@@ -646,6 +687,7 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
 
   open(ws)
   if (greeting) notice(greeting)
+  const released = stoppedOnCrash(tui)
   tui.start()
   const ticking = setInterval(refresh, REFRESH_MS)
   follow().catch(err => notice(`stopped following the spores — ${err.message}`))

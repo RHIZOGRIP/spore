@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.38.1] — Fix: the terminal no longer crashes on a spore.cmk edited while it is open
+
+### Fixed
+
+- `spore tui` and `spore here` give the terminal back when they crash: an
+  error nothing caught stops the screen before it is reported, instead of
+  leaving the shell in the screen's modes, with mouse movements and keys
+  printed as escape codes.
+- A `spore.cmk` that does not parse, edited while the terminal is open, is
+  shown as a notice until it parses again, rather than ending the terminal —
+  while a turn runs, in a slash command, or when another spore is opened with
+  ctrl+p, which then stays on the current one.
+
 ## [1.38.0] — Feature: flush a spore's conversation
 
 ### Added
