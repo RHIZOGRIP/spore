@@ -23,6 +23,7 @@
   },
   "release-it": {
     "hooks": {
+      "before:bump": "grep -q '^## \\[${version}\\]' CHANGELOG.md || (echo 'CHANGELOG.md is missing a ## [${version}] section — add it before releasing.' >&2 && exit 1)",
       "after:bump": "node scripts/sync-version.js"
     },
     "git": {
@@ -36,7 +37,9 @@
       "publish": false
     },
     "github": {
-      "release": false
+      "release": true,
+      "releaseName": "spore v${version}",
+      "releaseNotes": "awk '/^## \\[${version}\\]/{flag=1;next}/^## \\[/{flag=0}flag' CHANGELOG.md"
     }
   },
   "lint-staged": {

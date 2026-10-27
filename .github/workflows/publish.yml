@@ -1,9 +1,8 @@
 name: Publish spore
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [created]
 
 # spore ships its native code prebuilt, inside the package: `native/` (the Rust addon, the
 # runner and spore-spawn) and `build/Release/` (the sandbox addon and confine), so a consumer
