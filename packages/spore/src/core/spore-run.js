@@ -40,7 +40,7 @@ const LIMITS_EVERY_MS = 2000
 // changes would make the whole conversation after it uncacheable on every turn.
 function nowLine (now = new Date()) {
   const day = now.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })
-  return `Now: ${now.toISOString().slice(0, 16)}Z (${day}). Compute dates and durations from this, never from assumption.`
+  return `[Now: ${now.toISOString().slice(0, 16)}Z (${day}) — the runtime's clock, not part of the message.]`
 }
 
 /**

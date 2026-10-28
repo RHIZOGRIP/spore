@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.45.0] — Fix: the clock line speaks as the runtime
+
+### Fixed
+
+- The `Now:` line in front of a turn's message now says it is the runtime's clock and no longer
+  tells the agent to compute dates and durations, which the definition's method already does once.
+  Sitting inside the person's message, unmarked and repeated every turn, it was quoted back as the
+  person's instruction and read as a request to append a clock to every answer.
+
 ## [1.44.0] — Feature: fork a spore between its turns
 
 ### Added
