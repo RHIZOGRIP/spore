@@ -18,12 +18,15 @@ export function header (asker, said) {
 }
 
 /**
- * A message as a spore is told it: role mentions of spores read as `@<spore>`, and the rest as
- * Discord wrote it.
+ * A message as a spore is told it: mentions of spores — of their roles, and of the users
+ * `usersBySpore` gives one — read as `@<spore>`, and the rest as Discord wrote it.
  */
-export function plain (content, rolesBySpore) {
-  const spores = new Map(Object.entries(rolesBySpore).map(([spore, role]) => [role, spore]))
-  return String(content).replace(/<@&(\d+)>/g, (mention, role) => (spores.has(role) ? `@${spores.get(role)}` : mention))
+export function plain (content, rolesBySpore, usersBySpore) {
+  const byRole = new Map(Object.entries(rolesBySpore).map(([spore, role]) => [role, spore]))
+  const byUser = new Map(Object.entries(usersBySpore).map(([spore, user]) => [user, spore]))
+  return String(content)
+    .replace(/<@&(\d+)>/g, (mention, role) => (byRole.has(role) ? `@${byRole.get(role)}` : mention))
+    .replace(/<@!?(\d+)>/g, (mention, user) => (byUser.has(user) ? `@${byUser.get(user)}` : mention))
 }
 
 const nameOf = (user) => user.global_name ?? user.username

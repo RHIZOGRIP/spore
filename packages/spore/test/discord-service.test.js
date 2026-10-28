@@ -20,12 +20,14 @@ import { download } from '../src/relay/download.js'
 import { DISCORD, createAdapter } from '@rhizogrip/spore-plugin-discord/src/adapter.js'
 
 const ROLES = { triage: '701', ledger: '702' }
+const BOT = { id: '900', username: 'sporebot' }
 const OPS = { post: 'post', edit: 'revise', remove: 'remove', upload: 'upload', react: 'react', typing: 'typing', fetch: 'download' }
 const HEADER = /^(<@\d+> ↪ "[^\n]*"\n)+/
 
 const standIn = () => {
   const sent = []
   const faults = []
+  const existing = []
   const created = []
   const delivered = new Map()
   const lastSaid = new Map()
@@ -50,6 +52,7 @@ const standIn = () => {
   }
   return {
     sent,
+    existing,
     created,
     delivered,
     stored,
@@ -61,7 +64,7 @@ const standIn = () => {
       return download(url, { most, fetchImpl: async () => new Response(stored.get(url)) })
     },
     channel: async (id) => ({ id, guild_id: 'g1', name: `chan-${id}` }),
-    roles: async () => created.map(name => ({ id: ROLES[name], name })),
+    roles: async () => [...existing, ...created.map(name => ({ id: ROLES[name], name, managed: false }))],
     createRole: async (guild, name) => {
       created.push(name)
       return { id: ROLES[name] }
@@ -110,7 +113,7 @@ const standIn = () => {
   }
 }
 
-const said = (discord, { channel, author, content, roles = [], files = [], webhook, username, replyingTo = null }) => {
+const said = (discord, { channel, author, content, roles = [], mentions = [], files = [], webhook, username, replyingTo = null }) => {
   const attachments = files.map(({ name, mime, data }) => {
     const url = `https://cdn.example/attachments/${discord.next()}/${name}?ex=1&is=1&hm=1`
     discord.stored.set(url, data)
@@ -123,6 +126,7 @@ const said = (discord, { channel, author, content, roles = [], files = [], webho
     author: { id: author, username: username ?? `u${author}` },
     member: webhook ? undefined : { roles: [], nick: `U${author}` },
     content,
+    mentions,
     mention_roles: roles,
     attachments,
     webhook_id: webhook,
@@ -165,7 +169,7 @@ const harness = {
   }),
   shared: (n) => String(n),
   platform: standIn,
-  adapter: (discord, bot, botFile) => createAdapter({ discord, me: { id: '900', username: 'sporebot' }, botFile }),
+  adapter: (discord, bot, botFile) => createAdapter({ discord, me: BOT, botFile }),
   say (discord, { conversation, text, files = [], id, person = `9${conversation}` }) {
     const d = id === undefined
       ? said(discord, { channel: conversation, author: person, content: text === null ? `<@&${ROLES.triage}>` : `<@&${ROLES.triage}> ${text}`, roles: [ROLES.triage], files })
@@ -273,6 +277,41 @@ conformance(harness, (ctx) => {
       await ctx.until(() => readInbox(ledger()).length === 1)
       expect(readInbox(ledger())[0]).toMatchObject({ fromName: 'triage (spore)' })
       expect(readInbox(ctx.ws)).toEqual([])
+    })
+
+    it('reaches the one spore a channel has by a mention of the bot, which reads as the spore\'s name', async () => {
+      channel({ spores: ['triage'], people: [ALICE] })
+      ctx.start()
+      write({ content: `<@${BOT.id}> can you check the payouts`, mentions: [BOT] })
+      await ctx.until(() => answered(1))
+      expect(posts()[0]).toMatchObject({ username: 'triage', content: `<@${ALICE}> ↪ "@triage can you check the payouts"\nworking…` })
+      expect(readInbox(ctx.ws)[0].text).toMatch(/^@triage can you check the payouts\n\n\[Discord channel 100, /)
+    })
+
+    it('reaches no spore by a mention of the bot where the channel has several or says rolesOnly, and logs the roles to mention', async () => {
+      channel({ spores: ['triage', 'ledger'], people: [ALICE] })
+      ctx.start()
+      const several = write({ content: `<@${BOT.id}> anyone?`, mentions: [BOT] })
+      await ctx.until(() => ctx.logs.some(line => line.startsWith(`message ${several.id} `)))
+      expect(ctx.logs).toContain(`message ${several.id} mentions the bot, which reaches no spore in channel ${CHANNEL}: it routes 2 spores — mention a spore's role instead, @triage, @ledger`)
+
+      channel({ spores: ['triage'], people: [ALICE], rolesOnly: true })
+      const rolesOnly = write({ content: `<@${BOT.id}> anyone?`, mentions: [BOT] })
+      await ctx.until(() => ctx.logs.some(line => line.startsWith(`message ${rolesOnly.id} `)))
+      expect(ctx.logs).toContain(`message ${rolesOnly.id} mentions the bot, which reaches no spore in channel ${CHANNEL}: it says rolesOnly — mention a spore's role instead, @triage`)
+      expect(readInbox(ctx.ws)).toEqual([])
+      expect(readInbox(ledger())).toEqual([])
+      expect(ctx.platform.sent).toEqual([])
+    })
+
+    it('makes a spore a role of its own where the bot\'s managed role has its name, and is reached by it', async () => {
+      ctx.platform.existing.push({ id: '799', name: 'triage', managed: true })
+      channel({ spores: ['triage'], people: [ALICE] })
+      ctx.start()
+      await ctx.until(() => ctx.platform.created.length === 1)
+      expect(ctx.platform.created).toEqual(['triage'])
+      write({ content: `<@&${ROLES.triage}> hi`, roles: [ROLES.triage] })
+      await ctx.until(() => answered(1))
     })
 
     it('posts a turn nobody in the channel started under the spore\'s name, pinging no one', async () => {

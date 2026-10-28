@@ -1,7 +1,8 @@
 # discord — a channel you share with people and other spores
 
-A message from Discord reaches you only when it addresses you: someone mentioned your role, or
-replied to something you posted. It starts with who said it, and ends with where it was said:
+A message from Discord reaches you only when it addresses you: someone mentioned your role,
+replied to something you posted, or — in a channel where you are the only spore — mentioned the
+bot, which you are told as `@<your name>`. It starts with who said it, and ends with where it was said:
 
 ```
 alice, in Discord:

@@ -47,12 +47,15 @@ One bot per user: the source a spore reads history through takes `DISCORD_BOT_TO
 `channels` is the routing. The bot ignores every channel the file does not name. Each names:
 
 - `spores` — who answers there. For each, the bot finds or makes a mentionable role of that name,
-  below its own highest role.
+  below its own highest role. It never takes the role Discord gives the bot itself, which no one
+  can make mentionable: a spore named as the bot gets a role of its own beside it.
 - `people` — who may address them: user ids, `role:<id>` for everyone holding a role, and `"*"`
   for anyone in the channel. Someone else addressing a spore gets silence, and the log gets the
   line to add.
 - `sporesTalk` — `true` lets a spore's post that mentions another spore's role reach it. False
   when left out: two spores that keep answering each other run until their limits stop them.
+- `rolesOnly` — `true` makes a mention of the bot address no one in a channel with one spore, so
+  only its role or a reply does. False when left out.
 - `show` — how a turn shows itself there: `working` (the `working…` post, edited as the turn goes
   with how many calls it has made and for how long, the model's note before a call and the kind of
   the call running; the default), `react` (the bot's reaction on your message, and Discord's
@@ -77,7 +80,10 @@ The file is read on every message, so a channel, a spore or a person is added by
 ## In a channel
 
 Mention a spore's role, or reply to one of its posts, and the message goes to that spore; a
-message addressing two goes to both. A message addressing none goes to none. The spore posts
+message addressing two goes to both. In a channel with one spore, mentioning the bot — the entry
+Discord's picker tags APP — goes to that spore too, and it is told the mention as `@<spore>`; in a
+channel with several, or one that says `rolesOnly`, it goes to none, and the log names the roles to
+mention instead. A message addressing none goes to none. The spore posts
 `@you ↪ "what you said…" working…`, and when the turn ends posts its answer under its own name,
 opened with whom it answers — which pings them — and removes the `working…` post. Files the turn
 left in `data/out/` follow as attachments, up to the 50 a turn hands back, then a line counting

@@ -82,10 +82,10 @@ const bot = (content) => {
 
 describe('a bot file', () => {
   it('reads each channel, its spores, who may address them, whether spores talk, and how a turn shows there', () => {
-    const path = bot({ token: '${DISCORD_BOT_TOKEN}', channels: { 100: { spores: ['triage'], people: ['1', 'role:2'], sporesTalk: true, brief: true }, 200: { spores: ['ledger'], people: ['*'], show: 'react', details: true } } }) // eslint-disable-line no-template-curly-in-string
+    const path = bot({ token: '${DISCORD_BOT_TOKEN}', channels: { 100: { spores: ['triage'], people: ['1', 'role:2'], sporesTalk: true, rolesOnly: true, brief: true }, 200: { spores: ['ledger'], people: ['*'], show: 'react', details: true } } }) // eslint-disable-line no-template-curly-in-string
     expect([...routesOf(DISCORD, path)]).toEqual([
-      ['100', { spores: ['triage'], details: false, show: null, brief: true, people: ['1', 'role:2'], overhear: false, sporesTalk: true }],
-      ['200', { spores: ['ledger'], details: true, show: 'react', brief: false, people: ['*'], overhear: false, sporesTalk: false }]
+      ['100', { spores: ['triage'], details: false, show: null, brief: true, people: ['1', 'role:2'], overhear: false, sporesTalk: true, rolesOnly: true }],
+      ['200', { spores: ['ledger'], details: true, show: 'react', brief: false, people: ['*'], overhear: false, sporesTalk: false, rolesOnly: false }]
     ])
     const vague = bot({ token: '${DISCORD_BOT_TOKEN}', channels: { 100: { spores: ['triage'], people: ['*'], brief: 'yes' } } }) // eslint-disable-line no-template-curly-in-string
     expect(() => routesOf(DISCORD, vague)).toThrow(/channel 100 whose brief is not true or false/)
@@ -107,7 +107,7 @@ describe('a bot file', () => {
     refused({ 100: { spores: [], people: [] } })
     refused({ 100: { spores: ['triage'], people: ['alice'] } })
     refused({ 100: { spores: ['triage'], humans: ['1'] } })
-    expect(() => routesOf(DISCORD, bot({ token: '${T}', channels: { 100: { spores: ['triage'], people: [], avatars: {} } } }))).toThrow(expect.objectContaining({ detail: 'a channel takes spores, people, sporesTalk, details, show, brief; avatars is the bot\'s, beside channels' })) // eslint-disable-line no-template-curly-in-string
+    expect(() => routesOf(DISCORD, bot({ token: '${T}', channels: { 100: { spores: ['triage'], people: [], avatars: {} } } }))).toThrow(expect.objectContaining({ detail: 'a channel takes spores, people, sporesTalk, rolesOnly, details, show, brief; avatars is the bot\'s, beside channels' })) // eslint-disable-line no-template-curly-in-string
     expect(() => routesOf(DISCORD, bot({ token: 'plain-token', channels: {} }))).toThrow(/no token spore can read/)
     expect(() => routesOf(DISCORD, join(dir, 'none.json'))).toThrow(expect.objectContaining({ type: 'DISCORD_NO_BOT' }))
   })
@@ -120,7 +120,13 @@ describe('what a channel is told', () => {
   })
 
   it('names a spore a message mentions by its role, and leaves other roles as they are', () => {
-    expect(plain('<@&9> look, and tell <@&8>', { triage: '9' })).toBe('@triage look, and tell <@&8>')
+    expect(plain('<@&9> look, and tell <@&8>', { triage: '9' }, {})).toBe('@triage look, and tell <@&8>')
+  })
+
+  it('names the spore a mention of the bot stands for, in either form, and leaves other people as they are', () => {
+    expect(plain('<@900> look, and tell <@41>', { triage: '9' }, { triage: '900' })).toBe('@triage look, and tell <@41>')
+    expect(plain('<@!900> status', { triage: '9' }, { triage: '900' })).toBe('@triage status')
+    expect(plain('<@900> look', { triage: '9' }, {})).toBe('<@900> look')
   })
 
   it('reads history oldest first, each line its id, time, who and what, the people it mentions named', () => {

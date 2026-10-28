@@ -2,8 +2,8 @@
  * Discord for the relay (`@rhizogrip/spore/relay`): the bot file, the Gateway that hears channels,
  * and the webhook each spore speaks through under its own name. A channel is a conversation many
  * people share, holding people and spores; a message reaches the spores it addresses — by their
- * role, or by replying to one's post — and a webhook cannot reply, so an answer opens with whom it
- * answers.
+ * role, by replying to one's post, or by mentioning the bot where a channel has one spore — and a
+ * webhook cannot reply, so an answer opens with whom it answers.
  */
 
 import { readBot, routesOf, VERBS } from '@rhizogrip/spore/relay'
@@ -21,7 +21,8 @@ const invalid = (path, problem, detail = `a bot is ${SHAPE}`) => new SporeError(
 
 /**
  * Each channel the bot serves, by id: its spores, the people who may address them (user ids,
- * `role:<id>`, `*`), whether a spore's post reaches the others (`sporesTalk`), and the relay's
+ * `role:<id>`, `*`), whether a spore's post reaches the others (`sporesTalk`), whether only a role
+ * addresses a spore there and never a mention of the bot (`rolesOnly`), and the relay's
  * `details`, `show` and `brief`. A channel absent from the file is not the bot's: Discord shows a bot every
  * channel it can see, and most are none of spore's business.
  */
@@ -31,8 +32,8 @@ const CONVERSATIONS = {
     id: SNOWFLAKE,
     says: 'which is not a channel id',
     fix: 'a channel id is the number Copy Channel ID gives, with Developer Mode on',
-    fields: ['spores', 'people', 'sporesTalk', 'details', 'show', 'brief'],
-    flags: ['sporesTalk'],
+    fields: ['spores', 'people', 'sporesTalk', 'rolesOnly', 'details', 'show', 'brief'],
+    flags: ['sporesTalk', 'rolesOnly'],
     people: { id: /^(role:)?\d+$/, says: 'user ids, role:<role id>', example: 'user id' }
   }
 }
@@ -46,7 +47,7 @@ function check (raw, path) {
   }
 }
 
-const HELP = 'Address a spore by its role — @triage — or by replying to its post. "@triage status" says what it is doing; "@triage stop" ends the turn it is running and sets aside what you sent that it had not read; "@triage wrap 10m" asks it to wrap up; "@triage flush" starts the conversation over, forgetting nothing'
+const HELP = 'Address a spore by its role — @triage — or by replying to its post; where a channel has one spore, mentioning the bot addresses it too. "@triage status" says what it is doing; "@triage stop" ends the turn it is running and sets aside what you sent that it had not read; "@triage wrap 10m" asks it to wrap up; "@triage flush" starts the conversation over, forgetting nothing'
 const EXTEND = '"@triage extend wall 30m" gives it more, as far as its spore.cmk allows'
 
 export const DISCORD = {
@@ -108,7 +109,7 @@ export function createAdapter ({ discord, me, botFile }) {
     const missing = spores.filter(spore => !known[spore])
     if (missing.length) {
       const roles = await discord.roles(guild)
-      for (const spore of missing) known[spore] = (roles.find(role => role.name === spore) ?? await discord.createRole(guild, spore)).id
+      for (const spore of missing) known[spore] = (roles.find(role => role.name === spore && !role.managed) ?? await discord.createRole(guild, spore)).id
       save()
     }
     return known
@@ -174,9 +175,14 @@ export function createAdapter ({ discord, me, botFile }) {
           if (own && !entry.sporesTalk) return
 
           const repliedTo = d.referenced_message?.webhook_id === hook.id ? d.referenced_message.author.username : null
-          const addresses = entry.spores.filter(spore => spore !== speaker && (d.mention_roles.includes(roles[spore]) || spore === repliedTo))
-          if (!addresses.length) return
-          const content = plain(d.content, roles).trim()
+          const toBot = d.mentions.some(user => user.id === me.id)
+          const byBot = toBot && !entry.rolesOnly && entry.spores.length === 1
+          const addresses = entry.spores.filter(spore => spore !== speaker && (byBot || d.mention_roles.includes(roles[spore]) || spore === repliedTo))
+          if (!addresses.length) {
+            if (toBot && !own) log(`message ${d.id} mentions the bot, which reaches no spore in channel ${d.channel_id}: ${entry.rolesOnly ? 'it says rolesOnly' : `it routes ${entry.spores.length} spores`} — mention a spore's role instead, ${entry.spores.map(spore => `@${spore}`).join(', ')}`)
+            return
+          }
+          const content = plain(d.content, roles, byBot ? { [entry.spores[0]]: me.id } : {}).trim()
           const rest = content.replace(ADDRESSING, '')
           await onMessage({
             id: d.id,
