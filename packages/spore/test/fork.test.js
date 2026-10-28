@@ -192,3 +192,97 @@ describe('spore fork', () => {
     }
   })
 })
+
+describe('spore fork between turns', () => {
+  let twice
+
+  const said = (input) => input.filter(m => m.role === 'user').map(m => (typeof m.content === 'string' ? m.content : m.content.map(p => p.text ?? '').join('')))
+  const inboxOf = (ws) => readState(ws, [], db => db.prepare('SELECT inboxNo, consumed FROM inbox ORDER BY inboxNo').all())
+    .map(({ inboxNo, consumed }) => [inboxNo, Boolean(consumed)])
+
+  // Turn 1 writes data/a.txt, turn 2 data/b.txt, each in its own run; a schedule and a sporangium
+  // record are the spore's beside them.
+  beforeAll(async () => {
+    twice = outsideWorkspace('fork-twice')
+    writeFileSync(join(twice, 'sporangium.json'), JSON.stringify({ sporangium: 'perennial' }) + '\n')
+    await serve(async (input, round) => {
+      await pause(40)
+      return round === 0 ? calls('wsexec', { command: 'echo one > data/a.txt', out: 'data/log-a.txt' }) : answers('first answer')
+    })
+    const first = await spore('send', twice, 'the first')
+    expect(first.code, first.stderr).toBe(0)
+    await serve(async (input, round) => {
+      await pause(40)
+      return round === 0 ? calls('wsexec', { command: 'echo two > data/b.txt', out: 'data/log-b.txt' }) : answers('second answer')
+    })
+    const second = await spore('send', twice, 'the second')
+    expect(second.code, second.stderr).toBe(0)
+    mkdirSync(join(twice, 'schedules'))
+    writeFileSync(join(twice, 'schedules/daily.cmk'), '---\nwhen: 0 7 * * *\ntz: UTC\n---\n\nThe digest.\n')
+  })
+
+  afterAll(() => rmSync(twice, { recursive: true, force: true }))
+
+  it('copies a spore as it stands after its last turn, starting nothing and leaving its schedules behind', async () => {
+    const into = join(root, 'copy')
+    const forked = await spore('fork', twice, into)
+    expect(forked.code, forked.stderr).toBe(0)
+    expect(forked.stdout).toBe('')
+    expect(forked.stderr).toBe(`spore: forked ${twice} after turn 2 into ${into} — its next message starts its first turn\n`)
+
+    expect(readTurns(into).map(t => [t.turnNo, t.runId, t.output])).toEqual(readTurns(twice).map(t => [t.turnNo, t.runId, t.output]))
+    expect(readTranscriptEntries(into)).toEqual(readTranscriptEntries(twice))
+    for (const runId of callRuns(twice)) expect(readCalls(into, runId)).toEqual(readCalls(twice, runId))
+    expect(inboxOf(into)).toEqual([[1, true], [2, true]])
+    expect(readFileSync(join(into, 'data/a.txt'), 'utf8')).toBe('one\n')
+    expect(readFileSync(join(into, 'data/b.txt'), 'utf8')).toBe('two\n')
+    expect(readFileSync(join(into, 'sporangium.json'), 'utf8')).toBe(readFileSync(join(twice, 'sporangium.json'), 'utf8'))
+    expect(existsSync(join(into, 'schedules/daily.cmk'))).toBe(false)
+    expect(readFork(into)).toMatchObject({ from: twice, at: 'turn:2', turnNo: 2, definition: null })
+  })
+
+  it('carries the conversation on in the copy\'s first turn, and leaves the spore it was cut from as it was', async () => {
+    await serve(async () => answers('the copy answers'))
+    const sent = await spore('send', join(root, 'copy'), 'the third')
+    expect(sent.code, sent.stderr).toBe(0)
+    expect(sent.stdout.trim()).toBe('the copy answers')
+    const told = said(mo.seen[0])
+    expect(told).toHaveLength(3)
+    expect(told[0]).toMatch(/the first$/)
+    expect(told[1]).toMatch(/the second$/)
+    expect(told[2]).toMatch(/the third$/)
+    expect(mo.seen[0].filter(m => m.role === 'assistant').map(m => m.content)).toEqual(expect.arrayContaining(['first answer', 'second answer']))
+    expect(readTurns(join(root, 'copy')).map(t => t.turnNo)).toEqual([1, 2, 3])
+    expect(readTurns(twice).map(t => t.turnNo)).toEqual([1, 2])
+  })
+
+  it('copies a spore as it stood after an earlier turn', () => {
+    const made = forkWorkspace({ run: twice, at: 'turn:1', into: join(root, 'after-one') })
+    const [one] = readTurns(twice)
+    expect(readTurns(made.ws).map(t => [t.turnNo, t.runId])).toEqual([[1, one.runId]])
+    expect(readTranscriptEntries(made.ws)).toEqual(readTranscriptEntries(twice).filter(entry => entry.turnId === one.turnId))
+    expect(callRuns(made.ws)).toEqual([one.runId])
+    expect(inboxOf(made.ws)).toEqual([[1, true]])
+    expect(readFileSync(join(made.ws, 'data/a.txt'), 'utf8')).toBe('one\n')
+    expect(existsSync(join(made.ws, 'data/b.txt'))).toBe(false)
+    expect(made).toMatchObject({ at: 'turn:1', turnNo: 1 })
+  })
+
+  it('refuses a turn that is not there, --replay, a spore with no turn, and one running', () => {
+    expect(() => forkWorkspace({ run: twice, at: 'turn:9', into: join(root, 'nine-turns') })).toThrow(/no turn 9 in/)
+    expect(() => forkWorkspace({ run: twice, at: 'turn:1', into: join(root, 'replay-turn'), replay: true })).toThrow(/--replay runs a round again/)
+    const fresh = outsideWorkspace('fork-fresh')
+    try {
+      expect(() => forkWorkspace({ run: fresh, into: join(root, 'fresh-copy') })).toThrow(/has finished no turn/)
+    } finally {
+      rmSync(fresh, { recursive: true, force: true })
+    }
+    acquireLock(twice)
+    try {
+      expect(() => forkWorkspace({ run: twice, into: join(root, 'busy-copy') })).toThrow(/is running/)
+    } finally {
+      releaseLock(twice)
+    }
+    for (const name of ['nine-turns', 'replay-turn', 'fresh-copy', 'busy-copy']) expect(existsSync(join(root, name))).toBe(false)
+  })
+})

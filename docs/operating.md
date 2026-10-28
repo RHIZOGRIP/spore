@@ -650,21 +650,38 @@ behind the database, `calls/`, `inbox.d/`, `schedules/`, `home/` and the rest of
 program or a declared path is missing, lies outside the workspace, or is a link out of it, to the
 whole workspace or to nothing.
 
-## Forking a turn: `spore fork`
+## Forking a spore: `spore fork`
 
 ```bash
+spore fork <name> <new> [--definition <file>]
+spore fork <name> --at turn:<n> <new> [--definition <file>]
 spore fork <name> --at <call> <new> [--definition <file>] [--replay]
 ```
 
-Makes `<new>`, a name or a path, as `<name>` stood when the round of `<call>` came back, and carries
-the turn on from there; the command follows it like `send`, with the same exit codes. `<call>` is
-a call of the run's last turn, as `--at 0003`, or of another turn, as `--at <runId>/0003`.
-`--definition` runs the fork under another `spore.cmk`. `--replay` cuts before the round's
-results, so its calls run again under the runtime as it is now.
+Without `--at`, makes `<new>`, a name or a path, as `<name>` stands after its last turn: the
+conversation and the turn records, the calls they made, the messages they read, and `data/` —
+`data/memory/` included — `precursors/` and `home/` as they are. `--at turn:<n>` makes it as it
+stood when turn n ended, its files as they were then. Nothing starts, and the command exits 0: the
+copy's next message starts its first turn, which carries the conversation on as `<name>`'s next
+turn would have. Its `schedules/` stay behind, so the clock does not wake two spores for one
+schedule; write the copy its own. Messages not yet read, running jobs and answers waiting to be
+posted stay behind too, and a connector reaches the copy only once its bot file names it. Its
+`spore.cmk` is `<name>`'s, so it reads and writes the same directories `reads:` and `writes:` name.
 
-Refused (`FORK_REFUSED`): a spore still running, a `<new>` that exists, a definition that does not
-parse, a file in `data/`, `calls/`, `precursors/` or `home/` changed after the cut — cut at a later
-call — and a `--replay` of a round that called `ask`. The fork spends like any turn.
+With `--at <call>`, makes `<new>` as `<name>` stood when the round of `<call>` came back, and
+carries the turn on from there; the command follows it like `send`, with the same exit codes.
+`<call>` is a call of the run's last turn, as `--at 0003`, or of another turn, as
+`--at <runId>/0003`. `--replay` cuts before the round's results, so its calls run again under the
+runtime as it is now.
+
+`--definition` runs the fork under another `spore.cmk`.
+
+Refused (`FORK_REFUSED`): a spore running — between turns, one whose last turn is still being
+written down too — a `<new>` that exists, a definition that does not parse, a spore that has
+finished no turn (`spore define <new> --from <name>` copies what it can do), a turn or a call that
+is not there, a file in `data/`, `calls/`, `precursors/` or `home/` changed after an earlier cut —
+cut later — `--replay` without a call, and a `--replay` of a round that called `ask`. A fork at a
+call spends like any turn; one between turns spends nothing until its next message.
 
 `scripts/try-definitions.js` in the package forks one cut many times under each definition and
 says how often each delivered a file under `data/out/`, and how its turns ended:

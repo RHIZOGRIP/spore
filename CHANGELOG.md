@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.44.0] — Feature: fork a spore between its turns
+
+### Added
+
+- `spore fork <name> <new>` copies a spore as it stands after its last turn, and `--at turn:<n>`
+  as it stood after turn n: its conversation and turn records, the calls they made, the messages
+  they read, and `data/` — memory included — `precursors/` and `home/`. Nothing starts: the copy's
+  next message starts its first turn, carrying the conversation on. Its schedules stay behind, so
+  the clock wakes only the spore it was cut from, and so do unread messages, running jobs and
+  answers waiting to be posted. A spore with no finished turn, or one running, is refused. The
+  library's `fork` and `forkWorkspace` take `at` null or `'turn:<n>'` for it, and `readFork`
+  returns `turnNo` for such a copy.
+
+### Fixed
+
+- A fork carries `sporangium.json`, so `spore upgrade` reads it against the sporangium its spore
+  was made from rather than the default one.
+
 ## [1.43.0] — Feature: spore doctor tries the boundary, and gives Ubuntu its fix
 
 ### Added

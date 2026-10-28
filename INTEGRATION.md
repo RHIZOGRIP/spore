@@ -66,7 +66,7 @@ Over `ssh`, stdin is the only way a message reaches spore without the remote she
 
 ### Exit codes
 
-| exit | `spore send`, `spore fork`, `spore attach` |
+| exit | `spore send`, `spore fork --at <call>`, `spore attach` |
 |---|---|
 | 0 | the turn concluded: an answer, a question (`ask`), or `quiet` |
 | 1 | the turn ended without concluding (a hard limit, `cancelled`, an error), or, with `--json` or for a repeated request id while nothing runs, nothing has read the message yet |
@@ -75,8 +75,9 @@ Over `ssh`, stdin is the only way a message reaches spore without the remote she
 | 4 | the turn answered at a soft limit. The answer says what remains and stderr names the limit. Send again to carry on |
 
 With `--json`, or for a repeated request id while nothing runs, the code is that of the turn
-that read your message. A plain `spore send`, `spore fork` and `spore attach`, and `spore attach
---json`, exit by the workspace's last turn once the turn they follow has ended. `spore stop
+that read your message. A plain `spore send`, `spore fork --at <call>` and `spore attach`, and
+`spore attach --json`, exit by the workspace's last turn once the turn they follow has ended. A fork
+between turns starts none, and exits 0 once the copy is made. `spore stop
 <name>` exits 0 once it has signalled the running turn, and 1 when nothing is running, as do
 `spore wrap`, `spore extend`, `spore annotate` and `spore job stop`.
 
@@ -379,13 +380,15 @@ signature of each, and every error it throws, is in [docs/library.md](docs/libra
 | `pause({ why })`, `unpause()` | stops every turn and job of the spores `list` finds and refuses new turns to all the user's spores; lifts that |
 | `stopJob({ ws, name })`, `upgrade({ ws, all })` | stops a running job; replaces a spore's root documents with the installed ones |
 
-### Forking a turn
+### Forking a spore
 
-`fork({ run, at, into, definition, replay })` makes `into` as `run` stood when the round of call
-`at` came back, and carries the turn on from there. It returns once the runner has started, like
-`send`. `forkWorkspace` makes the copy without starting it, and `readFork(ws)` reads what a fork
-was cut from. It refuses with `FORK_REFUSED`
-([docs/operating.md](docs/operating.md#forking-a-turn-spore-fork)).
+`fork({ run, into })` makes `into` as `run` stands after its last turn — its conversation, records
+and files, not its schedules — and starts nothing; `at: 'turn:3'` cuts after turn 3 instead.
+`fork({ run, at: '0003', into, definition, replay })` makes `into` as `run` stood when the round of
+call `at` came back, and carries the turn on from there, returning once the runner has started,
+like `send`. `forkWorkspace` makes either copy without starting it, and `readFork(ws)` reads what
+a fork was cut from. It refuses with `FORK_REFUSED`
+([docs/operating.md](docs/operating.md#forking-a-spore-spore-fork)).
 
 ### Many spores at once
 
@@ -789,7 +792,7 @@ program driving spores meets most; every function's own list is in [docs/library
 | `LIMIT_UNKNOWN`, `LIMIT_AMOUNT` | `extend`, `wrap` | not `rounds`, `cost` or `wall`; an amount or wait that does not read |
 | `ANNOTATION_INVALID` | `annotate` | not a line of 1 to 200 characters, and not `null` |
 | `MODEL_NOT_OFFERED` | `switchModel` | the definition does not offer that model |
-| `FORK_REFUSED` | `fork` | the cut cannot be made ([docs/operating.md](docs/operating.md#forking-a-turn-spore-fork)) |
+| `FORK_REFUSED` | `fork` | the cut cannot be made ([docs/operating.md](docs/operating.md#forking-a-spore-spore-fork)) |
 | `BATCH_USAGE` | `runBatch` | an errand without an `id` or messages, or a bad `atOnce` |
 | `SQLITE_TOO_OLD` | `checkSqlite` | Node's SQLite is older than spore needs |
 

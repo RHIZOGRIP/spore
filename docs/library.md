@@ -855,30 +855,39 @@ Removes a schedule; what it fired stays in the inbox. Throws `SCHEDULE_MISSING`,
 ### `fork`
 
 ```
-fork({ run, at, into, definition, replay = false, debug = false, env })
-→ { ws, from, at, runId, rounds, inboxTo, startedAt, cutAt, replay, definition, pid }
+fork({ run, at = null, into, definition, replay = false, debug = false, env })
+→ { ws, from, at, turnNo, cutAt, definition }                                       between turns
+→ { ws, from, at, runId, rounds, inboxTo, startedAt, cutAt, replay, definition, pid }  at a call
 ```
 
-Makes `into` as the workspace `run` stood when the round of call `at` came back (`'0003'` for a
-call of the last turn, `'<runId>/0003'` for another), and starts the turn going on from there,
-under `definition` when given. `replay` cuts before the round's results, so its calls run again.
-Returns once the runner has started, like `send`. Throws `FORK_REFUSED`, and `ADMISSION_FULL`,
-`PAUSED`
-([docs/operating.md §Forking a turn](operating.md#forking-a-turn-spore-fork)).
+With `at` null, makes `into` as the workspace `run` stands after its last turn; with
+`'turn:<n>'`, as it stood when turn n ended. It starts nothing, and `into`'s next message starts
+its first turn. Its `schedules/` stay behind, and so do messages not yet read, running jobs and
+answers waiting to be posted. `at` is then the turn cut after, as `'turn:3'`, and `cutAt` the
+moment the copy is of.
+
+With `at` a call — `'0003'` for a call of the last turn, `'<runId>/0003'` for another — makes
+`into` as `run` stood when that call's round came back, and starts the turn going on from there.
+`replay` cuts before the round's results, so its calls run again. Returns once the runner has
+started, like `send`, and throws `ADMISSION_FULL` and `PAUSED` as it does.
+
+Either way `into` runs under `definition` when given. Throws `FORK_REFUSED`
+([docs/operating.md §Forking a spore](operating.md#forking-a-spore-spore-fork)).
 
 ### `forkWorkspace`
 
 ```
-forkWorkspace({ run, at, into, definition, replay = false })
-→ { ws, from, at, runId, rounds, inboxTo, startedAt, cutAt, replay, definition }
+forkWorkspace({ run, at = null, into, definition, replay = false })
 ```
 
-Makes the fork without starting it. Throws `FORK_REFUSED`.
+Makes the fork without starting it, returning what `fork` does without `pid`. Throws
+`FORK_REFUSED`.
 
 ### `readFork`
 
 ```
-readFork(ws) → { from, at, runId, rounds, inboxTo, startedAt, cutAt, replay, definition }
+readFork(ws) → { from, at, turnNo, cutAt, definition }                                       between turns
+             → { from, at, runId, rounds, inboxTo, startedAt, cutAt, replay, definition }  at a call
 ```
 
 What a fork was cut from, as `fork` recorded it in `fork.json`. Throws `FORK_REFUSED` when `ws`

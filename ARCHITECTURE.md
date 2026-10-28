@@ -948,9 +948,33 @@ seconds and move their own bound, so a raised wall is in force before the old on
 fired. When a limit the turn already wrapped on is raised, the model is told it may carry on; a
 wrap its owner asked for is announced as that, not as a limit reached.
 
+### Copying a spore between its turns
+
+`spore fork <name> <new>` (`src/core/fork.js`) makes a new workspace that is the spore as it
+stands after its last turn, and `--at turn:<n>` as it stood after turn n. It is the same spore
+going on in two places, not a new spore cut from it — that is `define --from`, which takes what a
+spore can do and none of what it did
+([principle 6](PRINCIPLES.md#6-a-copy-of-a-spore-takes-its-skills-not-its-memories)).
+
+**Between turns nothing is in flight**, so the cut needs no runner and the copy starts none: its
+next message starts its first turn, replaying the conversation as the spore's own next turn would.
+A spore running is refused, draining included, since its last turn is not written down yet. The
+turn records go in through the writer that finalizes a turn, which moves `inboxConsumed` and
+`lastTurnNo` with them, so the copy reads none of what they answered twice. The transcript is cut
+by turn, not by time: it ends before the first entry of a turn not kept, since every entry a turn
+writes carries its `turnId` — its answer, written after the `endedAt` its record holds, included —
+and only a flush, written between turns, carries none and comes with the turn before it. After the
+last turn the islands are copied as they are, nothing changing them; after an earlier turn they
+are restored by birth time, as for a cut at a call, and a later change refuses.
+
+**Schedules stay behind.** A schedule is a message the clock says to one spore; copied, the clock
+would say it to two, and both would answer wherever their reply-to points. So would anything
+waiting to go out, which is why the outbox, running jobs and unread messages stay behind as well.
+`sporangium.json` comes, so `spore upgrade` reads the copy against the sporangium it was made from.
+
 ### Carrying a turn on from one of its rounds
 
-`spore fork` (`src/core/fork.js`) makes a new workspace that is a run as it stood when one call's
+`spore fork --at <call>` makes a new workspace that is a run as it stood when one call's
 round came back, and carries the turn on from the next model call. It exists to take one decision
 again, many times, under a changed definition: a failure seen once in twenty full runs is reached
 every time from a fork, so a rate needs forks, not reruns. `scripts/try-definitions.js` is the
@@ -965,8 +989,8 @@ place a turn can stop and start. A spore still running is refused.
 program wrote, so `data/`, `calls/`, `precursors/` and `home/` are copied file by file: a file
 born after the cut is left out, and one born before it and changed after **refuses the fork**,
 because its content at the cut is gone ([principle 20](PRINCIPLES.md#20-complete-or-not-at-all)).
-The run's `reference.md`, `libraries.md` and `plugins/` documents are copied too — they are part
-of what that spore was told — and so is `inbox.d/`. The records go the same way: the finished
+The run's `reference.md`, `libraries.md`, `sporangium.json` and `plugins/` documents are copied
+too — they are part of what that spore was told — and so is `inbox.d/`. The records go the same way: the finished
 turns before the cut, the transcript to it, the inbox the turn had read, and every call record
 that started before it, so the run numbers on from them and the streams restored beside them keep
 the names the transcript gives them. A different definition given to the fork replaces the run's

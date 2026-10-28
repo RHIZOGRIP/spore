@@ -49,7 +49,9 @@ const VERBS = `Usage:
   spore send <name> -- <message>            -- ends the options, for a message that starts with -
   spore send|attach <name> --json           for a program: the turn's events, one JSON object a line
   spore attach <name> --json --after <seq>  the events after <seq>; 0 for the whole log
-  spore fork <name> --at <call> <new> [--definition <f>] [--replay]  carry a turn on from one of its rounds, in a copy
+  spore fork <name> <new>                   a copy as it stands between turns, schedules left behind
+  spore fork <name> --at turn:<n> <new>     the same, as it stood after turn n
+  spore fork <name> --at <call> <new> [--replay]  carry a turn on from one of its rounds, in a copy
   spore attach <name> [-n <lines>]          watch a turn that is already going
   spore stop <name>                         SIGTERM it, mid-round
   spore extend <name> wall 30m|cost 1.50|rounds 20  give the running turn more, up to its extend.<limit>
@@ -116,12 +118,12 @@ ${VERBS}
                 one you are standing in
   message       read from stdin when not given
   --            ends the options, for a message that starts with -
-  --definition  the .cmk to give it, instead of your default
+  --definition  the .cmk to give it, instead of your default; for fork, the one the copy runs under
   --from        the spore to cut it from: what it can do, never what it did
   --json        for a program: the answer as JSON, with the same exit code
   --debug       verbose logging on stderr
 
-send, attach and fork exit 0 when the turn answered, 1 when it ended with no answer,
+send, attach and a fork at a call exit 0 when the turn answered, 1 when it ended with no answer,
 3 when you walked away — Ctrl-C leaves the turn running, spore attach picks it up —
 and 4 when it wrapped up at a soft limit, its answer saying what remains.
 
@@ -363,12 +365,16 @@ if (verb === 'stop') {
 
 if (verb === 'fork') {
   const [into] = rest
-  if (!asked || !argv.at || !into) fail('fork needs a spore, a call and somewhere new — spore fork <name> --at <call> <new> [--definition <f>] [--replay]')
+  if (!asked || !into) fail('fork needs a spore and somewhere new — spore fork <name> [--at turn:<n> | --at <call> [--replay]] <new> [--definition <f>]')
   let made
   try {
     made = fork({ run: spore(asked), at: argv.at, into: workspaceFor(into).path, definition: argv.definition, replay: argv.replay, debug: argv.debug })
   } catch (err) {
     fail(errorText(err))
+  }
+  if (made.pid === undefined) {
+    console.error(`spore: forked ${made.from} after turn ${made.turnNo} into ${made.ws} — its next message starts its first turn`)
+    process.exit(0)
   }
   console.error(`spore: forked ${made.from} at ${made.at}, round ${made.rounds} — carrying it on in ${made.ws}`)
   renderHeader(made.ws, grantOf(made.ws))

@@ -1,5 +1,12 @@
 /**
- * A fork: a spore carried on from a round boundary of a turn that already ran.
+ * A fork: a spore copied as it stood between two turns, or carried on from a round boundary of a
+ * turn that already ran.
+ *
+ * Between turns — after the last, or after turn n — the new workspace holds the conversation and
+ * the turns up to there, the calls they made, the messages they read and the islands, and runs
+ * nothing: its next message starts its first turn of its own. After the last turn the islands are
+ * copied as they are; after an earlier one, as they stood when it ended. Schedules stay behind, so
+ * the copy is not woken by the clock that wakes the spore it was cut from.
  *
  * The new workspace is the run as it stood when that round's last tool result came back —
  * the transcript up to there, the files the islands held then, the calls it had made — and
@@ -24,6 +31,7 @@ import { INBOX_DIR, PLUGINS_DIR, ROOT_DOCS, copyInbox, definitionPath, readPendi
 import { openWorkspace } from './workspace.js'
 import { parseDefinition } from '../delegation/definition.js'
 import { RUNNING, stateOf } from './state.js'
+import { SPORANGIUM_RECORD } from './sporangia.js'
 import { SporeError } from '../observability/errors.js'
 
 export const FORK_FILE = 'fork.json'
@@ -37,10 +45,23 @@ const refuse = (message, detail) => new SporeError(message, { type: 'FORK_REFUSE
 const CLOCK_SLACK_MS = 20
 const shifted = (iso, ms) => new Date(Date.parse(iso) + ms).toISOString()
 
+const TURN_CUT = /^turn:(\d+)$/
+const betweenTurns = (at) => at === null || TURN_CUT.test(at)
+
 export function readFork (ws) {
   const path = join(ws, FORK_FILE)
-  if (!existsSync(path)) throw refuse(`${ws} is not a fork`, 'spore fork <name> --at <call> <new> makes one')
+  if (!existsSync(path)) throw refuse(`${ws} is not a fork`, 'spore fork <name> <new> makes one')
   return JSON.parse(readFileSync(path, 'utf8'))
+}
+
+/** The turn a fork between turns is cut after: the last finished one, or turn n of `turn:<n>`. */
+function turnEnded (run, at) {
+  const turns = readTurns(run)
+  if (!turns.length) throw refuse(`${run} has finished no turn`, 'a fork copies what its turns left; spore define <new> --from <name> copies what it can do')
+  const turnNo = at === null ? turns.at(-1).turnNo : Number(TURN_CUT.exec(at)[1])
+  const index = turns.findIndex(t => t.turnNo === turnNo)
+  if (index < 0) throw refuse(`no turn ${turnNo} in ${run}`, `spore log lists its turns; the last is ${turns.at(-1).turnNo}`)
+  return { turn: turns[index], kept: turns.slice(0, index + 1), last: index === turns.length - 1 }
 }
 
 function turnAt (run, at) {
@@ -109,12 +130,13 @@ function * filesUnder (dir) {
 }
 
 /**
- * The islands as they stood at the cut. A file born after it is simply not there yet; one
- * born before and changed after cannot be put back as it was, and a fork that differs from
- * its run is not a fork of it — so that refuses, rather than handing back a guess.
+ * The islands as they stood at the cut, or as they are when there is none. A file born after it
+ * is simply not there yet; one born before and changed after cannot be put back as it was, and a
+ * fork that differs from its run is not a fork of it — so that refuses, rather than handing back
+ * a guess.
  */
 function restoreIslands (run, into, at) {
-  const cut = Date.parse(at)
+  const cut = at === null ? Infinity : Date.parse(at)
   for (const island of writableDirs(run)) {
     for (const file of filesUnder(island)) {
       const stat = lstatSync(file)
@@ -135,41 +157,82 @@ function restoreIslands (run, into, at) {
   }
 }
 
-/** The forked workspace, ready to carry the turn on and running nothing. */
-export function forkWorkspace ({ run, at, into, definition, replay = false }) {
+/**
+ * What a cut keeps: the turns written down whole, the transcript and the calls up to it, the
+ * moment the islands are copied as of (null: as they are), how far the inbox was read, and the
+ * fork's record.
+ */
+function cutBetween (from, at) {
+  const { turn, kept, last } = turnEnded(from, at)
+  const cutAt = last ? new Date().toISOString() : shifted(turn.endedAt, CLOCK_SLACK_MS)
+  // Every entry a turn writes carries its turnId, a turn's last after its endedAt included; only
+  // a flush, written between turns, carries none. So the cut is the first entry of a turn not kept.
+  const keptIds = new Set(kept.map(t => t.turnId))
+  const written = readTranscriptEntries(from)
+  const later = written.findIndex(entry => entry.turnId && !keptIds.has(entry.turnId))
+  return {
+    kept,
+    entries: later < 0 ? written : written.slice(0, later),
+    islandsAt: last ? null : cutAt,
+    callsUpTo: cutAt,
+    inboxTo: turn.inboxTo,
+    record: { from, at: `turn:${turn.turnNo}`, turnNo: turn.turnNo, cutAt }
+  }
+}
+
+function cutWithin (from, at, replay) {
+  const { turn, earlier, call } = turnAt(from, at)
+  const cut = cutAt(from, turn, call, replay)
+  return {
+    kept: earlier,
+    entries: cut.entries,
+    islandsAt: cut.at,
+    callsUpTo: cut.at,
+    inboxTo: turn.inboxTo,
+    record: { from, at: `${turn.runId}/${call}`, runId: turn.runId, rounds: cut.rounds, inboxTo: turn.inboxTo, startedAt: turn.startedAt, cutAt: cut.at, replay }
+  }
+}
+
+/**
+ * The forked workspace, running nothing: cut between turns when `at` is null — after the last —
+ * or `turn:<n>`, and otherwise at a call, `0003` of the last turn or `<runId>/0003`, ready to
+ * carry that turn on.
+ */
+export function forkWorkspace ({ run, at = null, into, definition, replay = false }) {
   const from = resolve(run)
   const ws = resolve(into)
+  const between = betweenTurns(at)
   if (!existsSync(definitionPath(from))) throw refuse(`${from} is not a spore`, 'fork a workspace that has run')
+  if (between && replay) throw refuse('--replay runs a round again, and a cut between turns has none', 'cut at a call to replay it, as --at 0003')
   const now = stateOf(from)
-  if (now.state === RUNNING && !now.draining) throw refuse(`${from} is running`, 'fork it once its turn has ended')
+  if (now.state === RUNNING && (between || !now.draining)) throw refuse(`${from} is running`, 'fork it once its turn has ended')
   if (existsSync(ws)) throw refuse(`${ws} already exists`, 'a fork is made into a new directory')
   if (definition) {
     const parsed = parseDefinition(readFileSync(definition, 'utf8'), { knownTools: TOOL_NAMES })
     if (parsed.error) throw refuse(`${definition} ${parsed.error}`, 'the definition a fork runs under has to parse like any spore.cmk')
   }
 
-  const { turn, earlier, call } = turnAt(from, at)
-  const cut = cutAt(from, turn, call, replay)
+  const cut = between ? cutBetween(from, at) : cutWithin(from, at, replay)
 
   mkdirSync(ws, { recursive: true })
   try {
-    restoreIslands(from, ws, cut.at)
-    writeTurnRecords(ws, earlier)
-    // The turn cut from is carried on under the fork's own, so what it said so far belongs to
+    restoreIslands(from, ws, cut.islandsAt)
+    writeTurnRecords(ws, cut.kept)
+    // A turn cut within is carried on under the fork's own, so what it said so far belongs to
     // no turn here yet.
-    const kept = new Set(earlier.map(t => t.turnId))
+    const kept = new Set(cut.kept.map(t => t.turnId))
     writeTranscriptEntries(ws, cut.entries.map(({ turnId, ...entry }) => (kept.has(turnId) ? { ...entry, turnId } : entry)))
     // The calls made by the cut, as the islands are: the run numbers on from them, so the
     // streams restored beside them keep the names the transcript gives them.
     for (const runId of callRuns(from)) {
       for (const { call, record } of readCalls(from, runId)) {
-        if (record.startedAt <= cut.at) writeCall(ws, runId, call, record)
+        if (record.startedAt <= cut.callsUpTo) writeCall(ws, runId, call, record)
       }
     }
-    copyInbox(from, ws, turn.inboxTo)
+    copyInbox(from, ws, cut.inboxTo)
     const plugins = existsSync(join(from, PLUGINS_DIR)) ? readdirSync(join(from, PLUGINS_DIR)).map(file => join(PLUGINS_DIR, file)) : []
     if (plugins.length) mkdirSync(join(ws, PLUGINS_DIR))
-    for (const file of [...ROOT_DOCS, ...plugins]) {
+    for (const file of [...ROOT_DOCS, SPORANGIUM_RECORD, ...plugins]) {
       if (existsSync(join(from, file))) copyFileSync(join(from, file), join(ws, file))
     }
     for (const file of filesUnder(join(from, INBOX_DIR))) {
@@ -180,7 +243,7 @@ export function forkWorkspace ({ run, at, into, definition, replay = false }) {
     copyFileSync(definition ? resolve(definition) : definitionPath(from), definitionPath(ws))
     const opened = openWorkspace(ws)
     if (opened.error) throw refuse(`${ws} did not open`, opened.error)
-    const record = { from, at: `${turn.runId}/${call}`, runId: turn.runId, rounds: cut.rounds, inboxTo: turn.inboxTo, startedAt: turn.startedAt, cutAt: cut.at, replay, definition: definition ? resolve(definition) : null }
+    const record = { ...cut.record, definition: definition ? resolve(definition) : null }
     writeFileSync(join(ws, FORK_FILE), JSON.stringify(record, null, 2) + '\n')
     return { ws, ...record }
   } catch (err) {
@@ -189,8 +252,12 @@ export function forkWorkspace ({ run, at, into, definition, replay = false }) {
   }
 }
 
-/** A fork, made and started. Like `send`, it returns once the runner is on its way. */
-export function fork ({ run, at, into, definition, replay = false, debug = false, env = process.env }) {
+/**
+ * A fork, made — and, cut at a call, started: like `send`, it returns once the runner is on its
+ * way. Cut between turns it starts nothing, and the copy's next message starts its first turn.
+ */
+export function fork ({ run, at = null, into, definition, replay = false, debug = false, env = process.env }) {
+  if (betweenTurns(at)) return forkWorkspace({ run, at, into, definition, replay })
   return withSlot(slot => {
     const made = forkWorkspace({ run, at, into, definition, replay })
     return { ...made, pid: startRunner(made.ws, { slot, plugins: preparePlugins(made.ws), debug, continuing: true, env }) }
