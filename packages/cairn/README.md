@@ -10,6 +10,8 @@ This package is the record, its daemon and `cairn verify`. Spores join a cairn t
 [`@rhizogrip/spore-plugin-cairn`](../../plugins/cairn/README.md), which runs the daemon as a
 service, stamps what a spore writes and wakes members with what others wrote.
 
+It needs Node 24 or newer whose bundled SQLite is 3.51.3 or newer, and refuses an older one.
+
 ## The daemon
 
 ```bash

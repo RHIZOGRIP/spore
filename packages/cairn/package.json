@@ -1,7 +1,6 @@
 {
   "name": "@rhizogrip/cairn",
   "version": "0.1.0",
-  "private": true,
   "description": "A shared, append-only, hash-chained record that agents, programs and people write to and read from",
   "author": {
     "name": "Christophe Le Bars",
@@ -26,9 +25,28 @@
   },
   "files": [
     "bin/",
-    "src/"
+    "src/",
+    "README.md",
+    "CHANGELOG.md",
+    "NOTICE",
+    "LICENSE"
   ],
   "scripts": {
     "test": "vitest run"
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: cairn v${version}",
+      "tagName": "package-cairn-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
   }
 }

@@ -67,6 +67,28 @@ CREATE TRIGGER t_refs_never_removed BEFORE DELETE ON t_refs
 BEGIN SELECT RAISE(ABORT, 'a cairn ref is never removed'); END;
 `
 
+const SQLITE_MINIMUM = '3.51.3'
+let sqliteChecked = false
+
+/**
+ * Refuses a Node whose bundled SQLite predates the WAL-reset fix, which a cairn read while its
+ * daemon writes depends on. The floor is spore's `SQLITE_MINIMUM`, the same rule for the same file
+ * shape; checked once per process.
+ */
+function checkSqlite () {
+  if (sqliteChecked) return
+  const db = new DatabaseSync(':memory:')
+  const { version } = db.prepare('SELECT sqlite_version() AS version').get()
+  db.close()
+  const have = version.split('.').map(Number)
+  const need = SQLITE_MINIMUM.split('.').map(Number)
+  const at = need.findIndex((part, i) => have[i] !== part)
+  if (at !== -1 && !(have[at] > need[at])) {
+    throw new CairnError(`this Node's SQLite is ${version}, older than ${SQLITE_MINIMUM}: a cairn needs its WAL-reset fix — run it on a Node that bundles a newer SQLite`, { type: 'sqlite-too-old', detail: version })
+  }
+  sqliteChecked = true
+}
+
 const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 
 /**
@@ -175,6 +197,7 @@ function verifyChain (db, { from = 1, to = Number.MAX_SAFE_INTEGER } = {}) {
  * reader that may create nothing beside the file cannot open a WAL database without its `-shm`.
  */
 export function openCairn (file, { name }) {
+  checkSqlite()
   const db = existsSync(file) ? open(file, name) : create(file, name)
   if (switchJournal(db, 'WAL', ENTER_WAL_MS) !== 'wal') {
     db.close()
@@ -274,6 +297,7 @@ function verifyEvidence (db, store) {
  * `cairn.config` in force is in `evidence/` beside the database and still hashes to its name.
  */
 export function verifyCairn (file, { evidence = false } = {}) {
+  checkSqlite()
   const db = new DatabaseSync(file, { readOnly: true })
   try {
     const name = nameOf(db, file)

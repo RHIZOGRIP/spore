@@ -36,6 +36,7 @@ npm workspaces, and one Cargo workspace (`rust/`).
 |------|------|
 | `packages/spore/` | `@rhizogrip/spore`: the runtime and the library |
 | `packages/spore-cli/` | `@rhizogrip/spore-cli`: the `spore` command and its terminal |
+| `packages/cairn/` | `@rhizogrip/cairn`: a shared, append-only record, its daemon and `cairn verify` |
 | `plugins/<name>/` | `@rhizogrip/spore-plugin-<name>`, one package each |
 | `rust/definition` | the `.cmk` parser |
 | `rust/workspace` | the workspace lock, admission slots, the agent's environment, the database's schema and writers |
@@ -187,7 +188,8 @@ The release is the workflow's, with its own token, so nothing on the releasing m
 A plugin is released on its own: bump its `version`, commit, and run `node scripts/tag-plugins.js`,
 which tags `plugin-<name>-v<version>` for every plugin whose version has no tag yet and pushes it.
 `.github/workflows/publish-plugin.yml` publishes from the tag. A plugin that needs a new core says so
-in `works`.
+in `works`. `@rhizogrip/cairn` is released on its own the same way, from the tag
+`package-cairn-v<version>`, which `npx release-it` in `packages/cairn/` bumps, commits and pushes.
 
 ## Configuration
 
