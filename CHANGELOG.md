@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.46.0] — Feature: a source's header can carry the turn
+
+### Added
+
+- `{turn}` in a source's header value, in `sources.json` or a plugin's manifest, is the `turnId` of
+  the turn the call is made in, filled by the runner on each call; a cell sends its root's turn.
+  Beside `{name}`, a service behind one credential can lead what it keeps back to the spore and
+  the turn that sent it. Like `{name}`, it is refused anywhere but a header.
+
 ## [1.45.0] — Fix: the clock line speaks as the runtime
 
 ### Fixed

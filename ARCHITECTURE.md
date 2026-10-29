@@ -1171,13 +1171,17 @@ set, a parameter the host marks `requires` that the definition does not narrow, 
 outside the grant, a granted name the host does not describe, and a field an entry should not
 carry.
 
-**A header may carry the calling spore's name.** `{name}` in a header value is the spore's name,
-its workspace directory's name, filled by the runner when it reads the source; a cell calls
-through its root's runner, so it sends the root's name. One host credential then serves many
-spores, and the service behind the source tells them apart by the name, as a bot's file and
-`replyTo` already do. Only a header takes it: the agent's call carries no header of its own,
-while a query value is a default its parameters replace. Any other placeholder in a header, and
-`{name}` in the url, socket or query, is refused when the runner starts (`SOURCE_INVALID`).
+**A header may carry the calling spore's name and turn.** `{name}` in a header value is the
+spore's name, its workspace directory's name, filled by the runner when it reads the source; a
+cell calls through its root's runner, so it sends the root's name. One host credential then
+serves many spores, and the service behind the source tells them apart by the name, as a bot's
+file and `replyTo` already do. `{turn}` is the `turnId` of the turn the call is made in: the
+runner reads its sources once and may run several turns, so a header holding it is kept in
+parts and joined with the id of the turn as each one begins, and a cell sends its root's turn.
+A service that keeps what it is sent can then lead it back to the turn that sent it. Only a
+header takes either: the agent's call carries no header of its own, while a query value is a
+default its parameters replace. Any other placeholder in a header, and either in the url, socket
+or query, is refused when the runner starts (`SOURCE_INVALID`).
 
 **A source may be reached on a unix socket.** A host entry naming `socket` is called on that
 socket instead of the url's host, the url still giving the `host` header, the path and the

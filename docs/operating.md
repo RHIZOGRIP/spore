@@ -306,7 +306,7 @@ model mohdel declares billed by `plan` or `capacity`.
 | `url` | required; `http://` or `https://` |
 | `socket` | an absolute path: the call goes to this unix socket instead of the url's host, the url still giving the `host` header, the path and the query; the url is then `http://` |
 | `query` | parameters sent with every call, as a host default |
-| `headers` | headers sent with every call; `{name}` in a value is the calling spore's name |
+| `headers` | headers sent with every call; `{name}` in a value is the calling spore's name, `{turn}` the id of the turn that calls |
 | `methods` | the methods a call may name, the first the one a call gets when it names none; `["GET"]` when absent |
 | `paths` | path patterns under `url` a call may name: `*` one segment, `**` one or more; `url` must then end in `/` |
 | `requires` | parameters a definition granting the source must narrow with `<source>.<param>` |
@@ -316,14 +316,16 @@ model mohdel declares billed by `plan` or `capacity`.
 and refuses the source.
 
 `{name}` in a header value is the calling spore's name, its workspace directory's name, filled
-by the runner whoever started the turn; a cell sends its root's. One credential then serves
-every spore granted the source, and the service behind it tells them apart:
+by the runner whoever started the turn; a cell sends its root's. `{turn}` is the id of the turn
+the call is made in, the `turnId` of its record, filled on each call; a cell sends its root's
+turn. One credential then serves every spore granted the source, and the service behind it tells
+them apart, and can lead what it keeps back to the turn that sent it:
 
 ```json
-"headers": { "Authorization": "Bearer ${TRACKER_TOKEN}", "X-Spore": "{name}" }
+"headers": { "Authorization": "Bearer ${TRACKER_TOKEN}", "X-Spore": "{name}", "X-Spore-Turn": "{turn}" }
 ```
 
-The agent can neither set nor change it. The name is only as good as the credential beside it:
+The agent can neither set nor change either. The name is only as good as the credential beside it:
 whoever holds the credential can send any name, so the service checks both. Without `paths` a
 source is one URL, and the agent adds query parameters. With them it is an API:
 a call names a method, a path matching a pattern, and a JSON body. Spore checks only the method
@@ -332,8 +334,8 @@ and path; give the token no more scope at the service than the agent should have
 Refused when a turn starts, before any call: a `${VAR}` that is not set
 (`SOURCE_SECRET_MISSING`), a source the definition grants and this file does not describe, a
 `requires` parameter the definition does not narrow, a `query` default outside the values
-the definition allows, a field not in the table, a placeholder other than `{name}` in a header or
-`{name}` in `url`, `socket` or `query` (`SOURCE_INVALID`), and a `socket` that is not an absolute
+the definition allows, a field not in the table, a placeholder other than `{name}` and `{turn}` in a header or
+either in `url`, `socket` or `query` (`SOURCE_INVALID`), and a `socket` that is not an absolute
 path or comes with an `https://` url. A socket that does not exist at call time fails that call
 (`SOURCE_UNREACHABLE`), as an unreachable host does.
 

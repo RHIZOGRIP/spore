@@ -780,6 +780,9 @@ async fn main() {
                 break 2;
             }
         };
+        if let Some(sources) = &sources {
+            sources.begin_turn(&turn_id);
+        }
         let limits = &def.limits;
         let started_limits = [
             ("rounds", limits.rounds.soft, limits.rounds.hard),
