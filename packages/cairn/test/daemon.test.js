@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -93,7 +93,7 @@ const entries = () => {
   return rows
 }
 
-const AT = '2026-01-01T00:00:00Z'
+const AT = '2026-01-01T00:00:00.000Z'
 const open = (title = 'ship it') => ({ kind: 'task.open', at: AT, refs: {}, data: { title } })
 const claim = (task, extra = {}) => ({ kind: 'task.claim', at: AT, refs: { task }, data: {}, ...extra })
 
@@ -115,10 +115,11 @@ describe('the daemon', () => {
 
   it('takes nested fields, lists and any where a kind declares them', async () => {
     daemon = await start()
+    const { body: { sha256 } } = await post({ base64: Buffer.from('{"id":"pi_1"}').toString('base64') }, {}, '/evidence')
     const payment = {
       kind: 'payment.seen',
       at: AT,
-      refs: { customer: 'cus_A1', evidence: 'a'.repeat(64) },
+      refs: { customer: 'cus_A1', evidence: sha256 },
       data: { amount: 1250, currency: 'eur', lines: [{ sku: 'x1', qty: 2 }], raw: { id: 'pi_1', meta: { tags: ['a', null, true] } } }
     }
     expect((await post(payment)).status).toBe(200)
@@ -154,9 +155,11 @@ describe('the daemon', () => {
       ['a seq not in the cairn', claim(99), {}, 422, 'bad-ref', '$.refs.task'],
       ['a seq spelled as a string', claim('2'), {}, 422, 'bad-ref', '$.refs.task'],
       ['a sha256 in uppercase', { ...open(), refs: { evidence: 'A'.repeat(64) } }, {}, 422, 'bad-ref', '$.refs.evidence'],
-      ['a time in the future', { ...open(), at: '2999-01-01T00:00:00Z' }, {}, 422, 'bad-time', '$.at'],
-      ['a time with no zone', { ...open(), at: '2026-01-01T00:00:00' }, {}, 422, 'bad-time', '$.at'],
-      ['a day that does not exist', { ...open(), at: '2026-02-30T00:00:00Z' }, {}, 422, 'bad-time', '$.at'],
+      ['evidence the cairn does not hold', { ...open(), refs: { evidence: 'b'.repeat(64) } }, {}, 422, 'bad-ref', '$.refs.evidence'],
+      ['a time in the future', { ...open(), at: '2999-01-01T00:00:00.000Z' }, {}, 422, 'bad-time', '$.at'],
+      ['a time with no zone', { ...open(), at: '2026-01-01T00:00:00.000' }, {}, 422, 'bad-time', '$.at'],
+      ['a time without milliseconds', { ...open(), at: '2026-01-01T00:00:00Z' }, {}, 422, 'bad-time', '$.at'],
+      ['a day that does not exist', { ...open(), at: '2026-02-30T00:00:00.000Z' }, {}, 422, 'bad-time', '$.at'],
       ['a head that moved', claim(2, { expectedHead: 1 }), {}, 409, 'stale-head', '2'],
       ['a line past 4 KB', open('x'.repeat(5000)), {}, 413, 'too-large', expect.any(String)]
     ]
@@ -169,6 +172,13 @@ describe('the daemon', () => {
     const cairn = openCairn(db, { name: 'ops' })
     expect(cairn.verify()).toEqual({ ok: true, checked: 2 })
     cairn.close()
+  })
+
+  it('takes a time a little ahead of its clock, and refuses one further ahead', async () => {
+    daemon = await start()
+    const ahead = (ms) => ({ ...open(), at: new Date(Date.now() + ms).toISOString() })
+    expect((await post(ahead(30 * 1000))).status).toBe(200)
+    expect((await post(ahead(5 * 60 * 1000))).body.error).toMatchObject({ type: 'bad-time', detail: '$.at' })
   })
 
   it('lands one of two appends that read the same head (A9)', async () => {
@@ -239,5 +249,42 @@ describe('the daemon', () => {
     socket = join(dir, `${'s'.repeat(110)}.sock`)
     expect(await run().exited).toMatchObject({ code: 1, stderr: expect.stringContaining('a unix socket path is at most 107') })
     expect(existsSync(db)).toBe(false)
+  })
+})
+
+describe('the evidence store', () => {
+  const evidenceDir = () => join(dir, 'evidence')
+  const evidence = (bytes, headers) => post({ base64: bytes.toString('base64') }, headers, '/evidence')
+
+  it('keeps a file by its hash, read-only, once, for an entry to cite', async () => {
+    daemon = await start()
+    const bytes = Buffer.concat([Buffer.from([0, 1, 2, 255]), Buffer.from('a page, fetched')])
+    const sha256 = execFileSync('sha256sum', { input: bytes }).toString().split(' ')[0]
+    expect(await evidence(bytes)).toEqual({ status: 200, body: { sha256, bytes: bytes.length } })
+    expect(await evidence(bytes, { 'x-cairn-actor': 'vdg' })).toEqual({ status: 200, body: { sha256, bytes: bytes.length } })
+    const kept = join(evidenceDir(), sha256)
+    expect(readFileSync(kept)).toEqual(bytes)
+    expect(statSync(kept).mode & 0o777).toBe(0o444)
+    expect(readdirSync(evidenceDir())).toEqual([sha256])
+    expect(await post({ ...open(), refs: { evidence: sha256 } })).toMatchObject({ status: 200, body: { seq: 2 } })
+    expect(entries()[1].refs).toEqual({ evidence: sha256 })
+  })
+
+  it('refuses what it cannot keep, and keeps nothing of it', async () => {
+    daemon = await start()
+    const cases = [
+      ['no token', { base64: 'aGk=' }, { authorization: null }, 401, 'unauthenticated', ''],
+      ['a stranger', { base64: 'aGk=' }, { 'x-cairn-actor': 'stranger' }, 403, 'not-a-member', 'stranger'],
+      ['not base64', { base64: 'not base64!' }, {}, 422, 'shape-mismatch', '$.base64'],
+      ['base64 without its padding', { base64: 'aGk' }, {}, 422, 'shape-mismatch', '$.base64'],
+      ['a key besides base64', { base64: 'aGk=', name: 'page.html' }, {}, 422, 'shape-mismatch', '$.name'],
+      ['past 16 MB', { base64: Buffer.alloc(16 * 1024 * 1024 + 1).toString('base64') }, {}, 413, 'too-large', String(16 * 1024 * 1024 + 1)]
+    ]
+    for (const [label, body, headers, status, type, detail] of cases) {
+      const res = await post(body, headers, '/evidence')
+      expect(res.status, label).toBe(status)
+      expect(res.body.error, label).toMatchObject({ type, detail })
+    }
+    expect(readdirSync(evidenceDir())).toEqual([])
   })
 })
