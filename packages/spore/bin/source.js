@@ -28,7 +28,7 @@ if (argv.help || (!source && !argv.list)) {
 
 Usage:
   node "$SPORE_SOURCE" <name> [--<param> <value>]... --out <file>
-  node "$SPORE_SOURCE" <name> --method POST --path <path> --body <file.json> --out <file>
+  node "$SPORE_SOURCE" <name> --method POST --path <path> --body <file.json | -> --out <file>
   node "$SPORE_SOURCE" --list
 
   --out     where the response is written, byte for byte, under data/ — or -, to
@@ -36,7 +36,8 @@ Usage:
             already holds
   --method  for a source that allows more than one, as --list shows
   --path    under the source's address, for a source that lists paths
-  --body    a JSON file sent as the request body
+  --body    a JSON file sent as the request body — or -, read from stdin, for a
+            program that has the body and nowhere it may write it
   --list    the sources this spore was granted, and what it may ask each for
 
 Anything else you pass becomes a query parameter. What a name means, and any key it
@@ -82,7 +83,7 @@ const params = Object.fromEntries(
 let body
 if (argv.body) {
   try {
-    body = JSON.parse(readFileSync(resolve(process.cwd(), argv.body), 'utf8'))
+    body = JSON.parse(readFileSync(argv.body === '-' ? 0 : resolve(process.cwd(), argv.body), 'utf8'))
   } catch (e) {
     fail(`--body ${argv.body} is not a readable JSON file`, e.message)
   }

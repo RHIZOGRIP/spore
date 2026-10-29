@@ -12,6 +12,8 @@ All notable changes to this project are documented here. Format follows
   the turn the call is made in, filled by the runner on each call; a cell sends its root's turn.
   Beside `{name}`, a service behind one credential can lead what it keeps back to the spore and
   the turn that sent it. Like `{name}`, it is refused anywhere but a header.
+- `$SPORE_SOURCE … --body -` reads the request body from stdin, so a program run under `exec`,
+  which may write nowhere, can send a body it built.
 
 ## [1.45.0] — Fix: the clock line speaks as the runtime
 

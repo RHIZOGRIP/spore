@@ -174,6 +174,7 @@ The details are in [SECURITY.md](SECURITY.md).
 | [`@rhizogrip/spore-cli`](packages/spore-cli) | the `spore` command and its terminal | [README](packages/spore-cli/README.md) |
 | [`@rhizogrip/spore-plugin-brave`](plugins/brave) | web search, its key held by the runner | [README](plugins/brave/README.md) |
 | [`@rhizogrip/spore-plugin-browser`](plugins/browser) | a browser for spores, over CDP | [README](plugins/browser/README.md) |
+| [`@rhizogrip/spore-plugin-cairn`](plugins/cairn) | a record spores share, append-only and hash-chained, as a service | [README](plugins/cairn/README.md) |
 | [`@rhizogrip/spore-plugin-console`](plugins/console) | your spores behind a console a program talks to, over loopback HTTP, as a service | [README](plugins/console/README.md) |
 | [`@rhizogrip/spore-plugin-discord`](plugins/discord) | people and spores in one Discord channel, as a service | [README](plugins/discord/README.md) |
 | [`@rhizogrip/spore-plugin-documents`](plugins/documents) | xlsx, docx, pptx, odt and PDF, for the programs an agent writes | [README](plugins/documents/README.md) |

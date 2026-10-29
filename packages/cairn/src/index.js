@@ -1,3 +1,5 @@
 export { openCairn, SCHEMA_VERSION, ENVELOPE_VERSION } from './cairn.js'
 export { canonical } from './canonical.js'
 export { CairnError } from './errors.js'
+export { CAIRN_NAME, MAX_SOCKET_PATH, serve, tokenVariable } from './daemon.js'
+export { readInstance } from './instance.js'

@@ -294,7 +294,7 @@ Those are the only values that source will accept from you — asking for anothe
 refused before the call.
 
 A source `--list` shows with `methods` and `paths` is an API: name the method, a path under
-it, and a JSON file to send as the body.
+it, and a JSON file to send as the body — or `--body -`, the body on stdin.
 
 ```
 tracker      methods: GET, POST  paths: projects/*/issues under /api/v1/

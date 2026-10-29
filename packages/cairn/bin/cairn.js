@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { basename } from 'node:path'
 import { parseArgs } from 'node:util'
-import { serve } from '../src/daemon.js'
+import { CAIRN_NAME, serve, tokenVariable } from '../src/daemon.js'
 
 const USAGE = 'usage: cairn serve <name>.json --db <file> --socket <path>'
 
@@ -15,11 +15,11 @@ if (verb !== 'serve' || !instanceFile || !values.db || !values.socket) {
   process.exit(2)
 }
 const name = basename(instanceFile, '.json')
-if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
+if (!CAIRN_NAME.test(name)) {
   console.error(`cairn: ${name} is not a cairn name (lowercase letters, digits and -)`)
   process.exit(2)
 }
-const variable = `CAIRN_${name.toUpperCase().replaceAll('-', '_')}_TOKEN`
+const variable = tokenVariable(name)
 const token = process.env[variable]
 if (!token) {
   console.error(`cairn ${name}: ${variable} is not set`)

@@ -142,6 +142,24 @@ describe('the source client', () => {
     }
   })
 
+  it('sends the body it reads from stdin for --body -', async () => {
+    const seen = await serve(() => [200, { status: 200, ok: true, contentType: 'application/json', bodyBase64: Buffer.from('{}').toString('base64') }])
+    const ws = mkdtempSync(join(tmpdir(), 'spore-source-cli-'))
+    try {
+      writeFileSync(join(ws, 'tree.key'), KEY)
+      const child = execFile(process.execPath, [resolve(import.meta.dirname, '../bin/source.js'), 'tracker', '--method', 'POST', '--path', 'issues', '--body', '-', '--out', '-'], {
+        cwd: ws,
+        env: { PATH: process.env.PATH, SPORE_SOURCE_SOCKET: socketPath, SPORE_WS: ws }
+      })
+      const ended = new Promise(resolve => child.on('exit', resolve))
+      child.stdin.end('{"title":"from stdin"}')
+      expect(await ended).toBe(0)
+      expect(seen[0].body).toEqual({ source: 'tracker', params: {}, method: 'POST', path: 'issues', body: { title: 'from stdin' } })
+    } finally {
+      rmSync(ws, { recursive: true, force: true })
+    }
+  })
+
   it('writes the bytes the endpoint sent to --out, text or not', async () => {
     const image = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xd8])
     await serve(() => [200, { status: 200, ok: true, contentType: 'image/png', bodyBase64: image.toString('base64') }])

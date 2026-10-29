@@ -25,10 +25,13 @@ const APPEND_BODY = 64 * 1024
 const MAX_EVIDENCE = 16 * 1024 * 1024
 const EVIDENCE_BODY = Math.ceil(MAX_EVIDENCE / 3) * 4 + 1024
 const CLOCK_SKEW_MS = 60 * 1000
-const MAX_SOCKET_PATH = 107
+export const MAX_SOCKET_PATH = 107
+export const CAIRN_NAME = /^[a-z0-9][a-z0-9-]*$/
 const VIA = new Set(['agent', 'program', 'cli'])
 const BODY_KEYS = new Set(['kind', 'at', 'refs', 'data', 'expectedHead'])
 const SHA256 = /^[0-9a-f]{64}$/
+
+export const tokenVariable = (name) => `CAIRN_${name.toUpperCase().replaceAll('-', '_')}_TOKEN`
 
 const refuse = (type, message, detail) => new CairnError(message, { type, detail })
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)

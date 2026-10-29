@@ -1,0 +1,97 @@
+{
+  "name": "@rhizogrip/spore-plugin-cairn",
+  "version": "0.1.0",
+  "description": "A cairn for spores: a shared, append-only record its members write through a source and read as a database, served as a service",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/cairn"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "files": [
+    "bin/",
+    "src/",
+    "reference.md",
+    "README.md",
+    "CHANGELOG.md",
+    "NOTICE"
+  ],
+  "dependencies": {
+    "@rhizogrip/cairn": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@rhizogrip/spore": "^1.45.0"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "spore": {
+    "works": "^1.45.0",
+    "settings": {
+      "root": "text"
+    },
+    "programs": {
+      "SPORE_CAIRN": "./bin/cairn.js"
+    },
+    "describe": [
+      {
+        "program": "^\"?\\$SPORE_CAIRN\"?\\s+\\S+\\s+append\\s*(.*)$",
+        "title": "writing to a cairn",
+        "category": "edit",
+        "detail": "append $1"
+      },
+      {
+        "program": "^\"?\\$SPORE_CAIRN\"?\\s*(.*)$",
+        "title": "reading a cairn",
+        "category": "read",
+        "detail": "$1"
+      }
+    ],
+    "contain": {
+      "hide": "{settings.root}/sockets"
+    },
+    "reference": "reference.md",
+    "services": {
+      "cairn": {
+        "what": "a cairn, a record its member spores share",
+        "program": "./bin/spore-cairn.js",
+        "instances": {
+          "called": "cairn"
+        },
+        "check": [
+          "--check"
+        ]
+      }
+    }
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-cairn v${version}",
+      "tagName": "plugin-cairn-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}
