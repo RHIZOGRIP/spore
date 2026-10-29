@@ -146,8 +146,70 @@ describe('the chain', () => {
     expect(columns('t_cairn')).toEqual(['id', 'name', 'createdAt'])
     expect(columns('t_entries')).toEqual(['seq', 'line', 'hash', 'at', 'kind', 'actor', 'role', 'via', 'id', 'hop'])
     expect(columns('t_refs')).toEqual(['key', 'value', 'seq'])
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'view' ORDER BY name").all().map(v => v.name)).toEqual(['entries', 'head', 'subjects'])
+    expect(columns('entries')).toEqual(['seq', 'at', 'kind', 'actor', 'role', 'via', 'id', 'hop', 'refs', 'data', 'v', 'hash'])
+    expect(columns('subjects')).toEqual(['key', 'value', 'seq', 'at', 'kind', 'actor', 'role', 'via', 'id', 'hop', 'refs', 'data', 'v', 'hash'])
+    expect(columns('head')).toEqual(['seq', 'hash', 'at'])
     expect(db.prepare('PRAGMA journal_mode').get().journal_mode).toBe('wal')
     db.close()
+  })
+})
+
+describe('the views', () => {
+  const read = (sql, ...params) => {
+    const db = new DatabaseSync(file, { readOnly: true })
+    const rows = db.prepare(sql).all(...params).map(row => ({ ...row }))
+    db.close()
+    return rows
+  }
+
+  it('answer what happened when, about what, and by whom', () => {
+    const cairn = openCairn(file, { name: 'ops' })
+    cairn.append({ ...entry(1), at: '2026-10-01T09:00:00.000Z', kind: 'task.open' })
+    cairn.append({ ...entry(2), at: '2026-10-02T09:00:00.000Z', kind: 'task.open' })
+    cairn.append({ ...entry(1), at: '2026-10-03T09:00:00.000Z', actor: { name: 'vdg', role: 'auditor', via: 'agent' }, id: 'turn-9', data: { note: 'done' } })
+
+    expect(read('SELECT seq FROM entries WHERE at >= ? AND at < ? ORDER BY seq', '2026-10-02', '2026-10-04')).toEqual([{ seq: 2 }, { seq: 3 }])
+    expect(read("SELECT seq, kind, actor FROM subjects WHERE key = 'task' AND value = '1' ORDER BY seq")).toEqual([
+      { seq: 1, kind: 'task.open', actor: 'main' },
+      { seq: 3, kind: 'task.claim', actor: 'vdg' }
+    ])
+    expect(read("SELECT count(*) AS n FROM subjects WHERE key = 'customer' AND value = 'cus_1'")).toEqual([{ n: 3 }])
+    const [third] = read('SELECT * FROM entries WHERE seq = 3')
+    expect(third).toMatchObject({ actor: 'vdg', role: 'auditor', via: 'agent', id: 'turn-9', hop: 0, v: 1 })
+    expect(JSON.parse(third.refs)).toEqual({ task: 1, customer: 'cus_1' })
+    expect(JSON.parse(third.data)).toEqual({ note: 'done' })
+    expect(read('SELECT * FROM head')).toEqual([cairn.head()])
+    cairn.close()
+  })
+
+  it('read an entry written under an older envelope, and leave it as written (A14)', () => {
+    filled(2).close()
+    const db = new DatabaseSync(file)
+    const { hash: prev } = db.prepare('SELECT hash FROM t_entries WHERE seq = 2').get()
+    const { hop, ...beforeHop } = entry(1, { text: 'from before hop' })
+    const older = canonical({
+      ...beforeHop,
+      kind: 'task.note',
+      refs: { task: 1 },
+      v: 0,
+      seq: 3,
+      cairn: 'ops',
+      prev
+    })
+    const hash = execFileSync('sha256sum', { input: older }).toString().split(' ')[0]
+    db.prepare('INSERT INTO t_entries (seq, line, hash) VALUES (3, ?, ?)').run(older, hash)
+    db.prepare("INSERT INTO t_refs (key, value, seq) VALUES ('task', '1', 3)").run()
+    db.close()
+
+    const cairn = openCairn(file, { name: 'ops' })
+    expect(cairn.append(entry(4))).toMatchObject({ seq: 4 })
+    expect(cairn.verify()).toEqual({ ok: true, checked: 4 })
+    cairn.close()
+    expect(read('SELECT seq, kind, v, hop FROM entries WHERE seq = 3')).toEqual([{ seq: 3, kind: 'task.note', v: 0, hop: null }])
+    expect(read("SELECT seq FROM subjects WHERE key = 'task' AND value = '1' ORDER BY seq")).toEqual([{ seq: 1 }, { seq: 3 }])
+    expect(read('SELECT line FROM t_entries WHERE seq = 3')).toEqual([{ line: older }])
+    expect(JSON.parse(read('SELECT line FROM t_entries WHERE seq = 4')[0].line).prev).toBe(hash)
   })
 })
 

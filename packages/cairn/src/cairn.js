@@ -37,6 +37,21 @@ CREATE TABLE t_refs (
 ) STRICT, WITHOUT ROWID;
 
 CREATE INDEX t_refs_seq ON t_refs (seq);
+CREATE INDEX t_entries_at ON t_entries (at);
+CREATE INDEX t_entries_kind ON t_entries (kind);
+
+CREATE VIEW entries AS
+SELECT seq, at, kind, actor, role, via, id, hop,
+       json_extract(line, '$.refs') AS refs, json_extract(line, '$.data') AS data,
+       json_extract(line, '$.v') AS v, hash
+FROM t_entries;
+
+CREATE VIEW subjects AS
+SELECT r.key, r.value, e.*
+FROM t_refs r JOIN entries e ON e.seq = r.seq;
+
+CREATE VIEW head AS
+SELECT seq, hash, at FROM t_entries ORDER BY seq DESC LIMIT 1;
 
 CREATE TRIGGER t_entries_never_changed BEFORE UPDATE ON t_entries
 BEGIN SELECT RAISE(ABORT, 'a cairn entry is never changed'); END;
@@ -104,7 +119,7 @@ export function openCairn (file, { name }) {
   const insertEntry = db.prepare('INSERT INTO t_entries (seq, line, hash) VALUES (?, ?, ?)')
   const insertRef = db.prepare('INSERT INTO t_refs (key, value, seq) VALUES (?, ?, ?)')
 
-  function append (fields) {
+  function append (fields, { expectedHead, maxBytes } = {}) {
     for (const field of WRITER_FIELDS) {
       if (fields[field] === undefined) throw new CairnError(`an entry needs ${field}`, { type: 'shape-mismatch', detail: `$.${field}` })
     }
@@ -113,8 +128,15 @@ export function openCairn (file, { name }) {
     try {
       const head = last.get()
       const seq = head ? head.seq + 1 : 1
+      if (expectedHead !== undefined && expectedHead !== seq - 1) {
+        throw new CairnError(`the head is ${seq - 1}, not ${expectedHead}`, { type: 'stale-head', detail: String(seq - 1) })
+      }
       const entry = { ...Object.fromEntries(WRITER_FIELDS.map(field => [field, fields[field]])), v: ENVELOPE_VERSION, seq, cairn: name, prev: head ? head.hash : null }
       const line = canonical(entry)
+      const bytes = Buffer.byteLength(line, 'utf8')
+      if (maxBytes !== undefined && bytes > maxBytes) {
+        throw new CairnError(`the entry is ${bytes} bytes, past ${maxBytes}: a large payload goes to the evidence store, cited by hash`, { type: 'too-large', detail: String(bytes) })
+      }
       const hash = sha256(line)
       insertEntry.run(seq, line, hash)
       for (const [key, value] of refs) insertRef.run(key, value, seq)
@@ -127,7 +149,7 @@ export function openCairn (file, { name }) {
   }
 
   function head () {
-    const row = db.prepare('SELECT seq, hash, at FROM t_entries ORDER BY seq DESC LIMIT 1').get()
+    const row = db.prepare('SELECT seq, hash, at FROM head').get()
     return row ? { seq: row.seq, hash: row.hash, at: row.at } : null
   }
 
@@ -169,5 +191,10 @@ export function openCairn (file, { name }) {
     return { ok: true, checked }
   }
 
-  return { name, append, head, since, verify, close: () => db.close() }
+  function latest (kind) {
+    const row = db.prepare('SELECT line, hash FROM t_entries WHERE kind = ? ORDER BY seq DESC LIMIT 1').get(kind)
+    return row ? { ...JSON.parse(row.line), hash: row.hash } : null
+  }
+
+  return { name, append, head, since, latest, verify, close: () => db.close() }
 }

@@ -17,11 +17,15 @@
   "engines": {
     "node": ">=24"
   },
+  "bin": {
+    "cairn": "bin/cairn.js"
+  },
   "exports": {
     ".": "./src/index.js",
     "./package.json": "./package.json"
   },
   "files": [
+    "bin/",
     "src/"
   ],
   "scripts": {
