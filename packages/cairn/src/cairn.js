@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { canonical } from './canonical.js'
 import { CairnError } from './errors.js'
@@ -103,14 +104,18 @@ function create (file, name) {
   return db
 }
 
-function open (file, name) {
-  const db = new DatabaseSync(file)
+function nameOf (db, file) {
   const { user_version: version } = db.prepare('PRAGMA user_version').get()
   if (version !== SCHEMA_VERSION) {
     db.close()
     throw new CairnError(`${file} is at schema ${version}, and this cairn reads ${SCHEMA_VERSION}`, { type: 'unknown-schema', detail: file })
   }
-  const recorded = db.prepare('SELECT name FROM t_cairn WHERE id = 1').get().name
+  return db.prepare('SELECT name FROM t_cairn WHERE id = 1').get().name
+}
+
+function open (file, name) {
+  const db = new DatabaseSync(file)
+  const recorded = nameOf(db, file)
   if (recorded !== name) {
     db.close()
     throw new CairnError(`${file} is the cairn "${recorded}", not "${name}"`, { type: 'wrong-cairn', detail: file })
@@ -128,6 +133,39 @@ function refsOf (refs) {
     }
     return [key, String(value)]
   })
+}
+
+function verifyChain (db, { from = 1, to = Number.MAX_SAFE_INTEGER } = {}) {
+  let previous = null
+  if (from > 1) {
+    const before = db.prepare('SELECT hash FROM t_entries WHERE seq = ?').get(from - 1)
+    if (!before) return { ok: false, checked: 0, gap: { after: from - 1, next: from } }
+    previous = before.hash
+  }
+  const refsAt = db.prepare('SELECT key, value FROM t_refs WHERE seq = ?')
+  let expected = from
+  let checked = 0
+  for (const row of db.prepare('SELECT seq, line, hash FROM t_entries WHERE seq >= ? AND seq <= ? ORDER BY seq').iterate(from, to)) {
+    if (row.seq !== expected) return { ok: false, checked, gap: { after: expected - 1, next: row.seq } }
+    const broken = (why) => ({ ok: false, checked, firstBreak: { seq: row.seq, why } })
+    if (sha256(row.line) !== row.hash) return broken('its line does not hash to its hash')
+    let entry, said
+    try {
+      entry = JSON.parse(row.line)
+      if (canonical(entry) !== row.line) return broken('its line is not canonical')
+      said = refsOf(entry.refs).map(pair => JSON.stringify(pair)).sort()
+    } catch (err) {
+      return broken(`its line does not hold: ${err.message}`)
+    }
+    if (entry.seq !== row.seq) return broken(`its line says seq ${entry.seq}`)
+    if (entry.prev !== previous) return broken('its prev is not the hash of the entry before')
+    const stored = refsAt.all(row.seq).map(ref => JSON.stringify([ref.key, ref.value])).sort()
+    if (stored.join('\n') !== said.join('\n')) return broken('its refs rows are not the refs its line names')
+    previous = row.hash
+    expected = row.seq + 1
+    checked++
+  }
+  return { ok: true, checked }
 }
 
 /**
@@ -186,39 +224,6 @@ export function openCairn (file, { name }) {
       .map(row => ({ ...JSON.parse(row.line), hash: row.hash }))
   }
 
-  function verify ({ from = 1, to = Number.MAX_SAFE_INTEGER } = {}) {
-    let previous = null
-    if (from > 1) {
-      const before = db.prepare('SELECT hash FROM t_entries WHERE seq = ?').get(from - 1)
-      if (!before) return { ok: false, checked: 0, gap: { after: from - 1, next: from } }
-      previous = before.hash
-    }
-    const refsAt = db.prepare('SELECT key, value FROM t_refs WHERE seq = ?')
-    let expected = from
-    let checked = 0
-    for (const row of db.prepare('SELECT seq, line, hash FROM t_entries WHERE seq >= ? AND seq <= ? ORDER BY seq').iterate(from, to)) {
-      if (row.seq !== expected) return { ok: false, checked, gap: { after: expected - 1, next: row.seq } }
-      const broken = (why) => ({ ok: false, checked, firstBreak: { seq: row.seq, why } })
-      if (sha256(row.line) !== row.hash) return broken('its line does not hash to its hash')
-      let entry, said
-      try {
-        entry = JSON.parse(row.line)
-        if (canonical(entry) !== row.line) return broken('its line is not canonical')
-        said = refsOf(entry.refs).map(pair => JSON.stringify(pair)).sort()
-      } catch (err) {
-        return broken(`its line does not hold: ${err.message}`)
-      }
-      if (entry.seq !== row.seq) return broken(`its line says seq ${entry.seq}`)
-      if (entry.prev !== previous) return broken('its prev is not the hash of the entry before')
-      const stored = refsAt.all(row.seq).map(ref => JSON.stringify([ref.key, ref.value])).sort()
-      if (stored.join('\n') !== said.join('\n')) return broken('its refs rows are not the refs its line names')
-      previous = row.hash
-      expected = row.seq + 1
-      checked++
-    }
-    return { ok: true, checked }
-  }
-
   function latest (kind) {
     const row = db.prepare('SELECT line, hash FROM t_entries WHERE kind = ? ORDER BY seq DESC LIMIT 1').get(kind)
     return row ? { ...JSON.parse(row.line), hash: row.hash } : null
@@ -232,5 +237,54 @@ export function openCairn (file, { name }) {
     }
   }
 
-  return { name, append, head, since, latest, verify, close }
+  return { name, append, head, since, latest, verify: (range) => verifyChain(db, range), close }
+}
+
+function verifyEvidence (db, store) {
+  const found = new Map()
+  const hashOf = (cited) => {
+    if (!found.has(cited)) {
+      const path = join(store, cited)
+      found.set(cited, existsSync(path) ? createHash('sha256').update(readFileSync(path)).digest('hex') : null)
+    }
+    return found.get(cited)
+  }
+  let keys = []
+  for (const row of db.prepare('SELECT seq, line FROM t_entries ORDER BY seq').iterate()) {
+    const entry = JSON.parse(row.line)
+    if (entry.kind === 'cairn.config') {
+      keys = Object.entries(entry.data.subjects).filter(([, pattern]) => pattern === 'sha256').map(([key]) => key)
+      continue
+    }
+    for (const key of keys) {
+      const cited = entry.refs[key]
+      if (cited === undefined) continue
+      const hash = hashOf(cited)
+      if (hash === cited) continue
+      const why = hash === null ? 'it is not in the evidence store' : 'it no longer hashes to its name'
+      return { files: found.size, broken: { seq: row.seq, key, sha256: cited, why } }
+    }
+  }
+  return { files: found.size }
+}
+
+/**
+ * Checks a cairn read-only, so while its daemon holds it too: the chain from the first entry to
+ * the head, and with `evidence`, that every file an entry cites under a `sha256` subject of the
+ * `cairn.config` in force is in `evidence/` beside the database and still hashes to its name.
+ */
+export function verifyCairn (file, { evidence = false } = {}) {
+  const db = new DatabaseSync(file, { readOnly: true })
+  try {
+    const name = nameOf(db, file)
+    db.exec('BEGIN')
+    const head = db.prepare('SELECT seq, hash, at FROM head').get()
+    const chain = verifyChain(db)
+    const result = { name, head: head ? { ...head } : null, ...chain }
+    if (!chain.ok || !evidence) return result
+    const held = verifyEvidence(db, join(dirname(file), 'evidence'))
+    return { ...result, ok: !held.broken, evidence: held }
+  } finally {
+    if (db.isOpen) db.close()
+  }
 }

@@ -135,3 +135,7 @@ $XDG_STATE_HOME/spore/cairn/<cairn>/state.json   how far each member was told
 
 A member is a spore by its name, which is unique among one user's spores and not across users:
 the members of a cairn are spores of the user running it.
+
+`cairn verify <root>/<cairn>/cairn.sqlite --evidence`, from
+[`@rhizogrip/cairn`](../../packages/cairn/README.md), checks the chain and the evidence while the
+service runs. [`examples/tasks`](examples/tasks/README.md) sets up two spores sharing a task list.

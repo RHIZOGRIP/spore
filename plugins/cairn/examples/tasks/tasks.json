@@ -1,0 +1,10 @@
+{
+  "members": { "lead": "lead", "worker": "worker" },
+  "kinds": {
+    "task.open": { "title": "string", "detail": "string" },
+    "task.claim": {},
+    "task.done": { "summary": "string" }
+  },
+  "subjects": { "task": "seq", "report": "sha256" },
+  "notify": { "minDelay": "1m", "maxHops": 2 }
+}

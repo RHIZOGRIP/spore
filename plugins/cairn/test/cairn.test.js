@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-import { openCairn, serve } from '@rhizogrip/cairn'
+import { openCairn, readInstance, serve } from '@rhizogrip/cairn'
 import { define, showPlugin } from '@rhizogrip/spore'
 import { definitionWith, outsideRoot } from '@rhizogrip/spore/testing'
 
@@ -49,6 +49,13 @@ describe('the cairn plugin', () => {
       contain: { hide: '{settings.root}/sockets' },
       services: ['cairn']
     })
+  })
+
+  it('ships an example whose instance file the service takes', () => {
+    const { members, subjects, notify } = readInstance(join(ROOT, 'examples', 'tasks', 'tasks.json'))
+    expect(Object.keys(members)).toEqual(['lead', 'worker'])
+    expect(subjects).toEqual(new Map([['task', 'seq'], ['report', 'sha256']]))
+    expect(notify).toEqual({ minDelayMs: 60_000, maxHops: 2 })
   })
 })
 

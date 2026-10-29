@@ -1,13 +1,14 @@
-import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { CairnError, SCHEMA_VERSION, canonical, openCairn } from '../src/index.js'
+import { CairnError, SCHEMA_VERSION, canonical, openCairn, verifyCairn } from '../src/index.js'
 
 const APPEND_FOREVER = fileURLToPath(new URL('./fixtures/append-forever.js', import.meta.url))
+const CLI = fileURLToPath(new URL('../bin/cairn.js', import.meta.url))
 
 const entry = (n, data = { note: 'x' }) => ({
   at: '2026-10-29T10:00:00.000Z',
@@ -288,5 +289,74 @@ describe('a writer killed mid-append (A7)', () => {
     expect(db.prepare('SELECT count(*) AS n FROM t_refs').get().n).toBe(2 * seq)
     db.close()
     cairn.close()
+  })
+})
+
+describe('a cairn verified from outside', () => {
+  const HELD = execFileSync('sha256sum', { input: 'the report' }).toString().split(' ')[0]
+  const ELSEWHERE = 'f'.repeat(64)
+  const config = (subjects) => ({ ...entry(0), kind: 'cairn.config', refs: {}, data: { members: {}, kinds: {}, subjects }, actor: { name: 'cairn', role: 'cairn', via: 'program' }, id: null })
+  const citing = (proof) => ({ ...entry(0), kind: 'finding', refs: { proof } })
+  const stored = (text) => {
+    mkdirSync(join(dir, 'evidence'), { recursive: true })
+    const path = join(dir, 'evidence', HELD)
+    writeFileSync(path, text, { mode: 0o444 })
+    return path
+  }
+  const cli = (...args) => spawnSync(process.execPath, [CLI, 'verify', ...args], { encoding: 'utf8' })
+
+  it('reads the chain while the writer holds it, and says the head it reached', () => {
+    const cairn = filled(5)
+    const result = verifyCairn(file)
+    expect(result).toEqual({ name: 'ops', head: cairn.head(), ok: true, checked: 5 })
+    cairn.close()
+  })
+
+  it('names a broken chain as verify does', () => {
+    filled(10).close()
+    tampered("DROP TRIGGER t_entries_never_changed; UPDATE t_entries SET line = replace(line, '\"x\"', '\"y\"') WHERE seq = 5")
+    expect(verifyCairn(file)).toMatchObject({ ok: false, checked: 4, firstBreak: { seq: 5, why: 'its line does not hash to its hash' } })
+  })
+
+  it('checks each file an entry cites under a sha256 subject of the config in force, and none other', () => {
+    const cairn = openCairn(file, { name: 'ops' })
+    cairn.append(config({ proof: '^[0-9a-f]{64}$' }))
+    cairn.append(citing(ELSEWHERE))
+    cairn.append(config({ proof: 'sha256' }))
+    cairn.append(citing(HELD))
+    cairn.append(citing(HELD))
+    cairn.close()
+    const path = stored('the report')
+    expect(verifyCairn(file, { evidence: true })).toMatchObject({ ok: true, checked: 5, evidence: { files: 1 } })
+
+    chmodSync(path, 0o644)
+    appendFileSync(path, ', amended')
+    expect(verifyCairn(file, { evidence: true })).toMatchObject({ ok: false, checked: 5, evidence: { files: 1, broken: { seq: 4, key: 'proof', sha256: HELD, why: 'it no longer hashes to its name' } } })
+    expect(verifyCairn(file)).toMatchObject({ ok: true, checked: 5 })
+
+    rmSync(path)
+    expect(verifyCairn(file, { evidence: true }).evidence.broken).toEqual({ seq: 4, key: 'proof', sha256: HELD, why: 'it is not in the evidence store' })
+  })
+
+  it('exits 0 on a cairn that holds, 1 on one that does not, and 2 on what it cannot read', () => {
+    const cairn = openCairn(file, { name: 'ops' })
+    cairn.append(config({ proof: 'sha256' }))
+    cairn.append(citing(HELD))
+    const { hash } = cairn.head()
+    cairn.close()
+    stored('the report')
+
+    const held = cli(file, '--evidence')
+    expect(held.status, held.stderr).toBe(0)
+    expect(held.stdout).toBe(`ops: ok, 2 entries, 1 evidence file, head seq 2 ${hash} at 2026-10-29T10:00:00.000Z\n`)
+    expect(JSON.parse(cli(file, '--json').stdout)).toEqual(verifyCairn(file))
+
+    rmSync(join(dir, 'evidence', HELD), { force: true })
+    const missing = cli(file, '--evidence')
+    expect(missing.status).toBe(1)
+    expect(missing.stdout).toBe(`ops: evidence broken at seq 2: its proof ${HELD} — it is not in the evidence store\n`)
+
+    expect(cli(join(dir, 'none.sqlite')).status).toBe(2)
+    expect(cli().status).toBe(2)
   })
 })
