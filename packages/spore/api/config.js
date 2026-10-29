@@ -27,8 +27,8 @@ const matcher = (pattern) => new RegExp(`^${pattern.replace(/[.]/g, '\\.').repla
 
 /**
  * `{ socket, listen, callers }`: `listen` as `listenOf` reads it, or null, each caller `{ name, spores,
- * maxWait }` with its token kept only as a digest and `maxWait` the longest a spore's router may
- * hold its deliveries, or null.
+ * maxWait }` with its token kept only as a digest beside the variable holding it, and `maxWait` the
+ * longest a spore's router may hold its deliveries, or null.
  */
 export function loadApi (path = apiPath(), env = process.env) {
   if (!existsSync(path)) throw new SporeError(`no ${path}`, { type: 'API_NO_CONFIG', detail: 'it says where the API listens and who may call it — see docs/operating.md, "The HTTP API service"' })
@@ -57,9 +57,20 @@ export function loadApi (path = apiPath(), env = process.env) {
     }
     if (caller.router !== undefined) throw refuse(path, `has a router for ${name}, which api.json no longer binds`, 'what prepares a delivery is the spore\'s: prepare: [api:<caller>=<plugin>/<program>] in its spore.cmk')
     const { maxWait, perDay, perHour } = deliveryBounds(caller, (problem, detail) => refuse(path, `caller ${JSON.stringify(name)} ${problem}`, detail))
-    return { name, digest: digest(token), spores: patterns.map(matcher), maxWait, perDay, perHour }
+    return { name, digest: digest(token), variable, spores: patterns.map(matcher), maxWait, perDay, perHour }
   })
   return { socket: raw.socket ?? null, listen, callers }
+}
+
+/**
+ * How a program on this machine calls the API as the caller `name`: `{ socket, listen, token }`,
+ * from `api.json` read as the API reads it, the token from the environment.
+ */
+export function apiCaller (name, path = apiPath(), env = process.env) {
+  const api = loadApi(path, env)
+  const caller = api.callers.find(caller => caller.name === name)
+  if (!caller) throw refuse(path, `names no caller ${JSON.stringify(name)}`, `callers: { "${name}": { "token": "\${VAR}", "spores": ["<the spores it delivers to>"] } }`)
+  return { socket: api.socket, listen: api.listen, token: env[caller.variable] }
 }
 
 /** The caller whose token `presented` is, compared in constant time against every one; null for none. */

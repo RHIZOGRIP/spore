@@ -30,6 +30,7 @@ export const CAIRN_NAME = /^[a-z0-9][a-z0-9-]*$/
 const VIA = new Set(['agent', 'program', 'cli'])
 const BODY_KEYS = new Set(['kind', 'at', 'refs', 'data', 'expectedHead'])
 const SHA256 = /^[0-9a-f]{64}$/
+const SUBSCRIPTION = new Set(['cairn.subscribe', 'cairn.unsubscribe'])
 
 export const tokenVariable = (name) => `CAIRN_${name.toUpperCase().replaceAll('-', '_')}_TOKEN`
 
@@ -100,10 +101,13 @@ async function claimSocket (socket) {
  * comes from the `X-Cairn-*` headers and the instance file, never from the body, and every request
  * carries the cairn's token. Evidence is kept beside the database as `evidence/<sha256>`, read-only
  * once written. An instance file that differs from the last `cairn.config` entry is recorded as a
- * new one before the socket opens.
+ * new one before the socket opens. A member asks to be woken by kinds others write with
+ * `cairn.subscribe`, and stops with `cairn.unsubscribe`, `{ kinds: [...] }` either, written as any
+ * entry; subscribing needs the instance file's `notify`. `appended` is called after each entry a
+ * request writes, for whoever wakes the members.
  */
-export async function serve ({ name, instanceFile, file, socket, token }) {
-  const { instance, members, kinds, subjects } = readInstance(instanceFile)
+export async function serve ({ name, instanceFile, file, socket, token, appended = () => {} }) {
+  const { instance, members, kinds, subjects, notify } = readInstance(instanceFile)
   await claimSocket(socket)
   const cairn = openCairn(file, { name })
   const evidence = join(dirname(file), 'evidence')
@@ -172,15 +176,20 @@ export async function serve ({ name, instanceFile, file, socket, token }) {
     for (const key of Object.keys(body)) {
       if (!BODY_KEYS.has(key)) throw refuse('shape-mismatch', `${key} is not the writer's to send`, `$.${key}`)
     }
-    if (!Object.hasOwn(kinds, body.kind)) throw refuse('unknown-kind', `${body.kind} is not a kind of ${name}`, String(body.kind))
+    if (SUBSCRIPTION.has(body.kind)) {
+      if (body.kind === 'cairn.subscribe' && !notify) throw refuse('unknown-kind', `${name} wakes no one: its instance file has no notify`, body.kind)
+    } else if (!Object.hasOwn(kinds, body.kind)) {
+      throw refuse('unknown-kind', `${body.kind} is not a kind of ${name}`, String(body.kind))
+    }
     checkAt(body.at, Date.now())
     checkRefs(body.refs, subjects, cairn.head().seq, (hash) => existsSync(join(evidence, hash)))
-    checkShape(kinds[body.kind], body.data, '$.data')
+    if (SUBSCRIPTION.has(body.kind)) checkSubscription(body.data)
+    else checkShape(kinds[body.kind], body.data, '$.data')
     const { expectedHead } = body
     if (expectedHead !== undefined && (!Number.isSafeInteger(expectedHead) || expectedHead < 0)) {
       throw refuse('shape-mismatch', 'expectedHead is the seq of the head the writer read', '$.expectedHead')
     }
-    return cairn.append({
+    const written = cairn.append({
       at: body.at,
       kind: body.kind,
       refs: body.refs,
@@ -189,6 +198,16 @@ export async function serve ({ name, instanceFile, file, socket, token }) {
       id: req.headers['x-cairn-id'] ?? null,
       hop: Number(hop)
     }, { expectedHead, maxBytes: MAX_LINE })
+    setImmediate(appended, written)
+    return written
+  }
+
+  function checkSubscription (data) {
+    checkShape({ kinds: ['string'] }, data, '$.data')
+    if (!data.kinds.length) throw refuse('shape-mismatch', '$.data.kinds names at least one kind', '$.data.kinds')
+    data.kinds.forEach((kind, i) => {
+      if (!Object.hasOwn(kinds, kind)) throw refuse('unknown-kind', `${kind} is not a kind of ${name}`, `$.data.kinds[${i}]`)
+    })
   }
 
   async function handle (req) {

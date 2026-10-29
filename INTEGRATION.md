@@ -499,7 +499,7 @@ All under `/v1`, JSON in and out.
 | `POST /v1/spores/<name>/approvals` | an approval's request ([§Asking a person to approve](#asking-a-person-to-approve)) | `201 { "approval", "until" }` |
 | `GET /v1/spores/<name>/approvals` | — | `200 { "approvals": [record] }`, oldest first |
 | `GET /v1/spores/<name>/approvals/<id>` | — | `200`, the approval's record, as `approvalsIn` has it |
-| `POST /v1/spores/<name>/deliveries` | `{ "delivery", "text"?, "payload"?, "attach"? }` ([below](#delivering-from-a-program)) | `202 { "delivery", "outcome", "started" }` |
+| `POST /v1/spores/<name>/deliveries` | `{ "delivery", "text"?, "payload"?, "attach"?, "hop"? }` ([below](#delivering-from-a-program)) | `202 { "delivery", "outcome", "started" }` |
 
 `text` is required and must not be blank. `after` is a whole number; `0` replays what retention
 kept. A request body is at most 32 MiB.
@@ -550,6 +550,12 @@ the operator. `delivery` is your id for it, letters, digits, `.`, `_`, `:` and `
 twice is delivered once (`"outcome": "already received"`). A delivery carries a text, a payload or a
 file at least; an attached file may not be called `payload.json` beside a payload. Your
 `traceparent` is the parent of the turn it starts; while spores are paused the answer is `503`.
+
+`hop` is how many deliveries led to this one, a whole number from 0, kept in the inbox's `hop`
+column. A program that delivers what spores send it — a turn's call to a source, say — reads the
+hop that turn passed on (`{hop}` in the source's header,
+[docs/operating.md](docs/operating.md#sources-sourcesjson)) and sends it back on what it delivers, so a chain of
+spores waking each other stops where the program says.
 
 A spore may hold a delivery before any turn reads it. When its definition names a program that
 prepares deliveries from your caller (`prepare: [api:<caller>=<plugin>/<program>]`,

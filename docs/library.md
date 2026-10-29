@@ -124,7 +124,7 @@ in order. An entry carries `inboxNo`, `at`, `text` or a `bodyPath` with `bodyByt
 and `bodyTail`, `files`, `schedule`, `due`, `hook`, `hookEvent`, `hookDelivery`, `job`,
 `jobEvent`, `jobRun`, `traceparent`, `requestId`, `replyTo`, `fromName`, `fromId`, `fromWhere`,
 `fromZone`, `overheard` (said around the spore, not to it), `approval` (the approval it tells of), `api`,
-`startsTurn` (false for a delivery said past its origin's `perHour`), `consumed`
+`hop` (how many deliveries led to an API caller's), `startsTurn` (false for a delivery said past its origin's `perHour`), `consumed`
 (a finished turn has read it), `setAside` (no turn will) and `asks` (neither set aside nor
 overheard: a turn that reads it answers it).
 
@@ -1117,6 +1117,18 @@ loadEnvironment(file = CONFIG_FILE, env = process.env) → { path, loaded: strin
 Loads the `environment` file beside `config.json` into `env`: `KEY=value` lines, as systemd's
 `EnvironmentFile=` reads them. A variable already set wins; `loaded` names those set. A missing
 file loads nothing. Throws `ENVIRONMENT_INVALID`.
+
+### `apiCaller`
+
+```
+apiCaller(name, path = <api.json beside config.json>, env = process.env) → { socket, listen, token }
+```
+
+How a program on this machine calls the HTTP API as the caller `name`: the socket and the address
+`api.json` says it listens on (either null when unsaid; `listen` is `{ host, port }`), and that
+caller's token, read from `env` as the API reads it. The whole file is read as the API reads it,
+so it refuses what the API would. Throws `API_NO_CONFIG`, `API_CONFIG_INVALID`, the latter also
+for a caller the file does not name.
 
 ### `readConfig`
 

@@ -36,6 +36,7 @@ export { annotate, define, defaultModel, switchModel, edit, extend, flush, grant
 export { isWorkspace, workspacesIn } from './library/discover.js'
 export { readConfig, followingDocs, loadEnvironment, workspaceFor, recordLayout, existing, getKey, setKey, addTo, removeFrom, settings, instancesDir, instanceFile, instanceNames, CONFIG_FILE, CONFIG_DIR, NAME, NAMES_A_PATH } from './library/config.js'
 export { NAMES } from './core/names.js'
+export { apiCaller } from '../api/config.js'
 export { recordStarted, versionAt, SERVICE_STATE_DIR } from './library/service-record.js'
 export { billingFor, unmetered } from './core/billing.js'
 export { checkSqlite } from './core/sqlite.js'

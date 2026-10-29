@@ -6,6 +6,7 @@
  *   "$SPORE_CAIRN" <cairn> .tables | '.schema <view>' | [--json] '<sql>'
  *   "$SPORE_CAIRN" <cairn> append <kind> [--refs <json>] [--data <json>] [--at <time>] [--expected-head <seq>]
  *   "$SPORE_CAIRN" <cairn> evidence <file>
+ *   "$SPORE_CAIRN" <cairn> subscribe|unsubscribe <kind>...
  *
  * A cairn is read where its `reads:` grant links it, `$SPORE_WS/cairn-<cairn>`, and written
  * through the source `cairn-<cairn>`, whose runner adds the token and who is writing. The body
@@ -20,7 +21,8 @@ import { parseArgs } from 'node:util'
 const USAGE = `"$SPORE_CAIRN" list
 "$SPORE_CAIRN" <cairn> .tables | '.schema <view>' | [--json] '<sql>'
 "$SPORE_CAIRN" <cairn> append <kind> [--refs <json>] [--data <json>] [--at <time>] [--expected-head <seq>]
-"$SPORE_CAIRN" <cairn> evidence <file>`
+"$SPORE_CAIRN" <cairn> evidence <file>
+"$SPORE_CAIRN" <cairn> subscribe|unsubscribe <kind>...`
 const PREFIX = 'cairn-'
 
 const fail = (problem, code = 1) => {
@@ -123,6 +125,11 @@ if (verb === 'evidence') {
     fail(`${args[0]} cannot be read — ${err.message}`)
   }
   post(cairn, 'evidence', { base64: bytes.toString('base64') })
+}
+
+if (verb === 'subscribe' || verb === 'unsubscribe') {
+  if (!args.length || args.some(arg => arg.startsWith('-'))) fail(USAGE, 2)
+  post(cairn, 'append', { kind: `cairn.${verb}`, at: new Date().toISOString(), refs: {}, data: { kinds: args } })
 }
 
 if (!verb) fail(USAGE, 2)

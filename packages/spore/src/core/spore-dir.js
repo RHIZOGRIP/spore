@@ -359,7 +359,7 @@ function checkFrom (from, { schedule, hook, job, api }) {
   }
 }
 
-function entryFor (ws, said, { attach = [], schedule, hook, job, api, from, traceparent, requestId, replyTo, overheard, approval, startsTurn } = {}) {
+function entryFor (ws, said, { attach = [], schedule, hook, job, api, from, traceparent, requestId, replyTo, overheard, approval, startsTurn, hop } = {}) {
   if (from !== undefined) checkFrom(from, { schedule, hook, job, api })
   if (approval !== undefined && !(typeof approval === 'string' && approval && replyTo !== undefined && replyTo !== 'terminal' && originOfOptions({ schedule, hook, job, api }) === null && !overheard)) {
     throw new SporeError('a message telling of an approval names it, and the conversation it was asked in', {
@@ -392,6 +392,12 @@ function entryFor (ws, said, { attach = [], schedule, hook, job, api, from, trac
       detail: `got ${JSON.stringify(api)}, expected the caller's name in api.json`
     })
   }
+  if (hop !== undefined && !(Number.isSafeInteger(hop) && hop >= 0 && api !== undefined)) {
+    throw new SporeError('only an API caller\'s delivery carries a hop, and it is a count', {
+      type: 'DELIVERY_INVALID',
+      detail: `got hop ${JSON.stringify(hop)}${api === undefined ? ' with no API caller' : ''} — a whole number from 0`
+    })
+  }
   if (job !== undefined && !(typeof job.name === 'string' && job.name && typeof job.event === 'string' && job.event && typeof job.run === 'string' && job.run)) {
     throw new SporeError('a job origin names its job, its event and its run', {
       type: 'JOB_INVALID',
@@ -411,6 +417,7 @@ function entryFor (ws, said, { attach = [], schedule, hook, job, api, from, trac
     ...(hook ? { hook: hook.name, hookDelivery: hook.delivery, ...(hook.event ? { hookEvent: hook.event } : {}) } : {}),
     ...(job ? { job: job.name, jobEvent: job.event, jobRun: job.run } : {}),
     ...(api !== undefined ? { api } : {}),
+    ...(hop !== undefined ? { hop } : {}),
     ...(startsTurn === false ? { startsTurn } : {}),
     ...(from ? { fromName: storable(from.name), fromId: from.id, fromWhere: storable(from.where), ...(from.zone ? { fromZone: from.zone } : {}) } : {}),
     ...(traceparent ? { traceparent } : {}),

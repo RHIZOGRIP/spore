@@ -1,17 +1,17 @@
 //! Where a source's spec may hold a placeholder: a header may hold `{name}`, the calling spore's
-//! name, and `{turn}`, the id of the turn that calls, which the runner fills, and nothing else
-//! may hold either. The runner refuses a source that breaks this, and a plugin's check and
+//! name, `{turn}`, the id of the turn that calls, and `{hop}`, how many deliveries led to it, which
+//! the runner fills, and nothing else may hold any of them. The runner refuses a source that breaks this, and a plugin's check and
 //! `spore doctor` report it.
 
 use serde_json::Value;
 
 pub const NAMED_HEADER: &str =
-    "a header may hold {name}, the calling spore's name, and {turn}, the id of the turn that calls, which the runner fills";
+    "a header may hold {name}, the calling spore's name, {turn}, the id of the turn that calls, and {hop}, how many deliveries led to it, which the runner fills";
 pub const NAMED_ELSEWHERE: &str =
-    "only a header takes {name} and {turn}, which the runner fills and the agent cannot replace";
+    "only a header takes {name}, {turn} and {hop}, which the runner fills and the agent cannot replace";
 
 /// What the runner fills in a header.
-pub const FILLED: [&str; 2] = ["name", "turn"];
+pub const FILLED: [&str; 3] = ["name", "turn", "hop"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Misplaced {
@@ -102,10 +102,10 @@ mod tests {
     }
 
     #[test]
-    fn lets_a_header_hold_the_spore_s_name_and_turn_and_nothing_hold_a_secret_as_one() {
+    fn lets_a_header_hold_the_spore_s_name_turn_and_hop_and_nothing_hold_a_secret_as_one() {
         assert_eq!(
             found(
-                json!({ "url": "http://x.invalid/${BASE}", "headers": { "x-spore": "{name}", "x-turn": "turn {turn} of {name}", "authorization": "Bearer ${TOKEN}" } })
+                json!({ "url": "http://x.invalid/${BASE}", "headers": { "x-spore": "{name}", "x-turn": "turn {turn} of {name}", "x-hop": "{hop}", "authorization": "Bearer ${TOKEN}" } })
             ),
             None
         );
@@ -139,15 +139,25 @@ mod tests {
     }
 
     #[test]
-    fn refuses_the_turn_anywhere_but_a_header() {
-        for (spec, place) in [
-            (json!({ "url": "http://x.invalid/{turn}/" }), "its url"),
+    fn refuses_the_turn_and_the_hop_anywhere_but_a_header() {
+        for (spec, found_, place) in [
+            (
+                json!({ "url": "http://x.invalid/{turn}/" }),
+                "{turn}",
+                "its url",
+            ),
             (
                 json!({ "url": "http://x.invalid", "query": { "turn": "{turn}" } }),
+                "{turn}",
+                "its query",
+            ),
+            (
+                json!({ "url": "http://x.invalid", "query": { "hop": "{hop}" } }),
+                "{hop}",
                 "its query",
             ),
         ] {
-            assert_eq!(found(spec), Some(("{turn}".into(), place.into())));
+            assert_eq!(found(spec), Some((found_.into(), place.into())));
         }
     }
 

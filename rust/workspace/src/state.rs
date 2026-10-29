@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 14;
+pub const SCHEMA_VERSION: i64 = 15;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -76,6 +76,7 @@ CREATE TABLE t_inbox (
   fromZone     TEXT CHECK (fromZone IS NULL OR (fromName IS NOT NULL AND fromZone <> '')),
   api          TEXT CHECK (api IS NULL OR (api <> '' AND schedule IS NULL AND hook IS NULL AND job IS NULL AND fromName IS NULL AND overheard = 0 AND approval IS NULL AND replyTo IS NULL)),
   startsTurn   INTEGER NOT NULL DEFAULT 1 CHECK (startsTurn IN (0, 1) AND (startsTurn = 1 OR hook IS NOT NULL OR job IS NOT NULL OR api IS NOT NULL)),
+  hop          INTEGER CHECK (hop IS NULL OR (hop >= 0 AND api IS NOT NULL)),
   UNIQUE (schedule, due),
   CHECK ((schedule IS NULL) = (due IS NULL)),
   CHECK ((hook IS NULL) = (hookDelivery IS NULL)),
@@ -198,7 +199,7 @@ CREATE VIEW inbox AS
   SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
          i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
          i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
-         i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval, i.api, i.startsTurn,
+         i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval, i.api, i.startsTurn, i.hop,
          i.inboxNo <= w.inboxConsumed AS consumed,
          EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside,
          NOT i.overheard AND NOT EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS asks
@@ -342,7 +343,7 @@ CREATE VIEW approvals AS
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 13] = [
+const MIGRATIONS: [(i64, &str); 14] = [
     (
         1,
         r#"
@@ -633,6 +634,23 @@ CREATE VIEW inbox AS
     FROM t_inbox i, t_workspace w;
 "#,
     ),
+    (
+        14,
+        r#"
+ALTER TABLE t_inbox ADD COLUMN hop INTEGER CHECK (hop IS NULL OR (hop >= 0 AND api IS NOT NULL));
+
+DROP VIEW inbox;
+CREATE VIEW inbox AS
+  SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
+         i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
+         i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
+         i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval, i.api, i.startsTurn, i.hop,
+         i.inboxNo <= w.inboxConsumed AS consumed,
+         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside,
+         NOT i.overheard AND NOT EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS asks
+    FROM t_inbox i, t_workspace w;
+"#,
+    ),
 ];
 
 /// Opens the workspace's database for writing — creating it and its schema the first time —
@@ -879,7 +897,7 @@ enum Kind {
 }
 
 /// What an inbox entry may say, by column. `inboxNo` is the database's to give.
-const INBOX_COLUMNS: [(&str, Kind); 26] = [
+const INBOX_COLUMNS: [(&str, Kind); 27] = [
     ("at", Kind::Text),
     ("text", Kind::Text),
     ("bodyPath", Kind::Text),
@@ -906,6 +924,7 @@ const INBOX_COLUMNS: [(&str, Kind); 26] = [
     ("fromZone", Kind::Text),
     ("api", Kind::Text),
     ("startsTurn", Kind::Flag),
+    ("hop", Kind::Integer),
 ];
 
 /// What a turn record carries into its row. `turnNo` and `inboxFrom` are finalization's to
@@ -1473,6 +1492,18 @@ pub fn inbox_consumed(ws: &Path) -> Result<i64, String> {
         conn.query_row("SELECT inboxConsumed FROM t_workspace", [], |row| {
             row.get(0)
         })
+    })
+}
+
+/// What the turn running passes on as its hop: one past the highest hop said since it began, or
+/// 0 when nothing said since carries one.
+pub fn turn_hop(ws: &Path) -> Result<i64, String> {
+    reading(ws, 0, |conn| {
+        conn.query_row(
+            "SELECT coalesce(max(i.hop) + 1, 0) FROM t_inbox i, t_workspace w WHERE i.inboxNo > w.inboxConsumed",
+            [],
+            |row| row.get(0),
+        )
     })
 }
 
@@ -3443,7 +3474,7 @@ mod tests {
         let ws = scratch("api-origin");
         let held = hold_delivery(
             &ws,
-            &json!({ "at": "t", "text": "analyse it", "api": "pipeline", "requestId": "api:pipeline:report-1" })
+            &json!({ "at": "t", "text": "analyse it", "api": "pipeline", "requestId": "api:pipeline:report-1", "hop": 2 })
                 .to_string(),
             "2026-10-03T12:00:00.000Z",
             "2026-10-03T12:00:00.000Z",
@@ -3459,15 +3490,34 @@ mod tests {
             vec![1]
         );
         assert_eq!(
-            row(&ws, "SELECT api, text, requestId FROM inbox"),
-            json!({ "api": "pipeline", "text": "analyse it", "requestId": "api:pipeline:report-1" })
+            row(&ws, "SELECT api, text, requestId, hop FROM inbox"),
+            json!({ "api": "pipeline", "text": "analyse it", "requestId": "api:pipeline:report-1", "hop": 2 })
         );
         assert!(append_inbox(&ws, r#"{"at":"t","text":"x","api":""}"#).is_err());
+        assert!(append_inbox(&ws, r#"{"at":"t","text":"x","api":"pipeline","hop":-1}"#).is_err());
+        assert!(append_inbox(&ws, r#"{"at":"t","text":"x","api":"pipeline","hop":"1"}"#).is_err());
+        assert!(append_inbox(&ws, r#"{"at":"t","text":"x","hop":0}"#).is_err());
         assert!(append_inbox(
             &ws,
             r#"{"at":"t","text":"x","api":"pipeline","replyTo":"terminal"}"#
         )
         .is_err());
+    }
+
+    #[test]
+    fn passes_on_one_past_the_highest_hop_said_since_the_turn_began() {
+        let ws = scratch("turn-hop");
+        assert_eq!(turn_hop(&ws).unwrap(), 0);
+        append_inbox(&ws, r#"{"at":"t","text":"a person"}"#).unwrap();
+        assert_eq!(turn_hop(&ws).unwrap(), 0);
+        append_inbox(&ws, r#"{"at":"t","text":"x","api":"cairn-a","hop":3}"#).unwrap();
+        append_inbox(&ws, r#"{"at":"t","text":"y","api":"cairn-a","hop":1}"#).unwrap();
+        assert_eq!(turn_hop(&ws).unwrap(), 4);
+        open_state(&ws)
+            .unwrap()
+            .execute("UPDATE t_workspace SET inboxConsumed = 3", [])
+            .unwrap();
+        assert_eq!(turn_hop(&ws).unwrap(), 0);
     }
 
     #[test]

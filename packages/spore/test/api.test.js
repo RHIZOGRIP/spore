@@ -15,7 +15,7 @@ import { pauseSpores, unpauseSpores } from '../src/core/admission.js'
 import { CONFIG_DIR, CONFIG_FILE } from '../src/library/config.js'
 import { definitionWith } from '../src/testing.js'
 import { heldIn, readInbox, saidOf } from '../src/core/spore-dir.js'
-import { callerOf, loadApi, reaches } from '../api/config.js'
+import { apiCaller, callerOf, loadApi, reaches } from '../api/config.js'
 import { createApiServer } from '../api/server.js'
 
 // A release starts nothing, a plugin's program is named, and what it prepares is written, by the test.
@@ -185,12 +185,12 @@ describe('a program\'s delivery through the API', () => {
 
   it('holds it from the caller, with its text, its payload first and its files, under the caller\'s trace, once per id, and releases it at once', async () => {
     await restart()
-    const body = { ...sent, attach: [{ name: 'note.txt', mime: 'text/plain', data: Buffer.from('n').toString('base64') }] }
+    const body = { ...sent, hop: 1, attach: [{ name: 'note.txt', mime: 'text/plain', data: Buffer.from('n').toString('base64') }] }
     const first = await call('POST', '/v1/spores/alpha/deliveries', { body, headers: { traceparent: `00-${TRACE}-b7ad6b7169203331-01` } })
     expect([first.status, first.json()]).toEqual([202, { delivery: 'doc-1', outcome: 'started', started: true }])
     expect(released).toEqual([alpha()])
     const [entry] = held()
-    expect(entry).toMatchObject({ api: 'app', text: 'Analyse it.', requestId: 'api:app:doc-1' })
+    expect(entry).toMatchObject({ api: 'app', hop: 1, text: 'Analyse it.', requestId: 'api:app:doc-1' })
     expect(entry).not.toHaveProperty('from')
     expect(entry).not.toHaveProperty('hook')
     expect(saidOf(entry)).toMatch(/^Analyse it\.\n/)
@@ -274,7 +274,10 @@ describe('a program\'s delivery through the API', () => {
       [{ delivery: 'doc-1', text: ' ' }, /carries a text, a payload or a file/],
       [{ ...sent, text: 3 }, /text is a string/],
       [{ ...sent, attach: [{ name: 'payload.json', mime: 'application/json', data: '' }] }, /payload\.json is the payload's name/],
-      [{ ...sent, event: 'uploaded' }, /not event/]
+      [{ ...sent, event: 'uploaded' }, /not event/],
+      [{ ...sent, hop: -1 }, /hop is how many deliveries/],
+      [{ ...sent, hop: 1.5 }, /hop is how many deliveries/],
+      [{ ...sent, hop: '1' }, /hop is how many deliveries/]
     ]) {
       const refused = await call('POST', '/v1/spores/alpha/deliveries', { body })
       expect(refused.status).toBe(400)
@@ -317,6 +320,14 @@ describe('api.json', () => {
     expect(caller.name).toBe('a')
     expect(callerOf(read.callers, 'u'.repeat(40))).toBe(null)
     expect(['ops', 'support-eu', 'opsx', 'support'].map(name => reaches(caller, name))).toEqual([true, true, false, false])
+  })
+
+  it('tells a program on this machine where to call as one of its callers, with that caller\'s token', () => {
+    const path = write({ socket: '/run/a.sock', listen: '127.0.0.1:8787', callers: { a: { token, spores: ['*'] }, b: { token: '${U}', spores: ['*'] } } }) // eslint-disable-line no-template-curly-in-string
+    const both = { ...env, U: 'u'.repeat(40) }
+    expect(apiCaller('b', path, both)).toEqual({ socket: '/run/a.sock', listen: { host: '127.0.0.1', port: 8787, text: '127.0.0.1:8787', shown: '127.0.0.1:8787' }, token: 'u'.repeat(40) })
+    expect(() => apiCaller('c', path, both)).toThrow(/names no caller "c"/)
+    expect(() => apiCaller('a', path, env)).toThrow(/\$U for b, which is not set/)
   })
 
   it('listens only where it is told, and says so of an address beyond loopback', () => {

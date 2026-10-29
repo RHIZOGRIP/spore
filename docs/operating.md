@@ -306,7 +306,7 @@ model mohdel declares billed by `plan` or `capacity`.
 | `url` | required; `http://` or `https://` |
 | `socket` | an absolute path: the call goes to this unix socket instead of the url's host, the url still giving the `host` header, the path and the query; the url is then `http://` |
 | `query` | parameters sent with every call, as a host default |
-| `headers` | headers sent with every call; `{name}` in a value is the calling spore's name, `{turn}` the id of the turn that calls |
+| `headers` | headers sent with every call; `{name}` in a value is the calling spore's name, `{turn}` the id of the turn that calls, `{hop}` the hop it passes on |
 | `methods` | the methods a call may name, the first the one a call gets when it names none; `["GET"]` when absent |
 | `paths` | path patterns under `url` a call may name: `*` one segment, `**` one or more; `url` must then end in `/` |
 | `requires` | parameters a definition granting the source must narrow with `<source>.<param>` |
@@ -318,8 +318,11 @@ and refuses the source.
 `{name}` in a header value is the calling spore's name, its workspace directory's name, filled
 by the runner whoever started the turn; a cell sends its root's. `{turn}` is the id of the turn
 the call is made in, the `turnId` of its record, filled on each call; a cell sends its root's
-turn. One credential then serves every spore granted the source, and the service behind it tells
-them apart, and can lead what it keeps back to the turn that sent it:
+turn. `{hop}` is one past the highest `hop` of the deliveries said to the spore since the turn
+began, or 0 when none carries one: a program delivering through the HTTP API says how many
+deliveries led to its own, and a service that delivers what spores send it can pass the count on
+and stop where it chooses. One credential then serves every spore granted the source, and the
+service behind it tells them apart, and can lead what it keeps back to the turn that sent it:
 
 ```json
 "headers": { "Authorization": "Bearer ${TRACKER_TOKEN}", "X-Spore": "{name}", "X-Spore-Turn": "{turn}" }

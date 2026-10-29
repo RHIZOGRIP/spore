@@ -21,7 +21,7 @@
 //! reach.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -35,6 +35,7 @@ use mohdel_thin_gate::prelude::{not_found_response, Body};
 use serde_json::{json, Map, Value};
 use spore_definition::{fill_variables, Ordered};
 use spore_workspace::source_spec::{misplaced, placeholders, text, Misplaced};
+use spore_workspace::turn_hop;
 use url::Url;
 
 use crate::broker::{answer, read_json, Refusal};
@@ -59,9 +60,21 @@ struct Source {
     requires: Vec<String>,
     query: Vec<(String, String)>,
     headers: Vec<(HeaderName, HeaderValue)>,
-    /// Headers holding `{turn}`, as the parts between each one: joined by the id of the turn
-    /// that calls, which is not known when the sources load.
-    turn_headers: Vec<(HeaderName, Vec<String>)>,
+    /// Headers holding `{turn}` or `{hop}`, which are not known when the sources load: the
+    /// turn that calls and the hop it passes on are filled in at each call.
+    turn_headers: Vec<(HeaderName, Vec<Part>)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Part {
+    Text(String),
+    Turn,
+    Hop,
+}
+
+struct Turn {
+    id: String,
+    ws: PathBuf,
 }
 
 /// A path as the agent gave it, in segments: none empty, none `.` or `..`, so joining it under
@@ -105,7 +118,7 @@ pub struct Sources {
     granted: Vec<String>,
     resolved: HashMap<String, Source>,
     scopes: Ordered<Ordered<Vec<String>>>,
-    turn: RwLock<Option<String>>,
+    turn: RwLock<Option<Turn>>,
 }
 
 fn invalid(message: impl Into<String>, detail: impl Into<String>) -> Refusal {
@@ -136,24 +149,41 @@ fn fill(name: &str, value: &str, env: &impl Fn(&str) -> Option<String>) -> Resul
     })
 }
 
-/// `raw` with each `{name}` filled and split at each `{turn}`.
-fn header_parts(raw: &str, spore: &str) -> Vec<String> {
-    let mut parts = vec![String::with_capacity(raw.len())];
+/// `raw` with each `{name}` filled, its text apart from each `{turn}` and `{hop}`.
+fn header_parts(raw: &str, spore: &str) -> Vec<Part> {
+    let mut parts = Vec::new();
+    let mut said = String::with_capacity(raw.len());
     let mut from = 0;
     for (start, end) in placeholders(raw) {
-        let part = parts.last_mut().expect("parts starts with one");
-        part.push_str(&raw[from..start]);
-        match &raw[start + 1..end - 1] {
-            "name" => part.push_str(spore),
-            _ => parts.push(String::new()),
+        said.push_str(&raw[from..start]);
+        let filled = match &raw[start + 1..end - 1] {
+            "name" => None,
+            "turn" => Some(Part::Turn),
+            _ => Some(Part::Hop),
+        };
+        match filled {
+            None => said.push_str(spore),
+            Some(filled) => {
+                parts.push(Part::Text(std::mem::take(&mut said)));
+                parts.push(filled);
+            }
         }
         from = end;
     }
+    said.push_str(&raw[from..]);
+    parts.push(Part::Text(said));
     parts
-        .last_mut()
-        .expect("parts starts with one")
-        .push_str(&raw[from..]);
+}
+
+fn header_value(parts: &[Part], turn: &str, hop: i64) -> String {
     parts
+        .iter()
+        .map(|part| match part {
+            Part::Text(said) => said.clone(),
+            Part::Turn => turn.to_string(),
+            Part::Hop => hop.to_string(),
+        })
+        .collect()
 }
 
 fn resolve(
@@ -324,16 +354,19 @@ fn resolve(
             )
         };
         let parts = header_parts(&text(v), spore)
-            .iter()
-            .map(|part| fill(name, part, env))
+            .into_iter()
+            .map(|part| match part {
+                Part::Text(said) => fill(name, &said, env).map(Part::Text),
+                filled => Ok(filled),
+            })
             .collect::<Result<Vec<_>, Refusal>>()?;
-        if let [whole] = parts.as_slice() {
+        if let [Part::Text(whole)] = parts.as_slice() {
             headers.push((
                 header,
                 HeaderValue::from_str(whole).map_err(|_| unsendable())?,
             ));
         } else {
-            HeaderValue::from_str(&parts.join("0")).map_err(|_| unsendable())?;
+            HeaderValue::from_str(&header_value(&parts, "0", 0)).map_err(|_| unsendable())?;
             turn_headers.push((header, parts));
         }
     }
@@ -522,13 +555,16 @@ impl Sources {
         }))
     }
 
-    /// The turn now running, whose id fills a header's `{turn}`: set as each turn begins, before
-    /// its agent can call.
-    pub fn begin_turn(&self, id: &str) {
+    /// The turn now running in `ws`, whose id fills a header's `{turn}` and whose inbox its
+    /// `{hop}`: set as each turn begins, before its agent can call.
+    pub fn begin_turn(&self, id: &str, ws: &Path) {
         *self
             .turn
             .write()
-            .expect("the turn is never written across a panic") = Some(id.to_string());
+            .expect("the turn is never written across a panic") = Some(Turn {
+            id: id.to_string(),
+            ws: ws.to_path_buf(),
+        });
     }
 
     pub async fn route(self: Arc<Self>, req: Request<Incoming>) -> Response<Body> {
@@ -889,20 +925,36 @@ impl Sources {
             outgoing.headers_mut().insert(header.clone(), value.clone());
         }
         if !source.turn_headers.is_empty() {
-            let turn = self
+            let (turn, ws) = self
                 .turn
                 .read()
                 .expect("the turn is never written across a panic")
-                .clone()
+                .as_ref()
+                .map(|turn| (turn.id.clone(), turn.ws.clone()))
                 .ok_or_else(|| {
                     invalid(
-                        format!("\"{name}\" sends the turn's id, and no turn has begun"),
+                        format!("\"{name}\" sends what the turn is, and no turn has begun"),
                         "the runner names each turn before its agent starts",
                     )
                 })?;
+            let sends_hop = source
+                .turn_headers
+                .iter()
+                .any(|(_, parts)| parts.contains(&Part::Hop));
+            let hop = if sends_hop {
+                turn_hop(&ws).map_err(|problem| {
+                    invalid(
+                        format!("\"{name}\" sends the turn's hop, which cannot be read"),
+                        problem,
+                    )
+                })?
+            } else {
+                0
+            };
             for (header, parts) in &source.turn_headers {
-                let value = HeaderValue::from_str(&parts.join(&turn))
-                    .expect("a turn's id is hex, and this header was checked with one at load");
+                let value = HeaderValue::from_str(&header_value(parts, &turn, hop)).expect(
+                    "a turn's id is hex and a hop a count, and this header was checked with both at load",
+                );
                 outgoing.headers_mut().insert(header.clone(), value);
             }
         }
@@ -1486,20 +1538,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sends_the_turn_that_calls_where_a_header_asks_for_it_and_never_reads_a_secret_as_one()
-    {
+    async fn sends_the_turn_that_calls_and_its_hop_where_a_header_asks_and_never_reads_a_secret_as_either(
+    ) {
         let (base, seen) = endpoint(Bytes::from_static(b"hi")).await;
         let dir = scratch();
         let sources = Sources::load(
             "triage",
             Some(&file(
                 &dir,
-                json!({ "ledger": { "url": base, "headers": { "authorization": "${TOKEN} {turn} of {name}" } } }),
+                json!({ "ledger": { "url": base, "headers": { "authorization": "${TOKEN} {turn} of {name} at {hop}" } } }),
             )),
             &granted(&["ledger"]),
             &Ordered::default(),
             &Map::new(),
-            |v| (v == "TOKEN").then(|| "a{turn}b".to_string()),
+            |v| (v == "TOKEN").then(|| "a{turn}b{hop}".to_string()),
         )
         .unwrap();
         let ask = json!({ "source": "ledger", "params": { "turn": "forged" } });
@@ -1512,12 +1564,23 @@ mod tests {
             refused.message
         );
 
-        sources.begin_turn("0a1b");
+        sources.begin_turn("0a1b", &dir.0);
         sources.fetch(&ask).await.unwrap();
-        assert_eq!(seen.last().1.as_deref(), Some("a{turn}b 0a1b of triage"));
-        sources.begin_turn("2c3d");
+        assert_eq!(
+            seen.last().1.as_deref(),
+            Some("a{turn}b{hop} 0a1b of triage at 0")
+        );
+        spore_workspace::append_inbox(
+            &dir.0,
+            r#"{"at":"t","text":"noted","api":"cairn-a","hop":2}"#,
+        )
+        .unwrap();
+        sources.begin_turn("2c3d", &dir.0);
         sources.fetch(&ask).await.unwrap();
-        assert_eq!(seen.last().1.as_deref(), Some("a{turn}b 2c3d of triage"));
+        assert_eq!(
+            seen.last().1.as_deref(),
+            Some("a{turn}b{hop} 2c3d of triage at 3")
+        );
     }
 
     #[tokio::test]

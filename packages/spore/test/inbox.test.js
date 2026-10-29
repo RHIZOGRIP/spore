@@ -34,6 +34,14 @@ describe('the inbox', () => {
     expect(() => enqueue(WS, 'x', { hook: { name: 'forge' } }).inbox).toThrow(/names its hook and its delivery/)
   })
 
+  it('keeps the hop of an API caller\'s delivery, and refuses one on anything else', () => {
+    enqueue(WS, 'a note was added', { api: 'cairn-ledger', hop: 2 })
+    expect(readInbox(WS)[0]).toMatchObject({ api: 'cairn-ledger', hop: 2 })
+    for (const options of [{ hop: 0 }, { api: 'cairn-ledger', hop: -1 }, { api: 'cairn-ledger', hop: '1' }, { hook: { name: 'forge', delivery: 'd-1' }, hop: 1 }]) {
+      expect(() => enqueue(WS, 'x', options)).toThrow(expect.objectContaining({ type: 'DELIVERY_INVALID' }))
+    }
+  })
+
   it('keeps who said a message and where, and the turn reads it above what they said', () => {
     const from = { name: 'Alice "A" Martin', id: 'telegram:148392011', where: 'a private chat on Telegram' }
     send(WS, 'can you check the payouts?', { start: false, from })

@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
-## [1.46.0] — Feature: a source's header can carry the turn
+## [1.46.0] — Feature: a source's header can carry the turn and its hop
 
 ### Added
 
@@ -12,6 +12,14 @@ All notable changes to this project are documented here. Format follows
   the turn the call is made in, filled by the runner on each call; a cell sends its root's turn.
   Beside `{name}`, a service behind one credential can lead what it keeps back to the spore and
   the turn that sent it. Like `{name}`, it is refused anywhere but a header.
+- `hop` on a delivery through the HTTP API (`POST /v1/spores/<name>/deliveries`): how many
+  deliveries led to this one, a whole number from 0, kept in the inbox's new `hop` column
+  (schema 15). `{hop}` in a source's header is what the turn passes on: one past the highest hop
+  said to the spore since the turn began, 0 when nothing said carries one. A service that wakes
+  spores with what other spores sent it can then stop a chain of turns waking each other.
+- `apiCaller(name)` in the library: where the HTTP API listens and the token of its caller `name`,
+  read from `api.json` and the environment as the API reads them, for a program on the same machine
+  that delivers through it.
 - `$SPORE_SOURCE … --body -` reads the request body from stdin, so a program run under `exec`,
   which may write nowhere, can send a body it built.
 

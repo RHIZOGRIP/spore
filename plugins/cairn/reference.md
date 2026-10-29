@@ -54,11 +54,25 @@ exec  command: "$SPORE_CAIRN" ledger evidence data/out/report.pdf   out: data/ev
 
 An entry is at most 4 KB; anything larger is evidence, at most 16 MB.
 
+## Being woken
+
+When the cairn takes subscriptions, you may ask to be told when others write a kind:
+
+```
+exec  command: "$SPORE_CAIRN" ledger subscribe finding decision   out: data/subscribed.json
+exec  command: "$SPORE_CAIRN" ledger unsubscribe decision   out: data/unsubscribed.json
+```
+
+A notice then arrives as a message naming the cairn, the `seq` range and the kinds, with the query
+that reads them. You are never told of your own entries. A turn a notice started passes that on:
+what it writes counts as one hop further, and past the cairn's bound it wakes nobody. Who is
+subscribed to what is in the cairn: `SELECT actor, kind, data FROM entries WHERE kind LIKE 'cairn.%subscribe' ORDER BY seq`.
+
 ## When it refuses
 
 It exits 1 and says why, as `ledger refused, <type>: <what>`:
 
-- `unknown-kind` — not a kind this cairn takes.
+- `unknown-kind` — not a kind this cairn takes, or a subscription to a cairn that wakes no one.
 - `shape-mismatch` — `data` does not hold what the kind says, at the path named.
 - `bad-ref` — a ref that is not a subject, not an entry, or not evidence it holds.
 - `stale-head` — someone wrote after the head you read; it names the head now.

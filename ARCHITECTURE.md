@@ -1171,17 +1171,21 @@ set, a parameter the host marks `requires` that the definition does not narrow, 
 outside the grant, a granted name the host does not describe, and a field an entry should not
 carry.
 
-**A header may carry the calling spore's name and turn.** `{name}` in a header value is the
+**A header may carry the calling spore's name, its turn and the turn's hop.** `{name}` in a header value is the
 spore's name, its workspace directory's name, filled by the runner when it reads the source; a
 cell calls through its root's runner, so it sends the root's name. One host credential then
 serves many spores, and the service behind the source tells them apart by the name, as a bot's
 file and `replyTo` already do. `{turn}` is the `turnId` of the turn the call is made in: the
 runner reads its sources once and may run several turns, so a header holding it is kept in
 parts and joined with the id of the turn as each one begins, and a cell sends its root's turn.
-A service that keeps what it is sent can then lead it back to the turn that sent it. Only a
-header takes either: the agent's call carries no header of its own, while a query value is a
-default its parameters replace. Any other placeholder in a header, and either in the url, socket
-or query, is refused when the runner starts (`SOURCE_INVALID`).
+A service that keeps what it is sent can then lead it back to the turn that sent it. `{hop}` is
+read on each call from the inbox: one past the highest `hop` said since the turn began, 0 when
+nothing said carries one. A delivery through the HTTP API may say how many deliveries led to it,
+so a service that delivers what spores send it can stop a chain of turns waking each other. It
+counts what was said since the turn began, read or not yet, so it can only count too high, which
+stops a chain sooner. Only a header takes any of them: the agent's call carries no header of its own, while a query value is a
+default its parameters replace. Any other placeholder in a header, and any of them in the url,
+socket or query, is refused when the runner starts (`SOURCE_INVALID`).
 
 **A source may be reached on a unix socket.** A host entry naming `socket` is called on that
 socket instead of the url's host, the url still giving the `host` header, the path and the
@@ -1648,7 +1652,8 @@ the caller, and nothing a person says is held. Work a program hands a spore goes
 `POST /v1/spores/<name>/deliveries`, from origin `api:<caller>` (the inbox's `api` column): held,
 prepared and timed as any delivery nobody typed, within the caller's `maxWait`, `perDay` and
 `perHour` in `api.json` — a hook's bounds, read by the same code, with no `perHour` unless the file
-says one (§Webhooks). The turn reads it as the operator's own message, with no line naming the sender: the caller is the
+says one (§Webhooks). It may carry a `hop`, how many deliveries led to it (the inbox's `hop`
+column), which `{hop}` in a source's header passes on (§Material it does not own). The turn reads it as the operator's own message, with no line naming the sender: the caller is the
 operator's program, not an outsider whose payload is data, which is what a hook is. It names no
 person, so its answer goes to the default reply-to. Hooks are outsiders' signed events, on the
 webhook service only.

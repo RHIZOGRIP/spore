@@ -249,10 +249,51 @@ describe('the daemon', () => {
     expect(await run().exited).toMatchObject({ code: 1, stderr: expect.stringContaining('anchored') })
     writeFileSync(instanceFile, JSON.stringify({ ...INSTANCE, kinds: { 'task.open': { title: 'text' } } }))
     expect(await run().exited).toMatchObject({ code: 1, stderr: expect.stringContaining('kinds.task.open.title') })
+    for (const [notify, said] of [
+      [{ minDelay: '15m' }, 'notify.maxHops'],
+      [{ minDelay: '15 minutes', maxHops: 1 }, 'notify.minDelay'],
+      [{ minDelay: '15m', maxHops: 0 }, 'notify.maxHops'],
+      [{ minDelay: '15m', maxHops: 1, to: 'all' }, 'notify.to'],
+      ['15m', 'notify is']
+    ]) {
+      writeFileSync(instanceFile, JSON.stringify({ ...INSTANCE, notify }))
+      expect(await run().exited).toMatchObject({ code: 1, stderr: expect.stringContaining(said) })
+    }
     writeFileSync(instanceFile, JSON.stringify(INSTANCE))
     socket = join(dir, `${'s'.repeat(110)}.sock`)
     expect(await run().exited).toMatchObject({ code: 1, stderr: expect.stringContaining('a unix socket path is at most 107') })
     expect(existsSync(db)).toBe(false)
+  })
+})
+
+describe('subscriptions', () => {
+  const subscribe = (kinds, verb = 'subscribe') => ({ kind: `cairn.${verb}`, at: AT, refs: {}, data: { kinds } })
+
+  it('are refused by a cairn that wakes no one', async () => {
+    daemon = await start()
+    expect(await post(subscribe(['task.open']))).toMatchObject({ status: 422, body: { error: { type: 'unknown-kind', message: expect.stringContaining('ops wakes no one') } } })
+    expect(entries()).toHaveLength(1)
+  })
+
+  it('are entries of the member who asks, naming kinds the cairn takes', async () => {
+    writeFileSync(instanceFile, JSON.stringify({ ...INSTANCE, notify: { minDelay: '15m', maxHops: 1 } }))
+    daemon = await start()
+    expect((await post(subscribe(['task.open', 'task.claim']), { 'x-cairn-actor': 'vdg' })).status).toBe(200)
+    expect((await post(subscribe(['task.claim'], 'unsubscribe'), { 'x-cairn-actor': 'vdg' })).status).toBe(200)
+    expect(entries().slice(1)).toMatchObject([
+      { kind: 'cairn.subscribe', actor: { name: 'vdg', role: 'auditor' }, data: { kinds: ['task.open', 'task.claim'] } },
+      { kind: 'cairn.unsubscribe', actor: { name: 'vdg', role: 'auditor' }, data: { kinds: ['task.claim'] } }
+    ])
+    for (const [body, type, detail] of [
+      [subscribe([]), 'shape-mismatch', '$.data.kinds'],
+      [subscribe('task.open'), 'shape-mismatch', '$.data.kinds'],
+      [subscribe(['task.open', 'task.close']), 'unknown-kind', '$.data.kinds[1]'],
+      [subscribe(['cairn.config']), 'unknown-kind', '$.data.kinds[0]'],
+      [{ ...subscribe(['task.open']), data: { kinds: ['task.open'], all: true } }, 'shape-mismatch', '$.data.all']
+    ]) {
+      expect(await post(body)).toMatchObject({ status: 422, body: { error: { type, detail } } })
+    }
+    expect(entries()).toHaveLength(3)
   })
 })
 

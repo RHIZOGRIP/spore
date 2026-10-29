@@ -81,17 +81,19 @@ export function createApiServer ({ api, env, log = () => {} }) {
     const asked = await jsonOf(request, response)
     const pause = paused()
     if (pause) throw failure('PAUSED', 'spores are paused', `since ${pause.at ?? 'spore pause'} — spore unpause lets deliveries in again`)
-    const { delivery, text = '', payload, attach, ...rest } = asked
-    const shape = '{ "delivery": "<your id for it>", "text": "…", "payload": <JSON>, "attach": [{ "name", "mime", "data": "<base64>" }] }'
+    const { delivery, text = '', payload, attach, hop, ...rest } = asked
+    const shape = '{ "delivery": "<your id for it>", "text": "…", "payload": <JSON>, "attach": [{ "name", "mime", "data": "<base64>" }], "hop": <count> }'
     if (Object.keys(rest).length) throw failure('API_BAD_REQUEST', `a delivery is ${shape} — not ${Object.keys(rest).join(', ')}`)
     if (typeof delivery !== 'string' || !DELIVERY.test(delivery)) throw failure('API_BAD_REQUEST', 'delivery is your id for it, letters, digits, ., _, : and -, at most 128: the same id twice is delivered once', shape)
     if (typeof text !== 'string') throw failure('API_BAD_REQUEST', 'text is a string', shape)
+    if (hop !== undefined && !(Number.isSafeInteger(hop) && hop >= 0)) throw failure('API_BAD_REQUEST', 'hop is how many deliveries led to this one, a whole number from 0', shape)
     const files = attachmentsOf(attach)
     if (payload !== undefined && files.some(file => file.name === PAYLOAD)) throw failure('API_BAD_REQUEST', `${PAYLOAD} is the payload's name, and a file attached is called so too`, shape)
     if (!text.trim() && payload === undefined && !files.length) throw failure('API_BAD_REQUEST', 'a delivery carries a text, a payload or a file', shape)
     const options = {
       attach: [...(payload === undefined ? [] : [{ name: PAYLOAD, mime: 'application/json', data: Buffer.from(JSON.stringify(payload)) }]), ...files],
       api: caller.name,
+      ...(hop === undefined ? {} : { hop }),
       requestId: `api:${caller.name}:${delivery}`,
       traceparent: formatTraceparent(span) ?? undefined,
       env

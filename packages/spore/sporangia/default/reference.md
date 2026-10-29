@@ -59,7 +59,8 @@ lists what there is to read and `.schema turns` shows one:
 - `inbox` — everything said to you, by `inboxNo`: `text` (or `bodyPath` for a long one),
   `files` (each `path` under `inbox.d/`, or no `path` and `missing` saying why it did not come),
   `schedule` and `due` when the clock said it, `hook`, `hookEvent` and `hookDelivery`
-  when a webhook did, `api` when a program of the operator's delivered it, `startsTurn` 0 for a
+  when a webhook did, `api` when a program of the operator's delivered it and `hop` how many
+  deliveries led to it when it said, `startsTurn` 0 for a
   delivery said past its origin's hourly bound, which started no turn and waited for the next,
   `replyTo` (where the answer to it goes: `terminal`, or a place such as
   `telegram:main/42`), `fromName`, `fromId` and `fromWhere` when a person said it, `consumed` once

@@ -4,9 +4,11 @@ import { dirname, isAbsolute, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { CAIRN_NAME, MAX_SOCKET_PATH, readInstance, serve, tokenVariable } from '@rhizogrip/cairn'
-import { CONFIG_DIR, instanceFile, loadEnvironment, readConfig, recordStarted } from '@rhizogrip/spore'
+import { apiCaller, CONFIG_DIR, instanceFile, loadEnvironment, readConfig, recordStarted } from '@rhizogrip/spore'
+import { statePath } from '@rhizogrip/spore/relay'
 
 import { findings } from '../src/check.js'
+import { startNotifier } from '../src/notifier.js'
 
 const PROGRAM = 'spore-cairn'
 const log = (line) => console.error(`${new Date().toISOString()} ${line}`)
@@ -28,6 +30,7 @@ try {
 
 let root
 let members
+let notify
 try {
   root = readConfig().plugins?.cairn?.settings?.root
 } catch (err) {
@@ -39,7 +42,7 @@ if (!isAbsolute(root) || normalize(root) !== root || root.endsWith('/')) refuse(
 const instance = instanceFile('cairn', name)
 if (!existsSync(instance)) refuse(`there is no ${instance}`, `mkdir -p ${dirname(instance)} — then ${instance} as { "members": { "<spore>": "<role>" }, "kinds": {}, "subjects": {} }`)
 try {
-  members = readInstance(instance).members
+  ({ members, notify } = readInstance(instance))
 } catch (err) {
   refuse(err.message)
 }
@@ -58,8 +61,17 @@ try {
   refuse(err.message, err.detail)
 }
 
+let caller = null
+if (notify) {
+  try {
+    caller = apiCaller(`cairn-${name}`)
+  } catch (err) {
+    refuse(`${name} wakes its members through the HTTP API, as the caller cairn-${name}: ${err.message}`, err.detail)
+  }
+}
+
 if (process.argv.includes('--check')) {
-  console.log(`${PROGRAM} ${name} · ${instance} · ${join(root, name)} · ${socket} · ready`)
+  console.log(`${PROGRAM} ${name} · ${instance} · ${join(root, name)} · ${socket}${caller ? ` · notices through ${caller.socket ?? caller.listen.text}` : ''} · ready`)
   process.exit(0)
 }
 
@@ -69,20 +81,33 @@ const db = join(root, name, 'cairn.sqlite')
 mkdirSync(dirname(db), { recursive: true })
 
 let daemon
+let notifier = null
 try {
-  daemon = await serve({ name, instanceFile: instance, file: db, socket, token })
+  daemon = await serve({ name, instanceFile: instance, file: db, socket, token, appended: () => notifier?.wake() })
 } catch (err) {
   refuse(err.message, err.detail)
 }
-recordStarted(`cairn@${name}`, { root: resolve(dirname(fileURLToPath(import.meta.url)), '..') })
-log(`${PROGRAM} ${name} · ${db} · serving ${socket}`)
+if (caller) {
+  try {
+    notifier = startNotifier({ name, file: db, members, notify, caller, statePath: statePath('cairn', name), log })
+  } catch (err) {
+    await daemon.close()
+    refuse(err.message, err.detail)
+  }
+}
 
 for (const signal of ['SIGTERM', 'SIGINT']) {
-  process.once(signal, () => daemon.close().then(() => {
-    log('stopped')
-    process.exit(0)
-  }, (err) => {
-    log(`stopped — ${err.message}`)
-    process.exit(1)
-  }))
+  process.once(signal, () => {
+    notifier?.stop()
+    daemon.close().then(() => {
+      log('stopped')
+      process.exit(0)
+    }, (err) => {
+      log(`stopped — ${err.message}`)
+      process.exit(1)
+    })
+  })
 }
+
+recordStarted(`cairn@${name}`, { root: resolve(dirname(fileURLToPath(import.meta.url)), '..') })
+log(`${PROGRAM} ${name} · ${db} · serving ${socket}`)

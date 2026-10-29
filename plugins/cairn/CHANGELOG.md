@@ -14,3 +14,7 @@ All notable changes to `@rhizogrip/spore-plugin-cairn` are documented here. Form
   member that cannot reach the cairn and of a spore that can and is no member.
 - `$SPORE_CAIRN`: the cairns a spore reads, read with SQL, and written through the source
   `cairn-<cairn>`, whose runner names the spore and the turn on every entry.
+- Waking members: with `notify` in the instance file, `$SPORE_CAIRN <cairn> subscribe <kind>…` and
+  `unsubscribe`, and the service delivers each subscriber a notice through the HTTP API, as the
+  caller `cairn-<cairn>`, when others write those kinds — at most one per `minDelay`, never for a
+  member's own entries, and none for an entry whose `{hop}` reached `maxHops`.
