@@ -1,0 +1,30 @@
+{
+  "name": "@rhizogrip/cairn",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A shared, append-only, hash-chained record that agents, programs and people write to and read from",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "packages/cairn"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  }
+}
