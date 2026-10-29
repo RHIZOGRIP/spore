@@ -3,6 +3,9 @@
 Images for spores: [sharp](https://sharp.pixelplumbing.com), importable by the programs an
 agent writes.
 
+A plugin for [spore](https://rhizogrip.com); all of them:
+[rhizogrip.com/plugins](https://rhizogrip.com/plugins).
+
 ```
 npm i -g @rhizogrip/spore-plugin-images
 spore plugin allow images

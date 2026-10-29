@@ -5,6 +5,9 @@ host runs the commands a spore's rules allow — a service's status, a restart, 
 the spore's input and output, and refuses everything else. Each spore has its own rules and its
 own socket, and sees no other.
 
+A plugin for [spore](https://rhizogrip.com); all of them:
+[rhizogrip.com/plugins](https://rhizogrip.com/plugins).
+
 ```
 cargo install sluicify                       # sluice, the broker, and sluicify, its client (0.4 or later)
 npm i -g @rhizogrip/spore-plugin-sluice

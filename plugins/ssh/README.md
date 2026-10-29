@@ -3,6 +3,9 @@
 SSH for spores: the keys a host's `ssh-agent` holds, which a spore's `ssh` and `git` can use and
 never read. For any SSH service — a forge, GitHub, a server.
 
+A plugin for [spore](https://rhizogrip.com); all of them:
+[rhizogrip.com/plugins](https://rhizogrip.com/plugins).
+
 ```
 npm i -g @rhizogrip/spore-plugin-ssh
 spore plugin allow ssh socket=/run/user/$(id -u)/spore-ssh-agent.socket

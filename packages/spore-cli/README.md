@@ -14,6 +14,11 @@ Linux x64 or arm64, Node 24 or newer; on macOS, `spore setup` runs spore in a Li
 with Lima. How spore works, what a spore is and every command:
 [the spore README](https://github.com/RHIZOGRIP/spore/blob/main/packages/spore/README.md).
 
+**Start here:** [install](https://rhizogrip.com/install) ·
+[a first spore](https://rhizogrip.com/use) · [plugins](https://rhizogrip.com/plugins) ·
+[security](https://rhizogrip.com/security) ·
+[issues](https://github.com/RHIZOGRIP/spore/issues)
+
 ## License
 
 Apache-2.0

@@ -2,6 +2,9 @@
 
 Web search for spores through the [Brave Search API](https://brave.com/search/api/).
 
+A plugin for [spore](https://rhizogrip.com); all of them:
+[rhizogrip.com/plugins](https://rhizogrip.com/plugins).
+
 ```
 npm i -g @rhizogrip/spore-plugin-brave
 echo 'BRAVE_API_SK=…' >> ~/.config/spore/environment

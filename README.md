@@ -6,6 +6,11 @@ its limits, what it may read and write. Your program sends it a message and foll
 spore runs it in a sandbox the Linux kernel enforces, holds the API keys it never sees, stops it at
 the limits you set, and keeps a record of everything it did.
 
+**Start here:** [install](https://rhizogrip.com/install) ·
+[a first spore](https://rhizogrip.com/use) · [plugins](https://rhizogrip.com/plugins) ·
+[security](https://rhizogrip.com/security) · [building on it](INTEGRATION.md) ·
+[how it works](ARCHITECTURE.md)
+
 ## Why spore
 
 - **An agent is a file, not code.** A spore is declared in a short `.cmk` file, checked strictly.

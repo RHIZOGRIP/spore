@@ -3,6 +3,9 @@
 MCP for spores: a client the agent runs as a program, inside its own sandbox, with each result
 written to a file. Built on the official TypeScript SDK (`@modelcontextprotocol/client`).
 
+A plugin for [spore](https://rhizogrip.com); all of them:
+[rhizogrip.com/plugins](https://rhizogrip.com/plugins).
+
 ```
 npm i -g @rhizogrip/spore-plugin-mcp
 spore plugin allow mcp

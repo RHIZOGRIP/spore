@@ -15,7 +15,12 @@ commands and answers, then exits. An idle spore runs nothing.
 When the work has many similar parts it starts **sub-agents**, each confined to a directory
 of its own.
 
-Design and internals: [ARCHITECTURE.md](https://github.com/RHIZOGRIP/spore/blob/main/ARCHITECTURE.md).
+**Start here:** [install](https://rhizogrip.com/install) ·
+[a first spore](https://rhizogrip.com/use) · [plugins](https://rhizogrip.com/plugins) ·
+[security](https://rhizogrip.com/security) ·
+[building on it](https://github.com/RHIZOGRIP/spore/blob/main/INTEGRATION.md) ·
+[how it works](https://github.com/RHIZOGRIP/spore/blob/main/ARCHITECTURE.md) ·
+[issues](https://github.com/RHIZOGRIP/spore/issues)
 
 ## Install
 

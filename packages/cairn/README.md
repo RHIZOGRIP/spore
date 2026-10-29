@@ -8,7 +8,8 @@ finding is cited by later ones, and a writer can refuse to write over a head tha
 
 This package is the record, its daemon and `cairn verify`. Spores join a cairn through
 [`@rhizogrip/spore-plugin-cairn`](../../plugins/cairn/README.md), which runs the daemon as a
-service, stamps what a spore writes and wakes members with what others wrote.
+service, stamps what a spore writes and wakes members with what others wrote. What a cairn is for,
+with an example: [rhizogrip.com/cairn](https://rhizogrip.com/cairn).
 
 It needs Node 24 or newer whose bundled SQLite is 3.51.3 or newer, and refuses an older one.
 

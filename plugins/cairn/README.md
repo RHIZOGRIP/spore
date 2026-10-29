@@ -6,6 +6,9 @@ A member reads the whole record as a SQLite database and writes to it through a 
 cairn's token never reaches a spore and every entry says which spore wrote it and in which turn.
 The daemon runs on the machine the spores are on as a systemd user unit, one per cairn.
 
+A plugin for [spore](https://rhizogrip.com). What a cairn is for, with an example:
+[rhizogrip.com/cairn](https://rhizogrip.com/cairn).
+
 ```bash
 npm i -g @rhizogrip/spore-plugin-cairn
 spore plugin allow cairn root=/srv/cairns                    # gives spores "$SPORE_CAIRN"

@@ -8,6 +8,9 @@ It runs on the machine the spores are on, once per console, as a systemd user un
 address by default. It gives spores nothing, so it needs no `spore plugin allow`: `spore service` offers it
 once it is installed.
 
+A plugin for [spore](https://rhizogrip.com); all of them:
+[rhizogrip.com/plugins](https://rhizogrip.com/plugins).
+
 ```bash
 npm i -g @rhizogrip/spore-plugin-console
 echo "LAB_CONSOLE_TOKEN=$(openssl rand -hex 32)" >> ~/.config/spore/environment

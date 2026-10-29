@@ -12,6 +12,7 @@
     "url": "git+https://github.com/RHIZOGRIP/spore.git",
     "directory": "plugins/brave"
   },
+  "homepage": "https://rhizogrip.com/plugins",
   "files": [
     "bin/",
     "src/",

@@ -11,6 +11,7 @@
     "url": "git+https://github.com/RHIZOGRIP/spore.git",
     "directory": "plugins/browser"
   },
+  "homepage": "https://rhizogrip.com/plugins",
   "os": [
     "linux"
   ],

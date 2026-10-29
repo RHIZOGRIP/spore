@@ -5,6 +5,9 @@ channel holds many people and many spores; each spore has a role, so `@triage` r
 a person is reached, and each answers under its own name. It runs on the machine the spores are
 on as a systemd user unit.
 
+A plugin for [spore](https://rhizogrip.com); all of them:
+[rhizogrip.com/plugins](https://rhizogrip.com/plugins).
+
 ```bash
 npm i -g @rhizogrip/spore-plugin-discord
 spore plugin allow discord                                   # gives spores "$SPORE_DISCORD"

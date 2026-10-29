@@ -12,6 +12,7 @@
     "url": "git+https://github.com/RHIZOGRIP/spore.git",
     "directory": "plugins/telegram"
   },
+  "homepage": "https://rhizogrip.com/plugins",
   "engines": {
     "node": ">=24"
   },

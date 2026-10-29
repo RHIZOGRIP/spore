@@ -13,6 +13,7 @@
     "url": "git+https://github.com/RHIZOGRIP/spore.git",
     "directory": "packages/cairn"
   },
+  "homepage": "https://rhizogrip.com/cairn",
   "engines": {
     "node": ">=24"
   },

@@ -12,6 +12,7 @@
     "url": "git+https://github.com/RHIZOGRIP/spore.git",
     "directory": "plugins/mcp"
   },
+  "homepage": "https://rhizogrip.com/plugins",
   "files": [
     "bin/",
     "reference.md",

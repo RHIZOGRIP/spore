@@ -3,6 +3,9 @@
 A browser for spores: the agents' own Chrome, reached over the Chrome DevTools Protocol and
 driven by [agent-browser](https://github.com/vercel-labs/agent-browser).
 
+A plugin for [spore](https://rhizogrip.com); all of them:
+[rhizogrip.com/plugins](https://rhizogrip.com/plugins).
+
 ```
 npm i -g @rhizogrip/spore-plugin-browser
 google-chrome --remote-debugging-port=9222 --user-data-dir=<a profile for the agents>

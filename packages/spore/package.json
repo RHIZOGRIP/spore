@@ -21,7 +21,7 @@
     "url": "git+https://github.com/RHIZOGRIP/spore.git",
     "directory": "packages/spore"
   },
-  "homepage": "https://github.com/RHIZOGRIP/spore#readme",
+  "homepage": "https://rhizogrip.com",
   "bugs": {
     "url": "https://github.com/RHIZOGRIP/spore/issues"
   },

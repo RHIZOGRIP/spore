@@ -4,6 +4,9 @@ A service that puts your spores in Telegram chats. It runs on the machine the sp
 on, once per bot, as a systemd user unit. It gives spores nothing, so it needs
 no `spore plugin allow`: `spore service` offers it once it is installed.
 
+A plugin for [spore](https://rhizogrip.com); all of them:
+[rhizogrip.com/plugins](https://rhizogrip.com/plugins).
+
 ```bash
 npm i -g @rhizogrip/spore-plugin-telegram
 echo 'TRIAGE_BOT_TOKEN=…' >> ~/.config/spore/environment     # from @BotFather; it never reaches a spore
