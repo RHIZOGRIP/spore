@@ -61,7 +61,7 @@ async function start () {
 async function stop (child) {
   const exited = new Promise((resolve) => child.once('exit', resolve))
   child.kill('SIGTERM')
-  await exited
+  return exited
 }
 
 function post (body, headers = {}, path = '/append') {
@@ -169,6 +169,8 @@ describe('the daemon', () => {
       expect(res.body.error, label).toMatchObject({ type, detail })
     }
     expect(entries()).toHaveLength(2)
+    expect(await stop(daemon)).toBe(0)
+    daemon = null
     const cairn = openCairn(db, { name: 'ops' })
     expect(cairn.verify()).toEqual({ ok: true, checked: 2 })
     cairn.close()
@@ -204,6 +206,8 @@ describe('the daemon', () => {
     }))
     for (const seqs of seqsOf) expect(seqs).toEqual([...seqs].sort((a, b) => a - b))
     expect(seqsOf.flat().sort((a, b) => a - b)).toEqual(Array.from({ length: 200 }, (_, i) => i + 2))
+    expect(await stop(daemon)).toBe(0)
+    daemon = null
     const cairn = openCairn(db, { name: 'ops' })
     expect(cairn.verify()).toEqual({ ok: true, checked: 201 })
     cairn.close()

@@ -81,5 +81,8 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
   process.once(signal, () => daemon.close().then(() => {
     log('stopped')
     process.exit(0)
+  }, (err) => {
+    log(`stopped — ${err.message}`)
+    process.exit(1)
   }))
 }

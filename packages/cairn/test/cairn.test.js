@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -150,8 +150,38 @@ describe('the chain', () => {
     expect(columns('entries')).toEqual(['seq', 'at', 'kind', 'actor', 'role', 'via', 'id', 'hop', 'refs', 'data', 'v', 'hash'])
     expect(columns('subjects')).toEqual(['key', 'value', 'seq', 'at', 'kind', 'actor', 'role', 'via', 'id', 'hop', 'refs', 'data', 'v', 'hash'])
     expect(columns('head')).toEqual(['seq', 'hash', 'at'])
-    expect(db.prepare('PRAGMA journal_mode').get().journal_mode).toBe('wal')
+    expect(db.prepare('PRAGMA journal_mode').get().journal_mode).toBe('delete')
     db.close()
+  })
+})
+
+describe('the journal', () => {
+  const mode = () => {
+    const db = new DatabaseSync(file, { readOnly: true })
+    const { journal_mode: journal } = db.prepare('PRAGMA journal_mode').get()
+    db.close()
+    return journal
+  }
+
+  it('is WAL while the writer holds the file, and rollback once it lets go, with no sidecars left', () => {
+    const cairn = filled(2)
+    expect(mode()).toBe('wal')
+    cairn.close()
+    expect(mode()).toBe('delete')
+    expect(existsSync(`${file}-wal`)).toBe(false)
+    expect(existsSync(`${file}-shm`)).toBe(false)
+    filled(1).close()
+    expect(mode()).toBe('delete')
+  })
+
+  it('says so when a reader holds the file past the writer closing, and the next writer lets go of it', () => {
+    const cairn = filled(1)
+    const reader = new DatabaseSync(file, { readOnly: true })
+    reader.prepare('SELECT seq FROM head').get()
+    expect(refusal(() => cairn.close())).toMatchObject({ type: 'busy', message: expect.stringMatching(/stays in WAL/) })
+    reader.close()
+    filled(0).close()
+    expect(mode()).toBe('delete')
   })
 })
 

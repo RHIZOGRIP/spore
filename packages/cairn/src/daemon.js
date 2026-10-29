@@ -220,10 +220,14 @@ export async function serve ({ name, instanceFile, file, socket, token }) {
   chmodSync(socket, 0o600)
 
   return {
-    close: () => new Promise((resolve) => {
+    close: () => new Promise((resolve, reject) => {
       server.close(() => {
-        cairn.close()
-        resolve()
+        try {
+          cairn.close()
+          resolve()
+        } catch (err) {
+          reject(err)
+        }
       })
       server.closeAllConnections()
     })

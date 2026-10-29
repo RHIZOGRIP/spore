@@ -29,5 +29,8 @@ if (!token) {
 const daemon = await serve({ name, instanceFile, file: values.db, socket: values.socket, token })
 console.log(`cairn ${name}: serving ${values.socket}`)
 for (const signal of ['SIGTERM', 'SIGINT']) {
-  process.once(signal, () => daemon.close().then(() => process.exit(0)))
+  process.once(signal, () => daemon.close().then(() => process.exit(0), (err) => {
+    console.error(`cairn ${name}: ${err.message}`)
+    process.exit(1)
+  }))
 }

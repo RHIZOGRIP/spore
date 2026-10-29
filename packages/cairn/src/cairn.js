@@ -8,6 +8,9 @@ export const SCHEMA_VERSION = 1
 export const ENVELOPE_VERSION = 1
 
 const WRITER_FIELDS = ['at', 'kind', 'refs', 'data', 'actor', 'id', 'hop']
+const SQLITE_BUSY = 5
+const ENTER_WAL_MS = 5000
+const LEAVE_WAL_MS = 2000
 
 const SCHEMA = `
 CREATE TABLE t_cairn (
@@ -63,11 +66,29 @@ CREATE TRIGGER t_refs_never_removed BEFORE DELETE ON t_refs
 BEGIN SELECT RAISE(ABORT, 'a cairn ref is never removed'); END;
 `
 
+const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+
+/**
+ * A journal-mode switch, retried while another connection holds the file: SQLite runs no busy
+ * handler for it. Null once `patience` is spent.
+ */
+function switchJournal (db, mode, patience) {
+  const deadline = Date.now() + patience
+  for (;;) {
+    try {
+      return db.prepare(`PRAGMA journal_mode = ${mode}`).get().journal_mode
+    } catch (err) {
+      if (err.errcode !== SQLITE_BUSY) throw err
+      if (Date.now() >= deadline) return null
+      pause(20)
+    }
+  }
+}
+
 const sha256 = (text) => createHash('sha256').update(text, 'utf8').digest('hex')
 
 function create (file, name) {
   const db = new DatabaseSync(file)
-  db.exec('PRAGMA journal_mode = WAL')
   db.exec('BEGIN IMMEDIATE')
   try {
     db.exec(SCHEMA)
@@ -111,10 +132,17 @@ function refsOf (refs) {
 
 /**
  * The writer's side of one cairn: `file` is created when absent, and an existing one must be the
- * cairn called `name`. One process appends; anyone may read the file at the same time.
+ * cairn called `name`. One process appends; anyone may read the file at the same time. The file is
+ * in WAL mode while the writer holds it and back in rollback mode once it closes, because a
+ * reader that may create nothing beside the file cannot open a WAL database without its `-shm`.
  */
 export function openCairn (file, { name }) {
   const db = existsSync(file) ? open(file, name) : create(file, name)
+  if (switchJournal(db, 'WAL', ENTER_WAL_MS) !== 'wal') {
+    db.close()
+    throw new CairnError(`${file} stays out of WAL — another connection held it past ${ENTER_WAL_MS} ms`, { type: 'busy', detail: file })
+  }
+  db.exec('PRAGMA synchronous = FULL')
   const last = db.prepare('SELECT seq, hash FROM t_entries ORDER BY seq DESC LIMIT 1')
   const insertEntry = db.prepare('INSERT INTO t_entries (seq, line, hash) VALUES (?, ?, ?)')
   const insertRef = db.prepare('INSERT INTO t_refs (key, value, seq) VALUES (?, ?, ?)')
@@ -196,5 +224,13 @@ export function openCairn (file, { name }) {
     return row ? { ...JSON.parse(row.line), hash: row.hash } : null
   }
 
-  return { name, append, head, since, latest, verify, close: () => db.close() }
+  function close () {
+    const mode = switchJournal(db, 'DELETE', LEAVE_WAL_MS)
+    db.close()
+    if (mode !== 'delete') {
+      throw new CairnError(`${file} stays in WAL — a reader held it past ${LEAVE_WAL_MS} ms, and a confined reader cannot open it until the cairn is opened again`, { type: 'busy', detail: file })
+    }
+  }
+
+  return { name, append, head, since, latest, verify, close }
 }
