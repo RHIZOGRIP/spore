@@ -1,0 +1,72 @@
+{
+  "name": "@rhizogrip/spore-plugin-whatsapp",
+  "version": "0.1.0",
+  "description": "WhatsApp for spores: a business number of yours on Meta's Cloud API, each person's chat reaching their spore, run as a service",
+  "author": {
+    "name": "Christophe Le Bars",
+    "email": "clb@toort.net"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RHIZOGRIP/spore.git",
+    "directory": "plugins/whatsapp"
+  },
+  "homepage": "https://rhizogrip.com/plugins",
+  "engines": {
+    "node": ">=24"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "NOTICE"
+  ],
+  "dependencies": {
+    "marked": "^18.0.11"
+  },
+  "peerDependencies": {
+    "@rhizogrip/spore": "^1.47.0"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "spore": {
+    "works": "^1.47.0",
+    "services": {
+      "whatsapp": {
+        "what": "a business number of yours on WhatsApp, each person's chat reaching their spore",
+        "program": "./bin/spore-whatsapp.js",
+        "instances": {
+          "called": "bot"
+        },
+        "check": [
+          "--check"
+        ]
+      }
+    }
+  },
+  "release-it": {
+    "git": {
+      "requireBranch": "main",
+      "commitMessage": "release: plugin-whatsapp v${version}",
+      "tagName": "plugin-whatsapp-v${version}",
+      "requireUpstream": false,
+      "push": true
+    },
+    "npm": {
+      "publish": false
+    },
+    "github": {
+      "release": false
+    }
+  },
+  "license": "Apache-2.0"
+}

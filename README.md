@@ -190,6 +190,7 @@ The details are in [SECURITY.md](SECURITY.md).
 | [`@rhizogrip/spore-plugin-ssh`](plugins/ssh) | SSH keys spores can use and never read | [README](plugins/ssh/README.md) |
 | [`@rhizogrip/spore-plugin-teams`](plugins/teams) | your spores in Microsoft Teams personal chats and channels, as a service | [README](plugins/teams/README.md) |
 | [`@rhizogrip/spore-plugin-telegram`](plugins/telegram) | your spores in Telegram chats, as a service | [README](plugins/telegram/README.md) |
+| [`@rhizogrip/spore-plugin-whatsapp`](plugins/whatsapp) | your spores in chats with a WhatsApp business number, through Meta's Cloud API, as a service | [README](plugins/whatsapp/README.md) |
 
 ## Working in this repository
 

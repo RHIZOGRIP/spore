@@ -88,6 +88,7 @@ const seenOf = (uploads) => (event) => {
 
 const harness = {
   spec: CONSOLE,
+  conversation: String,
   words: (text) => text,
   formats: false,
   credentials: { TRIAGE_CONSOLE_TOKEN: TOKEN, OTHER_CONSOLE_TOKEN: 'other-token' },

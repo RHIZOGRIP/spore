@@ -159,6 +159,7 @@ const seen = (discord, conversation) => {
 const harness = {
   spec: DISCORD,
   credentials: { DISCORD_BOT_TOKEN: 'the-bot-token', OTHER_BOT_TOKEN: 'another-bot-token' },
+  conversation: String,
   words: (text) => text.replace(/^@triage ?/, '').replace(/\n\n\[Discord channel [^\n]*\]$/, ''),
   formats: false,
   botFile: (bot, table, fields = {}) => ({

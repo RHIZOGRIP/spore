@@ -347,7 +347,7 @@ hook }`.
 - `options`: 1 to 5 choices, `{ id, label, style }` — an `id` of letters, digits, `-` and `_`,
   a plain `label` of at most 40 characters, and `style` `positive`, `destructive` or none.
 - `body`: what is shown, keyed by platform kind (`teams`: an Adaptive Card of version 1.4 or
-  later; `telegram`: `{ html }`) or `default`: `{ text, facts }`, markdown limited to bold, italic,
+  later; `telegram`: `{ html }`; `whatsapp` takes none) or `default`: `{ text, facts }`, markdown limited to bold, italic,
   links and lists, and at most 20 `[label, value]` pairs. The relay uses its platform's entry, else
   `default`, and adds the buttons itself. A platform's own body asks for no input either (in Teams
   no `Input.*`): what is filled in is `fields`.

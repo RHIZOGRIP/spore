@@ -134,6 +134,7 @@ const envelope = (slack, type, payload) => ({ id: `e${++slack.lastMessage}`, typ
 
 const harness = {
   spec: SLACK,
+  conversation: String,
   words: (text) => text,
   formats: true,
   replyInPrivate: false,

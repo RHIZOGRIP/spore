@@ -130,6 +130,7 @@ const said = (one) => {
 
 const harness = {
   spec: TEAMS,
+  conversation: String,
   words: (text) => text,
   formats: true,
   credentials: { TRIAGE_TEAMS_SECRET: 'the-secret', OTHER_TEAMS_SECRET: 'another-secret' },

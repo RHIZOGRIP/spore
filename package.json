@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "lint": "standard",
-    "test": "npm test -w @rhizogrip/spore -w @rhizogrip/spore-cli -w @rhizogrip/cairn -w @rhizogrip/spore-plugin-telegram -w @rhizogrip/spore-plugin-teams -w @rhizogrip/spore-plugin-slack -w @rhizogrip/spore-plugin-images -w @rhizogrip/spore-plugin-documents -w @rhizogrip/spore-plugin-brave -w @rhizogrip/spore-plugin-mcp -w @rhizogrip/spore-plugin-discord -w @rhizogrip/spore-plugin-sluice -w @rhizogrip/spore-plugin-console -w @rhizogrip/spore-plugin-cairn",
+    "test": "npm test -w @rhizogrip/spore -w @rhizogrip/spore-cli -w @rhizogrip/cairn -w @rhizogrip/spore-plugin-telegram -w @rhizogrip/spore-plugin-teams -w @rhizogrip/spore-plugin-whatsapp -w @rhizogrip/spore-plugin-slack -w @rhizogrip/spore-plugin-images -w @rhizogrip/spore-plugin-documents -w @rhizogrip/spore-plugin-brave -w @rhizogrip/spore-plugin-mcp -w @rhizogrip/spore-plugin-discord -w @rhizogrip/spore-plugin-sluice -w @rhizogrip/spore-plugin-console -w @rhizogrip/spore-plugin-cairn",
     "test:rust": "cargo test -p spore-definition -p spore-workspace -p spore-runner",
     "licenses": "node scripts/licenses.js",
     "build": "npm run build -w @rhizogrip/spore",

@@ -132,6 +132,7 @@ const said = (one) => {
 
 const harness = {
   spec: TELEGRAM,
+  conversation: String,
   words: (text) => text,
   formats: true,
   credentials: { TRIAGE_BOT_TOKEN: 'the-bot-token', OTHER_BOT_TOKEN: 'another-bot-token' },

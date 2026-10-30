@@ -555,7 +555,7 @@ outdated, the spore found from the plugin's directory as node finds it. A servic
 the library is the one place a plugin declares `@rhizogrip/spore` as a peer, and the copy it gets
 in a global install is the cost: it may be another version within the range, and a workspace
 another version made is refused at open. Every connector is such a plugin (`plugins/telegram/`,
-`discord/`, `teams/`, `slack/`, `console/`).
+`discord/`, `teams/`, `slack/`, `whatsapp/`, `console/`).
 
 **What a plugin offers is not a boundary.** Its programs run under the agent's sandbox like
 any other, and under a step's confinement where a definition binds one to deliveries; a plugin whose resource the sandbox cannot close — the browser's debugging port —
@@ -2003,6 +2003,11 @@ thread while the routing names channels. Slack's is `plugins/slack/src/adapter.j
 connection the service opens, so nothing listens; a person's direct message keyed by their member
 id, a mention in a channel its thread, routed by the channel as Teams' is; an answer in a direct
 message is a plain new message, since one person's conversation reads in order without a reply.
+WhatsApp's is `plugins/whatsapp/src/adapter.js`: Meta's webhook on loopback behind the operator's
+proxy, each delivery checked against the app secret's signature before it is read; one business
+number a bot, a person's chat keyed by their business-scoped user id, and no conversation many
+people share. WhatsApp lets a business edit nothing it sent (`can.edit` false), so a turn shows
+itself by reaction and typing, and an approval is closed by a reply to it.
 The console's is `plugins/console/src/adapter.js`: its other end is a program, over HTTP on
 loopback, so what the relay does in a person's conversation is written to the console's own event
 log, numbered by a `seq` that never repeats, and the program reads it back from the last `seq` it
