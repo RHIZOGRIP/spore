@@ -4,6 +4,16 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.46.1] — Fix: a ChatGPT-plan turn no longer fails on the moderation event
+
+### Fixed
+
+- mohdel 4.1.0, on both the npm and the Cargo side. A turn on a `chatgpt/` model failed with
+  `Unhandled response stream event: unknown` once the ChatGPT backend began sending a
+  `response.metadata` event mid-stream, which the OpenAI SDK's stream helper refused; mohdel now
+  reads the raw stream and passes over event types it does not use. The same applies to every
+  model on the OpenAI Responses route.
+
 ## [1.46.0] — Feature: a source's header can carry the turn and its hop
 
 ### Added
