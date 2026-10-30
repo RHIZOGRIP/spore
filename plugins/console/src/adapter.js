@@ -51,7 +51,7 @@ export const CONSOLE = {
   check: listenOf,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 1_000_000, file: Infinity, fetch: 25 * 1024 * 1024, editEveryMs: 1000, typingEveryMs: 0 },
-  can: { upload: true, remove: true, react: false, typing: false, choose: true, fields: true },
+  can: { upload: true, edit: true, remove: true, react: false, typing: false, choose: true, fields: true },
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {

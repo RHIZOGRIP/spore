@@ -241,13 +241,14 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
 
   /**
    * `show` is the conversation's, or, where the bot file leaves it, the platform's own for a
-   * conversation many people share (`showShared`), and `working` for one with a single person, who
-   * is shown what the turn does. What the platform adds for one spore (`aside`) follows the text.
+   * conversation many people share (`showShared`), and for one with a single person `working`, so
+   * they are shown what the turn does — or `react` where the platform cannot edit what it posted.
+   * What the platform adds for one spore (`aside`) follows the text.
    */
   const pass = (message, name, ws, { table, react }, attach) => {
     const { conversation } = message
     const routed = table.get(keyOf(conversation))
-    const show = routed.show ?? (message.shared ? adapter.showShared : 'working')
+    const show = routed.show ?? (message.shared ? adapter.showShared : adapter.can.edit ? 'working' : 'react')
     const taken = show === 'working' ? null : react.taken
     const aside = adapter.aside ? adapter.aside(message, name) : null
     if (follows(ws)) save()

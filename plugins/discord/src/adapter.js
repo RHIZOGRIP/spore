@@ -63,7 +63,7 @@ export const DISCORD = {
   check,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '"@<spore> extend wall 30m", "@<spore> extend cost 1.50" or "@<spore> extend rounds 20"' },
   limits: { message: 1800, file: 20 * 1024 * 1024, fetch: 25 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 8000 },
-  can: { upload: true, remove: true, react: true, typing: true, choose: false, fields: false },
+  can: { upload: true, edit: true, remove: true, react: true, typing: true, choose: false, fields: false },
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {

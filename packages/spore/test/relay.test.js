@@ -14,7 +14,7 @@ const SPEC = {
   fields: ['token', 'rooms', 'react'],
   credentials: ['token'],
   stateFields: [],
-  can: { react: true },
+  can: { edit: true, react: true },
   reactions: ['👨‍💻', '💔', '👀'],
   example: '{ "token": "${CHAT_TOKEN}", "rooms": {} }', // eslint-disable-line no-template-curly-in-string
   conversations: {
@@ -52,7 +52,19 @@ describe('a bot file', () => {
     write('ops', { token: '${OPS_TOKEN}', rooms: { r1: { spore: 'triage', show: 'emoji' } } }) // eslint-disable-line no-template-curly-in-string
     expect(() => routesOf(SPEC, path)).toThrow(/shows r1 as "emoji"/)
     write('ops', { token: '${OPS_TOKEN}', rooms: { r1: { spore: 'triage', show: 'both' } } }) // eslint-disable-line no-template-curly-in-string
-    expect(() => routesOf({ ...SPEC, can: { react: false } }, path)).toThrow(/a Chat bot cannot react/)
+    expect(() => routesOf({ ...SPEC, can: { edit: true, react: false } }, path)).toThrow(/a Chat bot cannot react/)
+  })
+
+  it('refuses a working… message where the platform cannot edit one, and a connector that does not say', () => {
+    const path = botPath(SPEC, 'ops', CONFIG)
+    const uneditable = { ...SPEC, can: { edit: false, react: true } }
+    write('ops', { token: '${OPS_TOKEN}', rooms: { r1: { spore: 'triage', show: 'react' }, r2: 'triage' } }) // eslint-disable-line no-template-curly-in-string
+    expect([...routesOf(uneditable, path)].map(([room, { show }]) => [room, show])).toEqual([['r1', 'react'], ['r2', null]])
+    for (const show of ['working', 'both']) {
+      write('ops', { token: '${OPS_TOKEN}', rooms: { r1: { spore: 'triage', show } } }) // eslint-disable-line no-template-curly-in-string
+      expect(() => routesOf(uneditable, path)).toThrow(expect.objectContaining({ type: 'CHAT_BOT_INVALID', message: expect.stringMatching(/cannot edit one it posted/) }))
+    }
+    expect(() => routesOf({ ...SPEC, can: { react: true } }, path)).toThrow(expect.objectContaining({ type: 'CHAT_CONNECTOR_OUTDATED' }))
   })
 
   it('keeps a conversation brief as its entry says, or as the bot says, and refuses brief beside details', () => {

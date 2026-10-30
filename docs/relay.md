@@ -49,7 +49,8 @@ import { runService } from '@rhizogrip/spore/relay'
   `taken` reaction on the person's message, and the platform's typing while the turn runs. `both`.
   Where the routing names none, the platform's own for a conversation many people share
   (`showShared`: Telegram's groups react, Discord's channels show `working…` under the spore's name)
-  and `working` in one with a single person. Under a rate limit, progress and typing are dropped, never queued ahead of
+  and `working` in one with a single person — `react` where the platform cannot edit what the bot
+  posted, which then refuses `working` and `both` in the bot file. Under a rate limit, progress and typing are dropped, never queued ahead of
   an answer.
 - **The answer is a new message replying to the question,** so it notifies however long the turn
   ran; `working…` is then removed, or marked `answered below` where the platform will not remove it,
@@ -119,7 +120,7 @@ The static part, which the relay reads before the service starts:
 | `stateFields` | the adapter's own fields in the state file, handed to its `restore` |
 | `usage` | `{ help, briefHelp, extend }`: the commands as this platform types them — `briefHelp` without `extend`, for a brief conversation |
 | `limits` | `{ message, file, fetch, editEveryMs, typingEveryMs }`: the longest message, the largest upload, the largest file the platform lets a bot fetch, how often `working…` is edited, how often typing is renewed |
-| `can` | `{ upload, remove, react, typing, choose, fields }`: `choose` where it carries approvals, and beside it `fields`, true or false, whether it shows an approval's fields to fill in — where false, the relay refuses an approval with a required field and posts one without its optional ones |
+| `can` | `{ upload, edit, remove, react, typing, choose, fields }`: `edit`, whether the platform lets the bot edit a message it posted — a connector that leaves it out is refused (`<KIND>_CONNECTOR_OUTDATED`); `choose` where it carries approvals, and beside it `fields`, true or false, whether it shows an approval's fields to fill in — where false, the relay refuses an approval with a required field and posts one without its optional ones |
 | `showShared` | how a turn shows itself in a conversation many people share when the routing says nothing: `react` or `working` |
 | `reactions` | the emoji the platform lets a bot react with, or null for any |
 | `refusals` | error types that mean the platform will not have this bot at all: the service exits 2 and is not restarted |
@@ -136,7 +137,7 @@ The live part, made once the credentials are proved:
 | `listen({ onMessage, onChoice, trace, signal, log, sleep })` | the transport, until `signal` aborts; awaits `onMessage` before confirming a message to the platform, and `onChoice` before confirming a press; calls `trace(what, raw)` with each delivery as the platform gave it, `what` naming it (`update 5`), before acting on it; throws an error the platform gave for good |
 | `aside(message, spore)` | optional: a line the spore is given after the text — Discord's pointer to the history it has not heard |
 | `post(conversation, text, { answering, for, markdown, as, turn, origin })` | posts, as a reply to the platform's message `answering` when it is not null — or as a plain new message where a conversation with one person reads in order without one (Slack's direct messages) — and with `markdown` rendered in the platform's own formatting; answers the new message's id. `as` is the spore speaking, or null for the bot itself; `for` is `[{ person, said }]`, whom the post is about, which a platform that cannot reply shows instead — and pings when it is the answer. The first post of a turn's answer also carries `turn`, `{ turnNo, stopReason }`, and `origin`, what said it when nobody in the conversation did (`schedule "digest"`), else null — for a platform whose reader is a program; in a brief conversation too, where the text leaves them out |
-| `edit(conversation, note, text, { for })` | edits a message the bot posted; an edit that changes nothing is not a failure |
+| `edit(conversation, note, text, { for })` | where `can.edit`: edits a message the bot posted; an edit that changes nothing is not a failure |
 | `remove(conversation, note)` | where `can.remove` |
 | `upload(conversation, { path, mime }, caption, { as })` | where `can.upload` |
 | `react(conversation, message, emoji, was)` | where `can.react`: the bot's reaction on a person's message moved from `was` to `emoji`, either of them null for none |

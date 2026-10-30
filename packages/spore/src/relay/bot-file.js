@@ -139,11 +139,16 @@ function routesFrom (spec, raw, path) {
 /**
  * The routing, each conversation's `show` checked: how a turn shows itself there — `working`, the
  * `working…` message edited as it goes; `react`, a reaction on the message and the platform's
- * typing; `both` — or null where the bot file leaves it to the kind of conversation. Each
+ * typing; `both` — or null where the bot file leaves it to the kind of conversation. `working` and
+ * `both` need a platform that edits what the bot posted (`can.edit`); a connector that does not say
+ * whether it does is refused rather than guessed at. Each
  * conversation's `brief` is its own or the bot's: a brief conversation is told its spore's state
  * and its answers, and nothing of how it runs, so it cannot also ask for `details`.
  */
 export function routesOf (spec, path) {
+  if (typeof spec.can.edit !== 'boolean') {
+    throw new SporeError(`the ${spec.label} connector does not say whether it edits a message it posted`, { type: typeOf(spec, 'CONNECTOR_OUTDATED'), detail: `it was written before spore 1.47.0, which asks every connector for can.edit — upgrade the ${spec.label} plugin` })
+  }
   const raw = readBot(spec, path)
   spec.check?.(raw, path)
   const table = routesFrom(spec, raw, path)
@@ -159,6 +164,9 @@ export function routesOf (spec, path) {
     }
     if (show !== null && show !== 'working' && !spec.can.react) {
       throw new SporeError(`${path} shows ${conversation} with a reaction, and a ${spec.label} bot cannot react`, { type: typeOf(spec, 'BOT_INVALID'), detail: 'show is working there' })
+    }
+    if (show !== null && show !== 'react' && !spec.can.edit) {
+      throw new SporeError(`${path} shows ${conversation} with a working… message, and a ${spec.label} bot cannot edit one it posted`, { type: typeOf(spec, 'BOT_INVALID'), detail: 'show is react there' })
     }
   }
   return table

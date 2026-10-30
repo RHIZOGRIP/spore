@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-discord",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Discord for spores: people and spores in one channel, each spore addressed by its role, run as a service",
   "author": {
     "name": "Christophe Le Bars",
@@ -47,7 +47,7 @@
         "url": "https://discord.com/api/v10/channels/",
         "headers": {
           "Authorization": "Bot ${DISCORD_BOT_TOKEN}",
-          "User-Agent": "DiscordBot (https://github.com/RHIZOGRIP/spore, 0.11.0)"
+          "User-Agent": "DiscordBot (https://github.com/RHIZOGRIP/spore, 0.11.1)"
         },
         "paths": [
           "*/messages"

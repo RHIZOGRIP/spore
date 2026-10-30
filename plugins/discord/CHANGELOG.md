@@ -4,6 +4,13 @@ All notable changes to `@rhizogrip/spore-plugin-discord` are documented here, fr
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [0.11.1] — Changed: says that Discord edits what the bot posted
+
+### Changed
+
+- The adapter declares `can.edit`, which spore 1.47.0 asks of every connector and refuses one
+  without.
+
 ## [0.11.0] — Feature: mentioning the bot reaches a channel's only spore
 
 ### Added

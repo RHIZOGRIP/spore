@@ -4,6 +4,21 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.47.0] — Feature: a connector says whether its platform edits what it posted
+
+### Added
+
+- `can.edit` in a connector's adapter (`docs/relay.md`): whether the platform lets the bot edit a
+  message it posted. Where it does not, a person's own conversation is shown a turn by reaction and
+  typing rather than a `working…` message, and a bot file asking `show: working` or `both` there
+  is refused with the line to fix.
+
+### Changed
+
+- **Breaking for connectors:** an adapter that does not declare `can.edit` is refused
+  (`<KIND>_CONNECTOR_OUTDATED`), its service exiting 2. The Telegram, Discord, Teams, Slack and
+  console plugins declare it from their next release; upgrade them with the core.
+
 ## [1.46.1] — Fix: a ChatGPT-plan turn no longer fails on the moderation event
 
 ### Fixed
