@@ -186,7 +186,8 @@ tag. The tag fires `.github/workflows/publish.yml`, which:
 The release is the workflow's, with its own token, so nothing on the releasing machine needs one.
 
 A plugin is released on its own: bump its `version`, commit, and run `node scripts/tag-plugins.js`,
-which tags `plugin-<name>-v<version>` for every plugin whose version has no tag yet and pushes it.
+which tags `plugin-<name>-v<version>` for every plugin whose version has no tag yet and pushes it,
+passing over one marked `"private": true` in its `package.json`.
 `.github/workflows/publish-plugin.yml` publishes from the tag. A plugin that needs a new core says so
 in `works`. `@rhizogrip/cairn` is released on its own the same way, from the tag
 `package-cairn-v<version>`, which `npx release-it` in `packages/cairn/` bumps, commits and pushes.

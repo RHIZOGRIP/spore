@@ -725,23 +725,32 @@ pub fn unpause(slots: &Path) -> io::Result<bool> {
     }
 }
 
+/// Whether a turn may start at all: refused while the user's spores are paused. Every way a turn
+/// is admitted asks it — a slot taken, or a turn the caller admits.
+pub fn admit(slots: &Path) -> io::Result<Result<(), Refusal>> {
+    let Some(mark) = paused(slots)? else {
+        return Ok(Ok(()));
+    };
+    let since = match (mark["at"].as_str(), mark["why"].as_str()) {
+        (Some(at), Some(why)) => format!("since {at} ({why})"),
+        (Some(at), None) => format!("since {at}"),
+        _ => "by a mark with no date".to_string(),
+    };
+    Ok(Err(Refusal {
+        kind: "PAUSED",
+        message: "your spores are paused".into(),
+        detail: format!(
+            "{since} — nothing was said or started; spore unpause lets turns start again"
+        ),
+    }))
+}
+
 /// A free admission slot, held until its descriptor closes. Refused while the user's spores
 /// are paused and when every slot is held: waiting is a policy, and it belongs to the caller.
 pub fn take_slot(turns: u32, dir: &Path) -> io::Result<Result<Slot, Refusal>> {
     DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
-    if let Some(mark) = paused(dir)? {
-        let since = match (mark["at"].as_str(), mark["why"].as_str()) {
-            (Some(at), Some(why)) => format!("since {at} ({why})"),
-            (Some(at), None) => format!("since {at}"),
-            _ => "by a mark with no date".to_string(),
-        };
-        return Ok(Err(Refusal {
-            kind: "PAUSED",
-            message: "your spores are paused".into(),
-            detail: format!(
-                "{since} — nothing was said or started; spore unpause lets turns start again"
-            ),
-        }));
+    if let Err(refusal) = admit(dir)? {
+        return Ok(Err(refusal));
     }
     for i in 0..turns {
         let path = dir.join(i.to_string());
@@ -1569,8 +1578,11 @@ mod tests {
         assert!(already);
         assert_eq!(held, mark);
 
+        assert_eq!(admit(&dir).unwrap().unwrap_err(), refused);
+
         assert!(unpause(&dir).unwrap());
         assert!(take_slot(4, &dir).unwrap().is_ok());
+        assert!(admit(&dir).unwrap().is_ok());
 
         fs::write(pause_path(&dir), "").unwrap();
         assert_eq!(paused(&dir).unwrap(), Some(json!({})));

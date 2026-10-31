@@ -38,7 +38,11 @@ const KEPT_HELD = {
  * null when unsaid, `perHour` the file's own default (`perHour`, null for none). A spore's own jobs
  * are bounded in its `spore.cmk`. `refused(problem, detail)` is the error the file's loader throws.
  */
-export function deliveryBounds (raw, refused, { perHour: unsaidPerHour = null } = {}) {
+export function deliveryBounds (raw, refused, { perHour: unsaidPerHour = null, callerAdmits = false } = {}) {
+  const timing = callerAdmits ? ['maxWait', 'perHour'].filter(key => raw[key] !== undefined) : []
+  if (timing.length) {
+    throw refused(`has ${timing.join(' and ')}, and this host's caller admits its turns (admission: caller)`, 'under caller admission the program in front of spore decides when a turn starts and how many, and spore holds nothing for later — remove it')
+  }
   const maxWait = raw.maxWait === undefined ? null : durationMs(String(raw.maxWait))
   if (raw.maxWait !== undefined && !(maxWait > 0)) {
     throw refused(`has a maxWait spore cannot read — ${JSON.stringify(raw.maxWait)}`, 'the longest a spore\'s router or triage cell may keep a delivery waiting, as 30m or 2h')
@@ -47,7 +51,7 @@ export function deliveryBounds (raw, refused, { perHour: unsaidPerHour = null } 
   if (!Number.isInteger(perDay) || perDay < 1) {
     throw refused(`has a perDay that is not a count — ${JSON.stringify(raw.perDay)}`, 'how many triage cells its deliveries may start in a spore a day, a whole number from 1')
   }
-  const perHour = raw.perHour ?? unsaidPerHour
+  const perHour = raw.perHour ?? (callerAdmits ? null : unsaidPerHour)
   if (perHour !== null && (!Number.isInteger(perHour) || perHour < 1)) {
     throw refused(`has a perHour that is not a count — ${JSON.stringify(raw.perHour)}`, 'how many of its deliveries may start a turn in a spore an hour, a whole number from 1')
   }

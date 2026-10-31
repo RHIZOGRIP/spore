@@ -33,6 +33,7 @@ import { parseDefinition } from '../delegation/definition.js'
 import { RUNNING, stateOf } from './state.js'
 import { SPORANGIUM_RECORD } from './sporangia.js'
 import { SporeError } from '../observability/errors.js'
+import { CONFIG_FILE } from '../library/config.js'
 
 export const FORK_FILE = 'fork.json'
 
@@ -258,7 +259,7 @@ export function forkWorkspace ({ run, at = null, into, definition, replay = fals
  */
 export function fork ({ run, at = null, into, definition, replay = false, debug = false, env = process.env }) {
   if (betweenTurns(at)) return forkWorkspace({ run, at, into, definition, replay })
-  return withSlot(slot => {
+  return withSlot(CONFIG_FILE, slot => {
     const made = forkWorkspace({ run, at, into, definition, replay })
     return { ...made, pid: startRunner(made.ws, { slot, plugins: preparePlugins(made.ws), debug, continuing: true, env }) }
   })

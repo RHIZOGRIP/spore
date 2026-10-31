@@ -17,7 +17,7 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, resolve, join } from 'node:path'
+import { basename, dirname, resolve, join } from 'node:path'
 
 import { isWorkspace, sporesInHome } from './discover.js'
 import { native } from '../native.js'
@@ -157,10 +157,22 @@ function validate (raw, file) {
       detail: 'gate is the data socket of the mohdel gate every turn calls its models through, as a single path'
     })
   }
+  if (raw.admission !== undefined && !ADMISSIONS.includes(raw.admission)) {
+    throw new SporeError(`${file} has an admission that is not spore or caller`, {
+      type: 'CONFIG_INVALID',
+      detail: ADMISSION_DETAIL
+    })
+  }
   if (raw.turns !== undefined && !(Number.isInteger(raw.turns) && raw.turns >= 1)) {
     throw new SporeError(`${file} has a turns that is not a count`, {
       type: 'CONFIG_INVALID',
       detail: 'turns is how many of your turns may run at once, a whole number from 1'
+    })
+  }
+  if (raw.admission === 'caller' && raw.turns !== undefined) {
+    throw new SporeError(`${file} has a turns, and its caller admits turns`, {
+      type: 'CONFIG_INVALID',
+      detail: 'turns bounds turns under spore admission; under caller admission the program in front of spore bounds them — spore config rm turns'
     })
   }
   if (raw.modelSessions !== undefined && !(Number.isInteger(raw.modelSessions) && raw.modelSessions >= 1)) {
@@ -251,6 +263,17 @@ export const containing = (config) => config.contain ?? DEFAULTS.contain
 /** The longest `prepare.timeout` a spore may ask of this host, in ms: what the operator set, or an hour. */
 export const prepareCeilingMs = (config) => config.prepareCeiling === undefined ? DEFAULTS.prepareCeiling : native.durationMs(config.prepareCeiling)
 
+const admissionOf = (value) => {
+  if (ADMISSIONS.includes(value)) return value
+  throw new SporeError(`admission is spore or caller, not "${value}"`, { type: 'CONFIG_INVALID', detail: ADMISSION_DETAIL })
+}
+
+/** Whether the program in front of spore admits every turn on this host, so spore takes no slot and holds nothing for later. */
+export const callerAdmits = (config) => (config.admission ?? DEFAULTS.admission) === 'caller'
+
+/** The `config.json` beside a file that lives with it — `api.json`, `hooks.json`. */
+export const configBeside = (path) => resolve(dirname(path), basename(CONFIG_FILE))
+
 const docsOf = (value) => {
   if (DOCS.includes(value)) return value
   throw new SporeError(`docs is follow or kept, not "${value}"`, { type: 'CONFIG_INVALID', detail: DOCS_DETAIL })
@@ -279,8 +302,10 @@ export function existing (paths) {
   return { live, missing }
 }
 
-const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'turns', 'modelSessions', 'gate', 'callCeiling', 'prepareCeiling', 'largestFile', 'freeFloor', 'contain', 'docs'])
+const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'admission', 'turns', 'modelSessions', 'gate', 'callCeiling', 'prepareCeiling', 'largestFile', 'freeFloor', 'contain', 'docs'])
 const DOCS = ['follow', 'kept']
+const ADMISSIONS = ['spore', 'caller']
+const ADMISSION_DETAIL = 'admission says who admits turns: spore, counting them in turns slots and holding deliveries for later, or caller, the one program in front of spore that schedules every turn, which spore then starts at once or refuses — spore config set admission spore|caller'
 const APPROVALS_DETAIL = `approvals names each hook an approval may call, by a name of ${NAMES.approval.says}, as { "kpi": { "url": "https://…", "secret": "\${KPI_HOOK_SECRET}" } } — the secret set in environment beside config.json`
 const DOCS_DETAIL = 'docs says whether a runner starts by replacing the root documents that differ from what is installed (follow) or leaves them to spore upgrade (kept) — spore config set docs follow|kept'
 const SWITCHES = { on: true, off: false }
@@ -431,6 +456,7 @@ export function unsetPlugin (name, file = CONFIG_FILE) {
 
 /** What spores may use when the configuration says nothing, from the crate that enforces it. */
 export const DEFAULTS = Object.freeze({
+  admission: 'spore',
   turns: native.defaultTurns(),
   modelSessions: native.defaultModelSessions(),
   largestFile: native.defaultLargestFile(),
@@ -449,6 +475,7 @@ export function settings (file = CONFIG_FILE) {
   const current = raw(file)
   return [...KEYS].map(key => {
     if (current[key] !== undefined) return { key, value: current[key], from: 'set' }
+    if (key === 'turns' && callerAdmits(current)) return { key, value: null, from: 'unset' }
     if (key in DEFAULTS) return { key, value: SIZES.has(key) ? sizeSpelling(DEFAULTS[key]) : DURATIONS.has(key) ? durationSpelling(DEFAULTS[key]) : DEFAULTS[key], from: 'default' }
     return { key, value: LISTS.has(key) ? [] : null, from: 'unset' }
   }).concat(current.plugins === undefined ? [] : [{ key: 'plugins', value: Object.keys(current.plugins), from: 'set' }])
@@ -467,7 +494,7 @@ export function setKey (key, value, file = CONFIG_FILE) {
   if (key === 'homeSplit' && Number(value) !== (current.homeSplit ?? null)) refuseRelayout(current, Number(value))
   const next = LISTS.has(key)
     ? value.split(',').map(v => store(v.trim())).filter(Boolean)
-    : COUNTS.has(key) ? Number(value) : SIZES.has(key) || DURATIONS.has(key) ? value : key === 'contain' ? switchOf(value) : key === 'docs' ? docsOf(value) : store(value)
+    : COUNTS.has(key) ? Number(value) : SIZES.has(key) || DURATIONS.has(key) ? value : key === 'contain' ? switchOf(value) : key === 'docs' ? docsOf(value) : key === 'admission' ? admissionOf(value) : store(value)
   const written = { ...current, [key]: next }
   validate(written, file)
   if (key === 'home') checkLayout(expand(next), written.homeSplit ?? null, file)

@@ -346,4 +346,11 @@ describe('api.json', () => {
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], perDay: 0 } } }), env)).toThrow(/caller "a" has a perDay that is not a count — 0/)
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], router: { plugin: 'pdf', name: 'pages' } } } }), env)).toThrow(/router for a, which api.json no longer binds/)
   })
+
+  it('refuses a caller\'s maxWait and perHour on a host whose caller admits turns', () => {
+    writeFileSync(join(root, 'config.json'), JSON.stringify({ admission: 'caller' }))
+    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], maxWait: '30m' } } }), env)).toThrow(/caller "a" has maxWait, and this host's caller admits its turns/)
+    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], perHour: 2, maxWait: '1h' } } }), env)).toThrow(/caller "a" has maxWait and perHour, and/)
+    expect(loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], perDay: 5 } } }), env).callers[0]).toMatchObject({ maxWait: null, perDay: 5, perHour: null })
+  })
 })

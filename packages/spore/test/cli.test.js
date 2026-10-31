@@ -4,15 +4,15 @@ import { homedir, tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { bytesOf, CONFIG_FILE, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, workspaceFor, containing, followingDocs, prepareCeilingMs, secondsOf } from '../src/library/config.js'
+import { bytesOf, CONFIG_FILE, DEFAULTS, readConfig, existing, getKey, setKey, addTo, removeFrom, recordLayout, settings, workspaceFor, containing, followingDocs, prepareCeilingMs, secondsOf } from '../src/library/config.js'
 import { workspacesIn, isWorkspace } from '../src/library/discover.js'
 import { define, defaultModel, defaultSporangiumPath, switchModel, edit, flush, grantOf, list, log, pause, show, sporePaths, precursors, schedules, setDefaultModel, setSchedule, removeSchedule, sql, unpause, usage } from '../src/library/verbs.js'
 import { billingOf } from 'mohdel/providers'
 import { definitionWith } from '../src/testing.js'
-import { takeSlot } from '../src/core/admission.js'
+import { pauseSpores, takeSlot, unpauseSpores } from '../src/core/admission.js'
 import { send } from '../src/core/send.js'
 import { tick } from '../src/core/tick.js'
-import { acquireLock, appendTurn, enqueue, readInbox, readTranscript, readTranscriptEntries, releaseLock, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
+import { acquireLock, appendTurn, enqueue, readInbox, readTranscript, readTranscriptEntries, readTurns, releaseLock, writeTranscriptEntries, writeTurnRecords } from '../src/core/spore-dir.js'
 import { outsideRoot } from './fixtures/outside-ws.js'
 import { allowPlugin } from '../src/core/plugins.js'
 import { linkGrants, openWorkspace } from '../src/core/workspace.js'
@@ -1223,7 +1223,7 @@ describe('send, as the library the command is built on', () => {
   it('refuses a turn when every slot is held, and says nothing', () => {
     const ws = made()
     oneTurn()
-    const held = takeSlot()
+    const held = takeSlot(CONFIG_FILE)
     try {
       expect(() => send(ws, 'too many', { env: { PATH: process.env.PATH } }))
         .toThrow(expect.objectContaining({ type: 'ADMISSION_FULL' }))
@@ -1247,11 +1247,44 @@ describe('send, as the library the command is built on', () => {
     expect(readInbox(ws).map(m => m.text)).toEqual(['yes'])
   })
 
+  it('under caller admission starts a turn with every slot held, and refuses one only while paused', async () => {
+    const ws = made()
+    const held = Array.from({ length: DEFAULTS.turns }, () => takeSlot(CONFIG_FILE))
+    try {
+      expect(() => takeSlot(CONFIG_FILE)).toThrow(expect.objectContaining({ type: 'ADMISSION_FULL' }))
+      mkdirSync(dirname(CONFIG_FILE), { recursive: true })
+      writeFileSync(CONFIG_FILE, JSON.stringify({ admission: 'caller' }))
+
+      pauseSpores({ why: 'maintenance' })
+      expect(() => send(ws, 'while paused', { env: { PATH: process.env.PATH } }))
+        .toThrow(expect.objectContaining({ type: 'PAUSED' }))
+      expect(readInbox(ws)).toEqual([])
+      unpauseSpores()
+
+      expect(send(ws, 'past every slot', { env: { PATH: process.env.PATH } }).started).toBe(true)
+      await until(() => stateOf(ws).state !== RUNNING && readTurns(ws).length === 1)
+      expect(readFileSync(resolve(ws, 'spore.err'), 'utf8')).not.toMatch(/admission slot/)
+    } finally {
+      for (const slot of held) closeSync(slot.fd)
+    }
+  })
+
+  it('under caller admission refuses to start a spore whose jobs wait, saying what to remove', async () => {
+    const ws = made()
+    const definition = resolve(ws, 'spore.cmk')
+    writeFileSync(definition, readFileSync(definition, 'utf8').replace('\n---\n', '\njobs: [2, 1m]\njobs.maxWait: 2h\n---\n'))
+    mkdirSync(dirname(CONFIG_FILE), { recursive: true })
+    writeFileSync(CONFIG_FILE, JSON.stringify({ admission: 'caller' }))
+    expect(send(ws, 'hello', { env: { PATH: process.env.PATH } }).started).toBe(true)
+    await until(() => stateOf(ws).state !== RUNNING && readTurns(ws).length === 1)
+    expect(readTurns(ws)[0]).toMatchObject({ stopReason: 'error', error: 'START_FAILED', detail: expect.stringMatching(/grants jobs.maxWait, and this host's caller admits its turns.*remove jobs.maxWait/) })
+  })
+
   it('needs no slot to reach a turn already running', () => {
     const ws = made()
     acquireLock(ws)
     oneTurn()
-    const held = takeSlot()
+    const held = takeSlot(CONFIG_FILE)
     try {
       expect(send(ws, 'joining', { env: { PATH: process.env.PATH } }).started).toBe(false)
       expect(readInbox(ws).map(m => m.text)).toEqual(['joining'])

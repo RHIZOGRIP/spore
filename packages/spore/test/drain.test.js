@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { callEmbedding } from 'mohdel/client'
 
 import { takeSlot } from '../src/core/admission.js'
+import { CONFIG_FILE } from '../src/library/config.js'
 import { enqueue, readLock, readTreeKey, readPending, readTurns } from '../src/core/spore-dir.js'
 import { stateOf, stop } from '../src/core/state.js'
 import { KEY_HEADER } from '../src/infra/socket-request.js'
@@ -100,7 +101,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
 const startTurn = (source = session(marks), extra = []) => {
   const script = resolve(root, 'session.mjs')
   writeFileSync(script, source)
-  const slot = takeSlot()
+  const slot = takeSlot(CONFIG_FILE)
   const err = openSync(resolve(ws, 'spore.err'), 'a')
   enqueue(ws, 'go')
   try {

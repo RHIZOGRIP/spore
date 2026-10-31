@@ -235,7 +235,8 @@ Match a reply to what your user said through `inbox`: the turn that answered it 
 who said what; your service keeps that, keyed by `inbox`.
 
 A service that starts turns is their parent process. Under systemd it runs with
-`KillMode=process`, so a restart of the service does not kill the turns it started.
+`KillMode=process`, so a restart of the service does not kill the turns it started. A service
+that schedules every turn itself chooses caller admission ([Who admits turns](#who-admits-turns)).
 
 ### Delivering answers elsewhere
 
@@ -565,6 +566,9 @@ program reads `payload.json` on its stdin, or nothing without one. When the spor
 a triage cell for `api:<caller>`, it may keep the delivery waiting, at most your caller's `maxWait`
 in `api.json` ([docs/operating.md](docs/operating.md#the-http-api-service)) —
 `"outcome": "held — timed by <router>"`. `started` is then false: the turn starts on release.
+spore releases a held delivery itself when its step ends; one whose release is refused then — every
+turn slot taken — waits for a `spore tick` pass, and a host that runs none never releases it
+([Who admits turns](#who-admits-turns)).
 
 ### Errors
 
@@ -772,6 +776,34 @@ inbox positions of its own messages, and nothing else.
 the turn; `stop(ws)` does. spore never retries a refused `send` or a failed turn; retrying is up to
 you.
 
+### Who admits turns
+
+Two modes, set once for every spore of the user by `admission` in `config.json`
+([docs/operating.md](docs/operating.md#configjson)):
+
+- **spore admission** (`"admission": "spore"`, the default) — spore bounds how many of the user's
+  turns run at once, `turns` of them (8 unless set), because nothing else does when many programs
+  start turns — chat services, webhooks, `spore tick` — and none knows the others. It holds what it
+  cannot start yet and releases it on a `spore tick` pass.
+- **caller admission** (`"admission": "caller"`) — one program starts every turn on the host and
+  decides itself how many run: a scheduler, a job queue. spore takes no slot and holds nothing for
+  later: a turn starts now, or the program gets a refusal it can retry.
+
+| | spore admission | caller admission |
+|---|---|---|
+| who bounds the turns running at once | spore, `turns` slots | your program |
+| more turns than that | `ADMISSION_FULL` | never refused for that |
+| a caller's or a hook's `maxWait` and `perHour`, a spore's `jobs.maxWait` | allowed | refused when the service, or the turn, starts |
+| needs `spore tick` | for what it holds, schedules and dreams | for schedules and dreams only |
+| fits | a machine where many programs start turns | one program starts every turn |
+
+Left at spore admission behind a scheduler, the slots are a second gate under yours, which your
+scheduler cannot see: past it `send`, `fork` and the API refuse `ADMISSION_FULL`, and a delivery
+whose release finds every slot taken waits for a pass. Under caller admission your program owns the
+bound on the machine: how many turns it admits must fit the host's memory and CPU
+([ARCHITECTURE §What a turn holds](ARCHITECTURE.md#what-a-turn-holds)), and nothing in spore stops
+it admitting more. `turns` is refused beside `"admission": "caller"`. A pause holds in both modes.
+
 ### Idempotency
 
 Send every message that might be sent twice under a `requestId` (`--request-id`, `"requestId"`).
@@ -786,7 +818,7 @@ program driving spores meets most; every function's own list is in [docs/library
 
 | `type` | from | meaning |
 |---|---|---|
-| `ADMISSION_FULL` | `send`, `fork` | every one of the user's turn slots is held. Nothing was said, unless the error's `detail` says the message is in the inbox (a running turn let go at that moment); the next turn reads it then. `retryable` |
+| `ADMISSION_FULL` | `send`, `fork` | every one of the user's turn slots is held. Nothing was said, unless the error's `detail` says the message is in the inbox (a running turn let go at that moment); the next turn reads it then. Never under caller admission ([Who admits turns](#who-admits-turns)). `retryable` |
 | `PAUSED` | `send`, `fork` | `spore pause` is in force. Clears with `unpause` ([docs/operating.md](docs/operating.md#pausing-every-spore)) |
 | `NOT_A_WORKSPACE` | the read verbs, the API | no spore by that name, or the caller does not reach it |
 | `CONFIG_NO_HOME`, `CONFIG_BAD_NAME` | `workspaceFor` | a name with no `home` set; a name that is not one path segment |

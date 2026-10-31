@@ -1,6 +1,7 @@
 {
   "name": "@rhizogrip/spore-plugin-whatsapp",
   "version": "0.1.0",
+  "private": true,
   "description": "WhatsApp for spores: a business number of yours on Meta's Cloud API, each person's chat reaching their spore, run as a service",
   "author": {
     "name": "Christophe Le Bars",

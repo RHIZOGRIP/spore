@@ -1409,6 +1409,19 @@ HTTP API answers `503`.
 **The directory is outside every sandbox grant.** `flock` needs only a readable descriptor, so
 a slot a confined agent could open is a slot it could hold.
 
+**Caller admission takes none.** The slots bound turns when nothing else does — many programs
+starting runners, none knowing the others. A host where one program starts every turn and
+schedules them says so with `admission: caller`, and the slots would only be a second gate under
+its own, which it cannot see. There `take_slot` is not called: the pause is still asked
+(`admit`, `rust/workspace`, the same refusal `take_slot` makes), and the runner is started with
+`--caller-admits` instead of `--slot` and no fd 3. Whether a runner gets a slot or the flag is read
+from what was taken, not from the setting again, so the two cannot disagree; `check_slot` refuses
+both together and neither, and guards what it guarded before — a runner is started through `send`
+or `fork`. Nothing is held for a pass in that mode, since a pass over every spore does not scale
+to a host of many: a
+caller's or a hook's `maxWait` and `perHour` are refused when their service starts, and the runner
+refuses a `spore.cmk` with `jobs.maxWait`.
+
 **A pause is a mark beside the slots**, `$XDG_STATE_HOME/spore/paused`, holding when it was
 made and why, if said (`pause`, `rust/workspace`). `spore pause` writes it first and then stops
 every running turn and every running job of the user's spores, so nothing starts behind the

@@ -4,6 +4,29 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.48.0] — Feature: caller admission, for a host whose program schedules every turn
+
+### Added
+
+- `admission` in `config.json` (`spore config set admission caller`): who admits turns on the
+  host (INTEGRATION.md, "Who admits turns"). `"spore"`, the default, is how spore worked until now:
+  `turns` admission slots bound the turns running at once, and a delivery refused at release waits
+  for a `spore tick` pass. Under `"caller"`, the program in front of spore schedules every turn:
+  spore takes no slot, never refuses `ADMISSION_FULL`, and keeps nothing for later — a turn starts
+  now or the program gets a refusal it can retry. A pause still refuses `PAUSED`; a job's turns
+  start as before, the work of a turn the caller admitted.
+- Under caller admission, what would keep a delivery for later is refused when it starts: `turns`
+  in `config.json` (`CONFIG_INVALID`), a caller's or a hook's `maxWait` and `perHour` in
+  `api.json` and `hooks.json` (a hook gets no default `perHour` there), and a `spore.cmk` granting
+  `jobs.maxWait` (`START_FAILED`, naming the line to remove).
+
+### Changed
+
+- The five sporangia: a reply to what the agent proposed that does not clearly say go or no-go —
+  agreement, a correction, a narrower scope — is not a go-ahead. The agent takes it in, then asks
+  through `ask` whether to go ahead with the proposal as it now stands. A spore made before keeps
+  its own `spore.cmk`.
+
 ## [1.47.0] — Feature: a connector says whether its platform edits what it posted
 
 ### Added

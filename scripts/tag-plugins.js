@@ -2,7 +2,8 @@
 /**
  * Tags each plugin whose package.json version has no plugin-<name>-v<version> tag on origin, and
  * pushes those tags, which is what publishes them (.github/workflows/publish-plugin.yml). A
- * plugin is released by bumping its version and committing it; the others are left alone.
+ * plugin is released by bumping its version and committing it; the others are left alone, and so
+ * is one marked `"private": true`.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -24,7 +25,8 @@ const due = []
 for (const name of readdirSync(join(ROOT, 'plugins')).sort()) {
   const file = join(ROOT, 'plugins', name, 'package.json')
   if (!existsSync(file)) continue
-  const { version } = JSON.parse(readFileSync(file, 'utf8'))
+  const { version, private: unreleased } = JSON.parse(readFileSync(file, 'utf8'))
+  if (unreleased) continue
   const tag = `plugin-${name}-v${version}`
   if (pushed.has(tag)) continue
   if (!git('tag', '--list', tag)) git('tag', tag)

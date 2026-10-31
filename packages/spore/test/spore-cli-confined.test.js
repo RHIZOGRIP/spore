@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url'
 import { startGate } from './fixtures/model-server.js'
 import { outcome } from '../src/library/watch.js'
 import { SLOT_DIR, takeSlot } from '../src/core/admission.js'
+import { CONFIG_FILE } from '../src/library/config.js'
 import { containCheck } from '../src/core/command.js'
 import { allowPlugin } from '../src/core/plugins.js'
 import { hostFlags } from '../src/core/send.js'
@@ -422,7 +423,7 @@ describe('a confined turn', () => {
     await start(async (input, round) => round === 0
       ? calls('wsexec', { command: 'printf %s "$FIXTURE_GREETING" > data/env.txt', out: 'data/log.txt' })
       : answers('seen'))
-    const slot = takeSlot()
+    const slot = takeSlot(CONFIG_FILE)
     enqueue(ws, 'look')
     try {
       spawn(RUNNER, ['--ws', ws, '--slot', slot.path, ...hostFlags({ gate: gate.socketPath }, [])], {

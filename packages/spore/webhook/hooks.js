@@ -10,7 +10,7 @@ import { dirname, resolve } from 'node:path'
 import Ajv from 'ajv'
 
 import { CONFIG_FILE, SporeError } from '../src/index.js'
-import { HOOKS_FILE, readJson } from '../src/library/config.js'
+import { HOOKS_FILE, callerAdmits, configBeside, readConfig, readJson } from '../src/library/config.js'
 import { sizeBytes } from '../src/delegation/definition.js'
 import { deliveryBounds } from '../src/core/route.js'
 import { NAMES } from '../src/core/names.js'
@@ -141,6 +141,7 @@ export function loadHooks (path = hooksPath(), env = process.env) {
     })
   }
   const raw = readJson(path, 'WEBHOOK_INVALID')
+  const admitting = callerAdmits(readConfig(configBeside(path)))
   const hooks = new Map()
   for (const [name, hook] of Object.entries(raw)) {
     if (!NAMES.hook.pattern.test(name)) throw refuse(path, name, 'has a name that cannot be part of a URL', NAMES.hook.says)
@@ -166,7 +167,7 @@ export function loadHooks (path = hooksPath(), env = process.env) {
     const accept = hook.accept === undefined ? null : parseAccept(path, name, hook.accept)
     const maxBytes = hook.maxBytes === undefined ? DEFAULT_MAX_BYTES : sizeBytes(hook.maxBytes)
     if (!(maxBytes > 0)) throw refuse(path, name, `has a maxBytes spore cannot read — ${hook.maxBytes}`, 'a size such as 1MB or 512KB')
-    const { maxWait, perDay, perHour } = deliveryBounds(hook, (problem, detail) => refuse(path, name, problem, detail), { perHour: DEFAULT_PER_HOUR })
+    const { maxWait, perDay, perHour } = deliveryBounds(hook, (problem, detail) => refuse(path, name, problem, detail), { perHour: DEFAULT_PER_HOUR, callerAdmits: admitting })
     hooks.set(name, { name, spores, accepts, check, accept, maxBytes, perHour, maxWait, perDay })
   }
   return hooks

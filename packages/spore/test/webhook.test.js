@@ -119,6 +119,16 @@ describe('hooks.json', () => {
     expect(refusal(() => loadHooks(join(dir, 'hooks.json'), {})).message).toMatch(/maxWait/)
   })
 
+  it('refuses maxWait and perHour on a host whose caller admits turns, and bounds no hour when unsaid', () => {
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({ admission: 'caller' }))
+    writeHooks({ x: { spore: 'main', verify: { token: 'a' }, maxWait: '2h' } })
+    expect(refusal(() => loadHooks(join(dir, 'hooks.json'), {})).message).toMatch(/has maxWait, and this host's caller admits its turns/)
+    writeHooks({ x: { spore: 'main', verify: { token: 'a' }, perHour: 10 } })
+    expect(refusal(() => loadHooks(join(dir, 'hooks.json'), {})).message).toMatch(/has perHour, and/)
+    writeHooks({ x: { spore: 'main', verify: { token: 'a' } } })
+    expect(loadHooks(join(dir, 'hooks.json'), {}).get('x')).toMatchObject({ maxWait: null, perHour: null })
+  })
+
   it('takes perDay as a count of triage cells, 100 when unsaid', () => {
     writeHooks({ x: { spore: 'main', verify: { token: 'a' } } })
     expect(loadHooks(join(dir, 'hooks.json'), {}).get('x').perDay).toBe(100)
@@ -448,7 +458,7 @@ describe('the service', () => {
     configure({ turns: 1 })
     given.release = null
     await start(forge)
-    const taken = takeSlot()
+    const taken = takeSlot(CONFIG_FILE)
     try {
       expect((await fetch(`${base}/hook/forge`, signed('{}'))).status).toBe(202)
     } finally {

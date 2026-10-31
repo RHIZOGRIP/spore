@@ -40,6 +40,7 @@ use tokio::sync::watch;
 struct Args {
     ws: PathBuf,
     slot: Option<String>,
+    caller_admits: bool,
     host: HostArgs,
     sources: Option<PathBuf>,
     plugin_sources: serde_json::Map<String, serde_json::Value>,
@@ -63,6 +64,7 @@ fn parse_args() -> Args {
     let mut args = Args {
         ws: PathBuf::from("."),
         slot: None,
+        caller_admits: false,
         host: HostArgs::default(),
         sources: None,
         plugin_sources: serde_json::Map::new(),
@@ -91,6 +93,7 @@ fn parse_args() -> Args {
         match arg.as_str() {
             "--ws" => args.ws = PathBuf::from(value("--ws")),
             "--slot" => args.slot = Some(value("--slot")),
+            "--caller-admits" => args.caller_admits = true,
             "--sources" => args.sources = Some(PathBuf::from(value("--sources"))),
             "--plugin-sources" => {
                 let given = value("--plugin-sources");
@@ -138,8 +141,15 @@ fn bytes(name: &str, given: &str) -> u64 {
         .unwrap_or_else(|_| fail(format!("{name} is a number of bytes — got {given}")))
 }
 
-/// The admission slot, handed over by `send()` or `fork()` as fd 3 and held until this exits.
-fn check_slot(slot: Option<&str>) {
+/// The admission slot, handed over by `send()` or `fork()` as fd 3 and held until this exits —
+/// or, on a host whose caller admits turns, none, which `send()` and `fork()` say instead.
+fn check_slot(slot: Option<&str>, caller_admits: bool) {
+    if caller_admits {
+        if slot.is_some() {
+            fail("a runner holds an admission slot or its caller admits it, not both — start it through send() or fork()")
+        }
+        return;
+    }
     let held = std::fs::read_link("/proc/self/fd/3").ok();
     let named = slot.and_then(|s| std::fs::canonicalize(s).ok());
     if held.is_none() || held != named {
@@ -347,7 +357,7 @@ async fn follow_limits(
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let args = parse_args();
-    check_slot(args.slot.as_deref());
+    check_slot(args.slot.as_deref(), args.caller_admits);
     let node = args.host.node.clone().unwrap_or_else(|| fail("a runner is told which node to start the agent with — start it through send() or fork()"));
     let ws = std::path::absolute(&args.ws)
         .unwrap_or_else(|e| fail(format!("{} — {e}", args.ws.display())));
@@ -419,6 +429,22 @@ async fn main() {
         .iter()
         .map(|grant| PathBuf::from(&grant.path))
         .collect();
+    if args.caller_admits
+        && def
+            .jobs
+            .as_ref()
+            .is_some_and(|jobs| jobs.max_wait.is_some())
+    {
+        refuse(
+            &ws,
+            lock,
+            &started_at,
+            &format!(
+                "{} grants jobs.maxWait, and this host's caller admits its turns (admission: caller): a job's delivery starts a turn or is refused, never held — remove jobs.maxWait",
+                ws.join(DEFINITION_FILE).display()
+            ),
+        );
+    }
     if let Some(problem) = writes_refusal(&root(), &ws, &writes, &reads) {
         refuse(
             &ws,

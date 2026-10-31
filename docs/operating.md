@@ -48,7 +48,8 @@ The file is written whole and renamed into place.
 | `home` | the one directory spores are made in, one per subdirectory; not itself a spore | a bare name cannot be resolved |
 | `homeSplit` | how many of a spore's last characters name the directory it sits in under `home`, 1 to 8 | flat: every spore directly under `home` |
 | `workspaces` | spores living outside `home`, as paths | none |
-| `turns` | how many of your turns may run at once | 8 |
+| `admission` | who admits turns: `spore`, bounding them by `turns` and holding what it cannot start yet, or `caller`, the one program in front of spore that schedules every turn ([INTEGRATION §Who admits turns](../INTEGRATION.md#who-admits-turns)) | `spore` |
+| `turns` | how many of your turns may run at once, under spore admission; refused beside `"admission": "caller"` | 8 |
 | `modelSessions` | how many model calls one running turn and its cells may have going at once | 8 |
 | `gate` | the data socket of a mohdel gate every turn calls its models through | each turn starts its own model sessions |
 | `callCeiling` | how long one model call may run before it is cut as stalled, as `3h`, `90m` or `45s` | 1 h |
@@ -97,6 +98,10 @@ spore config rm largestFile        # back to the default
   spore created.
   `spore send` and `spore fork` say so and stop; `spore tick` holds a due schedule for a later
   pass; the chat plugins answer busy; the HTTP API answers `503`.
+- **`admission`** — `caller` takes no slot, so `turns` never binds: the program in front of spore
+  bounds the turns, and they must fit the machine. spore holds nothing for later there, so a
+  caller's or a hook's `maxWait` or `perHour` is refused when its service starts, and a spore whose
+  `spore.cmk` has `jobs.maxWait` is refused its turn, `START_FAILED`.
 - **`modelSessions`** — a model call that finds every session busy waits for one; the turn's
   `wall` bounds the wait.
 - **`gate`** — a turn's model calls go to that gate under its spore's `auth`, and so do those of
@@ -241,7 +246,7 @@ What the user's spores share while they run, under `$XDG_STATE_HOME/spore/`, els
 
 | path | what it is |
 |---|---|
-| `slots/` | the admission slots, `0` … `turns`−1; a running turn holds one's `flock` |
+| `slots/` | the admission slots, `0` … `turns`−1; a running turn holds one's `flock`. Unused under caller admission |
 | `paused` | `{ at, why? }`, present while `spore pause` is in force; a file made by hand pauses as well |
 | `tick.lock` | held by the pass that fires schedules |
 | `jobs/<run>.lock` | held by a job's supervisor while the job runs |
@@ -426,8 +431,8 @@ A hook name is letters, digits, `.`, `-` and `_`, starting with a letter or digi
 | `verify` | how a request proves it is the sender's (below) | required: a hook without it is refused |
 | `accept` | which requests are kept: `{ "header", "values": [ … ] }` keeps a request whose header has one of the values; `{ "payload": <JSON Schema> }` keeps one whose JSON body matches; both may be given. One that keeps everything is refused | keep everything |
 | `maxBytes` | the largest body, as `1MB` or `512KB`; past it, `413` | `1MB` |
-| `perHour` | deliveries the hook may let start a turn in each spore an hour, counted from the spore's own records; past it a delivery is said and starts nothing | `30` |
-| `maxWait` | the longest the spore's router or triage cell may keep a delivery waiting, as `30m` or `2h` | none: released as soon as it is timed |
+| `perHour` | deliveries the hook may let start a turn in each spore an hour, counted from the spore's own records; past it a delivery is said and starts nothing. Refused under caller admission | `30`; none under caller admission |
+| `maxWait` | the longest the spore's router or triage cell may keep a delivery waiting, as `30m` or `2h`. Refused under caller admission | none: released as soon as it is timed |
 | `perDay` | triage cells the hook may start in each spore a day; past it a delivery is said at once | `100` |
 
 What a delivery goes through before a turn reads it is the spore's: the program its `spore.cmk`
@@ -489,12 +494,13 @@ node bin/spore-api.js --check     # read api.json and the environment, print whe
 - `maxWait` is the longest the spore's router or triage cell for `api:<caller>` may keep a
   delivery from the caller (`POST /v1/spores/<name>/deliveries`) waiting, as a hook's `maxWait`
   ([§Webhooks](#webhooks)); absent, it is released as soon as it is timed. What prepares it is
-  the spore's `prepare:`, never `api.json`'s, and a caller with a `router` is refused.
+  the spore's `prepare:`, never `api.json`'s, and a caller with a `router` is refused. Refused
+  under caller admission ([§`config.json`](#configjson)).
 - `perDay` is how many triage cells the caller's deliveries may start in each spore a day, as a
   hook's `perDay`; past it a delivery is delivered at once. Absent, `100`.
 - `perHour` is how many of the caller's deliveries may start a turn in each spore an hour, as a
   hook's `perHour`; past it a delivery is said and starts nothing, and the next turn reads it.
-  Absent, no bound.
+  Absent, no bound. Refused under caller admission.
 - `--tick` runs the schedule pass (`spore tick`) every minute, for a container without a timer.
 - Exit code 2 means the configuration was refused; the unit does not restart after it.
 

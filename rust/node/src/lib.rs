@@ -292,6 +292,16 @@ pub fn take_slot(turns: u32, dir: String) -> napi::Result<String> {
     )
 }
 
+/// Whether a turn the caller admits may start: `{}`, or the refusal while the spores whose slots
+/// are in `dir` are paused.
+#[napi]
+pub fn admit(dir: String) -> napi::Result<String> {
+    Ok(match workspace::admit(Path::new(&dir)).map_err(failed)? {
+        Ok(()) => "{}".to_string(),
+        Err(refusal) => refused(&refusal),
+    })
+}
+
 /// The pause in force on the spores whose slots are in `dir`, as JSON, or null.
 #[napi]
 pub fn paused(dir: String) -> napi::Result<Option<String>> {

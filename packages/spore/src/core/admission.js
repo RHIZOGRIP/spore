@@ -7,11 +7,14 @@
  *
  * The directory is outside every path the sandbox grants. `flock` needs only a readable
  * descriptor, so a slot an agent could open is a slot an agent could hold.
+ *
+ * Under caller admission (`admission: caller`) the program in front of spore bounds the turns,
+ * so no slot is taken; the pause still holds.
  */
 
 import { closeSync } from 'node:fs'
 
-import { readConfig } from '../library/config.js'
+import { callerAdmits, readConfig } from '../library/config.js'
 import { native } from '../native.js'
 import { SporeError } from '../observability/errors.js'
 
@@ -19,34 +22,42 @@ export const SLOT_DIR = native.slotDir()
 
 export const DEFAULT_TURNS = native.defaultTurns()
 
+const refused = (error, context) => new SporeError(error.message, { type: error.type, retryable: true, detail: error.detail, context })
+
 /**
- * A free slot, held by this process until `fd` closes. Refused while the user's spores are paused
- * (`PAUSED`) and when every one is held (`ADMISSION_FULL`): nothing waits here, because waiting
- * is a policy and it belongs to the caller. The rule is `rust/workspace`'s.
+ * A free slot, held by this process until `fd` closes — under the admission `configFile` names.
+ * Refused while the user's spores are paused (`PAUSED`) and when every one is held
+ * (`ADMISSION_FULL`): nothing waits here, because waiting is a policy and it belongs to the
+ * caller. Under caller admission it takes none, `{ fd: null, path: null }`, and only the pause
+ * refuses. The rule is `rust/workspace`'s.
  *
- * @returns {{ fd: number, path: string }}
+ * @returns {{ fd: number|null, path: string|null }}
  */
-export function takeSlot () {
-  const turns = readConfig().turns ?? DEFAULT_TURNS
-  const taken = JSON.parse(native.takeSlot(turns, SLOT_DIR))
-  if (taken.error) {
-    throw new SporeError(taken.error.message, {
-      type: taken.error.type,
-      retryable: true,
-      detail: taken.error.detail,
-      context: { turns, dir: SLOT_DIR }
-    })
+export function takeSlot (configFile) {
+  const config = readConfig(configFile)
+  if (callerAdmits(config)) {
+    refusePaused()
+    return { fd: null, path: null }
   }
+  const turns = config.turns ?? DEFAULT_TURNS
+  const taken = JSON.parse(native.takeSlot(turns, SLOT_DIR))
+  if (taken.error) throw refused(taken.error, { turns, dir: SLOT_DIR })
   return taken
 }
 
-/** `then(slot)` with a slot `takeSlot()` took, let go on every way out: a runner `then` starts holds its own. */
-export function withSlot (then) {
-  const slot = takeSlot()
+/** Throws `PAUSED` while the user's spores are paused; under caller admission, what admits a turn or a delivery. */
+export function refusePaused () {
+  const admitted = JSON.parse(native.admit(SLOT_DIR))
+  if (admitted.error) throw refused(admitted.error, { dir: SLOT_DIR })
+}
+
+/** `then(slot)` with a slot `takeSlot(configFile)` took, let go on every way out: a runner `then` starts holds its own. */
+export function withSlot (configFile, then) {
+  const slot = takeSlot(configFile)
   try {
     return then(slot)
   } finally {
-    closeSync(slot.fd)
+    if (slot.fd !== null) closeSync(slot.fd)
   }
 }
 

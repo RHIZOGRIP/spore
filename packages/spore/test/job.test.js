@@ -229,7 +229,7 @@ describe('what a job says', () => {
     mkdirSync(dirname(CONFIG_FILE), { recursive: true })
     writeFileSync(CONFIG_FILE, JSON.stringify({ turns: 1 }))
     given.release = null
-    const taken = takeSlot()
+    const taken = takeSlot(CONFIG_FILE)
     try {
       await deliverJob(ws, { name: 'scan', run: 'r-1', event: 'ended', ref: 'ended', text: 'The job exited 0 after 3m.', report }, { env: {}, log: (line) => logs.push(line) })
     } finally {

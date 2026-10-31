@@ -150,7 +150,8 @@ Limits that protect the computer — how many spores work at once, how big a fil
 disk must stay free, how long a model call may run — are set by the computer's owner, once for all
 spores, and not in each spore's file. A spore writing a helper must not decide how safe the computer
 is. When a limit is reached, spore says no; it keeps no waiting line. Whoever asked decides when to
-try again.
+try again. An owner whose own program already decides how many work at once says so, once
+(`admission: caller`), and spore then counts nothing beside it.
 
 ## Where things live
 

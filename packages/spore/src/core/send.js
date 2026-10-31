@@ -83,7 +83,7 @@ export function send (ws, message, { attach = [], schedule, hook, from, tracepar
 
   if (stateOf(workspace).state !== RUNNING) {
     const plugins = preparePlugins(workspace, { config: readConfig(configFile) })
-    return withSlot(slot => {
+    return withSlot(configFile, slot => {
       const said = enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo, approval })
       try {
         return start(slot, plugins, said)
@@ -100,7 +100,7 @@ export function send (ws, message, { attach = [], schedule, hook, from, tracepar
   if (stateOf(workspace).state === RUNNING) return { ws: workspace, started: false, pid: null, ...said }
   try {
     const plugins = preparePlugins(workspace, { config: readConfig(configFile) })
-    return withSlot(slot => start(slot, plugins, said))
+    return withSlot(configFile, slot => start(slot, plugins, said))
   } catch (err) {
     throw inInbox(err)
   }
@@ -125,13 +125,13 @@ export function release (ws, { now = Date.now(), env = process.env, configFile =
     const released = releaseHeld(workspace, at, { due: false })
     if (!released.length || stateOf(workspace).state === RUNNING || late.every(startsNone)) return { ws: workspace, released, started: false }
     const plugins = preparePlugins(workspace, { config: readConfig(configFile) })
-    return withSlot(slot => ({ ws: workspace, released, started: true, pid: startRunner(workspace, { slot, plugins, env, configFile }) }))
+    return withSlot(configFile, slot => ({ ws: workspace, released, started: true, pid: startRunner(workspace, { slot, plugins, env, configFile }) }))
   }
   const due = heldIn(workspace).filter(row => row.releaseAt <= at || row.deadline <= at)
   if (!due.length) return { ws: workspace, released: [], started: false }
   if (due.every(startsNone)) return { ws: workspace, released: releaseHeld(workspace, at, { due: true }), started: false }
   const plugins = preparePlugins(workspace, { config: readConfig(configFile) })
-  return withSlot(slot => {
+  return withSlot(configFile, slot => {
     const released = releaseHeld(workspace, at, { due: true })
     return { ws: workspace, released, started: true, pid: startRunner(workspace, { slot, plugins, env, configFile }) }
   })
@@ -143,7 +143,8 @@ export function release (ws, { now = Date.now(), env = process.env, configFile =
  * a turn a fork carried on rather than on the inbox.
  *
  * The slot goes to it as fd 3 and is held by the runner alone, which marks it
- * close-on-exec so the agent it starts does not inherit it. It starts the agent with the
+ * close-on-exec so the agent it starts does not inherit it; under caller admission there is none,
+ * and the runner is told so. It starts the agent with the
  * Node this process runs on, and is told where the host describes its sources and what the
  * spore's plugins add to its agent's environment. `env` and `configFile` are what the caller was
  * launched with; the runner gets `env` as `turnEnv` makes it from `configFile`.
@@ -162,7 +163,7 @@ export function startRunner (workspace, { slot, plugins, debug = false, continui
   try {
     const runner = spawn(RUNNER, [
       '--ws', workspace,
-      '--slot', slot.path,
+      ...(slot.fd === null ? ['--caller-admits'] : ['--slot', slot.path]),
       ...hostFlags(config, plugins.contain),
       '--sources', resolve(dirname(config.file), SOURCES_FILE),
       '--memory', resolve(dirname(config.file), MEMORY_FILE),
@@ -174,7 +175,7 @@ export function startRunner (workspace, { slot, plugins, debug = false, continui
       ...(debug ? ['--debug'] : []),
       ...(continuing ? ['--continue'] : []),
       ...(dream ? ['--dream'] : [])
-    ], { detached: true, stdio: ['ignore', out, err, slot.fd], env: environment })
+    ], { detached: true, stdio: ['ignore', out, err, ...(slot.fd === null ? [] : [slot.fd])], env: environment })
     runner.unref()
     return runner.pid
   } finally {
@@ -210,5 +211,5 @@ export function startDream (ws, { env = process.env, configFile = CONFIG_FILE } 
   const workspace = resolve(ws)
   if (stateOf(workspace).state === RUNNING) return { ws: workspace, started: false }
   const plugins = preparePlugins(workspace, { config: readConfig(configFile) })
-  return withSlot(slot => ({ ws: workspace, started: true, pid: startRunner(workspace, { slot, plugins, env, configFile, dream: true }) }))
+  return withSlot(configFile, slot => ({ ws: workspace, started: true, pid: startRunner(workspace, { slot, plugins, env, configFile, dream: true }) }))
 }
