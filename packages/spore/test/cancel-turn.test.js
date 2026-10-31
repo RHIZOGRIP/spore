@@ -92,10 +92,11 @@ describe('a turn stopped from outside', () => {
 
     const child = spawn(process.execPath, [SPORE, 'send', ws, 'delegate this'], { env: env(), stdio: ['ignore', 'pipe', 'pipe'] })
 
-    // Wait until the cell is actually running: its workspace holds a start frame and
-    // its lock is held. Signalling before that would test a different thing.
+    // Wait until the cell is actually running and waiting on its model call: its workspace
+    // holds a start frame, its lock is held, and the gate has its call. Signalling before
+    // that would test a different thing.
     const cell = resolve(ws, 'data/cell')
-    expect(await until(async () => existsSync(resolve(cell, 'spawn.json')) && held(cell))).toBe(true)
+    expect(await until(async () => existsSync(resolve(cell, 'spawn.json')) && held(cell) && release !== undefined)).toBe(true)
 
     // `spore send` only follows the turn now, so killing it walks away rather than
     // cancelling. Stopping is its own verb, and it reaches the runner through the lock.
