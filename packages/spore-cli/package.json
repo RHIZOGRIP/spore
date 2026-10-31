@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-cli",
-  "version": "1.49.0",
+  "version": "1.49.1",
   "author": {
     "name": "Christophe Le Bars",
     "email": "clb@toort.net"
@@ -54,7 +54,7 @@
     "minimist": "^1.2.8"
   },
   "optionalDependencies": {
-    "@rhizogrip/spore": "1.49.0"
+    "@rhizogrip/spore": "1.49.1"
   },
   "license": "Apache-2.0"
 }
