@@ -34,7 +34,7 @@
     "marked": "^18.0.11"
   },
   "peerDependencies": {
-    "@rhizogrip/spore": "^1.47.0"
+    "@rhizogrip/spore": "^1.49.0"
   },
   "scripts": {
     "test": "vitest run"
