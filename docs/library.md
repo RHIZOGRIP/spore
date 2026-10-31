@@ -344,17 +344,24 @@ hook }`.
 
 - `to`: the conversation, as a reply-to place (`telegram:main/42`), never `terminal`.
 - `by`: who may answer, by the id their bot file knows them by, 1 to 50 of them.
-- `options`: 1 to 5 choices, `{ id, label, style }` — an `id` of letters, digits, `-` and `_`,
-  a plain `label` of at most 40 characters, and `style` `positive`, `destructive` or none.
+- `options`: 1 to 5 choices, `{ id, label, style, skip }` — an `id` of letters, digits, `-` and `_`,
+  a plain `label` of at most 40 characters, `style` `positive`, `destructive` or none, and `skip`
+  true on one taken without the fields (a Cancel).
 - `body`: what is shown, keyed by platform kind (`teams`: an Adaptive Card of version 1.4 or
   later; `telegram`: `{ html }`; `whatsapp` takes none) or `default`: `{ text, facts }`, markdown limited to bold, italic,
   links and lists, and at most 20 `[label, value]` pairs. The relay uses its platform's entry, else
   `default`, and adds the buttons itself. A platform's own body asks for no input either (in Teams
   no `Input.*`): what is filled in is `fields`.
-- `fields`: 1 to 5 things to fill in, `{ id, label, value, required }` — an `id` as an option's, a
-  `label` as an option's, `value` the text it starts with (at most 2000 characters) and `required`
-  true or false, both optional. A platform that shows no fields refuses an approval with a
-  required one, and posts one without its optional ones.
+- `fields`: 1 to 5 things to fill in, each with an `id` and a `label` as an option's:
+  - a text, `{ id, label, value, required, lines }` — `value` the text it starts with (at most 2000
+    characters), `required` true or false, `lines` 1 to 10, a long text above 1; all optional;
+  - a choice, `{ id, kind: 'choice', label, choices, least, most, value, look }` — `choices` 1 to
+    100 `{ id, label }`, `least` and `most` how many may be picked (0 and 1 when left out), `value`
+    the ids picked at first, `look` `list` or `menu`, a hint.
+
+  A platform refuses an approval with a required text or any choice it cannot show — more choices
+  than it holds, several to pick where it lets one be — and posts one without the optional texts it
+  cannot show.
 - `within`: how long it stays open — a duration (`2h`) or working days (`2wd`), `24h` when left
   out. Working days need `calendar`: `{ tz, days, holidays }`, `days` Monday to Friday when left
   out.
@@ -381,7 +388,8 @@ The approvals of the spore at `ws`, oldest first. A record carries the request �
 `place`, `approvers`, `options`, `body`, `fields`, `within`, `calendar`, `until`, `hook` — and how far it
 went: `state` (`asked`, `posted`, `answered`, `expired` or `refused`), `shown` (what the platform
 was given, buttons included) and `note` (its id there), `postedAt`, `choice`, `inputs` (what was
-filled in of its `fields`, `{ <id>: <text> }`, where the platform shows them), `answererId`, `answererName`, `answeredAt`, `outcome`
+filled in of its `fields`, `{ <id>: <text> }` for a text and `{ <id>: [<choice id>, …] }` for a
+choice, where the platform shows them; null for an option that skips them), `answererId`, `answererName`, `answeredAt`, `outcome`
 (the hook's: `confirmed` or `failed`), `reason`, `replaced` (what the question was replaced
 with), `tell` (what the hook said the spore should know), `settledAt`, and `told`, whether the
 spore was told. `open` keeps those a relay still has work on: not settled, or answered or expired
@@ -411,8 +419,8 @@ answerApproval(ws, id, { choice, inputs, person: { id, name } }) → { taken, re
 ```
 
 Records a press on a posted approval before its deadline, when `person` is among its `approvers`,
-`choice` among its options and `inputs` fit its fields (`inputsProblem`) — the first such press
-only. Anything else changes nothing and is `{ taken: false, reason }`, `reason` what the person
+`choice` among its options and `inputs` fit its fields (`inputsProblem`), or the option skips them,
+recorded then without them — the first such press only. Anything else changes nothing and is `{ taken: false, reason }`, `reason` what the person
 pressing is told: `this is not yours to answer`, `that is not one of its choices`, what is missing
 from the fields, `this was answered already`, `this question is closed`, `this question is not
 open here`. That the platform vouched for `person` is the caller's to have checked.

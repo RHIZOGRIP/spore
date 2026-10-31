@@ -79,7 +79,7 @@ export const TEAMS = {
   routeOf: (conversation) => conversation.split(THREAD)[0],
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 40000, file: 0, fetch: 25 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 4000 },
-  can: { upload: false, edit: true, remove: true, react: false, typing: false, choose: true, fields: true },
+  can: { upload: false, edit: true, remove: true, react: false, typing: false, choose: true, fields: { text: true } },
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {

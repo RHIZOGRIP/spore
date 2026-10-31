@@ -4,6 +4,33 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.49.0] — Feature: an approval asks choices to be picked
+
+### Added
+
+- A choice among an approval's `fields`: `{ "id": "env", "kind": "choice", "label": "Where",
+  "choices": [{ "id": "prod", "label": "Production" }, …], "least": 0, "most": 1, "value":
+  ["prod"], "look": "list" }` — 1 to 100 choices, `least` and `most` how many may be picked (0 and
+  1 when unsaid), `value` the ids picked at first, `look` `list` or `menu`, a hint the service
+  fills in when left out. What a press picked reaches the hook in `inputs` as an array of ids.
+- `lines` on a text field: above 1, a long text.
+- `"skip": true` on an option: a press on it is taken without the fields, required or not — a
+  Cancel needs no reason.
+
+### Changed
+
+- **Breaking for connectors:** `can.fields` says which kinds of field a connector shows, `{}`,
+  `{ "text": true }` or with `"choice": { "several", "list", "menu" }` — whether several may be
+  picked, and the most choices it shows as a list and as a menu. A connector carrying approvals
+  whose `fields` is still true or false is refused (`<KIND>_CONNECTOR_OUTDATED`), its service
+  exiting 2: upgrade the Telegram, Discord, Teams, Slack and console plugins with the core, each
+  now needing 1.49.0.
+- An approval with a choice the connector of its place cannot show — any choice where it shows
+  none, more choices than it holds, several to pick where it lets one be — is refused there, its
+  hook told why; a choice is never shown cut down or left out.
+- A connector that shows its fields only once a button is pressed is handed `formOf` by the relay
+  (`docs/relay.md`), which says what the press is to fill in first, taking nothing.
+
 ## [1.48.0] — Feature: caller admission, for a host whose program schedules every turn
 
 ### Added

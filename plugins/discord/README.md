@@ -112,8 +112,17 @@ the spore's default place, `replyTo` in `config.json` — `"triage": "discord:op
 bot, that channel — labelled with where it came from, and nowhere when the turn ended `quiet`. A
 default naming a channel this bot's file does not give the spore is refused, and the log says why.
 
-An approval asked in a Discord channel is refused for now, and the asker's hook is told: Discord
-carries none yet.
+## Approvals
+
+An approval asked in a channel ([INTEGRATION §Asking a person to approve](https://github.com/RHIZOGRIP/spore/blob/main/INTEGRATION.md#asking-a-person-to-approve))
+is posted under the spore's name, its default body as Discord's Markdown, a button per option. A
+press is taken only from someone the approval names; Discord tells whoever pressed, and only
+them, what came of it. An approval with fields opens a form when its button is pressed — Discord
+shows inputs nowhere else — holding each of them: a text, short or long, and a choice as a radio
+group, checkboxes (up to 10 choices) or a menu (up to 25). Submitting it is the press. An option
+that skips the fields, a Cancel, answers at once. Once it is answered or expires, its buttons go
+and how it ended is written below it. Discord takes no approval body of its own yet: give it a
+`default`.
 
 ## What it guarantees
 
@@ -130,8 +139,8 @@ carries none yet.
 
 ## Seeing what Discord sends
 
-`"trace": true` in the bot file writes every message to the service's log, one line each, as
-Discord sent it. It is read on every message, so it is turned on and off by editing the file, with
+`"trace": true` in the bot file writes every message and every press of a button or a form to the
+service's log, one line each, as Discord sent it. It is read on every message, so it is turned on and off by editing the file, with
 no restart; leave it off once you have seen what you needed.
 
 ## What it keeps

@@ -117,6 +117,7 @@ const harness = {
     return { id, message: String(said.event.seq), from: { name: conversation, id: `console:${conversation}`, where: 'the console "triage"' } }
   },
   seen: (stand, conversation) => stand.events.after(conversation, 0, 100_000).flatMap(seenOf(stand.uploads)),
+  form: (stand, { conversation, note }) => harness.seen(stand, conversation).find(one => one.op === 'ask' && one.note === note).fields,
   press (stand, { data, person, inputs = null }) {
     const [, approval, choice] = /^ap:([0-9a-f]{12}):(.+)$/.exec(data)
     let heard
@@ -216,7 +217,7 @@ conformance(harness, (ctx) => {
         })
         let card
         await ctx.until(() => (card = ctx.platform.events.cardOf(approval)))
-        expect(card).toMatchObject({ type: 'card', person: '1', approval, spore: 'triage', body: { console: { kpi: 'churn', value: '82 %' } }, options: [{ id: 'apply', label: 'Apply', style: 'positive' }, { id: 'cancel', label: 'Cancel', style: null }], fields: [{ id: 'reason', label: 'Why?' }], by: ['1'], until: approvalOf(ctx.ws, approval).until })
+        expect(card).toMatchObject({ type: 'card', person: '1', approval, spore: 'triage', body: { console: { kpi: 'churn', value: '82 %' } }, options: [{ id: 'apply', label: 'Apply', style: 'positive', skip: false }, { id: 'cancel', label: 'Cancel', style: null, skip: false }], fields: [{ id: 'reason', label: 'Why?' }], by: ['1'], until: approvalOf(ctx.ws, approval).until })
 
         expect(await call('POST', `/approvals/${approval}/answer`, { choice: 'maybe', by: '1' })).toEqual({ status: 409, body: { taken: false, reason: 'that is not one of its choices' } })
         expect((await call('POST', `/approvals/${approval}/answer`, { choice: 'apply', by: '2' })).status).toBe(403)

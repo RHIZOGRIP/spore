@@ -51,7 +51,7 @@ export const CONSOLE = {
   check: listenOf,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 1_000_000, file: Infinity, fetch: 25 * 1024 * 1024, editEveryMs: 1000, typingEveryMs: 0 },
-  can: { upload: true, edit: true, remove: true, react: false, typing: false, choose: true, fields: true },
+  can: { upload: true, edit: true, remove: true, react: false, typing: false, choose: true, fields: { text: true } },
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {
@@ -144,7 +144,7 @@ export function createAdapter ({ name, events, receive }) {
     ask: async (conversation, shown, choices, { as, fields, approval }) => {
       const card = {
         body: keyed(shown),
-        options: choices.map(({ id, label, style }) => ({ id, label, style: style ?? null })),
+        options: choices.map(({ id, label, style, skip }) => ({ id, label, style: style ?? null, skip: skip === true })),
         fields,
         by: approval.by,
         until: approval.until

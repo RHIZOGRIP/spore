@@ -6,7 +6,7 @@
  * webhook cannot reply, so an answer opens with whom it answers.
  */
 
-import { readBot, routesOf, VERBS } from '@rhizogrip/spore/relay'
+import { APPROVAL_LIMITS, readBot, routesOf, VERBS } from '@rhizogrip/spore/relay'
 import { errorText, SporeError } from '@rhizogrip/spore'
 
 import { header, isWorkingPost, plain } from './forward.js'
@@ -16,6 +16,24 @@ const SNOWFLAKE = /^\d+$/
 const HOOK_NAME = 'spore'
 const NOBODY = { parse: [] }
 const SHAPE = '{ "token": "${DISCORD_BOT_TOKEN}", "channels": { "<channel id>": { "spores": ["<spore>"], "people": ["<user id>", "role:<role id>"], "sporesTalk": false } } }' // eslint-disable-line no-template-curly-in-string
+
+const BODY = 'Discord takes no approval body of its own yet — give the approval a default { "text", "facts" }'
+const BUTTON_STYLES = { positive: 3, destructive: 4 }
+const SECONDARY = 2
+const PER_ROW = 5
+const COMPONENT = 3
+const MODAL_SUBMIT = 5
+const ANSWER = 4
+const MODAL = 9
+const ACKNOWLEDGED = 6
+const EPHEMERAL = 1 << 6
+const LABEL = 18
+const TEXT_INPUT = 4
+const SHORT = 1
+const PARAGRAPH = 2
+const STRING_SELECT = 3
+const RADIO_GROUP = 21
+const CHECKBOX_GROUP = 22
 
 const invalid = (path, problem, detail = `a bot is ${SHAPE}`) => new SporeError(`${path} ${problem}`, { type: 'DISCORD_BOT_INVALID', detail })
 
@@ -63,7 +81,7 @@ export const DISCORD = {
   check,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '"@<spore> extend wall 30m", "@<spore> extend cost 1.50" or "@<spore> extend rounds 20"' },
   limits: { message: 1800, file: 20 * 1024 * 1024, fetch: 25 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 8000 },
-  can: { upload: true, edit: true, remove: true, react: true, typing: true, choose: false, fields: false },
+  can: { upload: true, edit: true, remove: true, react: true, typing: true, choose: true, fields: { text: true, choice: { several: true, list: 10, menu: 25 } } },
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {
@@ -76,6 +94,45 @@ export const DISCORD = {
 }
 
 const ADDRESSING = /^(\s*@[\w.-]+)+\s*/
+
+/** An approval's default body as Discord shows it: its text, which Discord's Markdown reads as is, then each fact on a line. */
+const bodyOf = (fallback) => [
+  fallback.text ?? null,
+  fallback.facts?.length ? fallback.facts.map(([label, value]) => `**${label}**: ${value}`).join('\n') : null
+].filter(Boolean).join('\n\n')
+
+const rowsOf = (buttons) => Array.from({ length: Math.ceil(buttons.length / PER_ROW) }, (_, i) => ({ type: 1, components: buttons.slice(i * PER_ROW, (i + 1) * PER_ROW) }))
+
+const optionsOf = (field) => field.choices.map(choice => ({ value: choice.id, label: choice.label, ...(field.value.includes(choice.id) ? { default: true } : {}) }))
+
+/**
+ * A field as Discord draws it in a modal, inside its label: a text short or long; a choice as a
+ * menu, a radio group where one of several is picked from a list, or a checkbox group.
+ */
+function inputOf (field) {
+  if (field.kind !== 'choice') {
+    return { type: TEXT_INPUT, custom_id: field.id, style: field.lines > 1 ? PARAGRAPH : SHORT, required: field.required === true, max_length: APPROVAL_LIMITS.input, ...(field.value ? { value: field.value } : {}) }
+  }
+  const { least, most } = field
+  const options = optionsOf(field)
+  if (field.look === 'menu') return { type: STRING_SELECT, custom_id: field.id, options, min_values: least, max_values: most, required: least > 0 }
+  if (most === 1 && options.length > 1) return { type: RADIO_GROUP, custom_id: field.id, options, required: least > 0 }
+  return { type: CHECKBOX_GROUP, custom_id: field.id, options, min_values: least, max_values: most, required: least > 0 }
+}
+
+/** What a modal's submit filled in, by field id: a text's words, a choice's ids picked. */
+function inputsOf (components) {
+  return Object.fromEntries(components.map(({ component }) => {
+    if (component.type === TEXT_INPUT) return [component.custom_id, component.value]
+    if (component.type === RADIO_GROUP) return [component.custom_id, component.value === null ? [] : [component.value]]
+    return [component.custom_id, component.values]
+  }))
+}
+
+const personOf = (interaction) => {
+  const user = interaction.member?.user ?? interaction.user
+  return { id: user.id, name: interaction.member?.nick ?? user.global_name ?? user.username }
+}
 
 /** `{ verb, args }` when what follows the mentions that address a spore is one of the relay's commands. */
 function commandOf (rest) {
@@ -157,8 +214,34 @@ export function createAdapter ({ discord, me, botFile }) {
      * The Gateway, a message at a time: one in a channel the bot file names, addressed to a spore
      * there, from a person or — where the channel lets spores talk — another spore's answer.
      */
-    listen ({ onMessage, trace, signal, log, sleep }) {
+    listen ({ onMessage, onChoice, formOf, trace, signal, log, sleep }) {
+      const acknowledging = (interaction) => (text) => discord.respond(interaction, text === null
+        ? { type: ACKNOWLEDGED }
+        : { type: ANSWER, data: { content: text, flags: EPHEMERAL, allowed_mentions: NOBODY } })
+
+      /**
+       * A press on one of the relay's buttons: answered with a modal of the approval's fields,
+       * whose submit is the press, where it has some to fill in and may go on; else the press
+       * itself, taken or refused at once.
+       */
+      const pressed = async (interaction) => {
+        const press = { conversation: interaction.channel_id, data: interaction.data.custom_id, person: personOf(interaction) }
+        if (interaction.type === MODAL_SUBMIT) {
+          return onChoice({ ...press, inputs: inputsOf(interaction.data.components), acknowledge: acknowledging(interaction) })
+        }
+        const form = formOf(press)
+        if (!form?.fields.length) return onChoice({ ...press, inputs: null, acknowledge: acknowledging(interaction) })
+        await discord.respond(interaction, {
+          type: MODAL,
+          data: { custom_id: press.data, title: form.option.label, components: form.fields.map(field => ({ type: LABEL, label: field.label, component: inputOf(field) })) }
+        })
+      }
+
       return discord.connect({
+        onInteraction: async (d) => {
+          trace(`interaction ${d.id}`, d)
+          if (d.type === COMPONENT || d.type === MODAL_SUBMIT) await pressed(d)
+        },
         onMessage: async (d) => {
           trace(`message ${d.id}`, d)
           if (d.author.id === me.id) return
@@ -241,6 +324,24 @@ export function createAdapter ({ discord, me, botFile }) {
       if (emoji !== null) await discord.react(conversation, message, emoji)
     },
 
-    typing: (conversation) => discord.typing(conversation)
+    typing: (conversation) => discord.typing(conversation),
+
+    checkBody: () => BODY,
+
+    /** The question under the spore's name, a button per choice, five to a row, coloured where it has a style. */
+    ask: async (conversation, { fallback }, choices, { as }) => {
+      const buttons = choices.map(choice => ({ type: 2, style: BUTTON_STYLES[choice.style] ?? SECONDARY, label: choice.label, custom_id: choice.data }))
+      const payload = { ...look(as), content: bodyOf(fallback), components: rowsOf(buttons), allowed_mentions: NOBODY }
+      return { note: (await discord.ask(await hookOf(conversation), payload)).id, shown: payload }
+    },
+
+    /** The question closed, its buttons gone: replaced by the hook's default body, or kept with how it ended below. */
+    settle: async (conversation, note, replacement) => {
+      if (replacement.native) throw new SporeError('Discord cannot show this replacement', { type: 'DISCORD_ASK_REFUSED', detail: BODY, retryable: false })
+      const content = replacement.shown ? `${replacement.shown.content}\n\n**${replacement.outcome}**` : bodyOf(replacement.fallback)
+      const payload = { content, components: [], allowed_mentions: NOBODY }
+      await discord.close(await hookOf(conversation), note, payload)
+      return payload
+    }
   }
 }

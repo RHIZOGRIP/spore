@@ -32,7 +32,9 @@ const standIn = () => {
   const delivered = new Map()
   const lastSaid = new Map()
   const stored = new Map()
+  const responses = new Map()
   let handle = null
+  let interact = null
   let log = null
   let handled = Promise.resolve()
   let waiting = []
@@ -57,6 +59,8 @@ const standIn = () => {
     delivered,
     stored,
     deliver,
+    responses,
+    interact: (d) => interact(d),
     next: () => String(++next),
     fail: (op, error, times = 1) => faults.push({ op, error, times }),
     download: async (url, { most }) => {
@@ -78,6 +82,17 @@ const standIn = () => {
       const id = String(++next)
       sent.push({ op: 'post', channel, id, answering, ...payload })
       return { id }
+    },
+    ask: async (hook, payload) => {
+      const id = String(++next)
+      sent.push({ op: 'ask', channel: channelOf(hook), id, ...payload })
+      return { id }
+    },
+    close: async (hook, message, payload) => {
+      sent.push({ op: 'close', channel: channelOf(hook), id: message, ...payload })
+    },
+    respond: async (interaction, response) => {
+      responses.set(interaction.id, response)
     },
     revise: async (hook, message, payload) => {
       fault('revise')
@@ -103,8 +118,9 @@ const standIn = () => {
       fault('react')
       sent.push({ op: 'unreact', channel, message, emoji })
     },
-    connect: ({ onMessage, signal, log: logged }) => {
+    connect: ({ onMessage, onInteraction, signal, log: logged }) => {
       handle = onMessage
+      interact = onInteraction
       log = logged
       for (const d of waiting) handled = handled.then(() => handle(d)).catch(err => log(`message ${d.id}: ${err.message}`))
       waiting = []
@@ -136,6 +152,43 @@ const said = (discord, { channel, author, content, roles = [], mentions = [], fi
   return d
 }
 
+const STYLES = { 3: 'positive', 4: 'destructive' }
+
+/** A press on a button of the message `note`, or the submit of the modal it opened, by `person` in `channel`. */
+const interaction = (discord, { type, channel, note, person, data }) => ({
+  id: discord.next(),
+  token: 'interaction-token',
+  type,
+  channel_id: channel,
+  guild_id: 'g1',
+  member: { user: { id: person, username: `u${person}` }, nick: `U${person}` },
+  message: { id: note },
+  data
+})
+
+const button = (discord, { conversation, note, data, person }) => interaction(discord, { type: 3, channel: conversation, note, person, data: { custom_id: data, component_type: 2 } })
+
+/** What a modal's input is given back, as Discord submits it, from what the person filled in. */
+const submitted = (component, value) => {
+  if (component.type === 4) return { type: 4, custom_id: component.custom_id, value: value ?? '' }
+  if (component.type === 21) return { type: 21, custom_id: component.custom_id, value: value?.[0] ?? null }
+  return { type: component.type, custom_id: component.custom_id, values: value ?? [] }
+}
+
+/** A modal's input as the conformance suite reads a field. */
+const fieldOf = ({ label, component }) => {
+  if (component.type === 4) return { id: component.custom_id, label, value: component.value ?? null, required: component.required }
+  const choice = {
+    id: component.custom_id,
+    label,
+    choices: component.options.map(option => ({ id: option.value, label: option.label })),
+    least: component.type === 21 ? (component.required ? 1 : 0) : component.min_values,
+    most: component.type === 21 ? 1 : component.max_values,
+    value: component.options.filter(option => option.default).map(option => option.value)
+  }
+  return { ...choice, look: component.type === 3 ? 'menu' : 'list' }
+}
+
 const seen = (discord, conversation) => {
   const ops = discord.sent.filter(one => one.channel === conversation)
   const out = []
@@ -143,6 +196,8 @@ const seen = (discord, conversation) => {
     const one = ops[i]
     const text = (content) => content.replace(HEADER, '')
     if (one.op === 'post') out.push({ op: 'post', note: one.id, text: text(one.content), answering: one.answering, formatted: false, as: one.username ?? null })
+    else if (one.op === 'ask') out.push({ op: 'ask', note: one.id, text: one.content, choices: one.components.flatMap(row => row.components).map(choice => ({ label: choice.label, data: choice.custom_id, style: STYLES[choice.style] ?? null })) })
+    else if (one.op === 'close') out.push({ op: 'close', note: one.id, text: one.content })
     else if (one.op === 'revise') out.push({ op: 'edit', note: one.id, text: text(one.content) })
     else if (one.op === 'remove') out.push({ op: 'remove', note: one.id })
     else if (one.op === 'upload') out.push({ op: 'upload', path: one.files[0].path, caption: one.content })
@@ -183,6 +238,28 @@ const harness = {
     }
   },
   seen,
+  async form (discord, press) {
+    const pressed = button(discord, press)
+    await discord.interact(pressed)
+    const answer = discord.responses.get(pressed.id)
+    return answer.type === 9 ? answer.data.components.map(fieldOf) : []
+  },
+  press (discord, { conversation, note, data, person, inputs }) {
+    let answer
+    const pressed = button(discord, { conversation, note, data, person })
+    discord.interact(pressed).then(async () => {
+      const opened = discord.responses.get(pressed.id)
+      if (opened.type !== 9) {
+        answer = opened
+        return
+      }
+      const components = opened.data.components.map(({ component }) => ({ type: 18, component: submitted(component, inputs?.[component.custom_id]) }))
+      const submit = interaction(discord, { type: 5, channel: conversation, note, person, data: { custom_id: opened.data.custom_id, components } })
+      await discord.interact(submit)
+      answer = discord.responses.get(submit.id)
+    })
+    return { acknowledged: () => answer === undefined ? undefined : { text: answer.data?.content ?? null } }
+  },
   fail: (discord, op, error, times) => discord.fail(OPS[op], error, times),
   retryable: (retryAfter) => new SporeError('discord failed', { type: 'DISCORD_FAILED', retryable: true, detail: 'You are being rate limited.', context: { status: 429, code: null, retryAfter } }),
   refused: (detail) => new SporeError('discord failed', { type: 'DISCORD_FAILED', retryable: false, detail, context: { status: 403, code: null, retryAfter: null } }),

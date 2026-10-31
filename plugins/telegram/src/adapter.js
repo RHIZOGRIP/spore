@@ -79,7 +79,7 @@ export const TELEGRAM = {
   conversations: CONVERSATIONS,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 4096, file: 50 * 1024 * 1024, fetch: FETCH_MOST, editEveryMs: 2500, typingEveryMs: 4000 },
-  can: { upload: true, edit: true, remove: true, react: true, typing: true, choose: true, fields: false },
+  can: { upload: true, edit: true, remove: true, react: true, typing: true, choose: true, fields: {} },
   showShared: 'react',
   reactions: REACTIONS,
   hint (err, { file, bot }) {

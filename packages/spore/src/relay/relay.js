@@ -435,6 +435,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         log(`${where(choice.conversation)}: a press — ${errorText(err)}`)
       }
     },
+    formOf: (press) => approvals.form(press),
     trace: (what, raw) => {
       let on
       try {

@@ -7,6 +7,7 @@ import {
   announce, backoff, botNames, botPath, createDelivery, credentialOf,
   loadState, pieces, reactionsOf, reply, routesOf, saveState, statePath, waiting
 } from '../src/relay/index.js'
+import { createApprovals } from '../src/relay/approvals.js'
 
 const SPEC = {
   kind: 'chat',
@@ -193,6 +194,20 @@ describe('what of a turn reaches a conversation', () => {
       '```js\nline 5\n```\nafter'
     ])
     expect(pieces('~~~\n' + 'x\n'.repeat(20) + '~~~', 20).every(piece => piece.length <= 20 && piece.startsWith('~~~') && /~~~$/.test(piece))).toBe(true)
+  })
+})
+
+describe('a connector carrying approvals', () => {
+  const carrying = (fields) => () => createApprovals({ adapter: { ...SPEC, can: { ...SPEC.can, choose: true, fields } } })
+
+  it('says which kinds of field it shows, and is refused when it says it as before 1.49.0 or says what spore cannot read', () => {
+    expect(carrying({})).not.toThrow()
+    expect(carrying({ text: true, choice: { several: false, menu: 25 } })).not.toThrow()
+    expect(carrying(true)).toThrow(expect.objectContaining({ type: 'CHAT_CONNECTOR_OUTDATED', detail: expect.stringMatching(/upgrade the Chat plugin/) }))
+    for (const fields of [undefined, { text: false }, { number: true }, { choice: { list: 10 } }, { choice: { several: true } }, { choice: { several: true, list: -1 } }, { choice: { several: true, list: 10, grid: 4 } }]) {
+      expect(carrying(fields), JSON.stringify(fields)).toThrow(expect.objectContaining({ type: 'ADAPTER_INVALID' }))
+    }
+    expect(() => createApprovals({ adapter: { ...SPEC, can: { ...SPEC.can, choose: false } } })).not.toThrow()
   })
 })
 

@@ -179,6 +179,22 @@ describe('the REST API', () => {
     expect(JSON.parse(asked[0].init.body)).toEqual({ username: 'triage', content: 'hi' })
   })
 
+  it('posts and closes a question through the webhook with its buttons, and answers an interaction on its own path', async () => {
+    const asked = []
+    const discord = reaching(async (url, init) => {
+      asked.push([init.method, url.replace('https://discord.com/api/v10', '')])
+      return { ok: true, status: 200, json: async () => ({ id: 'm1' }) }
+    })
+    await discord.ask({ id: 'h', token: 'secret' }, { content: 'Apply?', components: [] })
+    await discord.close({ id: 'h', token: 'secret' }, 'm1', { content: 'Apply?', components: [] })
+    await discord.respond({ id: 'i1', token: 'itok' }, { type: 6 })
+    expect(asked).toEqual([
+      ['POST', '/webhooks/h/secret?wait=true&with_components=true'],
+      ['PATCH', '/webhooks/h/secret/messages/m1?with_components=true'],
+      ['POST', '/interactions/i1/itok/callback']
+    ])
+  })
+
   it('says it is typing, and puts and takes off its own reaction', async () => {
     const asked = []
     const discord = reaching(async (url, init) => {
@@ -249,6 +265,35 @@ describe('the Gateway', () => {
     expect(second.sent[0]).toEqual({ op: 6, d: { token: 'tok', session_id: 'sess', seq: 3 } })
     expect(messages).toEqual(['a', 'b'])
 
+    controller.abort()
+    await running
+  })
+
+  it('hands over an interaction at once, behind no message still being handled', async () => {
+    const discord = reaching(answering(200, { url: 'wss://gateway.test' }))
+    const controller = new AbortController()
+    const heard = []
+    let release
+    const held = new Promise(resolve => { release = resolve })
+    const running = discord.connect({
+      onMessage: async (message) => {
+        heard.push(`message ${message.id}`)
+        await held
+      },
+      onInteraction: async (interaction) => { heard.push(`interaction ${interaction.id}`) },
+      signal: controller.signal,
+      sleep: async () => {}
+    })
+    await until(() => FakeSocket.opened.length === 1)
+    const socket = FakeSocket.opened[0]
+    socket.receive({ op: 10, d: { heartbeat_interval: 60_000 } })
+    socket.receive({ op: 0, t: 'READY', s: 1, d: { session_id: 'sess', resume_gateway_url: 'wss://resume.test', user: { id: 'me' } } })
+    socket.receive({ op: 0, t: 'MESSAGE_CREATE', s: 2, d: { id: 'a' } })
+    socket.receive({ op: 0, t: 'INTERACTION_CREATE', s: 3, d: { id: 'i' } })
+    await until(() => heard.length === 2)
+    expect(heard).toEqual(['message a', 'interaction i'])
+
+    release()
     controller.abort()
     await running
   })

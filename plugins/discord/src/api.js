@@ -78,10 +78,11 @@ export function createDiscord (token) {
   /**
    * One Gateway connection after another until `signal` aborts, resuming the session where it
    * can and identifying anew where it cannot. Each message created is handed to `onMessage`,
-   * one at a time, in the order Discord sent them. Fails on a close Discord says not to retry —
-   * a refused token, a refused intent.
+   * one at a time, in the order Discord sent them; each interaction to `onInteraction` at once,
+   * behind no message, as Discord wants it answered within 3 seconds. Fails on a close Discord
+   * says not to retry — a refused token, a refused intent.
    */
-  const connect = async ({ onMessage, onReady = () => {}, signal, log = () => {}, sleep }) => {
+  const connect = async ({ onMessage, onInteraction, onReady = () => {}, signal, log = () => {}, sleep }) => {
     let session = null
     const retry = backoff()
     while (!signal.aborted) {
@@ -129,6 +130,9 @@ export function createDiscord (token) {
             if (t === 'MESSAGE_CREATE') {
               handled = handled.then(() => onMessage(d)).catch(err => log(`message ${d.id}: ${errorText(err)}`))
             }
+            if (t === 'INTERACTION_CREATE') {
+              Promise.resolve().then(() => onInteraction(d)).catch(err => log(`interaction ${d.id}: ${errorText(err)}`))
+            }
           }
         })
         socket.addEventListener('close', (event) => {
@@ -159,6 +163,11 @@ export function createDiscord (token) {
     webhooks: (channel) => call('GET', `/channels/${channel}/webhooks`),
     createWebhook: (channel, name) => call('POST', `/channels/${channel}/webhooks`, { body: { name } }),
     post: (hook, payload) => call('POST', hookPath(hook, '?wait=true'), { body: payload }),
+    /** A message with buttons, through the bot's own webhook, which Discord lets carry them. */
+    ask: (hook, payload) => call('POST', hookPath(hook, '?wait=true&with_components=true'), { body: payload }),
+    close: (hook, message, payload) => call('PATCH', hookPath(hook, `/messages/${message}?with_components=true`), { body: payload }),
+    /** The answer to an interaction, which must reach Discord within 3 seconds of it. */
+    respond: (interaction, response) => call('POST', `/interactions/${interaction.id}/${interaction.token}/callback`, { body: response, timeoutMs: 3000 }),
     revise: (hook, message, payload) => call('PATCH', hookPath(hook, `/messages/${message}`), { body: payload }),
     remove: (hook, message) => call('DELETE', hookPath(hook, `/messages/${message}`)),
     upload: (hook, payload, files) => call('POST', hookPath(hook, '?wait=true'), { form: withFiles(payload, files), timeoutMs: 300_000 }),

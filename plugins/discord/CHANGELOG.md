@@ -4,6 +4,20 @@ All notable changes to `@rhizogrip/spore-plugin-discord` are documented here, fr
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [0.12.0] — Feature: approvals in a channel
+
+### Added
+
+- An approval asked in a channel is posted under the spore's name, a button per option, and
+  answered by a press from someone it names; Discord tells only them what came of it. Its fields
+  are drawn in a form its button opens: a text short or long, a choice as a radio group,
+  checkboxes (up to 10) or a menu (up to 25). Presses reach the service on its Gateway
+  connection, so the bot needs no public address.
+
+### Changed
+
+- Needs spore 1.49.0, which asks every connector which kinds of field it shows.
+
 ## [0.11.1] — Changed: says that Discord edits what the bot posted
 
 ### Changed

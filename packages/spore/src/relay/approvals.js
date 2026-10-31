@@ -8,15 +8,37 @@
  */
 
 import { answerApproval, approvalOf, approvalsIn, callApprovalHook, errorText, expireApproval, postApproval, refuseApproval, send, settleApproval, SporeError } from '../index.js'
+import { kindOf, pickOf, pressProblem } from '../library/approvals.js'
 
 const PRESS = /^ap:([0-9a-f]{12}):([A-Za-z0-9_-]{1,32})$/
 const TELL_AGAIN_MS = 30_000
+const LOOKS = ['list', 'menu']
+
+const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
+const isMost = (value) => value === undefined || (Number.isInteger(value) && value >= 0)
+
+/**
+ * Why an adapter's `can.fields` is not one: `{}` where it shows none, `text: true` where it shows
+ * a text to fill in, and `choice: { several, list, menu }` where it shows choices — whether
+ * several may be picked, and the most choices it shows as a list and as a menu, at least one.
+ */
+function fieldsProblem (fields) {
+  if (!isRecord(fields) || !Object.keys(fields).every(key => key === 'text' || key === 'choice')) return 'can.fields is { "text": true, "choice": { "several": true, "list": 10, "menu": 25 } }, either or neither'
+  if (fields.text !== undefined && fields.text !== true) return 'can.fields.text is true, or left out'
+  const { choice } = fields
+  if (choice === undefined) return null
+  const fits = isRecord(choice) && Object.keys(choice).every(key => ['several', ...LOOKS].includes(key)) && typeof choice.several === 'boolean' &&
+    isMost(choice.list) && isMost(choice.menu) && (choice.list ?? 0) + (choice.menu ?? 0) > 0
+  return fits ? null : 'can.fields.choice is { "several": true or false, "list": <most choices as a list>, "menu": <most as a menu> }, a list or a menu at least'
+}
 
 export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, where, followed, delivery, environment, env, log, sleep, signal }) {
   const { kind } = adapter
-  if (adapter.can.choose && typeof adapter.can.fields !== 'boolean') {
-    throw new SporeError(`the ${adapter.label} adapter carries approvals without saying whether it shows fields`, { type: 'ADAPTER_INVALID', detail: 'can.fields is true or false beside can.choose' })
+  if (adapter.can.choose && typeof adapter.can.fields === 'boolean') {
+    throw new SporeError(`the ${adapter.label} connector does not say which fields it shows`, { type: `${kind.toUpperCase()}_CONNECTOR_OUTDATED`, detail: `it was written before spore 1.49.0, which asks every connector carrying approvals which kinds of field it shows — upgrade the ${adapter.label} plugin` })
   }
+  const unfit = adapter.can.choose ? fieldsProblem(adapter.can.fields) : null
+  if (unfit) throw new SporeError(`the ${adapter.label} adapter carries approvals without saying which fields it shows`, { type: 'ADAPTER_INVALID', detail: unfit })
   const busy = new Set()
   const untold = new Map()
 
@@ -134,6 +156,34 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     if (approval.state !== 'refused') tell(name, ws, approvalOf(ws, approval.id))
   }
 
+  /**
+   * What of an approval's fields this platform shows, each choice with its `least`, `most` and
+   * `value` filled in and the look it is shown as — its own, or a list where the list holds its
+   * choices and a menu otherwise — or why it cannot be
+   * posted here. A text it cannot show is left out unless it is required; a choice it cannot show
+   * refuses the approval, as leaving it out would change what the answer means.
+   */
+  const drawnOf = (approval) => {
+    const drawn = []
+    const needed = []
+    for (const field of approval.fields ?? []) {
+      if (kindOf(field) === 'text') {
+        if (adapter.can.fields.text) drawn.push(field)
+        else if (field.required) needed.push(field)
+        continue
+      }
+      const can = adapter.can.fields.choice
+      const count = field.choices.length
+      if (!can) return { problem: `a ${adapter.label} bot cannot show choices to pick from, and it needs "${field.label}"` }
+      if (pickOf(field).most > 1 && !can.several) return { problem: `a ${adapter.label} bot lets one choice be picked at most, and "${field.label}" lets ${pickOf(field).most} be` }
+      const look = (field.look ? [field.look] : LOOKS).find(one => (can[one] ?? 0) >= count)
+      if (!look) return { problem: `a ${adapter.label} bot cannot show the ${count} choices of "${field.label}"${field.look ? ` as a ${field.look}` : ''}` }
+      drawn.push({ ...field, ...pickOf(field), value: field.value ?? [], look })
+    }
+    if (needed.length) return { problem: `a ${adapter.label} bot cannot show fields to fill in, and it needs ${needed.map(field => `"${field.label}"`).join(' and ')}` }
+    return { fields: drawn }
+  }
+
   const refuse = (name, ws, approval, reason) => {
     logged(approval, name, `refused — ${reason}`)
     if (refuseApproval(ws, approval.id, reason)) return seeThrough(name, ws, approvalOf(ws, approval.id))
@@ -148,13 +198,12 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     if (!shown) return refuse(name, ws, approval, `it has no body for ${adapter.label} and no default`)
     const problem = shown.native === null ? null : adapter.checkBody(shown.native)
     if (problem) return refuse(name, ws, approval, problem)
-    const fields = approval.fields ?? []
-    const unshown = adapter.can.fields ? [] : fields.filter(field => field.required)
-    if (unshown.length) return refuse(name, ws, approval, `a ${adapter.label} bot cannot show fields to fill in, and it needs ${unshown.map(field => `"${field.label}"`).join(' and ')}`)
+    const { fields, problem: unshowable } = drawnOf(approval)
+    if (unshowable) return refuse(name, ws, approval, unshowable)
     const choices = approval.options.map(option => ({ ...option, data: `ap:${approval.id}:${option.id}` }))
     let posted
     try {
-      posted = await delivery.to(conversation, attempt => attempt(() => adapter.ask(conversation, shown, choices, { as: name, fields: adapter.can.fields ? fields : [], approval: { id: approval.id, by: approval.approvers, until: approval.until } })))
+      posted = await delivery.to(conversation, attempt => attempt(() => adapter.ask(conversation, shown, choices, { as: name, fields, approval: { id: approval.id, by: approval.approvers, until: approval.until } })))
     } catch (err) {
       if (err.retryable || signal.aborted) return logged(approval, name, `not posted yet — ${errorText(err)}`)
       return refuse(name, ws, approval, `${adapter.label} refused it — ${errorText(err)}`)
@@ -188,6 +237,36 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     }
   }
 
+  /** The approval a press in `conversation` is on, by the id its button carries: `{ ws, name, approval, choice }`, or null. */
+  const pressedOn = (conversation, data) => {
+    const pressed = PRESS.exec(data ?? '')
+    if (!pressed) return null
+    const [, id, choice] = pressed
+    let found = null
+    for (const [ws, { name, conversations }] of followed()) {
+      if (!conversations.has(keyOf(conversation))) continue
+      const approval = approvalOf(ws, id)
+      if (approval?.place.startsWith(prefix) && keyOf(conversationOf(approval)) === keyOf(conversation)) found = { ws, name, approval, choice }
+    }
+    return found
+  }
+
+  /**
+   * What a press is to fill in before it answers, for a platform that shows the fields only once
+   * a button is pressed: `{ option, fields }`, the option pressed and the approval's fields as
+   * posted — none for an option that skips them — where the press may go on, or null where it may
+   * not, which the press itself, handed to `choose`, is then told. It takes nothing and says
+   * nothing: the answer, or its refusal, is the press `choose` hears after.
+   */
+  const form = ({ conversation, data, person }) => {
+    const found = pressedOn(conversation, data)
+    if (!found || busy.has(found.approval.id) || pressProblem(found.approval, { choice: found.choice, person })) return null
+    const option = found.approval.options.find(one => one.id === found.choice)
+    if (option.skip) return { option, fields: [] }
+    const drawn = drawnOf(found.approval)
+    return drawn.problem ? null : { option, fields: drawn.fields }
+  }
+
   /**
    * A press, as the adapter heard it: `data` from one of the relay's buttons, `person` as the
    * platform vouches for them, `inputs` what they filled in of the approval's fields. Taken only
@@ -195,23 +274,16 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
    * fields filled in as they must be; acknowledged to the platform at once, and seen through after.
    */
   const choose = async ({ conversation, data, inputs = null, person, acknowledge }) => {
-    const pressed = PRESS.exec(data ?? '')
-    if (!pressed) {
-      log(`${where(conversation)}: a press on a button this relay did not make — ${JSON.stringify(data)}`)
-      return acknowledge(null)
-    }
-    const [, id, choice] = pressed
-    let found = null
-    for (const [ws, { name, conversations }] of followed()) {
-      if (!conversations.has(keyOf(conversation))) continue
-      const approval = approvalOf(ws, id)
-      if (approval?.place.startsWith(prefix) && keyOf(conversationOf(approval)) === keyOf(conversation)) found = { ws, name, approval }
-    }
+    const found = pressedOn(conversation, data)
     if (!found) {
-      log(`${where(conversation)}: a press on approval ${id}, which no spore it reaches has asked there`)
-      return acknowledge('this question is not open here')
+      const pressed = PRESS.exec(data ?? '')
+      log(pressed
+        ? `${where(conversation)}: a press on approval ${pressed[1]}, which no spore it reaches has asked there`
+        : `${where(conversation)}: a press on a button this relay did not make — ${JSON.stringify(data)}`)
+      return acknowledge(pressed ? 'this question is not open here' : null)
     }
-    const { ws, name, approval } = found
+    const { ws, name, approval, choice } = found
+    const { id } = approval
     if (busy.has(id)) return acknowledge('this was answered already')
     const answer = answerApproval(ws, id, { choice, inputs, person })
     if (!answer.taken) {
@@ -230,5 +302,5 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
       .finally(() => busy.delete(id))
   }
 
-  return { pass, choose }
+  return { pass, choose, form }
 }

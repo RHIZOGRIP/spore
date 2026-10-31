@@ -35,16 +35,20 @@
  *                                          answering, formatted }, { op: 'edit', note, text },
  *                                          { op: 'remove', note }, { op: 'upload', path, caption },
  *                                          { op: 'react', message, emoji }, { op: 'typing' },
- *                                          { op: 'ask', note, text, choices: [{ label, data, style }], fields },
+ *                                          { op: 'ask', note, text, choices: [{ label, data, style }] },
  *                                          { op: 'close', note, text }; `formatted` says the platform
- *                                          was asked to render Markdown, an approval's `text` is
- *                                          what the platform was given to show, as text, and its
- *                                          `fields`, where `spec.can.fields`, what it shows to fill
- *                                          in: [{ id, label, value, required }]
+ *                                          was asked to render Markdown, and an approval's `text` is
+ *                                          what the platform was given to show, as text
+ *   form(platform, { conversation, note, data, person })
+ *                                          where `spec.can.fields` shows any: what `person` is given
+ *                                          to fill in once they press the button carrying `data` on
+ *                                          the question `note` — a text as { id, label, value,
+ *                                          required }, a choice as { id, label, choices, least, most,
+ *                                          value, look } — taking no press
  *   press(platform, { conversation, note, data, person, inputs })
  *                                          where `spec.can.choose`: `person` presses the button
  *                                          carrying `data` on the question `note`, having filled in
- *                                          `inputs`, { <field id>: <text> }; answers
+ *                                          `inputs`, { <field id>: <text, or the ids picked> }; answers
  *                                          { acknowledged() }, what the platform showed them once
  *                                          the press was answered — { text } — or undefined before
  *   fail(platform, op, error, times)       make `post`, `edit`, `remove`, `upload` or `fetch` fail
@@ -999,12 +1003,15 @@ export function conformance (harness, platformTests = () => {}) {
         expect(closing().text).toMatch(/Apply — U1/)
       })
 
-      it.runIf(spec.can.fields)('shows its fields, takes no press without one it requires, and hands on what was filled in', async () => {
+      const form = (question, label, person = ONE, conversation = ONE) =>
+        harness.form(platform, { conversation, note: question.note, data: question.choices.find(one => one.label === label).data, person })
+
+      it.runIf(spec.can.fields.text)('shows its fields, takes no press without one it requires, and hands on what was filled in', async () => {
         start({ approveEveryMs: 50 })
         const id = ask({ fields: [{ id: 'value', label: 'Value', value: '82 %', required: true }, { id: 'reason', label: 'Why?' }] })
         await until(() => questions().length === 1)
         const [question] = questions()
-        expect(question.fields).toEqual([{ id: 'value', label: 'Value', value: '82 %', required: true }, { id: 'reason', label: 'Why?', value: null, required: false }])
+        expect(await form(question, 'Apply')).toEqual([{ id: 'value', label: 'Value', value: '82 %', required: true }, { id: 'reason', label: 'Why?', value: null, required: false }])
 
         expect(await acknowledged(press(question, 'Apply', ONE, ONE, { value: ' ', reason: 'checked' }))).toBe('fill in "Value" first')
         expect(approval(id).state).toBe('posted')
@@ -1014,7 +1021,57 @@ export function conformance (harness, platformTests = () => {}) {
         expect(heard.map(one => one.payload.inputs)).toEqual([{ value: '84 %', reason: 'checked' }])
       })
 
-      it.runIf(spec.can.choose && !spec.can.fields)('is refused where it needs a field this platform cannot show, and posted without those it can go without', async () => {
+      it.runIf(spec.can.fields.text)('takes an option that skips the fields without them, though one is required', async () => {
+        start({ approveEveryMs: 50 })
+        const id = ask({ options: [OPTIONS[0], { id: 'cancel', label: 'Cancel', skip: true }], fields: [{ id: 'reason', label: 'Why?', required: true }] })
+        await until(() => questions().length === 1)
+        expect(await acknowledged(press(questions()[0], 'Cancel', ONE))).toBe('Cancel — recorded')
+        await until(() => approval(id).told)
+        expect(approval(id)).toMatchObject({ choice: 'cancel', inputs: null })
+        expect(heard[0].payload).not.toHaveProperty('inputs')
+      })
+
+      it.runIf(spec.can.fields.choice)('shows its choices as a list or a menu, takes a press picking within their bounds, and hands on the ids picked', async () => {
+        const choices = (...ids) => ids.map(one => ({ id: one, label: one.toUpperCase() }))
+        start({ approveEveryMs: 50 })
+        const id = ask({
+          fields: [
+            { id: 'env', kind: 'choice', label: 'Where', choices: choices('prod', 'stage', 'dev'), value: ['stage'] },
+            { id: 'run', kind: 'choice', label: 'Run', choices: choices('lint', 'unit', 'e2e'), least: 1, most: 2, look: 'menu' }
+          ]
+        })
+        await until(() => questions().length === 1)
+        const [question] = questions()
+        expect(await form(question, 'Apply')).toEqual([
+          { id: 'env', label: 'Where', choices: choices('prod', 'stage', 'dev'), least: 0, most: 1, value: ['stage'], look: 'list' },
+          { id: 'run', label: 'Run', choices: choices('lint', 'unit', 'e2e'), least: 1, most: 2, value: [], look: 'menu' }
+        ])
+
+        expect(await acknowledged(press(question, 'Apply', ONE, ONE, { env: ['prod'], run: [] }))).toBe('pick one in "Run" first')
+        expect(await acknowledged(press(question, 'Apply', ONE, ONE, { env: ['prod'], run: ['lint', 'e2e'] }))).toBe('Apply — recorded')
+        await until(() => approval(id).told)
+        expect(approval(id).inputs).toEqual({ env: ['prod'], run: ['lint', 'e2e'] })
+        expect(heard.map(one => one.payload.inputs)).toEqual([{ env: ['prod'], run: ['lint', 'e2e'] }])
+      })
+
+      it.runIf(spec.can.fields.choice)('is refused where its choices are more than this platform shows', async () => {
+        start({ approveEveryMs: 50 })
+        const count = (spec.can.fields.choice.list ?? 0) + 1
+        const id = ask({ fields: [{ id: 'env', kind: 'choice', label: 'Where', choices: Array.from({ length: count }, (_, i) => ({ id: `c${i}`, label: `C${i}` })), look: 'list' }] })
+        await until(() => approval(id).settledAt)
+        expect(approval(id)).toMatchObject({ state: 'refused', reason: `a ${spec.label} bot cannot show the ${count} choices of "Where" as a list` })
+        expect(questions()).toEqual([])
+      })
+
+      it.runIf(spec.can.choose && !spec.can.fields.choice)('is refused where it has choices to pick from, which this platform cannot show', async () => {
+        start({ approveEveryMs: 50 })
+        const id = ask({ fields: [{ id: 'env', kind: 'choice', label: 'Where', choices: [{ id: 'prod', label: 'Production' }] }] })
+        await until(() => approval(id).settledAt)
+        expect(approval(id)).toMatchObject({ state: 'refused', reason: `a ${spec.label} bot cannot show choices to pick from, and it needs "Where"` })
+        expect(questions()).toEqual([])
+      })
+
+      it.runIf(spec.can.choose && !spec.can.fields.text)('is refused where it needs a field this platform cannot show, and posted without those it can go without', async () => {
         start({ approveEveryMs: 50 })
         const needs = ask({ fields: [{ id: 'value', label: 'Value', required: true }, { id: 'reason', label: 'Why?' }] })
         const optional = ask({ fields: [{ id: 'reason', label: 'Why?' }] })

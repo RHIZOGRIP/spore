@@ -304,12 +304,32 @@ platform draws its own way, and the service adds the buttons. A body of your own
 button that answers back by itself (in Teams no `Action.Submit`, `Action.Execute` or `refresh`),
 nor a field of its own (in Teams no `Input.*`).
 
-What the person fills in is `fields`, beside the options: at most five, each `{ id, label, value?,
-required? }`, `value` what it starts with — a reason for a rejection, or a value to correct before
-approving. The service draws them with the buttons and takes a press only with every `required`
-one filled in; what was filled in comes with the press as `inputs`. A platform that cannot show
-fields (Slack and Telegram for now) refuses an approval with a required one, saying so, and posts
-one whose fields are all optional without them.
+What the person fills in is `fields`, beside the options: at most five, each a text or a choice.
+
+- **A text**, `{ id, label, value?, required?, lines? }`: `value` what it starts with — a reason
+  for a rejection, or a value to correct before approving — and `lines` more than 1 for a long one.
+- **A choice**, `{ id, kind: "choice", label, choices: [{ id, label }], least?, most?, value?,
+  look? }`: 1 to 100 choices, `least` and `most` how many may be picked (0 and 1 when unsaid: one
+  of them, or none), `value` the ids picked at first, `look` `list` (every choice shown — radios,
+  or checkboxes where several may be picked) or `menu` (a dropdown). Left out, the service shows a
+  list where the platform holds that many choices in one, and a menu otherwise.
+
+The service draws them with the buttons and takes a press only with every `required` text filled
+in and each choice picked within its bounds; what was filled in comes with the press as `inputs`,
+`{ "reason": "<text>", "env": ["prod"] }` — a choice's ids always as an array. An option with
+`"skip": true` is taken without the fields, required or not: a Cancel needs no reason.
+
+Each platform shows what it can, and an approval that does not fit is refused there, saying why —
+never shown cut down:
+
+| | text | choice |
+|---|---|---|
+| Teams, the console | yes | not yet |
+| Discord | yes, in a form its buttons open | yes: a list of 10, a menu of 25, several or one |
+| Slack, Telegram, WhatsApp | no | no |
+
+A required text or any choice a platform cannot show refuses the approval there; an optional text
+it cannot show is left out.
 
 The service of the place `to` names posts it. A press by someone `by` names is written down —
 the first one; any other is answered "this is not yours to answer" or "this was answered

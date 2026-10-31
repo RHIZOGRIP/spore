@@ -22,6 +22,8 @@ const REQUEST = {
   body: { default: { text: 'Apply the new value?', facts: [['Now', '82 %']] } }
 }
 
+const CHOICE = { id: 'env', kind: 'choice', label: 'Where', choices: [{ id: 'prod', label: 'Production' }, { id: 'stage', label: 'Staging' }, { id: 'dev', label: 'Development' }] }
+
 const ask = (request, options = {}) => askApproval(WS, { ...REQUEST, ...request }, { configFile: CONFIG, ...options })
 
 beforeEach(() => {
@@ -88,6 +90,22 @@ describe('asking an approval', () => {
       [{ fields: [{ id: 'a', label: 'A', required: 'yes' }] }, /has a field it cannot show/],
       [{ fields: [{ id: 'a', label: 'A', kind: 'number' }] }, /has a field it cannot show/],
       [{ fields: [{ id: 'a', label: 'A' }, { id: 'a', label: 'B' }] }, /two fields under one id/],
+      [{ fields: [{ id: 'a', label: 'A', lines: 0 }] }, /has a field it cannot show/],
+      [{ fields: [{ id: 'a', label: 'A', lines: 11 }] }, /has a field it cannot show/],
+      [{ fields: [{ id: 'a', label: 'A', choices: [{ id: 'x', label: 'X' }] }] }, /has a field it cannot show/],
+      [{ fields: [{ ...CHOICE, choices: [] }] }, /has a field it cannot show/],
+      [{ fields: [{ ...CHOICE, choices: Array.from({ length: 101 }, (_, i) => ({ id: `c${i}`, label: `C${i}` })) }] }, /has a field it cannot show/],
+      [{ fields: [{ ...CHOICE, choices: [{ id: 'x', label: 'X' }, { id: 'x', label: 'Y' }] }] }, /has a field it cannot show/],
+      [{ fields: [{ ...CHOICE, choices: [{ id: 'x', label: 'X', style: 'positive' }] }] }, /has a field it cannot show/],
+      [{ fields: [{ ...CHOICE, required: true }] }, /has a field it cannot show/],
+      [{ fields: [{ ...CHOICE, most: 0 }] }, /has a field it cannot show/],
+      [{ fields: [{ ...CHOICE, most: 4 }] }, /has a field it cannot show/],
+      [{ fields: [{ ...CHOICE, least: 2, most: 1 }] }, /has a field it cannot show/],
+      [{ fields: [{ ...CHOICE, value: ['mars'] }] }, /has a field it cannot show/],
+      [{ fields: [{ ...CHOICE, value: ['prod', 'stage'] }] }, /has a field it cannot show/],
+      [{ fields: [{ ...CHOICE, value: 'prod' }] }, /has a field it cannot show/],
+      [{ fields: [{ ...CHOICE, look: 'radio' }] }, /has a field it cannot show/],
+      [{ options: [{ id: 'a', label: 'A', skip: 'yes' }] }, /has a choice it cannot show/],
       [{ hook: 'billing' }, /calls a hook .* does not name/],
       [{ secret: 'x' }, /has secret, which an approval does not take/]
     ]
@@ -116,6 +134,38 @@ describe('the fields an approval asks to be filled in', () => {
     expect(inputsProblem(null, { comment: 'x' })).toBe('"comment" is not one of its fields')
     expect(inputsProblem(FIELDS, { value: 84 })).toBe('"Value" takes text of at most 2000 characters')
     expect(inputsProblem(FIELDS, { value: 'x'.repeat(2001) })).toBe('"Value" takes text of at most 2000 characters')
+  })
+})
+
+describe('the choices an approval asks to be picked', () => {
+  const RUN = { ...CHOICE, id: 'run', label: 'Run', least: 1, most: 2 }
+
+  it('are kept with it as asked, a text beside them', () => {
+    const fields = [{ id: 'reason', label: 'Why?', lines: 3 }, { ...CHOICE, value: ['stage'], look: 'list' }, RUN]
+    expect(approvalOf(WS, ask({ fields }).approval).fields).toEqual(fields)
+  })
+
+  it('take a press picking some of their own choices, no more than they let be picked and at least their least', () => {
+    expect(inputsProblem([CHOICE], { env: ['prod'] })).toBe(null)
+    expect(inputsProblem([CHOICE], { env: [] })).toBe(null)
+    expect(inputsProblem([CHOICE], null)).toBe(null)
+    expect(inputsProblem([CHOICE], { env: ['prod', 'stage'] })).toBe('pick at most 1 in "Where"')
+    expect(inputsProblem([CHOICE], { env: ['mars'] })).toBe('"Where" takes some of its own choices')
+    expect(inputsProblem([CHOICE], { env: ['prod', 'prod'] })).toBe('"Where" takes some of its own choices')
+    expect(inputsProblem([CHOICE], { env: 'prod' })).toBe('"Where" takes some of its own choices')
+    expect(inputsProblem([RUN], { run: ['prod', 'dev'] })).toBe(null)
+    expect(inputsProblem([RUN], { run: [] })).toBe('pick one in "Run" first')
+    expect(inputsProblem([{ ...RUN, least: 2 }], { run: ['dev'] })).toBe('pick at least 2 in "Run" first')
+    expect(inputsProblem([{ id: 'reason', label: 'Why?', required: true }, RUN], { run: [] })).toBe('fill in "Why?" first')
+  })
+
+  it('are left unfilled by an option that skips them, whatever the press filled in', () => {
+    const { approval } = ask({ options: [{ id: 'apply', label: 'Apply' }, { id: 'cancel', label: 'Cancel', skip: true }], fields: [RUN] }, { now: Date.now() })
+    postApproval(WS, approval, { shown: { text: 'Apply?' }, note: 7 })
+    const press = (choice, inputs) => answerApproval(WS, approval, { choice, inputs, person: { id: '42', name: 'Ann' } })
+    expect(press('apply', { run: [] })).toEqual({ taken: false, reason: 'pick one in "Run" first' })
+    expect(press('cancel', { run: ['mars'] })).toEqual({ taken: true })
+    expect(approvalOf(WS, approval)).toMatchObject({ state: 'answered', choice: 'cancel', inputs: null })
   })
 })
 

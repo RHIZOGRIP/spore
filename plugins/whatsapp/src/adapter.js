@@ -75,7 +75,7 @@ export const WHATSAPP = {
   check,
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 4096, file: 100 * 1024 * 1024, fetch: 100 * 1024 * 1024, editEveryMs: 0, typingEveryMs: 20000 },
-  can: { upload: true, edit: false, remove: false, react: true, typing: true, choose: true, fields: false },
+  can: { upload: true, edit: false, remove: false, react: true, typing: true, choose: true, fields: {} },
   reactions: null,
   showShared: 'react',
   hint (err, { file }) {

@@ -184,6 +184,7 @@ const harness = {
     }
   },
   seen: (teams, conversation) => teams.sent.filter(one => inConversation(one, conversation)).map(said),
+  form: (teams, { conversation, note }) => harness.seen(teams, conversation).find(one => one.op === 'ask' && one.note === note).fields,
   press (teams, { note, data, person, inputs = {} }) {
     const conversation = note.slice(0, note.lastIndexOf(' '))
     const shared = conversation.startsWith('19:')

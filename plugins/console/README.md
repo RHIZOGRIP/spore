@@ -77,7 +77,7 @@ Every event carries `seq`, `at`, `person` and `type`:
 | `question` | a turn that ended on a question | as `reply` |
 | `notice` | what the console itself said: a command's answer, a file it could not take | `spore`, `text` |
 | `file` | a file the turn left in `data/out/` | `spore`, `name` (its path in the spore's workspace), `mime`, `bytes` |
-| `card` | an approval asked of the person | `approval`, `spore`, `body` (`{ console: … }` or `{ default: { text, facts } }`), `options`, `fields`, `by`, `until` |
+| `card` | an approval asked of the person | `approval`, `spore`, `body` (`{ console: … }` or `{ default: { text, facts } }`), `options` (each `{ id, label, style, skip }`, `skip` true on one taken without the fields), `fields`, `by`, `until` |
 | `closed` | the approval ended | `approval`, `note` (the card's `seq`), `state` (`answered`, `expired`), `choice`, `by`, `outcome` (the hook's: `confirmed`, `failed`, or null), `reason`, and `body` (what the hook answered) or `closing` (the line a person would read) |
 | `quiet` | a turn nobody in the conversation asked ended with nothing to say, in the spore's default conversation | `turn`, `origin` |
 
@@ -88,7 +88,7 @@ Your program asks an approval as for any place
 `to: console:<name>/<person>`; a body under `console` is any JSON object, handed on as it is. It
 shows as a `card`, and `POST /approvals/<id>/answer { choice, by, inputs }` presses it as `by`:
 taken only from someone the approval names, a choice among its options, while it is open, with
-every required field filled in — `200 { taken: true, text }`; anything else is
+every required field filled in, unless the option says `skip` — `200 { taken: true, text }`; anything else is
 `409 { taken: false, reason }` and reaches no hook. Then everything a press in Teams sets off
 follows: your hook is called with the presser as `by`, the card is `closed`, and the spore is told,
 once, in the same conversation. Both the card's person and `by` must be among the console's

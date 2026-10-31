@@ -1817,7 +1817,8 @@ party an approval must not depend on. So an approval is asked by the host — `r
 write neither `state.sqlite` nor the API's tokens — in a conversation the spore is reached in,
 of the people it names (`by`, their ids as the bot file writes them), with fixed options. It
 counts only as a press of a button the relay posted, by one of them, as the platform vouches for
-them: Telegram's callback query, Teams' signed `adaptiveCard/action` invoke. `answerApproval`
+them: Telegram's callback query, Teams' signed `adaptiveCard/action` invoke, Discord's interaction
+on the bot's own Gateway connection. `answerApproval`
 takes a press only from someone the approval names, on one of its options, with what was filled
 in fitting its fields, whoever calls it; what only an adapter can know, that the platform vouched
 for the person, is the caller's. The first such press wins — `answer_approval` is one update on
@@ -1834,14 +1835,22 @@ facts each adapter draws in its platform's own way. The relay owns the buttons w
 so a body may carry nothing that answers back to the bot (`checkBody`; in Teams no
 `Action.Submit`, `Action.Execute` or `refresh`, wherever it sits): a button of the host's would
 bypass `by` and the first press. **What a person fills in is the flow's too**: the request's
-`fields`, `{ id, label, value?, required? }` beside the options, which the relay draws with the
-buttons where the adapter shows fields (`can.fields`; Teams as `Input.Text`, so a host's own
-`Input.*` is refused like its own button). A press is taken only with what it fills in fitting
-the declaration — declared ids, text within the limit, every required one filled in
-(`inputsProblem`) — and answered with why otherwise; what it held goes with it, as `inputs`, to
-the hook — the spore learns what the hook's `tell` says. Where an adapter shows no fields, the
-relay decides once for every platform: a required field refuses the approval there, an optional
-one is left out and the hook gets no `inputs`.
+`fields` beside the options, each a text (`{ id, label, value?, required?, lines? }`) or a choice
+(`{ id, kind: "choice", label, choices, least?, most?, value?, look? }`, how many may be picked
+from 0 and 1 when unsaid). The meaning is the request's and the look a hint: a choice is a list or
+a menu, never a radio or a checkbox, which are how a platform draws one. The relay draws them with
+the buttons where the adapter shows that kind (`can.fields`; Teams as `Input.Text`, so a host's
+own `Input.*` is refused like its own button; Discord in a modal its button opens, as Discord
+shows inputs nowhere else). A press is taken only with what it fills in fitting the declaration —
+declared ids, text within the limit, choices among its own and as many as it lets be picked,
+every required text filled in (`inputsProblem`) — and answered with why otherwise, unless the
+option pressed says `skip`, a Cancel taken without them; what it held goes with it, as `inputs`,
+to the hook — the spore learns what the hook's `tell` says. What an adapter cannot show the relay
+decides once for every platform, before posting: a required text or any choice refuses the
+approval there — a choice left out would make its first value the answer — and an optional text
+is left out. Each connector declares its own bounds (`can.fields.choice`: whether several may be
+picked, the most choices as a list and as a menu); the core bounds a choice at 100, a sanity
+limit, and an approval that does not fit a connector is refused there, never cut down.
 
 **`t_approvals` is the record, and the relay works from it.** `state` goes `asked` → `posted` →
 `answered` or `expired`, or `asked` → `refused` when the relay will not post it: the conversation
