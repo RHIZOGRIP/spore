@@ -86,9 +86,13 @@ Every event carries `seq`, `at`, `person` and `type`:
 Your program asks an approval as for any place
 ([INTEGRATION §Asking a person to approve](../../INTEGRATION.md#asking-a-person-to-approve)), with
 `to: console:<name>/<person>`; a body under `console` is any JSON object, handed on as it is. It
-shows as a `card`, and `POST /approvals/<id>/answer { choice, by, inputs }` presses it as `by`:
-taken only from someone the approval names, a choice among its options, while it is open, with
-every required field filled in, unless the option says `skip` — `200 { taken: true, text }`; anything else is
+shows as a `card`, its `fields` each a text or a choice as the relay hands them on — a choice with
+its `choices`, `least` and `most` to pick, the ids picked at first as `value`, and `look`, `list`
+or `menu`, how to draw it (a list up to 20 choices, a menu up to 100). `POST
+/approvals/<id>/answer { choice, by, inputs }` presses it as `by`, `inputs` a text by each text
+field's id and an array of the ids picked by each choice's. It is taken only from someone the
+approval names, a choice among its options, while it is open, with every required field filled in
+and each choice picked within its bounds, unless the option says `skip` — `200 { taken: true, text }`; anything else is
 `409 { taken: false, reason }` and reaches no hook. Then everything a press in Teams sets off
 follows: your hook is called with the presser as `by`, the card is `closed`, and the spore is told,
 once, in the same conversation. Both the card's person and `by` must be among the console's

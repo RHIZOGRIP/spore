@@ -111,6 +111,20 @@ const standIn = () => {
 
 const inConversation = (one, conversation) => conversation.startsWith('19:') ? one.conversation.startsWith(conversation) : one.conversation === `a:${conversation}`
 
+/** A field as the card shows it, in the relay's terms: a text, or a choice and how many it lets be picked. */
+const fieldOf = (input) => {
+  if (input.type === 'Input.Text') return { id: input.id.slice('field:'.length), label: input.label, value: input.value ?? null, required: input.isRequired ?? false }
+  return {
+    id: input.id.slice('pick:'.length),
+    label: input.label,
+    choices: input.choices.map(choice => ({ id: choice.value, label: choice.title })),
+    least: input.isRequired ? 1 : 0,
+    most: input.isMultiSelect ? input.choices.length : 1,
+    value: input.value ? input.value.split(',') : [],
+    look: input.style === 'expanded' ? 'list' : 'menu'
+  }
+}
+
 const said = (one) => {
   const note = `${one.conversation} ${one.id}`
   if (one.op === 'post') return { op: 'post', note, text: one.text, answering: one.answering, formatted: one.formatted }
@@ -121,7 +135,7 @@ const said = (one) => {
       note,
       text: JSON.stringify(one.card),
       choices: one.card.actions.filter(action => action.data?.spore).map(action => ({ label: action.title, data: action.data.spore, style: action.style ?? null })),
-      fields: one.card.body.filter(element => element.type === 'Input.Text').map(input => ({ id: input.id.slice('field:'.length), label: input.label, value: input.value ?? null, required: input.isRequired ?? false }))
+      fields: one.card.body.filter(element => element.type.startsWith('Input.')).map(fieldOf)
     }
   }
   if (one.op === 'close') return { op: 'close', note, text: JSON.stringify(one.card) }
@@ -198,7 +212,7 @@ const harness = {
       conversation: { id: conversation, conversationType: shared ? 'channel' : 'personal', tenantId: TENANT },
       from: { id: `29:${person}`, aadObjectId: person, name: `U${person} Smith` },
       recipient: { id: `28:${APP}`, name: 'Triage' },
-      value: { action: { type: 'Action.Execute', verb: 'answer', data: { ...Object.fromEntries(Object.entries(inputs).map(([id, text]) => [`field:${id}`, text])), spore: data } }, trigger: 'manual' }
+      value: { action: { type: 'Action.Execute', verb: 'answer', data: { ...Object.fromEntries(Object.entries(inputs).map(([id, value]) => Array.isArray(value) ? [`pick:${id}`, value.join(',')] : [`field:${id}`, value])), spore: data } }, trigger: 'manual' }
     })
     return { acknowledged: () => teams.replies.has(id) ? { text: teams.replies.get(id).value } : undefined }
   },
@@ -224,7 +238,7 @@ conformance(harness, (ctx) => {
       await ctx.until(() => ctx.seen('1').some(one => one.op === 'ask'))
       const question = ctx.seen('1').find(one => one.op === 'ask')
       const card = ctx.platform.sent.find(one => one.op === 'ask').card
-      expect(card.body).toEqual([...CARD.body, { type: 'Input.Text', id: 'field:comment', label: 'Comment', isMultiline: true, isRequired: true, errorMessage: 'Comment is required' }])
+      expect(card.body).toEqual([...CARD.body, { type: 'Input.Text', id: 'field:comment', label: 'Comment', isRequired: true, errorMessage: 'Comment is required' }])
       expect(card.actions).toEqual([CARD.actions[0], { type: 'Action.Execute', title: 'Apply', verb: 'answer', data: { spore: `ap:${id}:apply` }, style: 'positive' }])
 
       const pressed = harness.press(ctx.platform, { note: question.note, data: question.choices[0].data, person: '1', inputs: { comment: 'looks right' } })
@@ -235,6 +249,32 @@ conformance(harness, (ctx) => {
       const closed = ctx.platform.sent.find(one => one.op === 'close').card
       expect(closed.actions).toEqual([CARD.actions[0]])
       expect(closed.body).toEqual([...CARD.body, { type: 'TextBlock', text: '**Apply — U1 Smith**', wrap: true }])
+    })
+
+    it('asks a choice as a choice set, a list expanded and a menu compact, saying in its label a bound the card cannot hold, and takes the ids Teams joins', async () => {
+      ctx.start({ approveEveryMs: 50 })
+      const id = asking({ teams: CARD }, [
+        { id: 'env', kind: 'choice', label: 'Where', choices: [{ id: 'prod', label: 'Production' }, { id: 'stage', label: 'Staging' }], value: ['stage'] },
+        { id: 'run', kind: 'choice', label: 'Run', choices: [{ id: 'lint', label: 'Lint' }, { id: 'unit', label: 'Unit' }, { id: 'e2e', label: 'End to end' }, { id: 'perf', label: 'Perf' }], least: 1, most: 2, look: 'menu' }
+      ])
+      await ctx.until(() => ctx.seen('1').some(one => one.op === 'ask'))
+      const question = ctx.seen('1').find(one => one.op === 'ask')
+      const card = ctx.platform.sent.find(one => one.op === 'ask').card
+      expect(card.body).toEqual([
+        ...CARD.body,
+        { type: 'Input.ChoiceSet', id: 'pick:env', label: 'Where', choices: [{ title: 'Production', value: 'prod' }, { title: 'Staging', value: 'stage' }], style: 'expanded', value: 'stage', wrap: true },
+        { type: 'Input.ChoiceSet', id: 'pick:run', label: 'Run (pick 1 to 2)', choices: [{ title: 'Lint', value: 'lint' }, { title: 'Unit', value: 'unit' }, { title: 'End to end', value: 'e2e' }, { title: 'Perf', value: 'perf' }], style: 'compact', isMultiSelect: true, wrap: true, isRequired: true, errorMessage: 'Run is required' }
+      ])
+
+      const over = harness.press(ctx.platform, { note: question.note, data: question.choices[0].data, person: '1', inputs: { env: ['prod'], run: ['lint', 'unit', 'e2e'] } })
+      await ctx.until(() => over.acknowledged())
+      expect(over.acknowledged().text).toBe('pick at most 2 in "Run"')
+      const pressed = harness.press(ctx.platform, { note: question.note, data: question.choices[0].data, person: '1', inputs: { env: ['prod'], run: ['lint', 'e2e'] } })
+      await ctx.until(() => pressed.acknowledged())
+      expect(pressed.acknowledged().text).toBe('Apply — recorded')
+      await ctx.until(() => approvalOf(ctx.ws, id).told)
+      expect(approvalOf(ctx.ws, id).inputs).toEqual({ env: ['prod'], run: ['lint', 'e2e'] })
+      expect(ctx.platform.sent.find(one => one.op === 'close').card.body.some(element => element.type.startsWith('Input.'))).toBe(false)
     })
 
     it('fetches a file sent in a personal chat by its link, and an image pasted there with the bot\'s token', async () => {

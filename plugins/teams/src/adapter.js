@@ -19,6 +19,7 @@ const IMAGE = /^image\/(png|jpeg|gif|webp)$/
 const PRESSED = 'spore'
 const ANSWERING = new Set(['Action.Submit', 'Action.Execute'])
 const FIELD = 'field:'
+const PICK = 'pick:'
 const SHAPE = '{ "app": "<app id>", "tenant": "<tenant id>", "secret": "${OPS_TEAMS_SECRET}", "people": { "<object id>": "<spore>" }, "channels": { "<channel id>": { "spores": ["<spore>"], "people": ["<object id>"] } } }' // eslint-disable-line no-template-curly-in-string
 
 const invalid = (path, problem, detail = `a bot is ${SHAPE}`) => new SporeError(`${path} ${problem}`, { type: 'TEAMS_BOT_INVALID', detail })
@@ -79,7 +80,7 @@ export const TEAMS = {
   routeOf: (conversation) => conversation.split(THREAD)[0],
   usage: { help: `${HELP}; ${EXTEND}.`, briefHelp: `${HELP}.`, extend: '/extend wall 30m, /extend cost 1.50 or /extend rounds 20' },
   limits: { message: 40000, file: 0, fetch: 25 * 1024 * 1024, editEveryMs: 2500, typingEveryMs: 4000 },
-  can: { upload: false, edit: true, remove: true, react: false, typing: false, choose: true, fields: { text: true } },
+  can: { upload: false, edit: true, remove: true, react: false, typing: false, choose: true, fields: { text: true, choice: { several: true, list: 20, menu: 100 } } },
   reactions: null,
   showShared: 'working',
   hint (err, { file }) {
@@ -183,15 +184,44 @@ const asksInput = (value) => Array.isArray(value)
   ? value.some(asksInput)
   : record(value) && ((typeof value.type === 'string' && value.type.startsWith('Input.')) || Object.values(value).some(asksInput))
 
-/** An approval's field as the card's own input, under an id the press brings back. */
-const inputOf = (field) => ({
-  type: 'Input.Text',
-  id: `${FIELD}${field.id}`,
-  label: field.label,
-  isMultiline: true,
-  ...(field.value ? { value: field.value } : {}),
-  ...(field.required ? { isRequired: true, errorMessage: `${field.label} is required` } : {})
-})
+/**
+ * How many may be picked, where the card cannot hold it: a choice set says only whether one or
+ * several may be picked and whether at least one must be, so other bounds are said in its label
+ * and checked when the press arrives.
+ */
+const boundsOf = ({ least, most, choices }) => {
+  if (most === 1 || (least <= 1 && most >= choices.length)) return null
+  if (least === most) return `pick ${most}`
+  if (least === 0) return `pick at most ${most}`
+  return most >= choices.length ? `pick at least ${least}` : `pick ${least} to ${most}`
+}
+
+/** An approval's field as the card's own input, under an id the press brings back: a text, or a choice as a list or a menu. */
+function inputOf (field) {
+  const required = (when) => when ? { isRequired: true, errorMessage: `${field.label} is required` } : {}
+  if (field.kind !== 'choice') {
+    return {
+      type: 'Input.Text',
+      id: `${FIELD}${field.id}`,
+      label: field.label,
+      ...(field.lines > 1 ? { isMultiline: true } : {}),
+      ...(field.value ? { value: field.value } : {}),
+      ...required(field.required)
+    }
+  }
+  const bounds = boundsOf(field)
+  return {
+    type: 'Input.ChoiceSet',
+    id: `${PICK}${field.id}`,
+    label: bounds ? `${field.label} (${bounds})` : field.label,
+    choices: field.choices.map(choice => ({ title: choice.label, value: choice.id })),
+    style: field.look === 'list' ? 'expanded' : 'compact',
+    ...(field.most > 1 ? { isMultiSelect: true } : {}),
+    ...(field.value.length ? { value: field.value.join(',') } : {}),
+    wrap: true,
+    ...required(field.least > 0)
+  }
+}
 
 /** What an approval shows, as an Adaptive Card: the host's own, or the default body — its text, then its facts. */
 const cardOf = ({ native, fallback }) => native
@@ -216,12 +246,16 @@ const closed = (card, outcome) => ({
 /**
  * A press on one of the relay's buttons, as the relay takes it, from an `adaptiveCard/action`
  * invoke: what Teams merged into the action's data besides the relay's own is what the person
- * filled in, each field under its own id.
+ * filled in, each field under its own id — a text as typed, a choice as the ids picked, which
+ * Teams joins with commas.
  */
 export function choiceOf (activity) {
   const personal = activity.conversation.conversationType === 'personal'
   const { [PRESSED]: data = null, ...filled } = record(activity.value?.action?.data) ? activity.value.action.data : {}
-  const inputs = Object.fromEntries(Object.entries(filled).map(([id, value]) => [id.startsWith(FIELD) ? id.slice(FIELD.length) : id, value]))
+  const inputs = Object.fromEntries(Object.entries(filled).map(([id, value]) => {
+    if (id.startsWith(PICK)) return [id.slice(PICK.length), value === '' ? [] : typeof value === 'string' ? value.split(',') : value]
+    return [id.startsWith(FIELD) ? id.slice(FIELD.length) : id, value]
+  }))
   return {
     conversation: personal ? activity.from.aadObjectId : activity.conversation.id,
     data,

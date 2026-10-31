@@ -324,7 +324,8 @@ never shown cut down:
 
 | | text | choice |
 |---|---|---|
-| Teams, the console | yes | not yet |
+| Teams | yes, on the card | yes: a list of 20, a menu of 100, several or one; a bound the card cannot hold is said in its label |
+| the console | yes | yes: a list of 20, a menu of 100, several or one, for your program to draw |
 | Discord | yes, in a form its buttons open | yes: a list of 10, a menu of 25, several or one |
 | Slack, Telegram, WhatsApp | no | no |
 

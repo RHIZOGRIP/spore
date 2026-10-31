@@ -79,7 +79,9 @@ const seenOf = (uploads) => (event) => {
       note,
       text: JSON.stringify(event.body),
       choices: event.options.map(option => ({ label: option.label, data: `ap:${event.approval}:${option.id}`, style: option.style })),
-      fields: event.fields.map(field => ({ id: field.id, label: field.label, value: field.value ?? null, required: field.required ?? false }))
+      fields: event.fields.map(({ id, label, value, required, kind, choices, least, most, look }) => kind === 'choice'
+        ? { id, label, choices, least, most, value, look }
+        : { id, label, value: value ?? null, required: required ?? false })
     }]
   }
   if (event.type === 'closed') return [{ op: 'close', note: String(event.note), text: JSON.stringify(event) }]

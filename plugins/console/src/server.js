@@ -129,7 +129,7 @@ export function serve ({ host, port, token, file, events, people, deliver, press
     const extra = Object.keys(rest)
     if (extra.length) throw new Refused(400, `an answer is { "choice", "by", "inputs" } — not ${extra.join(', ')}`)
     if (typeof choice !== 'string' || !CHOICE.test(choice)) throw new Refused(400, 'choice is the id of one of the card\'s options')
-    if (inputs !== null && (typeof inputs !== 'object' || Array.isArray(inputs))) throw new Refused(400, 'inputs is { "<field id>": "<text>" }')
+    if (inputs !== null && (typeof inputs !== 'object' || Array.isArray(inputs))) throw new Refused(400, 'inputs is { "<field id>": "<text>" or ["<choice id>", …] }')
     const card = events.cardOf(approval)
     if (!card) throw new Refused(404, `no card ${approval} was shown on this console`)
     mapped(card.person)

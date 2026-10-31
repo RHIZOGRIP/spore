@@ -146,11 +146,16 @@ The answer opens with what started the turn — `schedule "digest"` — except i
 An approval your program asks in a personal chat or a channel this bot reaches
 ([INTEGRATION §Asking a person to approve](../../INTEGRATION.md#asking-a-person-to-approve)) is
 posted as an Adaptive Card — the request's `teams` card, or its `default` text and facts drawn as
-a `TextBlock` and a `FactSet` — with an `Input.Text` per field of the request under it and an
-`Action.Execute` button per option, both added by the bot. A card of your own must be version 1.4
+a `TextBlock` and a `FactSet` — with an input per field of the request under it and an
+`Action.Execute` button per option, both added by the bot. A text is an `Input.Text`, several
+lines when it asks for more than one; a choice is an `Input.ChoiceSet`, expanded as a list (up to
+20 choices) or compact as a menu (up to 100), letting several be picked when it does. A choice set
+holds only whether one must be picked, so a bound beyond it — pick 1 to 2, say — is said in its
+label and checked when the press arrives. A card of your own must be version 1.4
 or later and carry no `Action.Submit`, `Action.Execute`, `refresh` or `Input.*` of its own;
 `Action.OpenUrl` is fine. A press is Microsoft's signed `adaptiveCard/action` invoke, taken only
-from someone the approval names with every required field filled in, and answered at once —
+from someone the approval names with every required field filled in and each choice picked within
+its bounds, and answered at once —
 `Apply — recorded`, or why it was not taken; what the person filled in comes with it. The card is
 then updated: replaced by the body your hook answered, or kept with its buttons and fields gone and
 who chose what below.

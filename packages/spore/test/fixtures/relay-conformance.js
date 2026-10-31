@@ -1039,14 +1039,14 @@ export function conformance (harness, platformTests = () => {}) {
         const id = ask({
           fields: [
             { id: 'env', kind: 'choice', label: 'Where', choices: choices('prod', 'stage', 'dev'), value: ['stage'] },
-            { id: 'run', kind: 'choice', label: 'Run', choices: choices('lint', 'unit', 'e2e'), least: 1, most: 2, look: 'menu' }
+            { id: 'run', kind: 'choice', label: 'Run', choices: choices('lint', 'unit', 'e2e'), least: 1, most: 3, look: 'menu' }
           ]
         })
         await until(() => questions().length === 1)
         const [question] = questions()
         expect(await form(question, 'Apply')).toEqual([
           { id: 'env', label: 'Where', choices: choices('prod', 'stage', 'dev'), least: 0, most: 1, value: ['stage'], look: 'list' },
-          { id: 'run', label: 'Run', choices: choices('lint', 'unit', 'e2e'), least: 1, most: 2, value: [], look: 'menu' }
+          { id: 'run', label: 'Run', choices: choices('lint', 'unit', 'e2e'), least: 1, most: 3, value: [], look: 'menu' }
         ])
 
         expect(await acknowledged(press(question, 'Apply', ONE, ONE, { env: ['prod'], run: [] }))).toBe('pick one in "Run" first')
