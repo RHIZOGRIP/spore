@@ -2,8 +2,9 @@
 /**
  * Tags each plugin whose package.json version has no plugin-<name>-v<version> tag on origin, and
  * pushes those tags, which is what publishes them (.github/workflows/publish-plugin.yml). A
- * plugin is released by bumping its version and committing it; the others are left alone, and so
- * is one marked `"private": true`.
+ * plugin is released by bumping its version, committing it and pushing main; the others are left
+ * alone, and so is one marked `"private": true`. It tags only a commit origin's main already holds,
+ * since a pushed tag carries its commit along and would publish one main may never get.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -17,6 +18,15 @@ const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8'
 const dirty = git('status', '--porcelain', '--', 'plugins')
 if (dirty) {
   console.error(`tag-plugins: plugins/ has uncommitted changes — commit them first\n${dirty}`)
+  process.exit(1)
+}
+
+git('fetch', '--quiet', 'origin', 'main')
+try {
+  git('merge-base', '--is-ancestor', 'HEAD', 'origin/main')
+} catch (err) {
+  if (err.status !== 1) throw err
+  console.error(`tag-plugins: ${git('rev-parse', '--short', 'HEAD')} is not on origin's main — push main first, and tag from it`)
   process.exit(1)
 }
 
