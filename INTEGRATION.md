@@ -346,8 +346,8 @@ already" — and then:
    key on `approval`.
 2. **The question is closed**: replaced by your `body`, or kept with its buttons gone and who chose
    what below it.
-3. **The spore is told**, once, in the same conversation — who chose what, whether you confirmed
-   it, and your `tell` — and answers there.
+3. **The spore is told**, once, in the same conversation — who chose what, what they filled in,
+   whether you confirmed it, and your `tell` — and answers there.
 
 ```js
 import { createHmac, timingSafeEqual } from 'node:crypto'
@@ -361,7 +361,7 @@ const signed = (raw, headers, secret) => {
 
 Nobody pressing by `until` expires it: the question says so, your hook is told, and so is the
 spore. One that cannot be posted — the conversation does not reach that spore, the platform
-carries no approvals (Discord, for now), there is nothing to show there — is refused, and only
+carries no approvals, there is nothing to show there — is refused, and only
 your hook is told. `listApprovals({ ws })`, `spore approval ls` and `GET
 /v1/spores/<name>/approvals/<id>` read where each one is.
 

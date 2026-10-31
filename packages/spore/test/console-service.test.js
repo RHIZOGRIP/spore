@@ -228,7 +228,7 @@ conformance(harness, (ctx) => {
         expect(heard).toEqual([expect.objectContaining({ approval, outcome: 'answered', choice: { id: 'apply', label: 'Apply' }, by: { id: '1', name: '1', platform: 'console' }, inputs: { reason: 'checked' }, signed: true })])
         const closed = ctx.platform.events.after('1', card.seq, 100).find(event => event.type === 'closed')
         expect(closed).toMatchObject({ approval, note: card.seq, state: 'answered', choice: 'apply', by: { id: '1', name: '1' }, outcome: 'confirmed', reason: null, closing: 'Apply — 1' })
-        expect(readInbox(ctx.ws).find(entry => entry.approval === approval).text).toMatch(/^1 chose "Apply", and the host confirmed it\.\n\nThe host adds:\n82 % is in$/)
+        expect(readInbox(ctx.ws).find(entry => entry.approval === approval).text).toBe('1 chose "Apply", and the host confirmed it.\n\nWhat they filled in:\n- Why?: "checked"\n\nThe host adds:\n82 % is in')
       } finally {
         await new Promise(resolve => hook.close(resolve))
       }

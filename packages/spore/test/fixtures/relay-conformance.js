@@ -1019,6 +1019,7 @@ export function conformance (harness, platformTests = () => {}) {
         await until(() => approval(id).told)
         expect(approval(id).inputs).toEqual({ value: '84 %', reason: 'checked' })
         expect(heard.map(one => one.payload.inputs)).toEqual([{ value: '84 %', reason: 'checked' }])
+        expect(readInbox(ws).find(entry => entry.approval === id).text).toContain('\n\nWhat they filled in:\n- Value: "84 %"\n- Why?: "checked"')
       })
 
       it.runIf(spec.can.fields.text)('takes an option that skips the fields without them, though one is required', async () => {
@@ -1029,6 +1030,7 @@ export function conformance (harness, platformTests = () => {}) {
         await until(() => approval(id).told)
         expect(approval(id)).toMatchObject({ choice: 'cancel', inputs: null })
         expect(heard[0].payload).not.toHaveProperty('inputs')
+        expect(readInbox(ws).find(entry => entry.approval === id).text).not.toContain('filled in')
       })
 
       it.runIf(spec.can.fields.choice)('shows its choices as a list or a menu, takes a press picking within their bounds, and hands on the ids picked', async () => {
@@ -1052,6 +1054,7 @@ export function conformance (harness, platformTests = () => {}) {
         await until(() => approval(id).told)
         expect(approval(id).inputs).toEqual({ env: ['prod'], run: ['lint', 'e2e'] })
         expect(heard.map(one => one.payload.inputs)).toEqual([{ env: ['prod'], run: ['lint', 'e2e'] }])
+        expect(readInbox(ws).find(entry => entry.approval === id).text).toContain('\n\nWhat they filled in:\n- Where: PROD\n- Run: LINT, E2E')
       })
 
       it.runIf(spec.can.fields.choice)('is refused where its choices are more than this platform shows', async () => {

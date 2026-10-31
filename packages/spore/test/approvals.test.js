@@ -217,10 +217,10 @@ describe('an approval as it goes', () => {
 })
 
 describe('telling the spore', () => {
-  it('reads a press as recorded from the buttons, and an expiry as nobody answering, never as words typed', () => {
+  it('reads a press as recorded from the buttons with any text filled in quoted as theirs, and an expiry as nobody answering', () => {
     const answered = { approval: 'a1b2c3d4e5f6', fromName: 'Ann', fromId: 'telegram:42', fromWhere: 'chat 42 on Telegram', text: 'Ann chose "Apply".' }
-    expect(saidOf(answered)).toBe('[Approval a1b2c3d4e5f6, answered by "Ann" (telegram:42) in "chat 42 on Telegram": recorded by the runtime from the platform\'s own buttons, not typed by anyone.]\n\nAnn chose "Apply".')
-    expect(saidOf({ approval: 'a1b2c3d4e5f6', text: 'Nobody answered it by 2026-10-17T14:00:00.000Z.' })).toMatch(/^\[Approval a1b2c3d4e5f6, answered by no one before its deadline: /)
+    expect(saidOf(answered)).toBe('[Approval a1b2c3d4e5f6, answered by "Ann" (telegram:42) in "chat 42 on Telegram": recorded by the runtime from the platform\'s own buttons, not typed by anyone but a text they filled in, which is quoted.]\n\nAnn chose "Apply".')
+    expect(saidOf({ approval: 'a1b2c3d4e5f6', text: 'Nobody answered it by 2026-10-17T14:00:00.000Z.' })).toBe('[Approval a1b2c3d4e5f6, answered by no one before its deadline: recorded by the runtime from the platform\'s own buttons, not typed by anyone.]\n\nNobody answered it by 2026-10-17T14:00:00.000Z.')
   })
 
   it('needs the conversation it was asked in, and is no schedule\'s, webhook\'s or overheard', () => {

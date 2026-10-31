@@ -755,10 +755,12 @@ export function saidOf (entry) {
   const parts = []
 
   // A button press is not something typed: the runtime recorded it, and only after the host's
-  // hook had its say, so what follows is the outcome and nothing to act on as a request.
+  // hook had its say, so what follows is the outcome and nothing to act on as a request. A text
+  // filled in with it is the person's, quoted so nothing in it can pass for the runtime speaking.
   if (entry.approval) {
     const who = entry.fromName ? `answered by ${JSON.stringify(entry.fromName)} (${entry.fromId}) in ${JSON.stringify(entry.fromWhere)}` : 'answered by no one before its deadline'
-    parts.push(`[Approval ${entry.approval}, ${who}: recorded by the runtime from the platform's own buttons, not typed by anyone.]`)
+    const typed = entry.fromName ? 'not typed by anyone but a text they filled in, which is quoted' : 'not typed by anyone'
+    parts.push(`[Approval ${entry.approval}, ${who}: recorded by the runtime from the platform's own buttons, ${typed}.]`)
   } else if (entry.fromName) {
     // The person's name and the conversation's are theirs to choose, so both are quoted: nothing
     // in them can pass for the runtime speaking.

@@ -121,7 +121,7 @@ them, what came of it. An approval with fields opens a form when its button is p
 shows inputs nowhere else — holding each of them: a text, short or long, and a choice as a radio
 group, checkboxes (up to 10 choices) or a menu (up to 25). Submitting it is the press. An option
 that skips the fields, a Cancel, answers at once. Once it is answered or expires, its buttons go
-and how it ended is written below it. Discord takes no approval body of its own yet: give it a
+and how it ended is written below it in small text. Discord takes no approval body of its own yet: give it a
 `default`.
 
 ## What it guarantees

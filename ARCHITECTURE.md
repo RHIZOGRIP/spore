@@ -1872,7 +1872,9 @@ closed and the spore told.
 
 **The spore is told by a message in the conversation**, under the request id `approval:<id>` so
 it is said once, carrying `approval` on its inbox entry and, for a press, the person as its
-`from`. `saidOf` reads it as recorded from the platform's buttons and typed by no one. It starts
+`from`. It says what was filled in, each text quoted and each choice by the labels picked, and
+`saidOf` reads it as recorded from the platform's buttons and typed by no one but a text the person
+filled in. It starts
 a turn answered in that conversation, so the conversation goes on from it. An expired approval is
 told as nobody answering; a refused one was never shown, and only the hook is told.
 

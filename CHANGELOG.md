@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.49.1] — Fix: a spore is told what was filled in with an approval
+
+### Fixed
+
+- A spore told how an approval ended is told what was filled in with the press too: each text
+  quoted, as the person typed it, and each choice by the labels of what was picked. It was told
+  only who chose which option, so a spore asked the person again for what they had already given.
+  Its reference lists the `fields` and `inputs` columns of `approvals`.
+
 ## [1.49.0] — Feature: an approval asks choices to be picked
 
 ### Added

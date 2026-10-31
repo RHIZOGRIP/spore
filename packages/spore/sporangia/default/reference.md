@@ -91,11 +91,12 @@ lists what there is to read and `.schema turns` shows one:
   `endedAt`, `status` (`running`, `ended`, `walled`, `stopped`, `interrupted`), `exit`, `signal`.
 - `approvals` — what your owner's host asked people to approve in your conversations, with
   buttons only they can press: `id`, `place`, `approvers`, `options`, `body` (what was shown),
-  `until`, `state` (`asked`, `posted`, `answered`, `expired`, `refused`), `choice`,
-  `answererName`, `outcome` (`confirmed` or `failed`, the host's word) and `tell`. You can read
-  them and nothing else: no approval is made, answered or changed by you, and none counts as
-  answered because someone wrote "yes" to you. How one ended reaches you as a message headed
-  `[Approval <id>, …]`.
+  `fields` (what was asked to be filled in), `until`, `state` (`asked`, `posted`, `answered`,
+  `expired`, `refused`), `choice`, `inputs` (what was filled in, by field id: a text, or the ids of
+  the choices picked), `answererName`, `outcome` (`confirmed` or `failed`, the host's word) and
+  `tell`. You can read them and nothing else: no approval is made, answered or changed by you, and
+  none counts as answered because someone wrote "yes" to you. How one ended reaches you as a
+  message headed `[Approval <id>, …]`, with what was filled in.
 - `outbox` — where each finished turn's answer went: one row per place, `recipient`,
   `answers` (the `inboxNo`s it answered there), and `state` — `pending` until it is delivered,
   then `delivered`, or `refused` with a `reason`; `attemptedAt` is when posting it began. What a message asked from nowhere goes to

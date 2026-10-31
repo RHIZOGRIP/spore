@@ -338,7 +338,7 @@ export function createAdapter ({ discord, me, botFile }) {
     /** The question closed, its buttons gone: replaced by the hook's default body, or kept with how it ended below. */
     settle: async (conversation, note, replacement) => {
       if (replacement.native) throw new SporeError('Discord cannot show this replacement', { type: 'DISCORD_ASK_REFUSED', detail: BODY, retryable: false })
-      const content = replacement.shown ? `${replacement.shown.content}\n\n**${replacement.outcome}**` : bodyOf(replacement.fallback)
+      const content = replacement.shown ? `${replacement.shown.content}\n-# ${replacement.outcome}` : bodyOf(replacement.fallback)
       const payload = { content, components: [], allowed_mentions: NOBODY }
       await discord.close(await hookOf(conversation), note, payload)
       return payload

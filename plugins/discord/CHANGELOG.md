@@ -4,6 +4,14 @@ All notable changes to `@rhizogrip/spore-plugin-discord` are documented here, fr
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [0.12.1] — Fix: how an approval ended reads as part of it
+
+### Fixed
+
+- How an approval ended is written under its body in Discord's small text, not as a bold line
+  after a blank one, which read as the title of the next post when Discord ran the spore's posts
+  together.
+
 ## [0.12.0] — Feature: approvals in a channel
 
 ### Added

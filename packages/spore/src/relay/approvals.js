@@ -86,6 +86,21 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     return outcome === 'failed' ? `${chose} · not confirmed: ${reason}` : chose
   }
 
+  /**
+   * What the person filled in, a line per field the press carried: a text quoted, as they typed
+   * it, and a choice by the labels of what was picked. Null for a press that carried none.
+   */
+  const filledOf = (approval) => {
+    if (!approval.inputs) return null
+    const lines = (approval.fields ?? []).filter(field => field.id in approval.inputs).map(field => {
+      const input = approval.inputs[field.id]
+      if (kindOf(field) === 'text') return `- ${field.label}: ${JSON.stringify(input)}`
+      const picked = field.choices.filter(choice => input.includes(choice.id)).map(choice => choice.label)
+      return `- ${field.label}: ${picked.length ? picked.join(', ') : 'nothing picked'}`
+    })
+    return lines.length ? `What they filled in:\n${lines.join('\n')}` : null
+  }
+
   /** The spore told how its approval ended, once, in the conversation it was asked in. */
   const tell = (name, ws, approval) => {
     const conversation = conversationOf(approval)
@@ -94,8 +109,9 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     const line = answered
       ? `${approval.answererName} chose "${labelOf(approval)}"${confirmed[approval.outcome] ?? ''}.`
       : `Nobody answered it by ${approval.until}.`
+    const said = [line, answered ? filledOf(approval) : null, approval.tell ? `The host adds:\n${approval.tell}` : null].filter(Boolean).join('\n\n')
     try {
-      send(ws, approval.tell ? `${line}\n\nThe host adds:\n${approval.tell}` : line, {
+      send(ws, said, {
         requestId: `approval:${approval.id}`,
         replyTo: approval.place,
         approval: approval.id,
