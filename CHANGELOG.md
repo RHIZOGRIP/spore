@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.49.5] — Changed: a spore hands over commands that run as written
+
+### Changed
+
+- The `default`, `perennial` and `code` sporangia say how to hand someone commands to run on their
+  own machine: one block that runs as written in one shell, naming that shell and machine, with
+  what it prints when it worked and which line is hard to undo — or, for steps handed over again,
+  a script in `data/out/`. A spore made before keeps its `spore.cmk`; add the paragraph by hand.
+
 ## [1.49.4] — Fix: setup asks where spore runs only where a vm makes sense / Changed: mohdel 4.3.1, models from mohdex
 
 ### Fixed
