@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.49.3] — Fix: the terminal keeps a message it could not send
+
+### Fixed
+
+- `spore tui` and `spore here` keep a message that was refused (`PAUSED`, `ADMISSION_FULL`, a
+  `spore.cmk` that does not parse): the error shows and the message is back in the editor and in
+  its history, so once the cause is fixed — with `/unpause` typed in the same editor, say — ↑
+  brings it back to send again. It was lost and had to be typed again.
+
 ## [1.49.2] — Fix: a spore starts what it is asked for
 
 ### Changed

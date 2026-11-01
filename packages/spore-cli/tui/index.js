@@ -462,12 +462,14 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
     try {
       sent = send(state.ws, text, { replyTo: 'terminal' })
     } catch (err) {
-      return notice(errorText(err))
+      notice(errorText(err))
+      return false
     }
     editor.addToHistory(text)
     notice(sent.started ? 'started a turn' : 'heard — the running turn reads it next')
     reload()
     view.scrollToEnd()
+    return true
   }
 
   const change = (act) => {
@@ -580,7 +582,9 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
     editor.setText('')
     const command = parseCommand(trimmed)
     if (command) return run(command).catch(invalid)
-    say(trimmed.startsWith('//') ? trimmed.slice(1) : trimmed)
+    if (say(trimmed.startsWith('//') ? trimmed.slice(1) : trimmed)) return
+    editor.setText(trimmed)
+    editor.addToHistory(trimmed)
   }
 
   const twice = (key, first, then) => {
