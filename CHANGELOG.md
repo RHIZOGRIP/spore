@@ -4,6 +4,18 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.49.2] — Fix: a spore starts what it is asked for
+
+### Changed
+
+- The five sporangia: a request is the go, even asked as a question ("can you handle that?", "do
+  you have enough to start?"); the agent starts it instead of asking whether to. A reply to a plan
+  the agent proposed — a question about it, agreement, a correction — is still not a go-ahead: the
+  agent answers it, then asks through `ask` whether to go ahead. Doubt that the result will meet
+  the bar is no reason to ask first: the agent does the work and says what fell short. The agent
+  is told it works only while a turn runs, so it does not promise work it has not started. A spore
+  made before keeps its own `spore.cmk`.
+
 ## [1.49.1] — Fix: a spore is told what was filled in with an approval
 
 ### Fixed
