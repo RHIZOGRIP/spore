@@ -148,7 +148,8 @@ The details are in [SECURITY.md](SECURITY.md).
 ## What you need
 
 - **Linux** (x64 or arm64), kernel 5.13 or newer with Landlock enabled; 6.12 or newer is best. On macOS,
-  `spore setup` runs it in a Linux VM it makes with Lima; on Windows, run it in WSL.
+  `spore setup` runs it in a Linux VM it makes with Lima; on Windows, run it in WSL 2, whose
+  kernel has Landlock on.
 - **Unprivileged user namespaces**, so each turn runs shut off from your other processes. Most
   distributions allow them; on Ubuntu, see [above](#try-it-in-a-project).
 - **Node 24 or newer**, with a bundled SQLite of 3.51.3 or newer.

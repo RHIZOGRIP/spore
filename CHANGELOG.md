@@ -4,6 +4,34 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.49.4] — Fix: setup asks where spore runs only where a vm makes sense / Changed: mohdel 4.3.1, models from mohdex
+
+### Fixed
+
+- `spore setup` no longer asks whether spore runs on this machine or in a vm when the machine is
+  itself a vm or a container — WSL, a cloud server, spore's own Lima guest, where the question
+  offered Lima inside the vm. `systemd-detect-virt` says so; a machine without it is asked as
+  before.
+- On Windows, `spore setup` says how to run spore in WSL 2 instead of only that it runs there.
+  The READMEs say what a first run in WSL 2 showed: its kernel has Landlock on, the Ubuntu
+  `wsl --install` gives works as it is, Node 24 comes from nvm, and spores belong under the Linux
+  home rather than `/mnt/c`.
+- `spore setup`'s "another provider" sets one up. Once mohdel had a provider, it only printed
+  mohdel's status and went on to the model list; it now offers the providers not yet set up that
+  mohdex holds models for, and sets up the one picked.
+- `spore setup` opens with its header before asking where spore runs, not after, and says what
+  the sandbox does for a turn instead of naming Landlock and namespaces. Before asking for the
+  spores' home it says what a spore keeps there, and asks which directory. The line under a
+  list's title is drawn inside setup's frame, where it was printed past its edge.
+
+### Changed
+
+- mohdel 4.3.1, on both the npm and the Cargo side. Setting up a provider in `spore setup` now
+  offers the models mohdex.dev holds, with their prices and sources — a ChatGPT plan included,
+  priced from the OpenAI entries — and ends by handing back to setup rather than suggesting `mo`
+  commands. A turn's model calls read the catalog `mo` wrote wherever `XDG_CONFIG_HOME` puts it:
+  with it set, every turn failed with "Unknown model" after a setup that had succeeded.
+
 ## [1.49.3] — Fix: the terminal keeps a message it could not send
 
 ### Fixed

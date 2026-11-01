@@ -6,7 +6,7 @@
 import { spawnSync } from 'node:child_process'
 import { basename } from 'node:path'
 
-import { autocomplete, cancel, confirm, intro, isCancel, log, note, outro, text } from '@clack/prompts'
+import { autocomplete, cancel, confirm, isCancel, log, note, outro, text } from '@clack/prompts'
 
 import {
   checkSqlite, CONFIG_FILE, defaultModel, define, doctor, list, loadMohdelEnvironment, MO,
@@ -32,8 +32,9 @@ const line = (label, text) => log.step(`${label.padEnd(10)}${text}`)
 
 /** A pick from a list that words narrow, each matched in the label or the description; null when left. */
 export async function pickFromList ({ title, header = [], items }) {
+  if (header.length) log.message(header.join('\n'))
   const picked = await autocomplete({
-    message: [title, ...header].join('\n'),
+    message: title,
     options: items.map(({ value, label, description }) => ({ value, label, hint: description })),
     maxItems: SHOWN,
     filter: (search, option) => search.toLowerCase().split(/\s+/).every(word => `${option.label} ${option.hint ?? ''}`.toLowerCase().includes(word))
@@ -58,7 +59,7 @@ async function yes (message) {
   return answer
 }
 
-export const onboardWithMo = (provider) => spawnSync(process.execPath, [MO, 'onboard', ...(provider ? [provider] : [])], { stdio: 'inherit' }).status
+export const onboardWithMo = (provider) => spawnSync(process.execPath, [MO, 'onboard', ...(provider ? [provider] : []), '--caller', 'spore'], { stdio: 'inherit' }).status
 
 const billingText = ({ billing, priced }) => billing === 'plan'
   ? 'your plan — not metered'
@@ -70,7 +71,6 @@ const billingText = ({ billing, priced }) => billing === 'plan'
  */
 export async function setup () {
   const services = createServices()
-  intro('spore setup')
 
   line('node', `${process.version}, SQLite ${checkSqlite()}`)
 
@@ -98,14 +98,15 @@ export async function setup () {
   } else if (processes) {
     line('processes', processes.problem)
   } else {
-    line('kernel', 'Landlock confines every turn, each in namespaces of its own')
+    line('sandbox', 'ready — each turn sees only the files it is given, and none of your other programs')
   }
 
   const { home } = readConfig()
   if (home) {
     line('home', home)
   } else {
-    const dir = await ask('where should your spores live?', '~/.spore')
+    log.message('each spore is a directory of its own: what it is told to be, what was said to it, a record of\neverything it ran, and the files it works on')
+    const dir = await ask('which directory should hold your spores?', '~/.spore')
     setKey('home', dir)
     line('home', `${readConfig().home} — spore config set home <dir> moves where new ones are made`)
   }
@@ -176,7 +177,7 @@ async function chooseModel () {
     return current
   }
 
-  const provider = await pickFromList({ title: 'the models your spores run on', header: ['mohdel calls them; a provider set up here is set up for mo as well'], items: PROVIDERS })
+  const provider = await pickFromList({ title: 'which provider should they come from?', header: ['mohdel calls the models your spores run on — a provider set up here is set up for mo as well'], items: PROVIDERS })
   if (!provider) return null
   if (provider === ANOTHER) {
     onboardWithMo(null)
@@ -204,7 +205,7 @@ async function chooseModel () {
   }
   const model = await pickFromList({
     title: 'the model new spores run on',
-    header: ['spore model <name> <model> changes one spore\'s later'],
+    header: ['later, spore model <name> <model> changes the model of one spore'],
     items: usable.map(one => ({ value: one.model, label: one.model, description: billingText(one) }))
   })
   if (!model) return null

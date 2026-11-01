@@ -53,7 +53,10 @@ own disk. Lima shows your home inside the VM read-only, so `spore here` works on
 the VM, not on one of the Mac's.
 
 On Linux, the first `spore setup` asks whether spore runs on this machine — the default — or in a
-VM. On Windows, run spore in WSL; `spore setup` does not prepare it yet.
+VM; on a machine that is itself a VM or a container (WSL, a cloud server) it runs here without
+asking. On Windows, run spore in WSL 2: its kernel has Landlock on, and the Ubuntu `wsl --install`
+gives works as it is. Install Node 24 there with nvm — the distribution's is older — keep spores
+and projects under the Linux home rather than `/mnt/c`, and run `spore setup` in it.
 
 ## Quick start
 

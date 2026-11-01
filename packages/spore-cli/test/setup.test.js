@@ -30,7 +30,14 @@ vi.mock('node:child_process', async (real) => {
   const actual = await real()
   return {
     ...actual,
-    spawnSync: (command, args, options) => args?.[1] === 'onboard' ? { status: given.onboard(args[2] ?? null) } : actual.spawnSync(command, args, options)
+    spawnSync: (command, args, options) => {
+      if (args?.[1] !== 'onboard') return actual.spawnSync(command, args, options)
+      const rest = args.slice(2)
+      const at = rest.indexOf('--caller')
+      if (at === -1 || rest[at + 1] !== 'spore') throw new Error(`setup ran mo onboard without --caller spore: ${rest.join(' ')}`)
+      rest.splice(at, 2)
+      return { status: given.onboard(rest[0] ?? null) }
+    }
   }
 })
 vi.mock('@rhizogrip/spore', async (real) => ({
@@ -134,7 +141,7 @@ describe('spore setup', () => {
   it('takes a fresh machine through home, a provider, the default model, the tick timer and a first spore', async () => {
     const home = join(root, 'spores')
     const code = await run({
-      answers: { 'live\\?': home, 'tick timer': 'y' },
+      answers: { 'hold your spores\\?': home, 'tick timer': 'y' },
       picks: ['OpenRouter', 'openrouter/priced']
     })
     expect(code).toBe(0)
@@ -149,20 +156,20 @@ describe('spore setup', () => {
   })
 
   it('says what a turn\'s commands tried on this machine and were refused, once nothing is wrong', async () => {
-    expect(await run({ answers: { 'live\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenRouter', 'openrouter/priced'] })).toBe(0)
+    expect(await run({ answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenRouter', 'openrouter/priced'] })).toBe(0)
     expect(said).toContain('boundary  a turn\'s commands tried 2 ways out here and were refused every one — spore doctor lists them')
   })
 
   it('counts what was refused when a way out was not, as on a host running uncontained', async () => {
     const crossed = [...HELD, { tried: 'see a process outside it', outcome: 'crossed', why: 'contain is off' }]
-    expect(await run({ answers: { 'live\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenRouter', 'openrouter/priced'], report: async () => ({ findings: [], boundary: crossed, host: describeHost() }) })).toBe(0)
+    expect(await run({ answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenRouter', 'openrouter/priced'], report: async () => ({ findings: [], boundary: crossed, host: describeHost() }) })).toBe(0)
     expect(said).toContain('boundary  a turn\'s commands tried 3 ways out here and were refused 2 — spore doctor lists them')
   })
 
   it('stops after spore doctor\'s problems, making no spore and offering no next step', async () => {
     const home = join(root, 'spores')
     const code = await run({
-      answers: { 'live\\?': home, 'tick timer': 'n' },
+      answers: { 'hold your spores\\?': home, 'tick timer': 'n' },
       picks: ['OpenRouter', 'openrouter/priced'],
       report: async () => ({ findings: [{ area: 'services', subject: 'tick', severity: 'problem', problem: 'is failing', fix: 'spore service log tick' }], boundary: HELD, host: describeHost() })
     })
@@ -173,7 +180,7 @@ describe('spore setup', () => {
 
   it('asks nothing a second time once each step is done', async () => {
     const mohdel = mohdelWith()
-    await run({ mohdel, answers: { 'live\\?': join(root, 'spores'), 'tick timer': 'y' }, picks: ['OpenRouter', 'openrouter/priced'] })
+    await run({ mohdel, answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'y' }, picks: ['OpenRouter', 'openrouter/priced'] })
     asked = []
     onboarded = []
     const code = await run({ mohdel, services: servicesWith({ defined: true, enabled: true }) })
@@ -186,7 +193,7 @@ describe('spore setup', () => {
   })
 
   it('says a model chosen without prices counts as $0, and how to fill them', async () => {
-    await run({ answers: { 'live\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenRouter', 'openrouter/unpriced'] })
+    await run({ answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenRouter', 'openrouter/unpriced'] })
     expect(said.find(line => line.startsWith('model'))).toMatch(/openrouter\/unpriced, no prices: its calls count as \$0.*mo model instructions openrouter/)
   })
 
@@ -196,7 +203,7 @@ describe('spore setup', () => {
     await run({
       mohdel,
       onboard: (provider) => { onboarded.push(provider); return 0 },
-      answers: { 'live\\?': join(root, 'spores'), 'tick timer': 'n' },
+      answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' },
       picks: ['another provider', 'gemini/flash']
     })
     expect(onboarded).toEqual([null])
@@ -207,7 +214,7 @@ describe('spore setup', () => {
   it('stops when the provider is still not ready after mohdel\'s setup, naming what is missing', async () => {
     const code = await run({
       onboard: (provider) => { onboarded.push(provider); return 1 },
-      answers: { 'live\\?': join(root, 'spores') },
+      answers: { 'hold your spores\\?': join(root, 'spores') },
       picks: ['OpenRouter']
     })
     expect(code).toBe(1)
@@ -221,7 +228,7 @@ describe('spore setup', () => {
     expect(getKey('contain')).toEqual({ contain: null })
     expect(said.slice(-2)).toEqual(['allow unprivileged user namespaces', 'then spore setup again'])
 
-    expect(await run({ examine: () => ({ findings: [processes] }), answers: { uncontained: 'y', 'live\\?': join(root, 'spores') }, picks: [null] })).toBe(1)
+    expect(await run({ examine: () => ({ findings: [processes] }), answers: { uncontained: 'y', 'hold your spores\\?': join(root, 'spores') }, picks: [null] })).toBe(1)
     expect(getKey('contain')).toEqual({ contain: false })
   })
 
@@ -246,7 +253,8 @@ describe('a pick from a list', () => {
     picking('p/m3')
     expect(await pickFromList({ title: 't', header: ['h'], items: ITEMS })).toBe('p/m3')
     expect(shown.maxItems).toBe(20)
-    expect(shown.message).toBe('t\nh')
+    expect(shown.message).toBe('t')
+    expect(said).toEqual(['h'])
     expect(shown.options[21]).toEqual({ value: 'p/m22', label: 'p/m22', hint: 'no prices' })
   })
 

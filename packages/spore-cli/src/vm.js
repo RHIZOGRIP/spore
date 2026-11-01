@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { constants, homedir } from 'node:os'
 import { join } from 'node:path'
 
-import { cancel, isCancel, select } from '@clack/prompts'
+import { cancel, intro, isCancel, select } from '@clack/prompts'
 
 // The core's CONFIG_DIR, which this cannot import.
 const CONFIG_DIR = process.env.XDG_CONFIG_HOME ? join(process.env.XDG_CONFIG_HOME, 'spore') : join(homedir(), '.config', 'spore')
@@ -117,9 +117,22 @@ function vmVerb (vm, args) {
 }
 
 /** Whether `spore setup` makes a vm: where the core is not installed, or on a first run that chose one. */
+/**
+ * Whether this machine is itself a vm or a container — WSL, spore's own Lima guest, a cloud server —
+ * by `systemd-detect-virt`, which exits 0 inside one. Lima inside one is no choice to offer. A
+ * machine without the program cannot say, and is asked.
+ */
+function virtualized () {
+  const ran = spawnSync('systemd-detect-virt', ['--quiet'])
+  if (ran.error?.code === 'ENOENT') return false
+  if (ran.error) throw ran.error
+  return ran.status === 0
+}
+
 async function wantsVm () {
   if (!hasCore()) return true
   if (existsSync(join(CONFIG_DIR, 'config.json')) || !process.stdin.isTTY || !process.stdout.isTTY) return false
+  if (virtualized()) return false
   const where = await select({
     message: 'where should spore run?',
     options: [
@@ -141,7 +154,7 @@ async function wantsVm () {
  * this machine never holds a key.
  */
 function setupVm (named) {
-  if (process.platform === 'win32') fail('on Windows spore runs in WSL, which spore setup does not prepare yet')
+  if (process.platform === 'win32') fail('on Windows spore runs in WSL 2, which spore setup does not prepare — wsl --install, then in it install Node 24 and @rhizogrip/spore-cli and run spore setup there')
   if (!process.stdin.isTTY || !process.stdout.isTTY) fail('setup asks questions, and this is not a terminal')
   const vm = named ?? NAME
   const status = statusOf(vm, { missing: `spore runs in a Linux vm made with Lima — install it, ${INSTALL_LIMA}, then spore setup again` })
@@ -161,6 +174,7 @@ export async function host (args) {
   const [verb] = args
   const vm = vmNamed()
   if (verb === 'vm') vmVerb(vm, args)
+  if (verb === 'setup' && !vm && process.stdin.isTTY && process.stdout.isTTY) intro('spore setup')
   if (verb === 'setup' && (vm || await wantsVm())) setupVm(vm)
   if (vm) {
     running(vm)
