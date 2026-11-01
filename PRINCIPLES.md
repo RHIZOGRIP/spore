@@ -23,8 +23,8 @@ These are the ideas spore is built on. How each idea is built is in
 ### 1. A spore writes programs for work that repeats
 
 When a job repeats, the spore does not redo it by thinking each time. It writes a small program,
-tests it and runs it. A program costs almost nothing to run again and gives the same result. So
-the spore's real job is to write, test and run programs.
+tests it and runs it, so the tested procedure is reused instead of regenerated through the model.
+So the spore's real job is to write, test and run programs.
 
 ### 2. One general assistant, which creates specialists
 
@@ -135,8 +135,9 @@ cells.
 Every limit — time, money, number of steps — comes as a pair. Past the soft one, the spore is asked
 to answer with what it has and to say what is left to do. At the hard one, the work stops and no new
 call to the model is made. Both count what was actually spent, never a guess of what will be. A call
-already under way is never cut off: the turn waits for it, pays for it, and may end a little past
-its limit because of it. Only the computer's owner can set a time after which a call is cut.
+already under way is never cut off: the turn waits for it and pays for it, so a turn's spend can
+pass its limit by what that call adds. Only the computer's owner can set a time after which a call
+is cut.
 
 ### 13. A spore cannot rewrite its own history
 

@@ -38,7 +38,8 @@ Every turn's agent, and everything it runs, is held by the kernel, not by the to
 - **Ports**: TCP bind is refused (Linux 6.7+), so nothing an agent runs listens on TCP.
 - **Not as root**: spore runs no turn, job or router as uid 0.
 - **Spend**: a turn stops taking new model calls once its settled spend reaches its definition's
-  hard cost; a call already running finishes and is paid.
+  hard cost; calls already running finish and are paid, so a turn's spend can pass the hard cost
+  by what those calls add.
 
 `spore doctor` says which of these the host does not provide, and tries the boundary itself: a
 command confined as spore confines a job's attempts to read outside its grants, write outside its
@@ -59,9 +60,10 @@ caller's patterns name. Exposing it further is a reverse proxy you choose.
 ## Accepted risks
 
 - **What an agent reads can steer it, and it can send what it reads anywhere it can reach.** The
-  network is open by design: spore bounds what an agent can read and holds no secret it could leak,
-  but not where it connects. Restrict egress on the host — a firewall for the user spores run as,
-  a network namespace, a container — when that matters.
+  network is open by design: spore bounds what an agent can read, not where it connects. Provider
+  and configured source credentials stay outside the agent, but it can send anything it may read,
+  confidential documents included. Additional egress policy belongs to the host: a firewall for the
+  user spores run as, a network namespace or a container.
 - **An agent can connect to any unix socket its process can see**, and to any TCP port on the
   host: neither is gated by Landlock. **Anything you serve beside spores must authenticate every
   request** with a secret no workspace holds, as spore's own brokers do. A service that trusts
