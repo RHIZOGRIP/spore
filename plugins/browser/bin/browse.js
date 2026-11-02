@@ -23,6 +23,7 @@ let url
 try {
   ({ url } = JSON.parse(readFileSync(join(sockets, ENDPOINT_FILE), 'utf8')))
 } catch (err) {
+  if (err.code === 'EACCES') fail('run it with wsexec — exec cannot reach this spore\'s browser')
   if (err.code !== 'ENOENT') throw err
   fail('this spore has no browser — the browser service is not running, or has not seen this spore yet: spore service ls')
 }

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -13,6 +14,7 @@ import { sporesUsing } from '../src/service.js'
 const ROOT = resolve(import.meta.dirname, '.browser-test')
 const CHROME = resolve(import.meta.dirname, 'fixtures/chrome.js')
 const SILENT = resolve(import.meta.dirname, 'fixtures/silent.js')
+const BROWSE = resolve(import.meta.dirname, '../bin/browse.js')
 const FAKED = { toFake: ['setTimeout', 'clearTimeout'] }
 const PROFILE = join(ROOT, 'profile')
 const open = []
@@ -152,6 +154,24 @@ describe('a spore\'s browser endpoint', () => {
     await open.pop().close()
     expect(await one.closed).toBe(1001)
     await waitFor(() => opened.seen.stopped === 1)
+  })
+})
+
+describe('$SPORE_BROWSER', () => {
+  const browse = (sockets) => spawnSync(process.execPath, [BROWSE, 'open', 'https://example.org/'], { encoding: 'utf8', env: { PATH: process.env.PATH, SPORE_SOCKET_DIR: sockets } })
+
+  it('says to run it with wsexec when the spore\'s socket directory cannot be read, as under exec', () => {
+    const sockets = join(ROOT, 'sockets')
+    mkdirSync(sockets)
+    writeFileSync(join(sockets, 'browser.json'), JSON.stringify({ url: 'ws://127.0.0.1:1/devtools/browser/x' }), { mode: 0o000 })
+    const ran = browse(sockets)
+    expect([ran.status, ran.stderr]).toEqual([1, 'browser: run it with wsexec — exec cannot reach this spore\'s browser\n'])
+  })
+
+  it('says the spore has no browser when the service has written none for it', () => {
+    const ran = browse(ROOT)
+    expect(ran.status).toBe(1)
+    expect(ran.stderr).toMatch(/^browser: this spore has no browser — /)
   })
 })
 
