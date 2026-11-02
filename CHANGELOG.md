@@ -13,6 +13,13 @@ All notable changes to this project are documented here. Format follows
   (`SOCKET_DIR_UNSAFE`). A plugin's service uses it to leave a file there before a turn, for that
   spore's agent alone. The browser plugin's service writes each spore's endpoint there.
 
+### Changed
+
+- `spore doctor` runs the `check` of every defined service, as `spore service define` does, and
+  reports one that fails as a problem with what it said. `define` refuses such a service as one
+  that "did not pass its check", no longer "would not start": a check may now also say what a
+  running service let through.
+
 ## [1.50.0] — Added: a spore chooses how a plugin serves it
 
 ### Added

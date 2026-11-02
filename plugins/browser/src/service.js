@@ -86,6 +86,7 @@ async function serve (spore, { executable, log }) {
   }
   await clear()
   const endpoint = await openEndpoint({
+    data: join(spore.ws, 'data'),
     log: said,
     stopped: clear,
     launch: async ({ onExit }) => {

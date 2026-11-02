@@ -164,6 +164,14 @@ describe('spore service define', () => {
     expect(existsSync(join(UNIT_DIR, 'spore-relay@.service'))).toBe(false)
   })
 
+  it('runs the same check for doctor, saying what it said when it fails, and nothing for a service with none', () => {
+    expect(services(standIn()).check('relay@triage')).toEqual({ ok: true, detail: 'ready' })
+    const fake = standIn({ check: { status: 1, stdout: '  crossed  main: reach it without its secret', stderr: '' } })
+    expect(services(fake).check('relay@triage')).toEqual({ ok: false, detail: 'crossed  main: reach it without its secret' })
+    expect(fake.calls).toContain(`${NODE} ${join(relay, 'bin', 'relay.js')} triage --check`)
+    expect(services(standIn()).check('tick')).toBe(null)
+  })
+
   it('leaves a unit it did not write alone', () => {
     const own = '[Service]\nExecStart=/usr/bin/node /somewhere/else.js\n'
     writeFileSync(join(UNIT_DIR, 'spore-relay@.service'), own)

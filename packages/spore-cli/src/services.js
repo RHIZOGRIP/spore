@@ -438,21 +438,25 @@ export function createServices ({ roots = pluginRoots() } = {}) {
       return { ...shown, units, log }
     },
 
+    /**
+     * What the service's `check` says now, as `define` runs it: `{ ok, detail }`, `detail` what it
+     * wrote on stderr, or else on stdout; null for a service that declares none.
+     */
+    check (name) {
+      const { service, instance } = parse(name, { verb: 'show' })
+      if (!service.check) return null
+      const [command, args] = service.check({ ...INSTALL, instance })
+      const checked = systemRun(command, args)
+      return { ok: checked.status === 0, detail: (checked.stderr || checked.stdout || '').trim() || `exit ${checked.status}` }
+    },
+
     define (name) {
       const one = parse(name, { verb: 'define' })
-      const { service, instance } = one
+      const { service } = one
       requireSystemd()
       refuseForeign(one, name)
-      if (service.check) {
-        const [command, args] = service.check({ ...INSTALL, instance })
-        const checked = systemRun(command, args)
-        if (checked.status !== 0) {
-          throw new SporeError(`${name} would not start`, {
-            type: 'SERVICE_NOT_READY',
-            detail: (checked.stderr || checked.stdout || '').trim() || `exit ${checked.status}`
-          })
-        }
-      }
+      const checked = this.check(name)
+      if (checked && !checked.ok) throw new SporeError(`${name} did not pass its check`, { type: 'SERVICE_NOT_READY', detail: checked.detail })
       mkdirSync(UNIT_DIR, { recursive: true })
       const units = []
       for (const [file, text] of Object.entries(renderUnits(one.base, { roots }))) {

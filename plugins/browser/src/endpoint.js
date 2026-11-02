@@ -3,19 +3,22 @@ import { createServer } from 'node:http'
 
 import { WebSocketServer } from 'ws'
 
+import { refusalOf } from './gate.js'
+
 export const IDLE_MS = 10 * 60 * 1000
 const START_MS = 30_000
 const PATH_PREFIX = '/devtools/browser/'
 
 /**
  * A spore's browser endpoint: CDP on a loopback port, answered only on the WebSocket path that
- * carries its secret. Chrome starts with the first connection and stops after `IDLE_MS` without a
+ * carries its secret, passing only what `refusalOf` lets through for the spore whose `data/` is
+ * `data`. Chrome starts with the first message it passes and stops after `IDLE_MS` without a
  * message from any client, closing every client with it.
  *
  * `launch()` starts the spore's Chrome; `stopped()` is told once it has stopped, so an ephemeral
  * profile can go with it.
  */
-export async function openEndpoint ({ launch, stopped, log }) {
+export async function openEndpoint ({ data, launch, stopped, log }) {
   const secret = randomBytes(32).toString('hex')
   const expected = Buffer.from(`${PATH_PREFIX}${secret}`)
   const clients = new Set()
@@ -30,7 +33,7 @@ export async function openEndpoint ({ launch, stopped, log }) {
 
   async function stopBrowser (why) {
     clearTimeout(idle)
-    const chrome = browser ?? (starting && await starting.catch(() => null))
+    const chrome = browser ?? (starting && await starting)
     browser = null
     starting = null
     disconnectAll(1001, why)
@@ -47,37 +50,44 @@ export async function openEndpoint ({ launch, stopped, log }) {
     }, IDLE_MS)
   }
 
+  async function start () {
+    const started = await launch({
+      onExit: ({ code, signal, stderr }) => {
+        log(`its browser ended on its own: code ${code}, signal ${signal}${stderr ? `\n${stderr}` : ''}`)
+        browser = null
+        starting = null
+        clearTimeout(idle)
+        disconnectAll(1011, 'the browser stopped')
+        stopped().catch(err => log(`could not clear its browser — ${err.message}`))
+      }
+    })
+    started.onEvent(event => {
+      const text = JSON.stringify(event)
+      for (const ws of clients) ws.send(text)
+    })
+    let timer
+    const ready = await Promise.race([
+      started.request({ method: 'Browser.getVersion' }),
+      new Promise(resolve => { timer = setTimeout(() => resolve({ error: { message: `nothing on its pipe in ${START_MS / 1000}s — is it a Chromium-based browser?` } }), START_MS) })
+    ])
+    clearTimeout(timer)
+    if (ready.error) {
+      await started.stop()
+      throw new Error(`the browser did not answer — ${ready.error.message}`)
+    }
+    log(`started its browser (${ready.result.product}, pid ${started.pid})`)
+    browser = started
+    return started
+  }
+
   async function running () {
     if (browser) return browser
-    starting ??= (async () => {
-      const started = await launch({
-        onExit: ({ code, signal, stderr }) => {
-          log(`its browser ended on its own: code ${code}, signal ${signal}${stderr ? `\n${stderr}` : ''}`)
-          browser = null
-          starting = null
-          clearTimeout(idle)
-          disconnectAll(1011, 'the browser stopped')
-          stopped().catch(err => log(`could not clear its browser — ${err.message}`))
-        }
-      })
-      started.onEvent(event => {
-        const text = JSON.stringify(event)
-        for (const ws of clients) ws.send(text)
-      })
-      let timer
-      const ready = await Promise.race([
-        started.request({ method: 'Browser.getVersion' }),
-        new Promise(resolve => { timer = setTimeout(() => resolve({ error: { message: `nothing on its pipe in ${START_MS / 1000}s — is it a Chromium-based browser?` } }), START_MS) })
-      ])
-      clearTimeout(timer)
-      if (ready.error) {
-        await started.stop()
-        throw new Error(`the browser did not answer — ${ready.error.message}`)
-      }
-      log(`started its browser (${ready.result.product}, pid ${started.pid})`)
-      browser = started
-      return started
-    })()
+    starting ??= start().catch(err => {
+      log(`could not start its browser — ${err.message}`)
+      starting = null
+      disconnectAll(1011, 'the browser could not start')
+      return null
+    })
     return starting
   }
 
@@ -100,22 +110,23 @@ export async function openEndpoint ({ launch, stopped, log }) {
       clients.add(ws)
       ws.on('close', () => clients.delete(ws))
       touch()
-      const started = running()
-      started.catch(err => {
-        log(`could not start its browser — ${err.message}`)
-        starting = null
-        ws.close(1011, 'the browser could not start')
-      })
-      ws.on('message', async data => {
+      ws.on('message', async raw => {
         touch()
         let message
         try {
-          message = JSON.parse(data)
+          message = JSON.parse(raw)
         } catch {
           ws.close(1007, 'not JSON')
           return
         }
-        const chrome = await started.catch(() => null)
+        const refused = refusalOf(message, data)
+        if (refused) {
+          log(`refused: ${refused}`)
+          const answer = { id: message.id, ...(message.sessionId ? { sessionId: message.sessionId } : {}), error: { code: -32000, message: `refused by this spore's browser — ${refused}` } }
+          if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(answer))
+          return
+        }
+        const chrome = await running()
         if (!chrome) return
         const answer = await chrome.request(message)
         if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ ...answer, id: message.id }))

@@ -17,8 +17,8 @@ Your first command opens a tab, and every command after acts in it, for as long 
 runs.
 
 - `"$SPORE_BROWSER" tab` lists the tabs; `"$SPORE_BROWSER" tab t3` acts in another from then on.
-- `"$SPORE_BROWSER" tab close <id>` closes one. Don't run `close` unless the message asks: it
-  stops your browser, and an ephemeral one forgets its pages and logins.
+- `"$SPORE_BROWSER" tab close <id>` closes one. Don't run `close`: your browser stops on its
+  own after ten minutes without a command.
 - A command that fails with `tab_gone` means your tab was closed. `"$SPORE_BROWSER" tab new`
   opens another.
 
@@ -49,6 +49,7 @@ before using refs again.
 | `get url` · `get title` · `get text @e4` | one fact about the page |
 | `back` · `forward` · `reload` | history |
 | `screenshot data/browser/page.png` · `pdf data/browser/page.pdf` | the page as a file |
+| `download @e5 data/out/report.pdf` · `upload @e9 data/form.pdf` | a file from the page, or to it |
 | `tab` · `tab new [url]` · `tab <id>` · `tab close <id>` | tabs |
 
 `"$SPORE_BROWSER" --help` lists every command, and `"$SPORE_BROWSER" skills get core` prints
@@ -67,6 +68,13 @@ the call record.
 `"$SPORE_BROWSER" screenshot data/browser/page.png` writes a PNG — `mkdir -p data/browser`
 first — and `read` shows it to you when your definition lets you look at images. Prefer a snapshot: a picture costs more and
 says less about what you can click.
+
+## What it refuses
+
+Your browser opens `http` and `https` addresses and `about:blank`, nothing else. A download goes
+only into your `data/`, and an upload comes only from it: copy a file into `data/` before
+uploading it. A command that asks for anything else fails with `refused by this spore's browser`
+and why. That is a rule, not a fault: running it again gets the same answer.
 
 ## When it is not there
 

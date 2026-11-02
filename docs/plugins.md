@@ -576,8 +576,10 @@ when any of them is running; a service without instances named with one is refus
 `spore service define` runs `node <program> [<instance>] <check…>` before it writes the unit, in
 the environment of the command that runs it. An exit code other than 0 refuses the definition
 (`SERVICE_NOT_READY`) with what the program wrote on stderr, or else on stdout, as its detail. A
-service with no `check` is written unchecked. `telegram` and `discord` read their bot's file, find
-its token and ask the network for the bot before answering 0.
+service with no `check` is written unchecked. `spore doctor` runs it again for every defined
+service, and reports one that does not answer 0 as a problem with the same detail. `telegram` and
+`discord` read their bot's file, find its token and ask the network for the bot before answering 0;
+`browser` also tries what each served spore's endpoint must refuse.
 
 ### The version it runs
 

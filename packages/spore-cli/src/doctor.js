@@ -39,6 +39,8 @@ function serviceFindings (services, needsTick, replies) {
     if (row.outdated) problem(row.name, `runs ${row.outdated.from} ${row.outdated.running}, and ${row.outdated.installed} is installed`, `spore service restart ${row.name}`)
     if (row.enabled && row.active !== 'active') problem(row.name, `is enabled and ${row.active} (${row.sub})`, `spore service log ${row.name}`)
     if (row.restarts) note(row.name, `systemd has restarted it ${row.restarts} time${row.restarts > 1 ? 's' : ''}`, `spore service log ${row.name}`)
+    const checked = services.check(row.name)
+    if (checked && !checked.ok) problem(row.name, `does not pass its check: ${checked.detail}`, `spore service show ${row.name}`)
   }
   const tick = listed.services.find(row => row.name === 'tick')
   if (needsTick.length && !(tick.defined && tick.active === 'active')) {

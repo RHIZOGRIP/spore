@@ -23,7 +23,7 @@ new Socket({ fd: 3, readable: true, writable: false }).on('data', chunk => {
       say({ id, result: { product: 'Stand-in/1.0' } })
     } else if (method === 'Browser.close') {
       say({ id, result: {} }, () => process.exit(0))
-    } else if (method === 'Test.crash') {
+    } else if (method === 'Page.navigate' && params.url === 'https://crash.invalid/') {
       process.exit(3)
     } else if (method === 'Page.navigate') {
       say({ id, result: { frameId: 'f1' }, ...(sessionId ? { sessionId } : {}) })

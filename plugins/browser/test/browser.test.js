@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
 import WebSocket from 'ws'
@@ -9,6 +9,8 @@ import { definitionWith } from '@rhizogrip/spore/testing'
 
 import { findChromium, startChrome } from '../src/chrome.js'
 import { IDLE_MS, openEndpoint } from '../src/endpoint.js'
+import { METHODS, refusalOf } from '../src/gate.js'
+import { probeEndpoint } from '../src/probe.js'
 import { sporesUsing } from '../src/service.js'
 
 const ROOT = resolve(import.meta.dirname, '.browser-test')
@@ -17,11 +19,12 @@ const SILENT = resolve(import.meta.dirname, 'fixtures/silent.js')
 const BROWSE = resolve(import.meta.dirname, '../bin/browse.js')
 const FAKED = { toFake: ['setTimeout', 'clearTimeout'] }
 const PROFILE = join(ROOT, 'profile')
+const DATA = join(ROOT, 'ws', 'data')
 const open = []
 
 beforeEach(() => {
   rmSync(ROOT, { recursive: true, force: true })
-  mkdirSync(ROOT, { recursive: true })
+  mkdirSync(DATA, { recursive: true })
 })
 
 afterEach(async () => {
@@ -33,6 +36,7 @@ afterEach(async () => {
 async function endpoint ({ executable = CHROME } = {}) {
   const seen = { launched: 0, stopped: 0, lines: [] }
   const opened = await openEndpoint({
+    data: DATA,
     log: line => seen.lines.push(line),
     stopped: async () => { seen.stopped++ },
     launch: async ({ onExit }) => {
@@ -52,7 +56,7 @@ async function client (url) {
   ws.on('message', data => {
     const message = JSON.parse(data)
     if (message.id === undefined) events.push(message)
-    else waiting.get(message.id)(message)
+    else waiting.get(message.id)?.(message)
   })
   await once(ws, 'open')
   const call = (id, method, params = {}) => new Promise(resolve => {
@@ -131,7 +135,7 @@ describe('a spore\'s browser endpoint', () => {
     const { url, seen } = await endpoint()
     const one = await client(url)
     await one.call(1, 'Browser.getVersion')
-    one.ws.send(JSON.stringify({ id: 2, method: 'Test.crash' }))
+    one.ws.send(JSON.stringify({ id: 2, method: 'Page.navigate', params: { url: 'https://crash.invalid/' } }))
     expect(await one.closed).toBe(1011)
     expect(seen.stopped).toBe(1)
     expect(seen.lines).toContainEqual(expect.stringMatching(/ended on its own: code 3/))
@@ -141,6 +145,8 @@ describe('a spore\'s browser endpoint', () => {
     vi.useFakeTimers(FAKED)
     const { url, seen } = await endpoint({ executable: SILENT })
     const one = await client(url)
+    one.ws.send(JSON.stringify({ id: 1, method: 'Browser.getVersion' }))
+    while (vi.getTimerCount() < 2) await new Promise(resolve => setImmediate(resolve))
     await vi.advanceTimersByTimeAsync(40_000)
     vi.useRealTimers()
     expect(await one.closed).toBe(1011)
@@ -154,6 +160,80 @@ describe('a spore\'s browser endpoint', () => {
     await open.pop().close()
     expect(await one.closed).toBe(1001)
     await waitFor(() => opened.seen.stopped === 1)
+  })
+
+  it('answers what it refuses itself, under the caller\'s id and session, and starts no browser for it', async () => {
+    const { url, seen } = await endpoint()
+    const one = await client(url)
+    const fourth = new Promise(resolve => one.ws.on('message', data => { if (JSON.parse(data).id === 4) resolve(JSON.parse(data)) }))
+    one.ws.send(JSON.stringify({ id: 4, sessionId: 's1', method: 'Page.navigate', params: { url: 'file:///etc/hostname' } }))
+    expect(await fourth).toEqual({ id: 4, sessionId: 's1', error: { code: -32000, message: 'refused by this spore\'s browser — Page.navigate to file:///etc/hostname: only http, https and about:blank' } })
+    expect(await one.call(5, 'Browser.close')).toEqual({ id: 5, error: { code: -32000, message: 'refused by this spore\'s browser — Browser.close is not a method this browser takes' } })
+    expect(seen.launched).toBe(0)
+    expect(seen.lines).toEqual([
+      'refused: Page.navigate to file:///etc/hostname: only http, https and about:blank',
+      'refused: Browser.close is not a method this browser takes'
+    ])
+    expect(await one.call(6, 'Browser.getVersion')).toEqual({ id: 6, result: { product: 'Stand-in/1.0' } })
+    expect(seen.launched).toBe(1)
+  })
+
+  it('refuses everything the probes try, so the service\'s check finds nothing crossed, and starts no browser for them', async () => {
+    const { url, seen } = await endpoint()
+    expect(await probeEndpoint(url)).toEqual([
+      { tried: 'reach it without its secret', outcome: 'refused' },
+      { tried: 'send it a method agent-browser does not use', outcome: 'refused' },
+      { tried: 'open a page that is not http or https', outcome: 'refused' }
+    ])
+    expect(seen.launched).toBe(0)
+  })
+})
+
+describe('what a spore\'s browser takes', () => {
+  const refused = (method, params) => refusalOf({ method, params }, DATA)
+
+  it('is the methods agent-browser sends, and nothing else', () => {
+    expect(METHODS.size).toBe(31)
+    expect(refused('Runtime.evaluate', { expression: 'document.title' })).toBe(null)
+    expect(refused('Browser.close')).toMatch(/is not a method this browser takes/)
+    expect(refused('Target.exposeDevToolsProtocol')).toMatch(/is not a method this browser takes/)
+    expect(refused(undefined)).toMatch(/is not a method this browser takes/)
+  })
+
+  it('opens http, https and a blank page, and no other address', () => {
+    for (const url of ['https://example.org/', 'http://127.0.0.1:8080/x', 'about:blank']) {
+      expect(refused('Page.navigate', { url })).toBe(null)
+      expect(refused('Target.createTarget', { url })).toBe(null)
+    }
+    for (const url of ['file:///etc/hostname', 'chrome://settings', 'data:text/html,x', 'javascript:alert(1)', 'about:config', 'not a url', undefined]) {
+      expect(refused('Page.navigate', { url })).toMatch(/only http, https and about:blank/)
+    }
+  })
+
+  it('downloads into the spore\'s data/ and nowhere else, judged on where a path really leads', () => {
+    mkdirSync(join(DATA, 'out'))
+    symlinkSync(ROOT, join(DATA, 'away'))
+    const downloadTo = (downloadPath) => refused('Browser.setDownloadBehavior', { behavior: 'allowAndName', downloadPath, eventsEnabled: true })
+    expect(downloadTo(DATA)).toBe(null)
+    expect(downloadTo(join(DATA, 'out'))).toBe(null)
+    expect(downloadTo(join(DATA, 'not', 'made', 'yet'))).toBe(null)
+    expect(downloadTo(join(DATA, 'away'))).toMatch(/downloads go only into the spore's data\//)
+    expect(downloadTo(join(DATA, 'away', 'deeper'))).toMatch(/downloads go only into the spore's data\//)
+    expect(downloadTo(join(DATA, '..'))).toMatch(/downloads go only into the spore's data\//)
+    expect(downloadTo(`${DATA}-next`)).toMatch(/downloads go only into the spore's data\//)
+    expect(downloadTo('data/out')).toMatch(/downloads go only into the spore's data\//)
+    expect(downloadTo(undefined)).toMatch(/downloads go only into the spore's data\//)
+    expect(refused('Browser.setDownloadBehavior', { behavior: 'deny' })).toBe(null)
+  })
+
+  it('uploads files from the spore\'s data/ and nowhere else', () => {
+    writeFileSync(join(DATA, 'report.pdf'), 'x')
+    writeFileSync(join(ROOT, 'outside.txt'), 'x')
+    symlinkSync(join(ROOT, 'outside.txt'), join(DATA, 'link.txt'))
+    expect(refused('DOM.setFileInputFiles', { backendNodeId: 12, files: [join(DATA, 'report.pdf')] })).toBe(null)
+    expect(refused('DOM.setFileInputFiles', { backendNodeId: 12, files: [join(DATA, 'report.pdf'), join(ROOT, 'outside.txt')] }))
+      .toBe(`uploads come only from the spore's data/, not ${join(ROOT, 'outside.txt')}`)
+    expect(refused('DOM.setFileInputFiles', { backendNodeId: 12, files: [join(DATA, 'link.txt')] })).toMatch(/uploads come only from the spore's data\//)
   })
 })
 
