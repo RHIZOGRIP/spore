@@ -9,6 +9,7 @@ if (asked.includes('--version')) {
 }
 const profile = asked.find(arg => arg.startsWith('--user-data-dir=')).slice('--user-data-dir='.length)
 writeFileSync(`${profile}/launched.json`, JSON.stringify({ argv: asked, env: process.env, processes: readdirSync('/proc').filter(name => /^\d+$/.test(name)).length }))
+if (!asked.includes('--remote-debugging-pipe')) process.exit(0)
 
 const out = new Socket({ fd: 4, readable: false, writable: true })
 const say = (message, then) => out.write(JSON.stringify(message) + '\0', then)

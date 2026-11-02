@@ -36,22 +36,25 @@ export function findChromium (named, path = process.env.PATH) {
 }
 
 /**
+ * How every Chrome on a spore's profile opens it, headless or in the operator's window: one
+ * password store, or the headless browser cannot read the logins a window saved.
+ */
+export const profileArgs = ({ profile, cache }) => [
+  `--user-data-dir=${profile}`,
+  `--disk-cache-dir=${cache}`,
+  '--password-store=basic',
+  '--no-first-run',
+  '--no-default-browser-check'
+]
+
+/**
  * One headless Chrome on `--remote-debugging-pipe`, so it has no debugging port: CDP goes over
  * fds 3 and 4, one NUL-terminated JSON message each way. `onExit` is told when it ends
  * without `stop()` having asked it to. With `confine` (`confineCommand`'s grants) it runs
  * contained, making the namespaces of its own sandbox inside the ones `confine` gives it.
  */
 export function startChrome ({ executable, profile, cache, home, tmp, confine, onExit }) {
-  const chromeArgs = [
-    '--headless',
-    '--remote-debugging-pipe',
-    `--user-data-dir=${profile}`,
-    `--disk-cache-dir=${cache}`,
-    '--password-store=basic',
-    '--no-first-run',
-    '--no-default-browser-check',
-    'about:blank'
-  ]
+  const chromeArgs = ['--headless', '--remote-debugging-pipe', ...profileArgs({ profile, cache }), 'about:blank']
   const [bin, args] = confine
     ? confineCommand([executable, ...chromeArgs], { ...confine, contain: true, ownNamespaces: true, scopeSignals: true })
     : [executable, chromeArgs]

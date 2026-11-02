@@ -370,7 +370,7 @@ definition names it:
 
 ```
 npm i -g @rhizogrip/spore-plugin-browser
-spore plugin allow browser cdp=9222
+spore plugin allow browser chromium=google-chrome
 # in spore.cmk:  plugins: [browser]
 ```
 

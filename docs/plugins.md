@@ -168,7 +168,7 @@ with*); a version outside it is `PLUGIN_INCOMPATIBLE`, naming both.
 ## Settings
 
 ```json
-"settings": { "cdp": "port" }
+"settings": { "chromium": "text" }
 ```
 
 What the operator supplies for this machine, each a kind:
@@ -179,7 +179,7 @@ What the operator supplies for this machine, each a kind:
 | `text` | a non-empty string |
 
 Any other kind is refused. The operator gives them when allowing the plugin, as
-`spore plugin allow browser cdp=9222`; a `port` typed as digits is read as a number. Given again,
+`spore plugin allow browser chromium=google-chrome`; a `port` typed as digits is read as a number. Given again,
 settings are merged over those already recorded. Every declared setting is required: allowing,
 and every turn after, refuses one missing (`PLUGIN_SETTING_MISSING`), one undeclared
 (`PLUGIN_SETTING_UNKNOWN`) and one not of its kind (`PLUGIN_SETTING_INVALID`).
@@ -220,11 +220,11 @@ absolute path. A program is either:
 
 - **`./<path>`, in the plugin**, as `brave`'s `./bin/search.js`;
 - **`<package>/<path>` or `@<scope>/<package>/<path>`, in a package the plugin depends on**, found
-  from the plugin's directory as Node finds one. `browser` ships no program of its own:
+  from the plugin's directory as Node finds one, as the example's `SPORE_LEDGER_CLI`:
 
   ```json
-  "dependencies": { "agent-browser": "0.38.1" },
-  "spore": { "programs": { "SPORE_BROWSER": "agent-browser/bin/agent-browser-linux-{arch}" } }
+  "dependencies": { "ledger-bin": "3.1.0" },
+  "spore": { "programs": { "SPORE_LEDGER_CLI": "ledger-bin/bin/ledger-linux-{arch}" } }
   ```
 
 A program's path takes one placeholder, `{arch}`: this machine's architecture as Node names it,
@@ -310,8 +310,8 @@ The `routes` key of earlier releases is `PLUGIN_INVALID`.
 
 ```json
 "env": {
-  "AGENT_BROWSER_CDP": "{settings.cdp}",
   "AGENT_BROWSER_SESSION": "{name}",
+  "AGENT_BROWSER_PIN_TAB": "1",
   "AGENT_BROWSER_SOCKET_DIR": "{sockets}/browser",
   "AGENT_BROWSER_SCREENSHOT_DIR": "{data}/browser"
 }

@@ -76,17 +76,19 @@ in the spore's own socket directory (`{sockets}/browser`), and screenshots and d
 
 ## Logging in by hand
 
-A persistent spore is logged in to nothing until someone logs it in. Stop the service, so that
-spore's browser is not running, and open its profile in a window, with the browser `chromium` names:
+A persistent spore is logged in to nothing until someone logs it in. Stop the service, and open
+that spore's profile in a window of the browser `chromium` names:
 
 ```
-systemctl --user stop spore-browser.service
-google-chrome --user-data-dir="$HOME/.local/state/spore/browser/<spore>/profile" --password-store=basic
-systemctl --user start spore-browser.service
+spore service stop browser
+spore-browser open <spore> https://example.com/login
+spore service start browser
 ```
 
-Log in, close the window, then start the service again. `--password-store=basic` must match the
-service's, or the headless browser cannot read what the window saved.
+Log in, close the window, then start the service again. `open` refuses a spore that does not use
+the browser, one whose profile is `ephemeral`, and to run while the service does: the service would
+start that spore's browser on the profile the window holds. The window is yours, on your desktop,
+outside `confine`; the spore's browser reads what it saved.
 
 ## What holds the browser
 

@@ -7,6 +7,9 @@
     "email": "clb@toort.net"
   },
   "type": "module",
+  "bin": {
+    "spore-browser": "bin/spore-browser.js"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RHIZOGRIP/spore.git",
@@ -31,7 +34,7 @@
     "NOTICE"
   ],
   "dependencies": {
-    "agent-browser": "0.39.1",
+    "agent-browser": "0.41.1",
     "ws": "^8.22.0"
   },
   "peerDependencies": {

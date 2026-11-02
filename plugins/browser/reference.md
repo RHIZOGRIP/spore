@@ -76,6 +76,9 @@ only into your `data/`, and an upload comes only from it: copy a file into `data
 uploading it. A command that asks for anything else fails with `refused by this spore's browser`
 and why. That is a rule, not a fault: running it again gets the same answer.
 
+Some sites answer your browser with a challenge instead of the page: a captcha, or a page asking
+you to show you are a person. Say so, with the address, and stop: it is not yours to get past.
+
 ## When it is not there
 
 `browser: this spore has no browser` means the operator's browser service is not running, or has

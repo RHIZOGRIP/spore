@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -9,9 +9,10 @@ import { definitionWith } from '@rhizogrip/spore/testing'
 
 import { containCheck } from '@rhizogrip/spore'
 
-import { findChromium, startChrome } from '../src/chrome.js'
+import { findChromium, profileArgs, startChrome } from '../src/chrome.js'
 import { IDLE_MS, openEndpoint } from '../src/endpoint.js'
 import { METHODS, refusalOf } from '../src/gate.js'
+import { openWindow, runningService } from '../src/open.js'
 import { probeEndpoint } from '../src/probe.js'
 import { grantsOf, sporesUsing } from '../src/service.js'
 
@@ -328,5 +329,34 @@ describe('the spores the service serves', () => {
       'odd: browser.profile is shared, which it cannot be — not served',
       `fresh: ${join(ROOT, 'other', 'fresh')} and ${join(ROOT, 'fresh')} are both called fresh, and a profile is kept by name — ${join(ROOT, 'other', 'fresh')} not served`
     ])
+  })
+})
+
+describe("the operator's window on a spore's profile", () => {
+  it('opens the profile, cache and home the service gives the headless browser, on the page asked for', async () => {
+    const root = join(ROOT, 'kept')
+    mkdirSync(join(root, 'profile'), { recursive: true })
+    expect(await openWindow({ executable: CHROME, root, url: 'https://example.org/login' })).toEqual({ code: 0, signal: null })
+
+    const { argv, env } = JSON.parse(readFileSync(join(root, 'profile', 'launched.json'), 'utf8'))
+    expect(argv).toEqual([...profileArgs({ profile: join(root, 'profile'), cache: join(root, 'cache') }), 'https://example.org/login'])
+    expect(env.HOME).toBe(join(root, 'home'))
+  })
+
+  it('is refused while the service runs, which its record says only while that process is still the service', async () => {
+    const record = join(ROOT, 'spore-browser.json')
+    expect(runningService(record)).toBe(null)
+
+    const service = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)', join(ROOT, 'bin', 'spore-browser.js')], { stdio: 'ignore' })
+    await once(service, 'spawn')
+    writeFileSync(record, JSON.stringify({ version: '0.4.0', spore: '1.51.0', pid: service.pid }))
+    expect(runningService(record)).toBe(service.pid)
+
+    service.kill()
+    await once(service, 'exit')
+    expect(runningService(record)).toBe(null)
+
+    writeFileSync(record, JSON.stringify({ version: '0.4.0', spore: '1.51.0', pid: process.pid }))
+    expect(runningService(record)).toBe(null)
   })
 })
