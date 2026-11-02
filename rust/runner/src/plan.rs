@@ -525,6 +525,7 @@ mod tests {
                 "writes": [],
                 "sources": [],
                 "plugins": [],
+                "pluginOptions": {},
                 "scopes": {},
                 "limits": { "rounds": { "soft": 5.0, "hard": 7.0 }, "cost": { "soft": 0.1, "hard": 0.15 }, "wall": { "soft": 120000.0, "hard": 180000.0 } },
                 "onWrap": "discard",

@@ -650,6 +650,7 @@ export function show ({ ws, configFile = CONFIG_FILE } = {}) {
     workUnitsChildren: sum('workUnitsChildren'),
     precursors: precursorNames(path),
     plugins: definition.plugins,
+    pluginOptions: definition.pluginOptions,
     differs: differingDocs(path, { config: readConfig(configFile) }).map(d => d.file),
     disk: diskUsage(path),
     schedules: scheduleRows(path, { spore: state, grant }),

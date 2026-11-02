@@ -62,8 +62,11 @@ The grammar has nothing else: no nesting, no multi-line values, no defaults.
 - **A key written twice** is refused.
 - **An unknown field** is refused, and the message lists every field. A dotted key `a.b` that is
   not one of the named fields is read as [`<enzyme>.with`](#enzymewith) when `a` is an enzyme
-  the file grants. Otherwise it is read as [`<source>.<param>`](#sourceparam), and refused when
-  `a` is not a source the file grants.
+  the file grants. A single value is read as [`<plugin>.<option>`](#pluginoption), and refused
+  when `a` is not a plugin the file uses. A list is read as [`<source>.<param>`](#sourceparam),
+  and refused when `a` is not a source the file grants. So a plugin's source and its options
+  share the plugin's name and never collide. A dotted key whose first part is a field with
+  dotted keys of its own, like `extend.time`, is refused as an unknown field.
 - **A list field written as a scalar** is refused (*"tools" must be a list, as tools: [a, b]*).
   This applies to `tools`, `enzymes`, `reads`, `writes`, `sources`, `plugins`, `models`,
   `cell-models` and `jobs.writes`. An empty `tools:` is a scalar. Write `tools: []`, or leave the
@@ -141,6 +144,7 @@ that level. **Absent** says what leaving the field out means where it is accepte
 | [`dream.wall`](#dreamcost-and-dreamwall) | `[soft, hard]` durations | with `dream` | refused | — | how long one dream may hold the spore | same |
 | [`dream.precursor`](#dreamprecursor) | precursor name | with `dream` | refused | — | the precursor a dream runs | same |
 | [`plugins`](#plugins) | list of names | optional | refused | none | allowed plugins the spore uses | [Plugins](../ARCHITECTURE.md#plugins) |
+| [`<plugin>.<option>`](#pluginoption) | one value | optional | refused | the plugin's default | how a used plugin serves the spore | same |
 | [`prepare`](#prepare) | list of `origin=plugin/program` | optional | refused | none | the program that prepares each origin's deliveries | [Deliveries nobody typed](../ARCHITECTURE.md#deliveries-nobody-typed) |
 | [`prepare.timeout`](#preparetimeout) | duration | with `prepare` | refused | — | how long one prepare step may run | same |
 | [`prepare.attach`](#prepareattach) | `[count, size]` | with `prepare` | refused | — | the files and bytes one prepare step may attach | same |
@@ -692,6 +696,25 @@ digit, at most 64. No entry may appear twice. These are what the spore's turns g
 ([Plugins](../ARCHITECTURE.md#plugins),
 [operating.md §Plugins on the host](operating.md#plugins-on-the-host)).
 
+### `<plugin>.<option>`
+
+```
+plugins: [browser]
+browser.profile: persistent
+```
+
+Chooses how a plugin the file lists in `plugins` serves this spore. The key is the plugin's
+name, a dot, and an option the plugin declares. The value is one value, never a list: a list
+under the same name is a [`<source>.<param>`](#sourceparam). An option the file leaves out
+gets the plugin's default. `spore plugin show <name>` lists a plugin's options, their values
+and the default.
+
+- A key naming a plugin the file does not use is refused: *sets "…" without using the plugin*.
+- An empty value is refused.
+- An option the plugin does not declare, or a value it does not offer, is refused when a turn
+  starts (`PLUGIN_OPTION_UNKNOWN`, `PLUGIN_OPTION_INVALID`).
+- A plugin that only [`prepare`](#prepare) names takes no options, and runs on its defaults.
+
 ## Preparing deliveries
 
 ### `prepare`
@@ -805,6 +828,7 @@ A file that parses is checked again later:
 - a source is not described by the host, a `requires` parameter is not narrowed, or a host default
   lies outside the narrowed values;
 - a plugin is not allowed, or has changed since it was allowed;
+- a `<plugin>.<option>` names an option the plugin does not declare, or a value it does not offer;
 - with `memory: vectors`, `memory.json` is missing or the store does not answer.
 
 **On every model call:** the model broker refuses any model the spore's definition does not name.

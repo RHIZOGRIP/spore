@@ -60,6 +60,7 @@ runs none of the plugin's code.
 |---|---|---|---|
 | `works` | a semver range | required | the `@rhizogrip/spore` versions the plugin works with |
 | `settings` | `{ "<key>": "port" \| "text" }` | optional | values the operator gives at `allow` |
+| `options` | `{ "<name>": { "values", "default" } }` | optional | what each spore chooses in its `spore.cmk` |
 | `programs` | `{ "<VARIABLE>": "<program>" }` | optional | `./<path>` in the plugin, or `<package>/<path>` in a dependency |
 | `describe` | `[{ "program", "title", "category", "detail"? }, …]` | optional | how a call of one of its `programs` is shown: `program` a regexp naming one of them |
 | `env` | `{ "<VARIABLE>": "<text>" }` | optional | text with `{placeholders}` |
@@ -83,6 +84,8 @@ starts, when `spore define` makes such a spore, by `spore plugin ls` and `spore 
 | `PLUGIN_SETTING_UNKNOWN` | the operator gives a setting the manifest does not declare |
 | `PLUGIN_SETTING_MISSING` | a declared setting has no value |
 | `PLUGIN_SETTING_INVALID` | a value is not of its kind, or a pair is not `key=value` |
+| `PLUGIN_OPTION_UNKNOWN` | a spore sets an option the manifest does not declare |
+| `PLUGIN_OPTION_INVALID` | a spore sets an option to a value the manifest does not offer |
 | `PLUGIN_NOT_ALLOWED` | a spore names a plugin the machine has not allowed |
 | `PLUGIN_CHANGED` | the installed copy is not the one that was allowed |
 | `PLUGIN_CONFLICT` | two plugins one spore uses set one variable, offer one module or describe one source |
@@ -185,6 +188,26 @@ A setting reaches the plugin only through `{settings.<key>}` in an `env` value. 
 programs never read `config.json`. A setting, like every variable the plugin sets, reaches the
 runner in its environment, which only its own user can read, and is then in the environment of every
 command the agent runs. A credential the agent must never see belongs in a [source](#sources).
+
+## Options
+
+```json
+"options": { "profile": { "values": ["ephemeral", "persistent"], "default": "ephemeral" } }
+```
+
+What each spore chooses for itself, where a setting is the machine's. A spore that uses the
+plugin sets one in its `spore.cmk` as `<plugin>.<option>: <value>`, one value
+([definition.md §`<plugin>.<option>`](definition.md#pluginoption)); one it leaves out gets
+`default`. An option is named like a source parameter: letters, digits, `-` and `_`, starting
+with a letter. `values` lists each value once, in letters, digits, `.`, `-` and `_`, starting with
+a letter or a digit; `default` is one of them. Each option takes exactly those two fields.
+
+A turn of a spore that sets an option the manifest does not declare is refused
+(`PLUGIN_OPTION_UNKNOWN`), and so is one that sets a value not in `values`
+(`PLUGIN_OPTION_INVALID`). A plugin only `prepare:` names runs on its defaults. An option reaches
+the plugin only through `{options.<name>}` in an `env` or `contain` value. Since it is in the
+agent's own file, the agent may read it; an option chooses how the plugin serves the spore and is
+never a secret.
 
 ## Programs
 
@@ -304,8 +327,9 @@ a turn starts:
 | `{data}` | `<ws>/data`, which the agent writes |
 | `{sockets}` | the spore's own socket directory, the agent's `$SPORE_SOCKET_DIR`, which the agent writes and no other spore can |
 | `{settings.<key>}` | the operator's value for a declared setting, as text |
+| `{options.<name>}` | the spore's value for a declared option, or its default |
 
-Any other placeholder, a `{settings.<key>}` the manifest does not declare among them, is refused
+Any other placeholder, a `{settings.<key>}` or `{options.<name>}` the manifest does not declare among them, is refused
 (*sets … with {…}, which spore does not fill*). There is no escape: a value cannot hold a literal
 `{…}`. A value that is not a string is refused, and so is a variable set both as a program and in
 `env`.

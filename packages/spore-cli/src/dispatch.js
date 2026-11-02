@@ -165,7 +165,7 @@ function renderShow (result) {
     line('delivered', shown.join('\n' + ' '.repeat(13)) + (rest ? `\n${' '.repeat(13)}…and ${rest} more` : ''))
   }
   if (result.precursors.length) line('precursors', result.precursors.join(', '))
-  if (result.plugins.length) line('plugins', result.plugins.join(', '))
+  if (result.plugins.length) line('plugins', result.plugins.map(name => pluginText(name, result.pluginOptions[name])).join(', '))
   if (result.differs.length) line('docs', `${result.differs.join(', ')} differ from what is installed — spore upgrade ${basename(result.ws)}`)
   const { disk } = result
   line('disk', `${bytesText(disk.total)} — data ${bytesText(disk.data)} · records ${bytesText(disk.state)} · streams ${bytesText(disk.calls)} · sent ${bytesText(disk.inbox)} · other ${bytesText(disk.other)}`)
@@ -258,6 +258,10 @@ export function scheduleLine (one) {
   const where = one.why ? `  ${one.why}` : one.next ? `  next ${one.next}` : one.slot ? `  for ${one.slot}` : ''
   return `${one.name}  ${when}  ${one.state}${where}`
 }
+
+const pluginText = (name, set) => set
+  ? `${name} (${Object.entries(set).map(([option, value]) => `${option}: ${value}`).join(', ')})`
+  : name
 
 const jobGrant = (grant) => grant
   ? `${grant.count} at once, ${durationText(grant.wall)} each${grant.maxWait ? `, routed within ${durationText(grant.maxWait)}` : ''}${grant.perDay ? `, ${grant.perDay} triage cells a day` : ''}`
@@ -461,6 +465,9 @@ function renderPlugin (result) {
   line('works', `with @rhizogrip/spore ${result.works}`)
   for (const [i, [key, kind]] of Object.entries(result.settings).entries()) {
     line(i ? '' : 'settings', `${key} (${kind})${result.configured?.[key] === undefined ? '' : ` = ${result.configured[key]}`}`)
+  }
+  for (const [i, [name, spec]] of Object.entries(result.options).entries()) {
+    line(i ? '' : 'options', `${result.name}.${name}: ${spec.values.map(value => value === spec.default ? `${value} (default)` : value).join(' | ')}`)
   }
   for (const [i, [name, path]] of Object.entries(result.programs).entries()) line(i ? '' : 'programs', `${name} → ${path}`)
   for (const [i, [name, value]] of Object.entries(result.env).entries()) line(i ? '' : 'env', `${name}=${value}`)

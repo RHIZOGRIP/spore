@@ -338,6 +338,7 @@ pub struct Definition {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dream: Option<Dream>,
     pub plugins: Vec<String>,
+    pub plugin_options: Ordered<Ordered<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prepare: Option<Prepare>,
     /// How a person is shown its calls, from its `:::call` blocks, in the order written.
@@ -1094,11 +1095,12 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
     };
     let fields = parse_frontmatter(&document[1])?;
 
-    // `<source>.<param>` narrows what a granted source may be asked for, and `<enzyme>.with`
-    // names what a granted enzyme needs beside itself — the one key shape the schema does
-    // not name in advance, since which are legal depends on what this definition grants. A
-    // name carries no dot, so the split is unambiguous, and a source and an enzyme may not share
-    // one.
+    // `<source>.<param>` narrows what a granted source may be asked for, `<enzyme>.with`
+    // names what a granted enzyme needs beside itself, and `<plugin>.<option>` chooses how a used
+    // plugin serves this spore — the one key shape the schema does not name in advance, since
+    // which are legal depends on what this definition grants. A name carries no dot, so the split
+    // is unambiguous, and a source and an enzyme may not share one. A source and a plugin may: a
+    // scope is a list of values and an option is one, so the value says which is meant.
     let granted: Vec<&str> = match fields.get("sources") {
         Some(Value::List(items)) => items.iter().map(String::as_str).collect(),
         Some(Value::Scalar(s)) => vec![s.as_str()],
@@ -1108,6 +1110,11 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         .iter()
         .map(|raw| named(raw).0)
         .collect();
+    let plugin_names: Vec<&str> = match fields.get("plugins") {
+        Some(Value::List(items)) => items.iter().map(String::as_str).collect(),
+        Some(Value::Scalar(s)) => vec![s.as_str()],
+        None => Vec::new(),
+    };
     if let Some(both) = enzyme_names.iter().find(|name| granted.contains(name)) {
         return Err(format!(
             "grants a source and an enzyme both named \"{both}\" — {both}.<field> could mean either, so rename one"
@@ -1139,6 +1146,31 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
                 }
             }
             continue;
+        }
+        let own: Vec<&str> = family(&scoped[1]).collect();
+        if !own.is_empty() {
+            return Err(format!(
+                "unknown field \"{key}\" — {} takes {}",
+                &scoped[1],
+                own.join(", ")
+            ));
+        }
+        if let Value::Scalar(chosen) = value {
+            if plugin_names.contains(&&scoped[1]) {
+                if chosen.is_empty() {
+                    return Err(format!(
+                        "has a {key} it cannot read — expected one of the values the plugin {} offers",
+                        &scoped[1]
+                    ));
+                }
+                continue;
+            }
+            if !granted.contains(&&scoped[1]) {
+                return Err(format!(
+                    "sets \"{key}\" without using the plugin — add {} to plugins, or drop the line",
+                    &scoped[1]
+                ));
+            }
         }
         if !granted.contains(&&scoped[1]) {
             return Err(format!(
@@ -1575,6 +1607,25 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         }
     }
 
+    // How each used plugin serves this spore, one value per option; which options a plugin takes
+    // and what each may be is its manifest's, checked by the host that finds it.
+    let mut plugin_options: Ordered<Ordered<String>> = Ordered::default();
+    for (key, value) in &fields.0 {
+        let (Some(scoped), Value::Scalar(chosen)) = (SCOPED_KEY.captures(key), value) else {
+            continue;
+        };
+        if FIELDS.contains(&key.as_str()) || enzyme_names.contains(&&scoped[1]) {
+            continue;
+        }
+        let (plugin, option) = (scoped[1].to_string(), scoped[2].to_string());
+        match plugin_options.0.iter_mut().find(|(p, _)| *p == plugin) {
+            Some((_, options)) => options.0.push((option, chosen.clone())),
+            None => plugin_options
+                .0
+                .push((plugin, Ordered(vec![(option, chosen.clone())]))),
+        }
+    }
+
     let prepare = parse_prepare(&fields, opts.cell)?;
 
     let reasoning = list(&fields, "reasoning").to_vec();
@@ -1652,6 +1703,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         jobs,
         dream,
         plugins,
+        plugin_options,
         prepare,
         calls,
         reasoning,
@@ -1827,9 +1879,10 @@ mod tests {
         assert!(with("extend.wall: [3h, 4h]")
             .unwrap_err()
             .contains("takes one value"));
-        assert!(with("extend.time: 3h")
-            .unwrap_err()
-            .contains("without granting the source"));
+        assert_eq!(
+            with("extend.time: 3h").unwrap_err(),
+            "unknown field \"extend.time\" — extend takes extend.rounds, extend.cost, extend.wall"
+        );
         let known: Vec<String> = TOOLS.iter().map(|t| t.to_string()).collect();
         let source = "---\nname: c\nextend.wall: 1h\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\non-wrap: keep\n---\n\nYou work.\n";
         let refused = parse_definition(
@@ -1969,6 +2022,66 @@ mod tests {
             with("plugins: [docs, docs]\n").unwrap_err(),
             "uses the plugin \"docs\" twice"
         );
+    }
+
+    #[test]
+    fn sets_a_used_plugin_option_to_one_value() {
+        let with = |line: &str| {
+            parse(&WELL_FORMED.replace("tools: [read]\n", &format!("tools: [read]\n{line}")))
+        };
+        let set =
+            with("plugins: [browser]\nbrowser.profile: persistent\nbrowser.idle: 10m\n").unwrap();
+        assert_eq!(
+            set.plugin_options.0,
+            vec![(
+                "browser".to_string(),
+                Ordered(vec![
+                    ("profile".to_string(), "persistent".to_string()),
+                    ("idle".to_string(), "10m".to_string())
+                ])
+            )]
+        );
+        assert!(set.scopes.0.is_empty());
+        assert!(parse(WELL_FORMED).unwrap().plugin_options.0.is_empty());
+        assert_eq!(
+            with("browser.profile: persistent\n").unwrap_err(),
+            "sets \"browser.profile\" without using the plugin — add browser to plugins, or drop the line"
+        );
+        assert!(with("plugins: [browser]\nbrowser.profile:\n")
+            .unwrap_err()
+            .contains("expected one of the values the plugin browser offers"));
+    }
+
+    #[test]
+    fn tells_a_plugin_option_from_a_scope_by_its_value() {
+        let both = parse(&WELL_FORMED.replace(
+            "tools: [read]\n",
+            "tools: [read]\nsources: [brave]\nplugins: [brave]\nbrave.country: [us, fr]\nbrave.region: eu\n",
+        ))
+        .unwrap();
+        assert_eq!(
+            both.scopes.0,
+            vec![(
+                "brave".to_string(),
+                Ordered(vec![(
+                    "country".to_string(),
+                    vec!["us".to_string(), "fr".to_string()]
+                )])
+            )]
+        );
+        assert_eq!(
+            both.plugin_options.0,
+            vec![(
+                "brave".to_string(),
+                Ordered(vec![("region".to_string(), "eu".to_string())])
+            )]
+        );
+        let unused = parse(&WELL_FORMED.replace(
+            "tools: [read]\n",
+            "tools: [read]\nsources: [brave]\nbrave.region: eu\n",
+        ))
+        .unwrap_err();
+        assert!(unused.contains("brave.region it cannot read — expected the values it may ask for"));
     }
 
     #[test]

@@ -497,13 +497,16 @@ is checked, not at the agent's first call.
 
 **A plugin is a manifest.** The `spore` field of its `package.json` says what it gives:
 `works`, the `@rhizogrip/spore` versions it works with, which is required; and, each optional,
-`settings` the host must supply, each a `port` or `text`; `programs`, a variable naming an
+`settings` the host must supply, each a `port` or `text`; `options`, what each spore using it
+chooses in its own `spore.cmk` as `<plugin>.<option>: <value>`, from the values the manifest
+offers, the manifest's default where it chooses none — a setting is the machine's, an option the
+spore's; `programs`, a variable naming an
 executable in the plugin or in a package it depends on, `{arch}` in its path standing for this
 machine's architecture, which the agent runs, and which a spore's
 definition may also bind for the runtime to run on the deliveries of an origin (`prepare:`,
 §Deliveries nobody typed); `describe`, how a call of each of its
 programs is shown ([§Describing a call](#describing-a-call)); `env`, more variables from `{name}`,
-`{ws}`, `{data}`, `{sockets}` and `{settings.<key>}`; `modules`, dependencies of the plugin an agent's own
+`{ws}`, `{data}`, `{sockets}`, `{settings.<key>}` and `{options.<name>}`; `modules`, dependencies of the plugin an agent's own
 programs may import, none of them a provisioned one; `sources`, endpoints described as the
 host's `sources.json` describes them, held by the runner and granted with the plugin; a
 `reference`, one markdown file; a directory of `precursors`; and `services`, below. The core reads

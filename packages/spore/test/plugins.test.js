@@ -283,6 +283,22 @@ describe('checking a plugin', () => {
     expect(refusal(() => checkPlugin(browser({ env: { X: '{settings.port}' } }))).message).toMatch(/\{settings\.port\}/)
   })
 
+  it('takes options a spore chooses one value of, each with its default, and refuses ones it cannot read', () => {
+    const PROFILE = { values: ['ephemeral', 'persistent'], default: 'ephemeral' }
+    const found = browser({ options: { profile: PROFILE }, env: { ...BROWSER.env, BROWSE_PROFILE: '{options.profile}' } })
+    expect(checkPlugin(found, { cdp: 9222 }).options).toEqual({ profile: PROFILE })
+    const refused = (options) => refusal(() => checkPlugin(browser({ options }), { cdp: 9222 })).message
+    expect(refused(['profile'])).toMatch(/has options that are not a map/)
+    expect(refused({ '1st': PROFILE })).toMatch(/has an option named "1st"/)
+    expect(refused({ profile: { values: PROFILE.values } })).toMatch(/has an option profile spore cannot read/)
+    expect(refused({ profile: { ...PROFILE, other: 1 } })).toMatch(/has an option profile spore cannot read/)
+    expect(refused({ profile: { values: [], default: 'ephemeral' } })).toMatch(/whose values spore cannot read/)
+    expect(refused({ profile: { values: ['a', 'a'], default: 'a' } })).toMatch(/whose values spore cannot read/)
+    expect(refused({ profile: { values: ['two words'], default: 'two words' } })).toMatch(/whose values spore cannot read/)
+    expect(refused({ profile: { ...PROFILE, default: 'kept' } })).toMatch(/whose default is not one of its values/)
+    expect(refusal(() => checkPlugin(browser({ env: { X: '{options.profile}' } }), { cdp: 9222 })).message).toMatch(/sets X with \{options\.profile\}, which spore does not fill/)
+  })
+
   it('refuses a precursor that does not parse, or is not named as its file', () => {
     const broken = plugin('spore-plugin-p1', { precursors: 'precursors' }, { files: { 'precursors/a.cmk': '---\nname: a\n---\nno limits' } })
     expect(refusal(() => checkPlugin(broken)).message).toMatch(/precursor a\.cmk that does not parse/)
@@ -480,6 +496,23 @@ describe('a turn of a spore that uses plugins', () => {
     useIn(WS, ['browser', 'shots'])
     expect(refusal(() => preparePlugins(WS, { config: config({ browser: allowed('browser', { cdp: 9222 }) }), roots })).type).toBe('PLUGIN_NOT_ALLOWED')
     expect(refusal(() => preparePlugins(WS, { config: config({ browser: allowed('browser', { cdp: 9222 }), shots: allowed('shots') }), roots })).type).toBe('PLUGIN_CONFLICT')
+  })
+
+  it('fills each option the spore chooses, the default where it chooses none, and refuses one the plugin does not take', () => {
+    browser({ options: { profile: { values: ['ephemeral', 'persistent'], default: 'ephemeral' } }, env: { BROWSE_PROFILE: '{options.profile}' } })
+    const settings = { config: config({ browser: allowed('browser', { cdp: 9222 }) }), roots }
+    const choosing = (lines) => writeFileSync(join(WS, 'spore.cmk'), definitionWith('anthropic/claude-haiku-4-5').replace('\n---', `\nplugins: [browser]\n${lines}---`))
+    mkdirSync(WS, { recursive: true })
+
+    choosing('')
+    expect(preparePlugins(WS, settings).env.BROWSE_PROFILE).toBe('ephemeral')
+    choosing('browser.profile: persistent\n')
+    expect(preparePlugins(WS, settings).env.BROWSE_PROFILE).toBe('persistent')
+    choosing('browser.profile: shared\n')
+    expect(refusal(() => preparePlugins(WS, settings))).toMatchObject({ type: 'PLUGIN_OPTION_INVALID', detail: 'browser.profile is ephemeral or persistent' })
+    choosing('browser.idle: 10m\n')
+    expect(refusal(() => preparePlugins(WS, settings))).toMatchObject({ type: 'PLUGIN_OPTION_UNKNOWN', detail: 'it takes browser.profile' })
+    expect(refusal(() => containOf(WS, settings)).type).toBe('PLUGIN_OPTION_UNKNOWN')
   })
 
   it('fills what a plugin keeps in view of a contained spore, and refuses two that hide the same place', () => {

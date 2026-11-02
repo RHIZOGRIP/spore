@@ -4,6 +4,25 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.50.0] — Added: a spore chooses how a plugin serves it
+
+### Added
+
+- Plugin options. A plugin's manifest may declare `options`, each with the `values` a spore may
+  choose and a `default`. A spore that lists the plugin in `plugins:` chooses one in its
+  `spore.cmk` as `<plugin>.<option>: <value>`. The plugin reads it as `{options.<name>}` in `env`
+  and `contain`. A turn is refused when the option is undeclared (`PLUGIN_OPTION_UNKNOWN`) or the
+  value is not offered (`PLUGIN_OPTION_INVALID`). A one-value dotted key is an option and a list is
+  a source's narrowing, so a plugin's options and its source share its name without colliding.
+  `spore show` lists the options a spore sets beside its plugins, and `spore plugin show` lists a
+  plugin's options with their default.
+
+### Changed
+
+- A dotted key whose first part is a field with dotted keys of its own, like `extend.time`, is
+  refused as an unknown field and the message names that field's keys. It used to be told to
+  grant a source.
+
 ## [1.49.5] — Changed: a spore hands over commands that run as written
 
 ### Changed

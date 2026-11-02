@@ -33,13 +33,15 @@ const SPORE_PACKAGE = JSON.parse(readFileSync(join(SPORE_ROOT, 'package.json'), 
 
 const PREFIX = 'spore-plugin-'
 export const PLUGIN_READS = 'SPORE_PLUGIN_READS'
-const MANIFEST_FIELDS = ['works', 'settings', 'programs', 'describe', 'env', 'contain', 'modules', 'sources', 'reference', 'precursors', 'services']
+const MANIFEST_FIELDS = ['works', 'settings', 'options', 'programs', 'describe', 'env', 'contain', 'modules', 'sources', 'reference', 'precursors', 'services']
 const CONTAIN_FIELDS = ['hide', 'keep', 'missing']
 const SERVICE_FIELDS = ['what', 'program', 'instances', 'check']
 const SERVICE_NAME = /^[a-z][a-z0-9-]*$/
 const SETTING_KINDS = ['port', 'text']
 const PLACEHOLDERS = ['name', 'ws', 'data', 'sockets']
 const PLACEHOLDER = /\{([^{}]*)\}/g
+const OPTION_NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
+const OPTION_VALUE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -223,6 +225,9 @@ export function checkPlugin (found, settings = null) {
     }
   }
 
+  const options = checkOptions(manifest.options ?? {}, refuse)
+  const known = [...PLACEHOLDERS, ...Object.keys(kinds).map(key => `settings.${key}`), ...Object.keys(options).map(name => `options.${name}`)]
+
   const reads = closure(found, refuse)
   const programs = {}
   if (!isRecord(manifest.programs ?? {})) throw refuse('has programs that are not a map', 'programs maps a variable to the program it names, as { "SPORE_X": "./bin/x" }')
@@ -237,11 +242,11 @@ export function checkPlugin (found, settings = null) {
     checkEnvName(found, name, refuse)
     if (name in programs) throw refuse(`sets ${name} as a program and in env`, 'one or the other')
     if (typeof template !== 'string') throw refuse(`sets ${name} to something other than text`, 'env values are strings, with {placeholders}')
-    checkPlaceholders(`sets ${name}`, template, kinds, refuse)
+    checkPlaceholders(`sets ${name}`, template, known, refuse)
     env[name] = template
   }
 
-  const contain = checkContain(manifest.contain, kinds, refuse)
+  const contain = checkContain(manifest.contain, known, refuse)
 
   const modules = checkModules(pkg, manifest.modules ?? [], found, refuse)
   const sources = checkSources(manifest.sources ?? {}, refuse)
@@ -263,7 +268,7 @@ export function checkPlugin (found, settings = null) {
   const services = checkServices(found, manifest.services ?? {}, refuse)
   const describe = checkDescribe(found, manifest.describe ?? [], Object.keys(programs), refuse)
 
-  return { name: found.name, package: found.package, version: pkg.version, dir: found.dir, range, kinds, settings, programs, describe, env, contain, modules, sources, reference, precursors, reads, services }
+  return { name: found.name, package: found.package, version: pkg.version, dir: found.dir, range, kinds, settings, options, programs, describe, env, contain, modules, sources, reference, precursors, reads, services }
 }
 
 /** A program's path with `{arch}` filled as Node names this machine's, x64 or arm64: the one placeholder a program takes. */
@@ -301,11 +306,29 @@ function checkDescribe (found, describe, programs, refuse) {
   }
 }
 
-function checkPlaceholders (what, template, kinds, refuse) {
+function checkPlaceholders (what, template, known, refuse) {
   for (const [, key] of template.matchAll(PLACEHOLDER)) {
-    const known = PLACEHOLDERS.includes(key) || (key.startsWith('settings.') && key.slice('settings.'.length) in kinds)
-    if (!known) throw refuse(`${what} with {${key}}, which spore does not fill`, `placeholders are ${PLACEHOLDERS.map(p => `{${p}}`).join(', ')} and {settings.<key>} for a declared setting`)
+    if (!known.includes(key)) throw refuse(`${what} with {${key}}, which spore does not fill`, `placeholders are ${PLACEHOLDERS.map(p => `{${p}}`).join(', ')}, {settings.<key>} for a declared setting and {options.<name>} for a declared option`)
   }
+}
+
+/**
+ * How a spore may have the plugin serve it, each option chosen in its spore.cmk as
+ * `<plugin>.<option>: <value>` — one of `values`, and `default` where it says none.
+ */
+function checkOptions (declared, refuse) {
+  const shape = 'options maps each to the values a spore may choose and the one it gets otherwise, as { "profile": { "values": ["ephemeral", "persistent"], "default": "ephemeral" } }'
+  if (!isRecord(declared)) throw refuse('has options that are not a map', shape)
+  for (const [name, spec] of Object.entries(declared)) {
+    if (!OPTION_NAME.test(name)) throw refuse(`has an option named "${name}"`, 'an option is named in letters, digits, - and _, starting with a letter')
+    if (!isRecord(spec) || Object.keys(spec).sort().join() !== 'default,values') throw refuse(`has an option ${name} spore cannot read`, shape)
+    const { values } = spec
+    if (!Array.isArray(values) || !values.length || !values.every(value => typeof value === 'string' && OPTION_VALUE.test(value)) || new Set(values).size !== values.length) {
+      throw refuse(`has an option ${name} whose values spore cannot read`, 'values lists each value once, in letters, digits, ., - and _, starting with a letter or a digit')
+    }
+    if (!values.includes(spec.default)) throw refuse(`has an option ${name} whose default is not one of its values`, `default is ${values.join(' or ')}`)
+  }
+  return declared
 }
 
 /**
@@ -314,7 +337,7 @@ function checkPlaceholders (what, template, kinds, refuse) {
  * means when that directory is not there. `confine --contain` lays it out; a spore not contained
  * is refused.
  */
-function checkContain (declared, kinds, refuse) {
+function checkContain (declared, known, refuse) {
   if (declared === undefined) return null
   const shape = 'contain is { "hide": "<a directory>" }, or with "keep": "<a directory inside it>" and "missing": "<what it means when keep is not there>"'
   if (!isRecord(declared) || !('hide' in declared) || Object.keys(declared).some(key => !CONTAIN_FIELDS.includes(key)) || ('keep' in declared) !== ('missing' in declared)) {
@@ -322,7 +345,7 @@ function checkContain (declared, kinds, refuse) {
   }
   for (const field of CONTAIN_FIELDS.filter(field => field in declared)) {
     if (typeof declared[field] !== 'string' || !declared[field]) throw refuse(`has a contain whose ${field} is not text`, shape)
-    checkPlaceholders(`sets contain.${field}`, declared[field], kinds, refuse)
+    checkPlaceholders(`sets contain.${field}`, declared[field], known, refuse)
   }
   return declared
 }
@@ -393,7 +416,8 @@ function filled (plugin, ws) {
     ws,
     data: join(ws, DATA_DIR),
     sockets: native.sporeSocketDir(ws),
-    ...Object.fromEntries(Object.entries(plugin.settings).map(([key, value]) => [`settings.${key}`, String(value)]))
+    ...Object.fromEntries(Object.entries(plugin.settings).map(([key, value]) => [`settings.${key}`, String(value)])),
+    ...Object.fromEntries(Object.entries(plugin.chosen).map(([name, value]) => [`options.${name}`, value]))
   }
   return (template) => template.replace(PLACEHOLDER, (_, key) => values[key])
 }
@@ -460,9 +484,31 @@ function usedPlugins (ws, config, roots) {
   }
   const preparing = [...new Set((definition.prepare?.steps ?? []).map(step => step.plugin))].filter(name => !definition.plugins.includes(name))
   return {
-    agent: definition.plugins.map(name => checked(name, 'uses', 'plugins')),
-    prepare: preparing.map(name => checked(name, 'prepares deliveries with', 'prepare'))
+    agent: definition.plugins.map(name => chosenFor(ws, checked(name, 'uses', 'plugins'), definition.pluginOptions[name] ?? {})),
+    prepare: preparing.map(name => chosenFor(ws, checked(name, 'prepares deliveries with', 'prepare'), {}))
   }
+}
+
+/** The plugin with `chosen`, the value of each of its options for this spore: the one its spore.cmk sets, or the default. */
+function chosenFor (ws, plugin, set) {
+  const names = Object.keys(plugin.options)
+  for (const [name, value] of Object.entries(set)) {
+    const declared = plugin.options[name]
+    if (!declared) {
+      throw new SporeError(`${ws} sets ${plugin.name}.${name}, which plugin ${plugin.name} does not take`, {
+        type: 'PLUGIN_OPTION_UNKNOWN',
+        detail: names.length ? `it takes ${names.map(n => `${plugin.name}.${n}`).join(', ')}` : 'it takes no options — drop the line from its spore.cmk'
+      })
+    }
+    if (!declared.values.includes(value)) {
+      throw new SporeError(`${ws} sets ${plugin.name}.${name} to ${value}, which it cannot be`, {
+        type: 'PLUGIN_OPTION_INVALID',
+        detail: `${plugin.name}.${name} is ${declared.values.join(' or ')}`
+      })
+    }
+  }
+  const defaults = Object.fromEntries(Object.entries(plugin.options).map(([name, spec]) => [name, spec.default]))
+  return { ...plugin, chosen: { ...defaults, ...set } }
 }
 
 /** What `allow` records of a plugin: the settings it was given, and which installed copy it was. */
@@ -640,6 +686,7 @@ const describe = (plugin) => ({
   dir: plugin.dir,
   works: plugin.range,
   settings: plugin.kinds,
+  options: plugin.options,
   programs: plugin.programs,
   env: plugin.env,
   contain: plugin.contain,
