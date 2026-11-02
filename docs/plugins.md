@@ -606,7 +606,7 @@ The plugins in this repository are the examples:
 | plugin | shows |
 |---|---|
 | `plugins/brave` | a program in the plugin, and a source it calls |
-| `plugins/browser` | a program in a dependency, a `port` setting, every placeholder but `{ws}` |
+| `plugins/browser` | a program that runs one in a dependency, an option, a service that serves each spore its own endpoint |
 | `plugins/ssh` | a `text` setting naming a socket |
 | `plugins/sluice` | `contain`: each spore shown only its own socket of a directory of them |
 | `plugins/documents`, `plugins/images` | `modules`, with nothing for the agent to run |

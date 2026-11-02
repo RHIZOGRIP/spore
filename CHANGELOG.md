@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.51.0] — Added: a service can reach a spore's own socket directory
+
+### Added
+
+- `sporeSocketDir(ws)` returns a spore's own socket directory, its agent's `$SPORE_SOCKET_DIR`. It
+  makes the directory if it isn't there, and refuses one that isn't this user's own with mode 0700
+  (`SOCKET_DIR_UNSAFE`). A plugin's service uses it to leave a file there before a turn, for that
+  spore's agent alone. The browser plugin's service writes each spore's endpoint there.
+
 ## [1.50.0] — Added: a spore chooses how a plugin serves it
 
 ### Added

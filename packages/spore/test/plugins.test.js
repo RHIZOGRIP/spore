@@ -117,14 +117,17 @@ describe('checking a plugin', () => {
   it('passes the browser plugin as it ships, and gives each spore a session of its own', () => {
     const dir = join(MODULES, '@rhizogrip/spore-plugin-browser')
     mkdirSync(dir, { recursive: true })
-    for (const file of ['package.json', 'reference.md']) copyFileSync(resolve(__dirname, '../../../plugins/browser', file), join(dir, file))
-    mkdirSync(join(MODULES, 'agent-browser/bin'), { recursive: true })
-    writeFileSync(join(MODULES, 'agent-browser/package.json'), JSON.stringify({ name: 'agent-browser', version: '0.38.1' }))
-    writeFileSync(join(MODULES, `agent-browser/bin/agent-browser-linux-${process.arch}`), '#!/bin/sh\n')
-    chmodSync(join(MODULES, `agent-browser/bin/agent-browser-linux-${process.arch}`), 0o755)
+    for (const file of ['package.json', 'reference.md', 'bin/browse.js', 'bin/spore-browser.js']) {
+      mkdirSync(dirname(join(dir, file)), { recursive: true })
+      copyFileSync(resolve(__dirname, '../../../plugins/browser', file), join(dir, file))
+    }
+    for (const name of ['agent-browser', 'ws']) {
+      mkdirSync(join(MODULES, name), { recursive: true })
+      writeFileSync(join(MODULES, name, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
+    }
     useIn(WS, ['browser'])
 
-    const { env: { [PLUGIN_CALLS]: calls, ...env } } = preparePlugins(WS, { config: { plugins: { browser: allowed('browser', { cdp: 9222 }) } }, roots })
+    const { env: { [PLUGIN_CALLS]: calls, ...env } } = preparePlugins(WS, { config: { plugins: { browser: allowed('browser', { chromium: 'google-chrome' }) } }, roots })
 
     expect(JSON.parse(calls)).toEqual([{
       name: 'browser/1',
@@ -135,9 +138,8 @@ describe('checking a plugin', () => {
       detail: 'browser $1'
     }])
     expect(env).toEqual({
-      [PLUGIN_READS]: JSON.stringify([realpathSync(dir), realpathSync(join(MODULES, 'agent-browser'))]),
-      SPORE_BROWSER: join(MODULES, `agent-browser/bin/agent-browser-linux-${process.arch}`),
-      AGENT_BROWSER_CDP: '9222',
+      [PLUGIN_READS]: JSON.stringify([realpathSync(dir), realpathSync(join(MODULES, 'agent-browser')), realpathSync(join(MODULES, 'ws'))]),
+      SPORE_BROWSER: join(dir, 'bin/browse.js'),
       AGENT_BROWSER_SESSION: 'ws',
       AGENT_BROWSER_PIN_TAB: '1',
       AGENT_BROWSER_SOCKET_DIR: join(native.sporeSocketDir(WS), 'browser'),

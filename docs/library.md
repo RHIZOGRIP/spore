@@ -1586,6 +1586,17 @@ databaseOf(ws) → string | null
 Which database the workspace has, as its creation time; `null` before it exists. It changes when
 the spore is made again, which is how `watchAll` drops a stale cursor.
 
+### `sporeSocketDir`
+
+```
+sporeSocketDir(ws) → string
+```
+
+The spore's own socket directory, its agent's `$SPORE_SOCKET_DIR` under `/tmp/spore-<uid>/`, made
+mode 0700 if it is not there. A service on the host puts there what only that spore's agent may
+read. It throws `SOCKET_DIR_UNSAFE` when the directory, or the one above it, is not this user's
+alone.
+
 ### `turnSummary`
 
 ```

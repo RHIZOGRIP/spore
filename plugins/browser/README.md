@@ -1,30 +1,72 @@
 # @rhizogrip/spore-plugin-browser
 
-A browser for spores: the agents' own Chrome, reached over the Chrome DevTools Protocol and
-driven by [agent-browser](https://github.com/vercel-labs/agent-browser).
+A browser for spores: each spore its own headless Chromium-based browser, run by a service on the
+host and driven by [agent-browser](https://github.com/vercel-labs/agent-browser).
 
 A plugin for [spore](https://rhizogrip.com); all of them:
 [rhizogrip.com/plugins](https://rhizogrip.com/plugins).
 
 ```
 npm i -g @rhizogrip/spore-plugin-browser
-google-chrome --remote-debugging-port=9222 --user-data-dir=<a profile for the agents>
-spore plugin allow browser cdp=9222
+spore plugin allow browser chromium=google-chrome
+spore service define browser
 ```
 
-A spore uses it once its `spore.cmk` says `plugins: [browser]`. Its agent is given
-`$SPORE_BROWSER`, the agent-browser binary, configured by environment: the port, a session
-named after the spore, a tab of its own (`AGENT_BROWSER_PIN_TAB`), its socket in the spore's own
-socket directory (`{sockets}/browser`, which no other spore can write), and screenshots and
-downloads under `data/browser/`. The agent reads
-how to use it in `plugins/browser.md` in its workspace.
+`chromium` names the browser every spore's runs on, for the whole machine: any Chromium-based one, as a command on the
+service's `PATH` or an absolute path — `google-chrome`, `chromium`, `brave-browser`,
+`microsoft-edge` or `vivaldi`, say. `spore service ls` runs the service's check, which prints the
+browser's `--version`. A program that does not answer on the debugging pipe within 30 seconds is
+stopped, and the spore's browser commands fail until `chromium` names one that does.
 
-**Chrome is the operator's.** Spore never starts or stops it. Chrome 136 and later ignore
-the debugging switch on the default data directory, so the agents' Chrome has a profile of
-its own, holding the logins you give the agents and nothing else.
+Ubuntu's `chromium` snap runs in a confinement of its own, with a `/tmp` of its own, and the service
+keeps each browser's temporary files and an ephemeral profile under `/tmp`. Use a `.deb` or the
+vendor's own package instead.
 
-**The port is shared on trust.** It has no authentication, and the sandbox leaves TCP
-connect open, so any process on the machine can reach it — every spore, whether its
-definition names this plugin or not. `plugins: [browser]` says which spores are offered the
-browser, not which can reach it. Use a profile that holds nothing you would
-not hand to every spore on the machine.
+A spore uses it once its `spore.cmk` says `plugins: [browser]`, and chooses its profile:
+
+```
+plugins: [browser]
+browser.profile: persistent
+```
+
+- **`ephemeral`**, the default: a profile made when the spore's browser starts and deleted when it
+  stops. Nothing it saw outlives it.
+- **`persistent`**: a profile kept at `$XDG_STATE_HOME/spore/browser/<spore>/` (by default
+  `~/.local/state/spore/browser/<spore>/`), so cookies and logins last from one turn to the next.
+
+## What runs
+
+The service reads each spore's `spore.cmk` and nothing else of it. It follows the definitions, so
+a spore that starts using the plugin, or changes its profile, is served without a restart. For
+each spore that uses it, it opens an endpoint on a loopback port, answered only on a WebSocket path
+holding a 32-byte secret, and writes that address to `browser.json` in the spore's own socket
+directory. Only that spore's agent can read that file.
+
+The spore's browser starts on the first connection, headless, on `--remote-debugging-pipe`: it has
+no debugging port, and the service is the only way to it. It stops after 10 minutes without a command,
+and when the service stops; an ephemeral profile goes with it.
+
+Its agent is given `$SPORE_BROWSER`, which reads `browser.json` and runs agent-browser with the
+address in agent-browser's environment, never in its arguments. It is configured by environment
+besides: a session named after the spore, a tab of its own (`AGENT_BROWSER_PIN_TAB`), its socket
+in the spore's own socket directory (`{sockets}/browser`), and screenshots and downloads under
+`data/browser/`. The agent reads how to use it in `plugins/browser.md` in its workspace.
+
+## Logging in by hand
+
+A persistent spore is logged in to nothing until someone logs it in. Stop the service, so that
+spore's browser is not running, and open its profile in a window, with the browser `chromium` names:
+
+```
+systemctl --user stop spore-browser.service
+google-chrome --user-data-dir="$HOME/.local/state/spore/browser/<spore>/profile" --password-store=basic
+systemctl --user start spore-browser.service
+```
+
+Log in, close the window, then start the service again. `--password-store=basic` must match the
+service's, or the headless browser cannot read what the window saved.
+
+## Not yet
+
+Each browser runs as your user, outside the sandbox. A page it opens can do what the browser lets a
+page do, and a download goes where agent-browser asks. Neither is held to the spore's grants yet.

@@ -1,8 +1,11 @@
-# The browser: "$SPORE_BROWSER" drives the agents' Chrome, with the logins it holds
+# The browser: "$SPORE_BROWSER" drives a browser of your own
 
-The operator keeps one Chrome running for the agents on this machine, and `"$SPORE_BROWSER"`
-drives it. It is a real browser with real sessions: a site the operator logged in to there,
-you are logged in to. It is shared — the operator uses it, and so may other spores.
+`"$SPORE_BROWSER"` drives a headless browser that is yours alone: no other spore reaches it. It
+starts with your first command and stops after ten minutes without one.
+
+Your `spore.cmk` says which profile it keeps, as `browser.profile:`. **`ephemeral`**, the default,
+starts empty each time and forgets everything when it stops. **`persistent`** keeps cookies and
+logins from one turn to the next; a site the operator logged you in to, you are logged in to.
 
 Run it with **`wsexec`**, one command per call. A browser is state: each command acts on
 what the one before left, so the calls have to run in order, and `exec` runs its calls at
@@ -10,15 +13,12 @@ once and in no order.
 
 ## Your tab
 
-Your first command opens a tab of your own, and every command after acts in it, this turn
-and the next. The other tabs are not yours.
+Your first command opens a tab, and every command after acts in it, for as long as the browser
+runs.
 
-- `"$SPORE_BROWSER" tab` lists every tab — the operator's and other spores' too.
-- Act in another tab only when the message asks you to ("use the tab I left on the
-  invoice"): find it in the list, then `"$SPORE_BROWSER" tab t3`, and your commands act
-  there from then on.
-- Close only a tab you opened, with `"$SPORE_BROWSER" tab close <id>`. **Never run `close`**:
-  it is the browser everyone shares.
+- `"$SPORE_BROWSER" tab` lists the tabs; `"$SPORE_BROWSER" tab t3` acts in another from then on.
+- `"$SPORE_BROWSER" tab close <id>` closes one. Don't run `close` unless the message asks: it
+  stops your browser, and an ephemeral one forgets its pages and logins.
 - A command that fails with `tab_gone` means your tab was closed. `"$SPORE_BROWSER" tab new`
   opens another.
 
@@ -70,6 +70,7 @@ says less about what you can click.
 
 ## When it is not there
 
-A command that cannot reach the browser — connection refused on its port — means the
-operator's Chrome is not running. Say so and stop: retrying does not start it, and nothing
-you can do will.
+`browser: this spore has no browser` means the operator's browser service is not running, or has
+not seen this spore yet. Say so and stop: retrying does not start it, and nothing you can do will.
+A command that worked a moment ago and now cannot connect means the browser stopped; the next
+command starts it again.

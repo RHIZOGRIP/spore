@@ -331,6 +331,19 @@ pub fn spore_socket_dir(ws: String) -> napi::Result<String> {
         .to_string())
 }
 
+/// The spore's own socket directory, made with the root if they are not there: `{ dir }`, or the
+/// refusal when either is not this user's own, as JSON.
+#[napi]
+pub fn make_spore_socket_dir(ws: String) -> napi::Result<String> {
+    let dir = workspace::spore_socket_dir(Path::new(&ws)).map_err(failed)?;
+    Ok(
+        match workspace::make_spore_socket_dir(&dir).map_err(failed)? {
+            Ok(()) => json!({ "dir": dir }).to_string(),
+            Err(refusal) => refused(&refusal),
+        },
+    )
+}
+
 /// Each kind of name, and an environment variable's, as `{ <kind>: { pattern, says } }`.
 #[napi]
 pub fn name_rules() -> String {

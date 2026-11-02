@@ -561,8 +561,10 @@ another version made is refused at open. Every connector is such a plugin (`plug
 `discord/`, `teams/`, `slack/`, `whatsapp/`, `console/`).
 
 **What a plugin offers is not a boundary.** Its programs run under the agent's sandbox like
-any other, and under a step's confinement where a definition binds one to deliveries; a plugin whose resource the sandbox cannot close — the browser's debugging port —
-is shared on trust, and says so in its own README (`plugins/browser/README.md`).
+any other, and under a step's confinement where a definition binds one to deliveries. What a
+plugin's service runs outside every sandbox is the plugin's to hold to one spore: the browser's
+service gives each spore its own Chrome, with no debugging port, behind a loopback endpoint whose
+secret only that spore's agent can read (`plugins/browser/README.md`).
 
 ### Documentation that moves
 

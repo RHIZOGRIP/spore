@@ -1,17 +1,21 @@
 {
   "name": "@rhizogrip/spore-plugin-browser",
   "version": "0.4.0",
-  "description": "A browser for spores: the agents' own Chrome, reached over CDP and driven by agent-browser",
+  "description": "A browser for spores: each its own headless Chrome, run by a service and driven by agent-browser",
   "author": {
     "name": "Christophe Le Bars",
     "email": "clb@toort.net"
   },
+  "type": "module",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RHIZOGRIP/spore.git",
     "directory": "plugins/browser"
   },
   "homepage": "https://rhizogrip.com/plugins",
+  "engines": {
+    "node": ">=24"
+  },
   "os": [
     "linux"
   ],
@@ -20,20 +24,38 @@
     "arm64"
   ],
   "files": [
+    "bin/",
+    "src/",
     "reference.md",
     "README.md",
     "NOTICE"
   ],
   "dependencies": {
-    "agent-browser": "0.39.1"
+    "agent-browser": "0.39.1",
+    "ws": "^8.22.0"
+  },
+  "peerDependencies": {
+    "@rhizogrip/spore": "^1.50.0"
+  },
+  "scripts": {
+    "test": "vitest run"
   },
   "spore": {
-    "works": "^1.41.0",
+    "works": "^1.50.0",
     "settings": {
-      "cdp": "port"
+      "chromium": "text"
+    },
+    "options": {
+      "profile": {
+        "values": [
+          "ephemeral",
+          "persistent"
+        ],
+        "default": "ephemeral"
+      }
     },
     "programs": {
-      "SPORE_BROWSER": "agent-browser/bin/agent-browser-linux-{arch}"
+      "SPORE_BROWSER": "./bin/browse.js"
     },
     "describe": [
       {
@@ -44,14 +66,22 @@
       }
     ],
     "env": {
-      "AGENT_BROWSER_CDP": "{settings.cdp}",
       "AGENT_BROWSER_SESSION": "{name}",
       "AGENT_BROWSER_PIN_TAB": "1",
       "AGENT_BROWSER_SOCKET_DIR": "{sockets}/browser",
       "AGENT_BROWSER_SCREENSHOT_DIR": "{data}/browser",
       "AGENT_BROWSER_DOWNLOAD_PATH": "{data}/browser/downloads"
     },
-    "reference": "reference.md"
+    "reference": "reference.md",
+    "services": {
+      "browser": {
+        "what": "each spore's own headless Chrome, behind an endpoint only that spore can reach",
+        "program": "./bin/spore-browser.js",
+        "check": [
+          "--check"
+        ]
+      }
+    }
   },
   "release-it": {
     "git": {

@@ -161,6 +161,16 @@ const approvalRecord = decoder({ json: ['approvers', 'options', 'body', 'calenda
 const transcriptEntry = decoder({ json: ['message', 'marks'] })
 const eventRecord = ({ payload, ...envelope }) => ({ ...envelope, ...JSON.parse(payload) })
 
+/**
+ * The spore's own socket directory, its agent's `$SPORE_SOCKET_DIR`, made if it is not there: what a
+ * host-side service puts there before a turn, only that spore's agent reads.
+ */
+export function sporeSocketDir (ws) {
+  const made = JSON.parse(native.makeSporeSocketDir(ws))
+  if (made.error) throw new SporeError(made.error.message, { type: made.error.type, detail: made.error.detail })
+  return made.dir
+}
+
 const answered = (answer, id) => {
   if (answer.error) throw new SporeError('a record was refused', { type: 'STATE_REFUSED', detail: answer.error })
   if (answer.id !== id) throw new SporeError('the channel answered out of turn', { type: 'STATE_CHANNEL', detail: `asked ${id}, answered ${answer.id}` })

@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { acquireLock, appendEvents, appendFlush, appendTranscript, countSaidSoFar, dataDir, definitionPath, flushesIn, HOST_TURNS_ENV, hostState, lastSent, readLock, readSaidAround, readSaidSoFar, readTranscript, readTranscriptEntries, readTreeKey, releaseLock, statePath, TREE_KEY_FILE, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
+import { acquireLock, appendEvents, appendFlush, appendTranscript, countSaidSoFar, dataDir, definitionPath, flushesIn, HOST_TURNS_ENV, hostState, lastSent, readLock, readSaidAround, readSaidSoFar, readTranscript, readTranscriptEntries, readTreeKey, releaseLock, sporeSocketDir, statePath, TREE_KEY_FILE, writableDirs, writeTranscriptEntries } from '../src/core/spore-dir.js'
 import { compactionSummaryMessage, createCompactionEntry, flushedMessage } from '../src/resilience/compaction.js'
 import { COMPACTED, WRAP, mark, marked } from '../src/core/marks.js'
 
@@ -69,6 +69,20 @@ describe('layout', () => {
       resolve(WS, 'data'), resolve(WS, 'calls'), resolve(WS, 'precursors'), resolve(WS, 'home')
     ])
     expect(writableDirs(WS)).not.toContain(WS)
+  })
+
+  it('makes each spore a socket directory of its own, the user\'s alone, the same one each time', () => {
+    const other = resolve(__dirname, '.spore-dir-other')
+    mkdirSync(other, { recursive: true })
+    try {
+      const dir = sporeSocketDir(WS)
+      expect(dirname(dir)).toBe(`/tmp/spore-${process.getuid()}`)
+      expect(statSync(dir).mode & 0o777).toBe(0o700)
+      expect(sporeSocketDir(WS)).toBe(dir)
+      expect(sporeSocketDir(other)).not.toBe(dir)
+    } finally {
+      rmSync(other, { recursive: true, force: true })
+    }
   })
 })
 
