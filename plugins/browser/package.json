@@ -38,13 +38,13 @@
     "ws": "^8.22.0"
   },
   "peerDependencies": {
-    "@rhizogrip/spore": "^1.50.0"
+    "@rhizogrip/spore": "^1.51.0"
   },
   "scripts": {
     "test": "vitest run"
   },
   "spore": {
-    "works": "^1.50.0",
+    "works": "^1.51.0",
     "settings": {
       "chromium": "text"
     },
