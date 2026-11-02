@@ -88,9 +88,16 @@ systemctl --user start spore-browser.service
 Log in, close the window, then start the service again. `--password-store=basic` must match the
 service's, or the headless browser cannot read what the window saved.
 
-## Not yet
+## What holds the browser
 
-Each browser runs as your user, outside the sandbox. The endpoint checks what a spore asks of its
-browser, but a page it opens can still do what the browser lets a page do, and a path the endpoint
-judged can change before the browser uses it. Holding the browser itself to the spore's grants is
-the next step.
+Each browser starts through spore's `confine`, contained the way a turn is: namespaces of its own,
+the syscall filter, and Landlock. It writes only its own profile and scratch directories, `/dev/shm`
+and the spore's `data/`; it reads what a turn's commands read of the system, `/sys` and its own
+install directory, and nothing else of your home. Your runtime directory (`$XDG_RUNTIME_DIR`) is
+hidden from it. Its own sandbox still works, since the
+filter lets it make the namespaces that sandbox is built from. So a path the endpoint judged and a
+page that navigates itself are held by the kernel too.
+
+With `"contain": false` in spore's `config.json`, each browser runs as your user, unconfined, and
+the service logs that at every start. With contain on and a host that cannot contain, the service
+refuses to start.

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { writeFileSync } from 'node:fs'
+import { readdirSync, writeFileSync } from 'node:fs'
 import { Socket } from 'node:net'
 
 const asked = process.argv.slice(2)
@@ -8,7 +8,7 @@ if (asked.includes('--version')) {
   process.exit(0)
 }
 const profile = asked.find(arg => arg.startsWith('--user-data-dir=')).slice('--user-data-dir='.length)
-writeFileSync(`${profile}/launched.json`, JSON.stringify({ argv: asked, env: process.env }))
+writeFileSync(`${profile}/launched.json`, JSON.stringify({ argv: asked, env: process.env, processes: readdirSync('/proc').filter(name => /^\d+$/.test(name)).length }))
 
 const out = new Socket({ fd: 4, readable: false, writable: true })
 const say = (message, then) => out.write(JSON.stringify(message) + '\0', then)

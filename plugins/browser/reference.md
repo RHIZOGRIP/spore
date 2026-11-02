@@ -45,7 +45,7 @@ before using refs again.
 | `read` | the page as text, for reading rather than acting |
 | `click @e12` · `fill @e3 "text"` · `type @e3 "text"` | act on an element |
 | `press Enter` · `select @e7 "value"` · `scroll down 600` | keys, dropdowns, scrolling |
-| `wait @e4` · `wait 2000` | until an element is there, or a number of milliseconds |
+| `wait --text "Saved"` · `wait 2000` | until the page shows that text, or a number of milliseconds |
 | `get url` · `get title` · `get text @e4` | one fact about the page |
 | `back` · `forward` · `reload` | history |
 | `screenshot data/browser/page.png` · `pdf data/browser/page.pdf` | the page as a file |

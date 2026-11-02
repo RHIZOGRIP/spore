@@ -8,11 +8,16 @@
  *
  *   confine [--contain [--hide DIR [--keep DIR]]...] [--scope-signals] --write-root DIR [--read PATH]... [--write PATH]... -- CMD [ARG]...
  *   confine [--contain [--hide DIR [--keep DIR]]...] --no-landlock -- CMD [ARG]...     the command applies its own Landlock
+ *   confine --contain --own-namespaces [--hide DIR]... --write-root DIR ... -- CMD [ARG]...  the command makes namespaces of its own, as a browser's sandbox does
  *   confine --contain-check                               exit 0 when this host can contain
  *
  * --contain runs the command in a user, PID and mount namespace of its own, with a /proc of
  * that namespace, so it sees only the processes it started; on a host that cannot make them it
  * runs nothing. Contract: ARCHITECTURE.md, "Spores of different people on one account".
+ *
+ * --own-namespaces lets the command call unshare and clone with namespace flags, which the filter
+ * otherwise refuses; everything else it refuses still is. A browser builds its own sandbox from
+ * namespaces nested in the command's, and writes their user maps to the /proc a --write /proc grants.
  *
  * --hide DIR, in that namespace, lays an empty directory over DIR, and a --keep KEEP right after it
  * puts back the one directory KEEP below it: the command sees KEEP and nothing else of DIR — one
@@ -152,8 +157,8 @@ static void fail (const char *what, const char *detail) {
  * calls a process uses to leave a sandbox or reach kernel code an unprivileged one never needs.
  * clone3 hides its flags behind a pointer, so it answers ENOSYS and libc falls back to clone.
  */
-static void filter_syscalls (void) {
-  struct sock_filter rules[] = {
+static void filter_syscalls (int own_namespaces) {
+  static const struct sock_filter head[] = {
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, arch)),
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, FILTER_ARCH, 1, 0),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | EPERM),
@@ -162,7 +167,11 @@ static void filter_syscalls (void) {
     BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 0x40000000, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | EPERM),
 #endif
+  };
+  static const struct sock_filter making_namespaces[] = {
     REFUSE(__NR_unshare, EPERM),
+  };
+  static const struct sock_filter always[] = {
     REFUSE(__NR_setns, EPERM),
     REFUSE(__NR_mount, EPERM),
     REFUSE(__NR_umount2, EPERM),
@@ -205,15 +214,30 @@ static void filter_syscalls (void) {
 #ifdef __NR_clone3
     REFUSE(__NR_clone3, ENOSYS),
 #endif
+  };
+  static const struct sock_filter cloning_namespaces[] = {
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone, 0, 5),
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0])),
     BPF_STMT(BPF_ALU | BPF_AND | BPF_K, CLONE_NEW_ANY),
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | EPERM),
+  };
+  static const struct sock_filter allow[] = {
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
   };
-  struct sock_fprog program = { .len = sizeof(rules) / sizeof(rules[0]), .filter = rules };
+  struct sock_filter rules[sizeof(head) / sizeof(head[0]) + sizeof(making_namespaces) / sizeof(making_namespaces[0]) +
+                          sizeof(always) / sizeof(always[0]) + sizeof(cloning_namespaces) / sizeof(cloning_namespaces[0]) +
+                          sizeof(allow) / sizeof(allow[0])];
+  size_t n = 0;
+#define ADD(part) (memcpy(rules + n, (part), sizeof(part)), n += sizeof(part) / sizeof((part)[0]))
+  ADD(head);
+  if (!own_namespaces) ADD(making_namespaces);
+  ADD(always);
+  if (!own_namespaces) ADD(cloning_namespaces);
+  ADD(allow);
+#undef ADD
+  struct sock_fprog program = { .len = (unsigned short)n, .filter = rules };
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) fail("failed to set no_new_privs", strerror(errno));
   if (syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &program) < 0) fail("failed to install the syscall filter", strerror(errno));
 }
@@ -492,11 +516,11 @@ static const char *write_paths[MAX_PATHS];
 static int write_root_fd = -1;
 static int read_fds[MAX_PATHS];
 static int write_fds[MAX_PATHS];
-static int n_read = 0, n_write = 0, scope_signals = 0, no_landlock = 0;
+static int n_read = 0, n_write = 0, scope_signals = 0, no_landlock = 0, own_namespaces = 0;
 
 static void confine_command (void) {
   if (!no_landlock) landlock(write_root, write_root_fd, read_paths, read_fds, n_read, write_paths, write_fds, n_write, scope_signals);
-  filter_syscalls();
+  filter_syscalls(own_namespaces);
 }
 
 int main (int argc, char **argv) {
@@ -508,6 +532,7 @@ int main (int argc, char **argv) {
     if (strcmp(argv[i], "--contain") == 0) { contain = 1; continue; }
     if (strcmp(argv[i], "--contain-check") == 0) { check = 1; continue; }
     if (strcmp(argv[i], "--no-landlock") == 0) { no_landlock = 1; continue; }
+    if (strcmp(argv[i], "--own-namespaces") == 0) { own_namespaces = 1; continue; }
     if (i + 1 >= argc) fail("missing value for", argv[i]);
     if (strcmp(argv[i], "--hide") == 0) {
       if (n_hide >= MAX_KEPT) fail("too many directories to hide", NULL);
@@ -533,6 +558,7 @@ int main (int argc, char **argv) {
 
   if (getuid() == 0 || geteuid() == 0) fail("refuses to run anything as root", "run spore as an ordinary user (in a container, USER or --user)");
   if (n_hide && !contain) fail("--hide and --keep need --contain", "they lay mounts in the command's own namespace");
+  if (own_namespaces && !contain) fail("--own-namespaces needs --contain", "the namespaces it lets the command make are nested in the command's own, beside a /proc of its own");
 
   char why[256] = { 0 };
   if (check) {

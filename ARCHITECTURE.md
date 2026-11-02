@@ -345,6 +345,7 @@ agent runs listens on a TCP port; connect is left alone. Restricting egress is t
 ```
 confine [--contain] [--scope-signals] --write-root DIR [--read PATH]... [--write PATH]... -- CMD [ARG]...
 confine [--contain] --no-landlock -- CMD [ARG]...
+confine --contain --own-namespaces --write-root DIR ... -- CMD [ARG]...
 confine --contain-check
 ```
 
@@ -564,7 +565,8 @@ another version made is refused at open. Every connector is such a plugin (`plug
 any other, and under a step's confinement where a definition binds one to deliveries. What a
 plugin's service runs outside every sandbox is the plugin's to hold to one spore: the browser's
 service gives each spore its own Chrome, with no debugging port, behind a loopback endpoint whose
-secret only that spore's agent can read (`plugins/browser/README.md`).
+secret only that spore's agent can read, and starts it contained through `confineCommand`, writing
+only its own profile and scratch and that spore's `data/` (`plugins/browser/README.md`).
 
 ### Documentation that moves
 
@@ -3158,6 +3160,10 @@ What keeps them apart there:
   `reboot` and `syslog` are refused, and `clone3` answers `ENOSYS` so libc falls back to
   `clone`, whose namespace flags the filter reads. So a container may be loosened for the
   namespaces while what runs in it gets at least Docker's default on the calls an escape uses.
+  `--own-namespaces`, accepted only with `--contain`, lets a command make namespaces (`unshare`,
+  and `clone` with namespace flags), nested in the ones `confine` made for it; joining one and
+  every mount call stay refused. A browser's own sandbox is built from them, so the browser
+  plugin starts Chrome that way.
   A spore whose `spore.cmk` says `unconfined: true` has its agent started without `confine`,
   and the agent applies no Landlock of its own; its cells are confined as any are.
 - **Never as root.** The runner records a turn it would run as uid 0 as `ROOT_REFUSED`, and

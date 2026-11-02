@@ -12,6 +12,15 @@ All notable changes to this project are documented here. Format follows
   makes the directory if it isn't there, and refuses one that isn't this user's own with mode 0700
   (`SOCKET_DIR_UNSAFE`). A plugin's service uses it to leave a file there before a turn, for that
   spore's agent alone. The browser plugin's service writes each spore's endpoint there.
+- `confineCommand(command, grants)` returns the `confine` binary and its arguments for a command
+  held to `grants` (`writeRoot`, `reads`, `writes`, `contain`, `keep`, `scopeSignals`,
+  `ownNamespaces`), the way spore starts a job's or a router's command. `containing(config)` says
+  whether the host config contains, and `containCheck()` whether this host can. A plugin's service
+  uses them to hold what it starts to a spore's grants.
+- `confine --own-namespaces`, only with `--contain`, lets the command make namespaces of its own
+  (`unshare`, and `clone` with namespace flags), nested in the contained ones. Joining a namespace
+  and every mount call stay refused. A browser's sandbox needs it: the browser plugin starts each
+  spore's Chrome this way.
 
 ### Changed
 

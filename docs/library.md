@@ -1597,6 +1597,38 @@ mode 0700 if it is not there. A service on the host puts there what only that sp
 read. It throws `SOCKET_DIR_UNSAFE` when the directory, or the one above it, is not this user's
 alone.
 
+### `confineCommand`
+
+```
+confineCommand(command, { writeRoot, reads = [], writes = [], contain = false, keep = [],
+                          scopeSignals = false, ownNamespaces = false }) → [bin, args]
+```
+
+The argv `command` run through `confine`, as a turn's commands are, ready for `spawn(bin, args)`:
+Landlock over the system's read paths and `reads`, write on `writeRoot`, `writes` and `/dev/null`,
+then spore's syscall filter. `contain` puts it in user, PID and mount namespaces of its own, where
+each `keep` entry `{ hide, keep }` shows it an empty `hide` but for `keep`. `ownNamespaces`, with
+`contain`, lets it make namespaces inside those, which a browser's own sandbox needs; the filter
+refuses everything else it refuses. `confine` exits 126 when it could not confine the command and
+127 when it could not run it.
+
+### `containCheck`
+
+```
+containCheck() → { contained: true, why: null } | { contained: false, why }
+```
+
+Whether `confine --contain` gets namespaces of its own on this host, and if not, the step that
+was refused.
+
+### `containing`
+
+```
+containing(config) → boolean
+```
+
+Whether the host config asks for containment: its `contain`, on unless set to `false`.
+
 ### `turnSummary`
 
 ```

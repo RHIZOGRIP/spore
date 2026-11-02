@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, rmSync, watch, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, watch, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
@@ -76,7 +76,23 @@ function writeEndpoint (sockets, url) {
   renameSync(fresh, file)
 }
 
-async function serve (spore, { executable, log }) {
+/**
+ * What a spore's Chrome may reach under `confine`: the system, its own install directory and `/sys`
+ * to read; its profile, its `TMPDIR`, shared memory, its own `/proc` and the spore's `data/`, where
+ * downloads land and uploads come from, to write. The user's runtime directory, which holds their
+ * agents' sockets, is hidden from it.
+ */
+export function grantsOf (spore, places, executable, env = process.env) {
+  const runtime = env.XDG_RUNTIME_DIR
+  return {
+    writeRoot: places.root,
+    writes: [places.tmp, '/dev/shm', '/proc', join(spore.ws, 'data')],
+    reads: ['/sys', dirname(realpathSync(executable))],
+    keep: runtime && existsSync(runtime) ? [{ hide: runtime }] : []
+  }
+}
+
+async function serve (spore, { executable, confined, log }) {
   const places = placesOf(spore)
   const said = (line) => log(`${spore.name}: ${line}`)
   const ephemeral = spore.profile !== 'persistent'
@@ -93,7 +109,9 @@ async function serve (spore, { executable, log }) {
       await clear()
       mkdirSync(places.tmp, { recursive: true, mode: 0o700 })
       for (const dir of ['profile', 'home', 'cache']) mkdirSync(join(places.root, dir), { recursive: true, mode: 0o700 })
-      return startChrome({ executable, profile: join(places.root, 'profile'), cache: join(places.root, 'cache'), home: join(places.root, 'home'), tmp: places.tmp, onExit })
+      if (!confined) said('its browser runs unconfined: "contain" is false in config.json')
+      const confine = confined ? grantsOf(spore, places, executable) : null
+      return startChrome({ executable, profile: join(places.root, 'profile'), cache: join(places.root, 'cache'), home: join(places.root, 'home'), tmp: places.tmp, confine, onExit })
     }
   })
   writeEndpoint(places.sockets, endpoint.url)
@@ -112,7 +130,7 @@ async function serve (spore, { executable, log }) {
  * Serves every spore that uses the plugin, and follows the definitions: a spore that starts using
  * it is served, one that stops or changes its profile has its browser stopped first.
  */
-export function runBrowsers ({ executable, log }) {
+export function runBrowsers ({ executable, confined, log }) {
   const served = new Map()
   const watchers = new Map()
   let queue = Promise.resolve()
@@ -160,7 +178,7 @@ export function runBrowsers ({ executable, log }) {
     for (const [ws, spore] of wanted) {
       if (served.has(ws)) continue
       try {
-        served.set(ws, await serve(spore, { executable, log }))
+        served.set(ws, await serve(spore, { executable, confined, log }))
       } catch (err) {
         log(`${spore.name}: not served — ${err.message}${err.detail ? ` (${err.detail})` : ''}`)
       }

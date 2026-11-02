@@ -2,6 +2,8 @@ import { accessSync, constants } from 'node:fs'
 import { execFileSync, spawn } from 'node:child_process'
 import { isAbsolute } from 'node:path'
 
+import { confineCommand } from '@rhizogrip/spore'
+
 const STOP_GRACE_MS = 10_000
 const STDERR_KEPT = 16 * 1024
 const VERSION_MS = 10_000
@@ -36,10 +38,11 @@ export function findChromium (named, path = process.env.PATH) {
 /**
  * One headless Chrome on `--remote-debugging-pipe`, so it has no debugging port: CDP goes over
  * fds 3 and 4, one NUL-terminated JSON message each way. `onExit` is told when it ends
- * without `stop()` having asked it to.
+ * without `stop()` having asked it to. With `confine` (`confineCommand`'s grants) it runs
+ * contained, making the namespaces of its own sandbox inside the ones `confine` gives it.
  */
-export function startChrome ({ executable, profile, cache, home, tmp, onExit }) {
-  const child = spawn(executable, [
+export function startChrome ({ executable, profile, cache, home, tmp, confine, onExit }) {
+  const chromeArgs = [
     '--headless',
     '--remote-debugging-pipe',
     `--user-data-dir=${profile}`,
@@ -48,7 +51,11 @@ export function startChrome ({ executable, profile, cache, home, tmp, onExit }) 
     '--no-first-run',
     '--no-default-browser-check',
     'about:blank'
-  ], {
+  ]
+  const [bin, args] = confine
+    ? confineCommand([executable, ...chromeArgs], { ...confine, contain: true, ownNamespaces: true, scopeSignals: true })
+    : [executable, chromeArgs]
+  const child = spawn(bin, args, {
     stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'],
     env: { PATH: process.env.PATH, HOME: home, TMPDIR: tmp }
   })

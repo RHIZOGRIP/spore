@@ -7,11 +7,13 @@ import { dirname, join, resolve } from 'node:path'
 import WebSocket from 'ws'
 import { definitionWith } from '@rhizogrip/spore/testing'
 
+import { containCheck } from '@rhizogrip/spore'
+
 import { findChromium, startChrome } from '../src/chrome.js'
 import { IDLE_MS, openEndpoint } from '../src/endpoint.js'
 import { METHODS, refusalOf } from '../src/gate.js'
 import { probeEndpoint } from '../src/probe.js'
-import { sporesUsing } from '../src/service.js'
+import { grantsOf, sporesUsing } from '../src/service.js'
 
 const ROOT = resolve(import.meta.dirname, '.browser-test')
 const CHROME = resolve(import.meta.dirname, 'fixtures/chrome.js')
@@ -189,11 +191,46 @@ describe('a spore\'s browser endpoint', () => {
   })
 })
 
+describe(`a spore's browser under confine ${containCheck().contained ? '' : '(skipped: this host gives no unprivileged user namespaces) '}`, () => {
+  it.skipIf(!containCheck().contained)('runs in namespaces of its own, still answering on its pipe', async () => {
+    mkdirSync(join(ROOT, 'tmp'))
+    mkdirSync(PROFILE)
+    const exited = []
+    const chrome = startChrome({
+      executable: CHROME,
+      profile: PROFILE,
+      cache: PROFILE,
+      home: PROFILE,
+      tmp: join(ROOT, 'tmp'),
+      confine: { writeRoot: PROFILE, writes: [join(ROOT, 'tmp')], reads: [resolve(import.meta.dirname, '..')] },
+      onExit: ended => exited.push(ended)
+    })
+    expect(await chrome.request({ method: 'Browser.getVersion' })).toEqual({ id: 1, result: { product: 'Stand-in/1.0' } })
+    const { processes } = JSON.parse(readFileSync(join(PROFILE, 'launched.json'), 'utf8'))
+    expect(processes).toBeLessThan(5)
+    expect(await chrome.stop()).toEqual({ code: 0, signal: null })
+    expect(exited).toEqual([])
+  })
+
+  it('may write its profile, its TMPDIR, shared memory, its own /proc and the spore\'s data/, and sees nothing of the user\'s runtime directory', () => {
+    const runtime = join(ROOT, 'run-user')
+    mkdirSync(runtime)
+    const places = { root: join(ROOT, 'state', 'main'), tmp: join(ROOT, 'scratch', 'tmp') }
+    expect(grantsOf({ ws: join(ROOT, 'ws') }, places, CHROME, { XDG_RUNTIME_DIR: runtime })).toEqual({
+      writeRoot: places.root,
+      writes: [places.tmp, '/dev/shm', '/proc', DATA],
+      reads: ['/sys', dirname(CHROME)],
+      keep: [{ hide: runtime }]
+    })
+    expect(grantsOf({ ws: join(ROOT, 'ws') }, places, CHROME, {}).keep).toEqual([])
+  })
+})
+
 describe('what a spore\'s browser takes', () => {
   const refused = (method, params) => refusalOf({ method, params }, DATA)
 
   it('is the methods agent-browser sends, and nothing else', () => {
-    expect(METHODS.size).toBe(31)
+    expect(METHODS.size).toBe(32)
     expect(refused('Runtime.evaluate', { expression: 'document.title' })).toBe(null)
     expect(refused('Browser.close')).toMatch(/is not a method this browser takes/)
     expect(refused('Target.exposeDevToolsProtocol')).toMatch(/is not a method this browser takes/)

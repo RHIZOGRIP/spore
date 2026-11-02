@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { list, loadEnvironment, readConfig, recordStarted, sporeSocketDir } from '@rhizogrip/spore'
+import { containCheck, containing, list, loadEnvironment, readConfig, recordStarted, sporeSocketDir } from '@rhizogrip/spore'
 
 import { findChromium } from '../src/chrome.js'
 import { IDLE_MS } from '../src/endpoint.js'
@@ -20,13 +20,18 @@ const refuse = (problem, hint) => {
 }
 
 let chromium
+let confined
 let workspaces
 let using
 try {
   loadEnvironment()
-  const named = readConfig().plugins?.browser?.settings?.chromium
+  const config = readConfig()
+  const named = config.plugins?.browser?.settings?.chromium
   if (!named) refuse('the browser plugin is not allowed, so it names no browser', 'spore plugin allow browser chromium=<a Chromium-based browser, as google-chrome or brave-browser>')
   chromium = findChromium(named)
+  confined = containing(config)
+  const host = confined && containCheck()
+  if (host && !host.contained) refuse(`this host cannot contain the browsers it would run — ${host.why}`, 'spore doctor says what the host refuses; "contain": false in config.json runs them unconfined')
   workspaces = list().workspaces
   using = sporesUsing(workspaces, log)
 } catch (err) {
@@ -43,7 +48,7 @@ const addressOf = (ws) => {
 }
 
 if (process.argv.includes('--check')) {
-  console.log(`${PROGRAM} · ${chromium.executable} (${chromium.version}) · ${using.size} of ${workspaces.length} spores use the browser · ready`)
+  console.log(`${PROGRAM} · ${chromium.executable} (${chromium.version}) · ${confined ? 'contained' : 'unconfined: "contain" is false'} · ${using.size} of ${workspaces.length} spores use the browser · ready`)
   let crossed = 0
   const said = (name, { tried, outcome, why }) => {
     if (outcome === 'crossed') crossed++
@@ -66,7 +71,7 @@ if (process.argv.includes('--check')) {
   process.exit(crossed ? 1 : 0)
 }
 
-const service = runBrowsers({ executable: chromium.executable, log })
+const service = runBrowsers({ executable: chromium.executable, confined, log })
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.once(signal, () => {
     service.close().then(() => {
@@ -81,4 +86,4 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 
 await service.ready()
 recordStarted(PROGRAM, { root: resolve(dirname(fileURLToPath(import.meta.url)), '..') })
-log(`${PROGRAM} · ${chromium.executable} (${chromium.version}) · each spore's browser stops after ${IDLE_MS / 60000}m idle`)
+log(`${PROGRAM} · ${chromium.executable} (${chromium.version}) · ${confined ? 'contained' : 'unconfined: "contain" is false in config.json'} · each spore's browser stops after ${IDLE_MS / 60000}m idle`)

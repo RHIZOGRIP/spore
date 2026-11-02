@@ -17,6 +17,7 @@ export const METHODS = new Set([
   'Input.dispatchMouseEvent',
   'Input.insertText',
   'Network.enable',
+  'Page.bringToFront',
   'Page.captureScreenshot',
   'Page.enable',
   'Page.getFrameTree',

@@ -38,6 +38,26 @@ export function keptRefusal (kept, contained) {
   return refused === null ? null : JSON.parse(refused)
 }
 
+/**
+ * `command` (an argv) run through `confine`, as `[bin, args]` for a spawn: Landlock over the system's
+ * read paths, `reads`, write on `writeRoot`, `writes` and /dev/null, the seccomp filter, and with
+ * `contain` namespaces of its own showing it nothing of each `keep` entry's `hide` but its `keep`.
+ * `ownNamespaces` lets it make namespaces inside those, as a browser's sandbox does.
+ */
+export function confineCommand (command, { writeRoot, reads = [], writes = [], contain = false, keep = [], scopeSignals = false, ownNamespaces = false }) {
+  return [CONFINE_BIN, [
+    ...(contain ? ['--contain', ...keep.flatMap(k => ['--hide', k.hide, ...(k.keep ? ['--keep', k.keep] : [])])] : []),
+    ...(ownNamespaces ? ['--own-namespaces'] : []),
+    ...(scopeSignals ? ['--scope-signals'] : []),
+    '--write-root', writeRoot,
+    '--write', '/dev/null',
+    ...writes.flatMap(p => ['--write', p]),
+    ...systemReadPaths().flatMap(p => ['--read', p]),
+    ...reads.flatMap(p => ['--read', p]),
+    '--', ...command
+  ]]
+}
+
 const SAMPLE_MS = 2000
 // Long enough for a spawned cell's supervisor to stop its worker and record how it ended; short
 // of the 5 s the runner gives the agent itself, so the agent still records its own turn.
@@ -78,9 +98,7 @@ export async function runShell ({ command, cwd, inAbs, outAbs, errAbs, confine, 
   const outFd = typeof outAbs === 'number' ? outAbs : openSync(outAbs, 'w')
   const errFd = typeof errAbs === 'number' ? errAbs : openSync(errAbs, 'w')
 
-  const [bin, args] = confine
-    ? [CONFINE_BIN, [...(confine.contain ? ['--contain', ...kept.flatMap(k => ['--hide', k.hide, ...(k.keep ? ['--keep', k.keep] : [])])] : []), ...(confine.scopeSignals ? ['--scope-signals'] : []), '--write-root', confine.writeRoot, '--write', '/dev/null', ...(confine.writes ?? []).flatMap(p => ['--write', p]), ...systemReadPaths().flatMap(p => ['--read', p]), ...confine.reads.flatMap(p => ['--read', p]), '--', 'sh', '-c', command]]
-    : ['sh', ['-c', command]]
+  const [bin, args] = confine ? confineCommand(['sh', '-c', command], confine) : ['sh', ['-c', command]]
 
   let exit = null
   let signalName = null

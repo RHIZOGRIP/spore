@@ -191,6 +191,21 @@ describe('what a confined command may not call', () => {
     }
   })
 
+  it.skipIf(!CONTAINED)('makes namespaces inside its own when it may, as a browser\'s sandbox does, and still mounts nothing', () => {
+    const own = (script) => confine(['--contain', '--own-namespaces', '--no-landlock', '--', 'sh', '-c', script])
+    const made = own('unshare -U true && unshare -U -p -n -f true')
+    expect(made.status, made.stderr).toBe(0)
+    const mounted = own('unshare -U -r -m mount -t tmpfs none /mnt')
+    expect(mounted.status).not.toBe(0)
+    expect(mounted.stderr).toMatch(/not permitted|permission denied/i)
+  })
+
+  it('lets a command make namespaces only inside its own', () => {
+    const ran = confine(['--own-namespaces', '--no-landlock', '--', 'true'])
+    expect(ran.status).toBe(126)
+    expect(ran.stderr).toMatch(/--own-namespaces needs --contain/)
+  })
+
   it('still starts threads and processes', () => {
     const ran = confine(['--no-landlock', '--', process.execPath, '-e', 'require("node:child_process").execFileSync("true"); new (require("node:worker_threads").Worker)("", { eval: true })'])
     expect(ran.status, ran.stderr).toBe(0)
