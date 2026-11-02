@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/spore-plugin-browser",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A browser for spores: each its own headless Chrome, run by a service and driven by agent-browser",
   "author": {
     "name": "Christophe Le Bars",
