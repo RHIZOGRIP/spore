@@ -169,7 +169,7 @@ describe('tool loop', () => {
   })
 
   describe('an answer while a schedule written this turn will not fire', () => {
-    const refusal = { name: 'call-bank', why: 'unknown field "at" — a schedule takes when, tz, late' }
+    const refusal = { path: 'schedules/call-bank.cmk', why: 'unknown field "at" — a schedule takes when, tz, late' }
     const watched = () => {
       const seen = []
       return { seen, emitter: { emit: (event, data) => { if (event === 'schedule_refused') seen.push(data) }, on () {} } }

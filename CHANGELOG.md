@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.55.0] — Fixed: a file in `schedules/` that is not `<name>.cmk` stops the answer that promised it
+
+### Fixed
+
+- A file written to `schedules/` under any name but `<name>.cmk`, or in a directory below it, never
+  fires, and the check made when the model answers did not see it: it read only `.cmk` files. An
+  agent wrote its reminder as `schedules/call-bank.toml` with `wsexec` and told its user it was
+  set. The check now covers every file changed under `schedules/` since the turn began, and names
+  one that is no schedule by its name with the reason `write` gives.
+- `reference.md` says a schedule is one `<name>.cmk` file and that a file named otherwise never
+  fires. A spore made before this gets the new text with `spore upgrade`.
+
+### Changed
+
+- A `schedule_refused` event names each file by its `path` in the workspace, such as
+  `schedules/call-bank.toml`, where it gave a schedule `name`.
+
 ## [1.54.1] — Changed: the conformance `read-range` and `schedule` cases
 
 ### Changed

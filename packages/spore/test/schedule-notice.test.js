@@ -63,8 +63,23 @@ describe('a schedule written this turn that will not fire', () => {
 
     expect(JSON.stringify(mo.seen[2])).toContain('schedules/call-bank.cmk: unknown field')
     expect(readTurns(ws).at(-1)).toMatchObject({ stopReason: 'answer', output: 'No reminder is set.' })
-    expect(readEvents(ws, { event: 'schedule_refused' })).toMatchObject([{ answered: false, schedules: [{ name: 'call-bank' }] }])
+    expect(readEvents(ws, { event: 'schedule_refused' })).toMatchObject([{ answered: false, schedules: [{ path: 'schedules/call-bank.cmk' }] }])
     expect(existsSync(resolve(ws, 'schedules', 'call-bank.cmk'))).toBe(false)
+  })
+
+  it('names a file that is no schedule by its name, which would never fire', { timeout: 30_000 }, async () => {
+    const mo = await start('schedule-notice-name', (input, i) => [
+      calls('wsexec', { command: "printf -- '---\\nwhen: at 2030-01-01T09:00:00+01:00\\n---\\n\\nCall the bank.\\n' > schedules/call-bank.toml" }),
+      answers('I will remind you.'),
+      calls('wsexec', { command: 'mv schedules/call-bank.toml schedules/call-bank.cmk' }),
+      answers('I will remind you.')
+    ][i])
+    await spore('remind me to call the bank')
+
+    expect(JSON.stringify(mo.seen[2])).toContain('schedules/call-bank.toml: schedules/ holds only <name>.cmk files')
+    expect(readTurns(ws).at(-1)).toMatchObject({ stopReason: 'answer', output: 'I will remind you.' })
+    expect(readEvents(ws, { event: 'schedule_refused' })).toMatchObject([{ answered: false, schedules: [{ path: 'schedules/call-bank.toml' }] }])
+    expect(existsSync(resolve(ws, 'schedules', 'call-bank.cmk'))).toBe(true)
   })
 
   it('leaves alone one that was already there when the turn began', { timeout: 30_000 }, async () => {

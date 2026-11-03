@@ -119,6 +119,26 @@ export function refuseScheduleWrite (ws, abs, content, { grant, now = Date.now()
   return refused ? `${SCHEDULE_DIR}/${named.name}${SCHEDULE_EXT} ${refused}` : null
 }
 
+/**
+ * Every file under `schedules/` changed since `since` that will not fire as written, with why:
+ * one whose name makes it no schedule, or one `write` would refuse but for the count, which the
+ * pass holds. `path` is the workspace's.
+ */
+export function refusedSince (ws, since, grant) {
+  const dir = scheduleDir(ws)
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter(entry => entry.isFile())
+    .map(entry => resolve(entry.parentPath, entry.name))
+    .filter(abs => statSync(abs).mtimeMs >= since)
+    .sort()
+    .flatMap(abs => {
+      const named = scheduleNameOf(ws, abs)
+      const why = named.error ?? refusalOf(readFileSync(abs, 'utf8'), { grant, writing: true, counting: false })
+      return why ? [{ path: relative(ws, abs), why }] : []
+    })
+}
+
 /** The slot each schedule last fired for, read back from the inbox, where firing is recorded. */
 export function lastFired (ws) {
   const fired = new Map()

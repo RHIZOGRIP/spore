@@ -1607,9 +1607,10 @@ apart. `write` and `edit` check the file as it would be against the directory as
 and refuse in the call that made the mistake. `wsexec` and a hand edit go around them, so the
 pass checks again and holds what breaks the grant, saying which file and why; nothing fires in
 its place. The turn that went around them is told before its answer goes out: when the model
-answers, `loop()` makes the same check on every schedule changed since the turn began, the count
-aside, and on a refusal hands the answer back with a note naming each file and why
-(`schedule-notice`), once a turn. An agent that wrote `at: …` for `when: at …` had told its user
+answers, `loop()` makes the same check on every file changed under `schedules/` since the turn
+began, the count aside and the name included, since a file not named `<name>.cmk` never fires,
+and on a refusal hands the answer back with a note naming each file and why (`schedule-notice`),
+once a turn. An agent that wrote `at: …` for `when: at …` had told its user
 it would remind them, and the schedule could never fire; the turn is the one that can still fix
 the file or take the promise back. Each refusal found is a `schedule_refused` event, `answered`
 true when the answer went out with it standing. **The grant is also counted on what fired**: across every schedule, at most `count`

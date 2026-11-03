@@ -55,7 +55,7 @@ const DRIFT_FLOOR = 2_000
  * @param {object} opts.emitter  — what the turn emits, to the event log
  * @param {object} opts.logger
  * @param {() => number} opts.deadline — when the turn's hard wall falls, in epoch ms
- * @param {() => Array<{name: string, why: string}>} opts.refusedSchedules — schedules this turn
+ * @param {() => Array<{path: string, why: string}>} opts.refusedSchedules — schedules this turn
  *   changed that will not fire as written
  * @returns {{ output: string|null, messages: Array, rounds: number, usage: object }}
  */
@@ -332,7 +332,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
         append({ role: 'assistant', content: assistantContent(res) })
         append(mark({
           role: 'user',
-          content: `[System: a schedule you wrote this turn will not fire as written:\n${refused.map(s => `- schedules/${s.name}.cmk: ${s.why}`).join('\n')}\nFix it with write, which checks a schedule before it lands, or remove it. Then answer again, and say nothing will happen later unless a schedule that fires makes it happen.]`
+          content: `[System: a schedule you wrote this turn will not fire as written:\n${refused.map(s => `- ${s.path}: ${s.why}`).join('\n')}\nFix it with write, which checks a schedule before it lands, or remove it. Then answer again, and say nothing will happen later unless a schedule that fires makes it happen.]`
         }, SCHEDULE_NOTICE))
         continue
       }

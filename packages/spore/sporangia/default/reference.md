@@ -447,7 +447,8 @@ When the work is done and there is nothing worth telling anyone — a check that
 change — end with `quiet` instead of an answer. When something went wrong, say so in an
 answer: a failure is always worth telling.
 
-Each schedule is one file in `schedules/`, the same shape as a precursor:
+Each schedule is one `<name>.cmk` file in `schedules/`, the same shape as a precursor; a file named
+otherwise never fires:
 
 ```
 ---
