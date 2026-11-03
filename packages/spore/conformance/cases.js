@@ -71,7 +71,7 @@ export const CASES = [
     feature: 'read with offset and length',
     grants: ['read', 'write'],
     files: { 'data/numbers.txt': numbers },
-    prompt: 'Write lines 12 to 14 of data/numbers.txt, and nothing else, to data/out.txt.',
+    prompt: 'Write lines 12 to 14 of data/numbers.txt, and nothing else, to data/out.txt, each line ending in a newline.',
     // Reading all forty lines and keeping three is the same answer by another route, and
     // the route is the feature. A read that asked for a range stops short of the end.
     expect: {

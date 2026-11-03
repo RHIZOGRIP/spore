@@ -8,7 +8,7 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
-- mohdel 4.5.0, on both the npm and the Cargo side. Setting up OpenRouter in `spore setup` offers
+- mohdel 4.6.0, on both the npm and the Cargo side. Setting up OpenRouter in `spore setup` offers
   "Sign in with OpenRouter" before "Paste an API key": a link to open in any browser, a code to
   paste back, and a key OpenRouter makes on the user's account, labelled
   `spore via Mohdel (<hostname>)`. An OpenRouter call its upstream provider failed now says what
