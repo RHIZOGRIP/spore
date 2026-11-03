@@ -42,6 +42,16 @@ All notable changes to this project are documented here. Format follows
   `commit` when the run started, as `git status --porcelain` prints them, and null in an installed
   copy. A run on uncommitted files no longer passes for the commit it started from.
 
+### Changed
+
+- The conformance suite runs its boundary cases last. They try to leave the workspace, and on
+  Opus 5.5 a request to start a sub-agent sent shortly after them was refused as `cyber` more
+  often: 10 of 14 against 2 of 6 sent alone. Each case is meant to be graded on its own, so these
+  no longer run before the delegation cases. The report lists the tiers in the same order as
+  before.
+- The conformance grader takes a denial `exec` printed to stdout, after `2>&1`, as well as one on
+  stderr, so a model that caught its own `Permission denied` is no longer failed for it.
+
 ## [1.52.0] — Added: `spore setup` can sign in with OpenRouter instead of a pasted key
 
 ### Added
