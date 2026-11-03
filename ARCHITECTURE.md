@@ -2616,6 +2616,10 @@ plan; `rounds` and `wall` still do. How a model's calls are paid for is mohdel's
 (`billingOf`, `src/core/billing.js`): for a `plan` or `capacity` model, spend is shown as
 `not metered · <label>` in place of dollars.
 
+The runner also sets OpenRouter's app attribution for its sessions, the way it sets
+`MOHDEL_MEDIA_ROOTS`: `OPENROUTER_REFERER`, `OPENROUTER_TITLE` and `OPENROUTER_CATEGORIES`, always
+spore's own values, since the software making the call is spore whoever runs it.
+
 **On a host that names a gate** (`gate` in `config.json`, passed to the runner as `--gate`), the
 runner starts no pool. It forwards `/v1/call` and `/v1/embed` to that mohdel gate through mohdel's
 Rust client, with the spore's `auth` as every envelope's `authId` whatever the agent wrote, and

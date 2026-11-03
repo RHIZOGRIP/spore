@@ -4,6 +4,35 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.54.0] — Fixed: a reply the provider refused ends the turn and says why, instead of passing for an answer
+
+### Fixed
+
+- mohdel 4.8.0, on both the npm and the Cargo side. A reply Anthropic's safety classifiers refused
+  came back as a finished one, so a turn ended in `MODEL_REPLY_INCONSISTENT` when the refusal
+  followed a streamed tool call, or took three empty replies for its answer when it came first. A
+  refused reply is now `incomplete`, and the turn ends in `MODEL_REPLY_INCOMPLETE` with the reason
+  in its detail, such as `round 2: contentBlocked (frontier_llm)`: the warning, then the
+  provider's own reason when it gives one. The same holds for a content filter on OpenRouter and
+  the other chat-completions providers, and for Gemini's safety stops.
+
+### Added
+
+- spore names itself to OpenRouter. Every call there carries `HTTP-Referer:
+  https://rhizogrip.com/spore`, `X-OpenRouter-Title: spore` and `X-OpenRouter-Categories:
+  cli-agent`, so spore shows in OpenRouter's app rankings and on each model's "Apps" tab. The
+  runner sets them for its model sessions; on a host with a gate, the gate's environment decides.
+
+### Changed
+
+- The conformance suite runs its boundary cases last. They try to leave the workspace, and on
+  Opus 5.5 a request to start a sub-agent sent shortly after them was refused as `cyber` more
+  often: 10 of 14 against 2 of 6 sent alone. Each case is meant to be graded on its own, so these
+  no longer run before the delegation cases. The report lists the tiers in the same order as
+  before.
+- The conformance grader takes a denial `exec` printed to stdout, after `2>&1`, as well as one on
+  stderr, so a model that caught its own `Permission denied` is no longer failed for it.
+
 ## [1.53.0] — Added: a turn is told, before it answers, that a schedule it wrote will not fire
 
 ### Fixed
@@ -18,13 +47,6 @@ All notable changes to this project are documented here. Format follows
   which an agent read as a field of its own and wrote `at: 2026-11-04T09:00:00+01:00`, a schedule
   that never parses and so never fires. It now shows the one-off form, `when: at <instant>`, says
   there is no `at:` field.
-- mohdel 4.7.0, on both the npm and the Cargo side. A reply Anthropic's safety classifiers refused
-  came back as a finished one, so a turn ended in `MODEL_REPLY_INCONSISTENT` when the refusal
-  followed a streamed tool call, or took three empty replies for its answer when it came first. A
-  refused reply is now `incomplete`, and the turn ends in `MODEL_REPLY_INCOMPLETE` with the reason
-  in its detail, such as `round 2: contentBlocked (frontier_llm)`: the warning, then the
-  provider's own reason when it gives one. The same holds for a content filter on OpenRouter and
-  the other chat-completions providers, and for Gemini's safety stops.
 
 ### Added
 
@@ -41,16 +63,6 @@ All notable changes to this project are documented here. Format follows
 - A conformance `run.json` records `dirty`: the files under the package that differed from
   `commit` when the run started, as `git status --porcelain` prints them, and null in an installed
   copy. A run on uncommitted files no longer passes for the commit it started from.
-
-### Changed
-
-- The conformance suite runs its boundary cases last. They try to leave the workspace, and on
-  Opus 5.5 a request to start a sub-agent sent shortly after them was refused as `cyber` more
-  often: 10 of 14 against 2 of 6 sent alone. Each case is meant to be graded on its own, so these
-  no longer run before the delegation cases. The report lists the tiers in the same order as
-  before.
-- The conformance grader takes a denial `exec` printed to stdout, after `2>&1`, as well as one on
-  stderr, so a model that caught its own `Permission denied` is no longer failed for it.
 
 ## [1.52.0] — Added: `spore setup` can sign in with OpenRouter instead of a pasted key
 

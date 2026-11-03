@@ -455,6 +455,13 @@ environment, and, for a store whose API differs from the protocol's defaults, `p
 are internal: the runtime sets them for the processes it starts. So are `SPORE_SPAWN`,
 `SPORE_FANOUT`, `SPORE_RECALL`, `SPORE_SOURCE` and `SPORE_ENZYME`, which name the programs an agent runs.
 
+A call to OpenRouter names spore as the app that made it: the runner sets `OPENROUTER_REFERER`
+(`https://rhizogrip.com/spore`), `OPENROUTER_TITLE` (`spore`) and `OPENROUTER_CATEGORIES`
+(`cli-agent`) for its model sessions, replacing any value it inherited, and mohdel sends them as
+OpenRouter's attribution headers. That tells OpenRouter the call came from spore and nothing
+else: nothing about the workspace, the definition or the person. On a host that names a `gate`,
+the sessions are the gate's, and its own environment decides.
+
 ## The HTTP API
 
 `spore-api` serves the library's verbs over HTTP, on a unix socket or a loopback port, to a caller

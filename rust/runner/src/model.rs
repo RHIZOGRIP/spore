@@ -49,6 +49,13 @@ pub const CELL_HEADER: &str = "x-spore-cell";
 pub const MODEL_CALL_HEADER: &str = "x-spore-model-call";
 /// The `authId` spore's model client sends, and what the embedded pool aborts by.
 const AUTH_ID: &str = "spore";
+/// What spore's calls to OpenRouter carry as their app attribution, as mohdel reads it from its
+/// session's environment: the referer is the app's identity there.
+const OPENROUTER_ATTRIBUTION: [(&str, &str); 3] = [
+    ("OPENROUTER_REFERER", "https://rhizogrip.com/spore"),
+    ("OPENROUTER_TITLE", "spore"),
+    ("OPENROUTER_CATEGORIES", "cli-agent"),
+];
 /// What a mohdel gate reads of one request at most.
 const MAX_CALL_BODY_BYTES: usize = 16 * 1024 * 1024;
 
@@ -813,7 +820,8 @@ fn not_named(model: &str, allowed: &[String]) -> RouteError {
 /// time every one is busy, up to `max`. A call waits for a session as long as it takes, since
 /// the turn's wall bounds the whole tree. The catalog is the session's own disk load.
 /// `MOHDEL_MEDIA_ROOTS` must be set in this process first, since the session's environment is
-/// built from an allowlist of this one. `allowed` is every model the definition names.
+/// built from an allowlist of this one; the OpenRouter attribution is set here, replacing any
+/// value inherited. `allowed` is every model the definition names.
 pub fn start_pool(
     node: String,
     session: String,
@@ -821,6 +829,9 @@ pub fn start_pool(
     max: usize,
     allowed: Vec<String>,
 ) -> watch::Receiver<Gate> {
+    for (variable, value) in OPENROUTER_ATTRIBUTION {
+        std::env::set_var(variable, value);
+    }
     let (tx, rx) = watch::channel(None);
     tokio::spawn(async move {
         let config = SessionConfig {
