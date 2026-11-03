@@ -76,7 +76,7 @@ describe('admission slots', () => {
     turns(3)
     const held = [takeSlot(CONFIG_FILE), takeSlot(CONFIG_FILE)]
     turns(2)
-    expect(() => takeSlot(CONFIG_FILE)).toThrow(/2 of your turns are already running/)
+    expect(() => takeSlot(CONFIG_FILE)).toThrow(/2 turns are already running, across all your spores/)
     for (const slot of held) closeSync(slot.fd)
   })
 

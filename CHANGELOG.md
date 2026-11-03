@@ -18,6 +18,9 @@ All notable changes to this project are documented here. Format follows
 
 ### Changed
 
+- A turn refused because every admission slot is taken now says the limit covers all of the user's
+  spores: `8 turns are already running, across all your spores`, and that a conformance run or a
+  batch counts too. It said `8 of your turns are already running`, which read as one spore's.
 - A `schedule_refused` event names each file by its `path` in the workspace, such as
   `schedules/call-bank.toml`, where it gave a schedule `name`.
 

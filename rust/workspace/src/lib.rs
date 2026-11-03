@@ -766,8 +766,8 @@ pub fn take_slot(turns: u32, dir: &Path) -> io::Result<Result<Slot, Refusal>> {
     }
     Ok(Err(Refusal {
         kind: "ADMISSION_FULL",
-        message: format!("{turns} of your turns are already running"),
-        detail: "nothing was said or started; try again when one ends, or raise the limit with spore config set turns <n>".into(),
+        message: format!("{turns} turns are already running, across all your spores"),
+        detail: "the limit counts the turns of every spore this user runs, a conformance run or a batch included, not one spore's — nothing was said or started; try again when one ends, or raise the limit with spore config set turns <n>".into(),
     }))
 }
 
