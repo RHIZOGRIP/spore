@@ -406,6 +406,7 @@ export async function runSpore ({
       describe: (name, args) => describeCall(name, args, calls),
       limits: live,
       relimited: () => relimits.splice(0),
+      deadline: () => wallFrom + live.wall.hard,
       ledger,
       emitter: events,
       mutators: new Set(['write', 'edit', 'wsexec']),

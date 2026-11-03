@@ -163,6 +163,36 @@ describe('recovery supervisor', () => {
     expect(model.callCount).toBe(1)
   })
 
+  it('ends the turn on a refusal whose wait reaches the hard wall, saying how long it was told to wait', async () => {
+    const model = mockModel(() => {
+      const err = typedError('RATE_LIMIT_TIER', { retryable: true, detail: 'Rate limit exceeded: free-models-per-day.' })
+      err.retryAfterMs = 60_000
+      throw err
+    })
+    const events = []
+    const wrapped = recoveryOf(model, { messages: [], emitter: { emit: (type, data) => events.push({ type, data }) }, deadline: () => Date.now() + 20_000 })
+    const started = Date.now()
+    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toMatchObject({ type: 'RATE_LIMIT_TIER', retryAfterMs: 60_000 })
+    expect(Date.now() - started).toBe(0)
+    expect(model.callCount).toBe(1)
+    expect(events.map(e => e.data)).toEqual([{ action: 'stop', reason: 'RATE_LIMIT_TIER', delay: 60_000, left: 20_000 }])
+  })
+
+  it('reads the hard wall at each refusal, so a wall raised meanwhile is waited under', async () => {
+    let wall = Date.now() + 10_000
+    const model = mockModel((n) => {
+      if (n > 2) return { status: 'completed', output: 'under the raised wall' }
+      const err = typedError('PROVIDER_COOLDOWN', { retryable: true })
+      err.retryAfterMs = n === 1 ? 5_000 : 30_000
+      if (n === 1) wall += 60_000
+      throw err
+    })
+    const wrapped = recoveryOf(model, { messages: [], deadline: () => wall })
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
+    expect(res.output).toBe('under the raised wall')
+    expect(model.callCount).toBe(3)
+  })
+
   it('still gives up when the provider keeps failing between waits', async () => {
     const model = mockModel((n) => {
       if (n % 2 === 0) {
@@ -508,21 +538,17 @@ describe('recovery supervisor', () => {
     expect(facts.some(f => f.text.includes('auth.js'))).toBe(true)
   })
 
-  it('retries a used-up quota on the same model, and fails after max retries', async () => {
-    let calls = 0
-    const only = {
-      info: () => ({}),
-      id: 'last',
-      answer: async () => {
-        calls++
-        const err = new Error('rate limited'); err.type = 'RATE_LIMIT_TIER'; err.retryable = true; err.detail = 'tier'
-        throw err
-      }
-    }
-    const wrapped = recoveryOf(only, { messages: [] })
-    await expect(onTheClock(wrapped.answer(() => ({}), {}))).rejects.toMatchObject({ type: 'RATE_LIMIT_TIER' })
-    // 1 initial + MAX_RETRIES=3 retries
-    expect(calls).toBe(4)
+  it('waits out a used-up quota for as long as it names, and calls the same model again', async () => {
+    const model = mockModel((n) => {
+      if (n > 1) return { status: 'completed', output: 'after the quota' }
+      const err = typedError('RATE_LIMIT_TIER', { retryable: true, detail: 'Rate limit exceeded: free-models-per-min.' })
+      err.retryAfterMs = 30_000
+      throw err
+    })
+    const wrapped = recoveryOf(model, { messages: [], deadline: () => Date.now() + 60_000 })
+    const res = await onTheClock(wrapped.answer(() => ({}), {}))
+    expect(res.output).toBe('after the quota')
+    expect(model.callCount).toBe(2)
   })
 
   it('refuses to wrap no model', () => {

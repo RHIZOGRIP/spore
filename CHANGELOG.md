@@ -4,15 +4,35 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
-## [1.51.1] — Fix: OpenRouter's free models set up in `spore setup` pass `mo check`
+## [1.52.0] — Added: `spore setup` can sign in with OpenRouter instead of a pasted key
+
+### Added
+
+- mohdel 4.5.0, on both the npm and the Cargo side. Setting up OpenRouter in `spore setup` offers
+  "Sign in with OpenRouter" before "Paste an API key": a link to open in any browser, a code to
+  paste back, and a key OpenRouter makes on the user's account, labelled
+  `spore via Mohdel (<hostname>)`. An OpenRouter call its upstream provider failed now says what
+  the upstream said, where it said only "Provider returned error".
+
+### Changed
+
+- A model that refuses a call because the caller's own quota is used up (`RATE_LIMIT_TIER`, such as
+  the per-minute limit on OpenRouter's free models) now says how long to wait, starting with the
+  first refusal. spore waits that long and then calls again, where it used to spend its three
+  retries in 7 s and fail the turn. Only that model is held back; the provider's other models can
+  still be called.
+- A turn told to wait past its hard wall, by a used-up quota or a provider's cooldown, ends at
+  once on that refusal: `stopReason: 'error'`, with the provider's type and words in its record,
+  and a `recovery` event of action `stop` giving the wait it was told and the time it had left.
+  It used to wait until the wall stopped it, ending `hard:wall` with nothing to say why. A cell
+  ends the same way, so its parent sees a failed part rather than a cell that ran out of time.
 
 ### Fixed
 
-- mohdel 4.3.2, on both the npm and the Cargo side. Setting up OpenRouter's free models in
-  `spore setup` keyed each one with its listed id, `…:free`, which `mo check` and
-  `mo model apply` reject since `:` marks an effort. The key now ends in `-free`
-  (`openrouter/google/gemma-4-31b-it-free`), and the call still asks OpenRouter for the `:free`
-  model.
+- Setting up OpenRouter's free models in `spore setup` keyed each one with its listed id,
+  `…:free`, which `mo check` and `mo model apply` reject since `:` marks an effort. The key now
+  ends in `-free` (`openrouter/google/gemma-4-31b-it-free`), and the call still asks OpenRouter
+  for the `:free` model.
 
 ## [1.51.0] — Added: a service can reach a spore's own socket directory
 

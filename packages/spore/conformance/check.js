@@ -9,7 +9,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 
 import { readTranscript, turnSummary } from '../src/core/spore-dir.js'
 import { callRuns, readCalls } from '../src/core/call-record.js'
@@ -33,26 +33,45 @@ const aimedAt = (record) => {
   return String(record.path ?? record.command ?? record.files?.out?.path ?? '')
 }
 
-const SHAPED = new Set(['tool', 'target', 'refused', 'failed'])
+const SHAPED = new Set(['tool', 'target', 'refused', 'failed', 'denied'])
+
+/** What a command wrote to stderr: in its record when short, on disk when not. */
+const errText = (ws, record) => {
+  const err = record.files?.err
+  if (!err) return ''
+  return err.content ?? readFileSync(resolve(ws, err.path), 'utf8')
+}
+
+const DENIAL = /Permission denied|Read-only file system/
 
 /**
- * `tool` and `target` say which call; `refused` and `failed` say how it ended. Anything
+ * A command whose write the confinement denied. It may still exit 0 — `touch x || echo
+ * failed` reports the denial and carries on — so a line of stderr naming the target with the
+ * denial counts as well as a failed exit. The target, so that a denial of another file is not
+ * taken for this one.
+ */
+const denied = (ws, record, target) => record.exit !== 0 ||
+  errText(ws, record).split('\n').some(line => DENIAL.test(line) && (!target || target.test(line)))
+
+/**
+ * `tool` and `target` say which call; `refused`, `failed` and `denied` say how it ended. Anything
  * else in the spec is matched against the field of that name in the record, which is
  * what lets a case pin the part of the call that is the feature — `exit: 7` for the code
  * a command returned, `eof: false` for a read that asked for a range rather than the
  * file. A spec naming a field the record does not carry matches nothing, so a typo
  * fails the case rather than passing it.
  */
-const made = (record, spec) => {
+const made = (ws, record, spec) => {
   if (!matches(record.tool, spec.tool)) return false
   if (spec.target && !spec.target.test(aimedAt(record))) return false
   if (spec.refused !== undefined && Boolean(record.refused) !== spec.refused) return false
   if (spec.failed !== undefined && (record.exit !== 0) !== spec.failed) return false
+  if (spec.denied !== undefined && denied(ws, record, spec.target) !== spec.denied) return false
   return Object.entries(spec).every(([key, value]) => SHAPED.has(key) || matches(record[key], value))
 }
 
 const describeCall = (spec) => {
-  const how = [spec.refused && 'refused', spec.failed && 'failed'].filter(Boolean)
+  const how = [spec.refused && 'refused', spec.failed && 'failed', spec.denied && 'was denied'].filter(Boolean)
     .concat(Object.entries(spec).filter(([k]) => !SHAPED.has(k)).map(([k, v]) => `${k} ${v}`))
     .join(' and ')
   return `${spec.tool} call${spec.target ? ` at ${spec.target}` : ''}${how ? ` that ${how}` : ''}`
@@ -60,6 +79,21 @@ const describeCall = (spec) => {
 
 const summarise = (record) =>
   `${record.tool}(${JSON.stringify(aimedAt(record).slice(0, 40))})${record.refused ? ' refused' : ` exit ${record.exit}`}${record.eof === false ? ' partial' : ''}`
+
+/**
+ * Where a part's file may be. Fan-out runs a part that did not answer again in `<part>--<n>`,
+ * since a workspace holding `spawn.json` is refused a second run, so the answer is in the part
+ * or in one of its retries.
+ */
+const partCopies = (ws, item, path) => {
+  const part = Object.keys(item.parts ?? {}).find(p => path.startsWith(`${p}/`))
+  if (!part) return [path]
+  const parent = resolve(ws, dirname(part))
+  const retry = (entry) => entry.startsWith(`${basename(part)}--`) && /^\d+$/.test(entry.slice(basename(part).length + 2))
+  const retries = (existsSync(parent) ? readdirSync(parent) : []).filter(retry)
+    .sort((a, b) => Number(a.split('--').at(-1)) - Number(b.split('--').at(-1)))
+  return [path, ...retries.map(entry => join(dirname(part), entry) + path.slice(part.length))]
+}
 
 /** Every call record this run wrote, refusals included, oldest run first. */
 export function callRecords (ws) {
@@ -160,21 +194,21 @@ export function grade (ws, item) {
   }
 
   for (const [path, wanted] of Object.entries(expect.files || {})) {
-    const full = resolve(ws, path)
-    if (!existsSync(full)) {
+    const written = partCopies(ws, item, path).filter(copy => existsSync(resolve(ws, copy)))
+    if (!written.length) {
       problems.push(`${path} was not written`)
       continue
     }
-    const body = readFileSync(full, 'utf8')
-    if (!matches(body, wanted)) {
-      problems.push(`${path} was ${JSON.stringify(body.slice(0, 40))}, wanted ${wanted}`)
+    const bodies = written.map(copy => [copy, readFileSync(resolve(ws, copy), 'utf8')])
+    if (!bodies.some(([, body]) => matches(body, wanted))) {
+      problems.push(`${bodies.map(([copy, body]) => `${copy} was ${JSON.stringify(body.slice(0, 40))}`).join(', ')}, wanted ${wanted}`)
     }
   }
 
   if (expect.calls) {
     const records = callRecords(ws)
     for (const spec of expect.calls) {
-      if (!records.some(record => made(record, spec))) {
+      if (!records.some(record => made(ws, record, spec))) {
         problems.push(`no ${describeCall(spec)} — ${records.length ? records.map(summarise).join(', ') : 'no calls at all'}`)
       }
     }

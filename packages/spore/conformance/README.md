@@ -26,6 +26,11 @@ node conformance/selfcheck.js          # everything checkable without a model
 Not part of `npm test`: it calls a model, so it costs money and needs `$MODEL` and a
 provider key. `npm test` stays free and offline.
 
+A free model is limited in requests a minute — OpenRouter allows 20 on an account — and eight
+cases at once go past that within seconds. Run one with `--concurrency 1`. A case that still
+meets the limit waits as long as the provider says and then carries on; it costs wall time, not
+a retry.
+
 ## What a run leaves behind
 
 Every run gets its own directory under `--ws`, named like `20260910-1652-openai-gpt-5.6-luna`,
@@ -42,11 +47,19 @@ trails, turn records, the identity generated for each case — and a `run.json`:
 { "model": "openai/gpt-5.6-luna", "spore": "1.51.0", "commit": "823175f", "node": "v25.9.0",
   "startedAt": "...", "elapsedMs": 34000, "concurrency": 8,
   "passed": 28, "of": 28, "spend": 0.016, "neverFinished": [],
-  "cases": [{ "id": "read", "passed": true, "rounds": 2, "stopReason": "answer", "spend": 0.0008 }] }
+  "cases": [{ "id": "read", "digest": "9f2c…", "passed": true, "rounds": 2, "stopReason": "answer",
+               "error": null, "detail": null, "wallMs": 2100, "spend": 0.0008 }] }
 ```
 
 Which is what makes two runs comparable. A different pass count says nothing on its own
 if the runs differ by model, by build, or by which commit of the cases graded them.
+
+`digest` says whether two runs ran the same case, across releases: a hash of the staged
+identity without its `model:` line, every staged file, the messages, the schedule and
+`expect` (`digest.js`). It changes when the case changes and not when spore does; the
+grader, `reference.md` and `libraries.md` are pinned by `spore` and `commit` instead. `error`
+and `detail` are the turn's, for a turn that ended in `error`: mohdel's type and the
+provider's words.
 
 Results stay there, beside the runs, and never in this repository. Spore changes and models
 change, so a recorded result stops being true without anything saying so.
@@ -90,10 +103,14 @@ states that a live spore has been seen to break.
 
 From the workspace, never from what the agent said about it:
 
-- **files** — exact bytes, or a pattern, at a path the task named
+- **files** — exact bytes, or a pattern, at a path the task named. A path in a part
+  directory is also looked for in that part's retries, `<part>--<n>`, which is where fan-out
+  runs a part that did not answer
 - **stopReason** and **concluded** — from the `turns` view
 - **calls** — a record in the call trail matched to its tool *and* its target, and to
-  whether it was refused, ran and failed, or carries a particular recorded field. A
+  whether it was refused, ran and failed, was denied, or carries a particular recorded field.
+  Denied is a failed exit or a line of stderr naming the target with `Permission denied` or
+  `Read-only file system`: `touch … || echo failed` meets the denial and exits 0. A
   boundary case names the call it means: a bare refusal count passed on a refused read
   of a missing file under `data/`, which is a real refusal and not the one being tested.
   Any other key in the spec is matched against the field of that name in the record —

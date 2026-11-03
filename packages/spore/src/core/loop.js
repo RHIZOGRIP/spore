@@ -54,9 +54,10 @@ const DRIFT_FLOOR = 2_000
  * @param {Map<string, {stopReason: string, says: boolean}>} opts.terminalTools — tools that end the turn
  * @param {object} opts.emitter  — what the turn emits, to the event log
  * @param {object} opts.logger
+ * @param {() => number} opts.deadline — when the turn's hard wall falls, in epoch ms
  * @returns {{ output: string|null, messages: Array, rounds: number, usage: object }}
  */
-export async function loop ({ model, system, prompt, tools, toolFns, describe, limits, ledger, emitter, mutators, terminalTools, signal, logger, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning, from }) {
+export async function loop ({ model, system, prompt, tools, toolFns, describe, limits, ledger, emitter, mutators, terminalTools, signal, deadline, logger, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning, from }) {
   const userMsg = { role: 'user', content: prompt }
   for (const dim of ['rounds', 'cost', 'wall']) {
     if (typeof limits[dim]?.soft !== 'number' || typeof limits[dim]?.hard !== 'number') {
@@ -83,7 +84,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
   if ((recall || now) && !continuing) messages[messages.length - 1] = { ...userMsg, content: shown }
   const usage = { input: 0, output: 0, thinking: 0, cacheWrite: 0, cacheRead: 0, cost: 0 }
   const guard = createLoopGuard({ logger })
-  const resilientModel = withRecovery(model, { messages, sessionMemory, logger, emitter, signal })
+  const resilientModel = withRecovery(model, { messages, sessionMemory, logger, emitter, signal, deadline })
   const { contextLimit, maxResultSize } = computeBudget(model)
   let lastInputTokens = 0
   let drifted = false

@@ -25,6 +25,7 @@ import { stateOf, stop } from '../src/core/state.js'
 import { openWorkspace } from '../src/core/workspace.js'
 import { CASES, TIERS, caseLimits } from './cases.js'
 import { LATEST, MANIFEST, provenance, runDir } from './record.js'
+import { caseDigest } from './digest.js'
 import { runDeadline } from './schedule.js'
 import { stage } from './stage.js'
 import { grade } from './check.js'
@@ -86,8 +87,10 @@ const deadline = runDeadline(wanted, { concurrency: Number(argv.concurrency), li
 
 // Every case staged and opened before any starts, so a definition that does not parse stops
 // the run before anything has been spent.
+const digests = new Map()
 const runs = wanted.map(item => {
   const { ws, cmk } = stage(RUN_DIR, item, process.env.MODEL)
+  digests.set(item.id, caseDigest({ ws, cmk }, item))
   const opened = openWorkspace(ws, { definition: cmk })
   if (opened.error) fail(`${item.id}: ${opened.error}`)
   return { ws, messages: item.messages ?? [item.prompt], label: item.id, id: ws, schedule: item.schedule }
@@ -115,7 +118,10 @@ const results = wanted.map(item => {
     problems: grade(ws, item),
     spend: stateOf(ws).treeUsd,
     rounds: turn?.rounds ?? null,
-    stopReason: turn?.stopReason ?? null
+    stopReason: turn?.stopReason ?? null,
+    error: turn?.error ?? null,
+    detail: turn?.detail ?? null,
+    wallMs: turn?.startedAt && turn?.endedAt ? Date.parse(turn.endedAt) - Date.parse(turn.startedAt) : null
   }
 })
 
@@ -147,12 +153,16 @@ writeFileSync(resolve(RUN_DIR, MANIFEST), JSON.stringify({
   neverFinished: stuck,
   cases: results.map(r => ({
     id: r.id,
+    digest: digests.get(r.id),
     tier: r.tier,
     feature: r.feature,
     passed: !r.problems.length,
     problems: r.problems,
     rounds: r.rounds,
     stopReason: r.stopReason,
+    error: r.error,
+    detail: r.detail,
+    wallMs: r.wallMs,
     spend: r.spend
   }))
 }, null, 2) + '\n')

@@ -31,10 +31,13 @@ const BACKOFF_BASE_MS = 1000
  * @param {object} opts.sessionMemory — keeps what a dropped turn-group said
  * @param {object} opts.logger
  * @param {object} opts.emitter
+ * @param {() => number} opts.deadline — when the turn's hard wall falls, in epoch ms, read at each
+ *   refusal since an owner can raise the wall while the turn runs
  * @returns {{ answer: Function }}
  */
-export function withRecovery (model, { messages, sessionMemory, logger, emitter, signal }) {
+export function withRecovery (model, { messages, sessionMemory, logger, emitter, signal, deadline }) {
   if (!model) throw new Error('withRecovery: model is required')
+  if (typeof deadline !== 'function') throw new Error('withRecovery: deadline is required')
   const emit = (type, data) => emitter.emit(type, data)
 
   return {
@@ -74,8 +77,15 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
 
           // A refusal that names its wait is waited out rather than retried on the backoff: a
           // provider cooldown outlasts every backoff step, and a wait is not a failure, so it
-          // spends none of the retries. The turn's wall still bounds it, through `signal`.
+          // spends none of the retries. A wait that reaches the hard wall is not taken: no call
+          // could follow it, and the turn would end `hard:wall` with the refusal's cause lost.
           if (err.retryable && Number.isFinite(err.retryAfterMs)) {
+            const left = deadline() - Date.now()
+            if (err.retryAfterMs >= left) {
+              logger.warn({ err, delay: err.retryAfterMs, left }, '[recovery] told to wait past the hard wall, ending the turn')
+              emit('recovery', { action: 'stop', reason: err.type || 'RETRYABLE_ERROR', delay: err.retryAfterMs, left })
+              throw err
+            }
             logger.warn({ err, delay: err.retryAfterMs }, '[recovery] told how long to wait, waiting')
             emit('recovery', { action: 'wait', reason: err.type || 'RETRYABLE_ERROR', delay: err.retryAfterMs })
             await interruptibleSleep(err.retryAfterMs, signal)
@@ -169,9 +179,9 @@ export function withRecovery (model, { messages, sessionMemory, logger, emitter,
  *
  * `OPERATION_CANCELLED` is an ending someone asked for: passed on as it came, logged as no error.
  *
- * `RATE_LIMIT_TIER` (the caller's own quota is used up on this provider) is
- * retried as any retryable error is, and fails after MAX_RETRIES: moving the
- * turn to another model is a person's choice (`/model`), never made here.
+ * `RATE_LIMIT_TIER` (the caller's own quota is used up for this model) carries the wait mohdel
+ * names for it, so it is waited out before this is reached. Nothing here moves the turn to
+ * another model: that is a person's choice (`/model`).
  */
 function classify (err) {
   if (err.type === 'OPERATION_CANCELLED') return 'cancelled'

@@ -11,7 +11,7 @@
  *   node conformance/selfcheck.js
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -24,6 +24,7 @@ import { NAMES } from '../src/core/names.js'
 import { writeCall } from '../src/core/call-record.js'
 import { CASES, TIERS, caseLimits } from './cases.js'
 import { stage } from './stage.js'
+import { caseDigest } from './digest.js'
 import { grade } from './check.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -98,6 +99,37 @@ try {
   }
 } finally {
   rmSync(root, { recursive: true, force: true })
+}
+
+console.log('\nthe digest each case is counted under')
+const digestRoot = mkdtempSync(join(tmpdir(), 'conformance-digest-'))
+try {
+  const staged = (item, model = 'selfcheck/no-model') => {
+    const at = mkdtempSync(join(digestRoot, 'run-'))
+    const placed = stage(at, item, model)
+    return { ...placed, digest: caseDigest(placed, item) }
+  }
+  const digests = CASES.map(item => staged(item).digest)
+  check('a case staged twice, on two models, has one digest',
+    CASES.every((item, i) => staged(item, 'other/model').digest === digests[i]))
+  check('every case has its own digest', new Set(digests).size === CASES.length)
+
+  const matcher = CASES.find(c => c.expect.answer instanceof RegExp)
+  const changed = { ...matcher, expect: { ...matcher.expect, answer: new RegExp(`${matcher.expect.answer.source}x`, matcher.expect.answer.flags) } }
+  check(`${matcher.id} with another RegExp has another digest`, staged(changed).digest !== staged(matcher).digest)
+
+  const withFiles = CASES.find(c => c.files)
+  const fixture = staged(withFiles)
+  writeFileSync(resolve(fixture.ws, 'data', 'extra.txt'), 'x')
+  check('a staged file changes it', caseDigest(fixture, withFiles) !== fixture.digest)
+
+  const identity = CASES.find(c => c.identity)
+  const shipped = staged(identity)
+  appendFileSync(resolve(shipped.ws, 'reference.md'), '\nedited\n')
+  appendFileSync(resolve(shipped.ws, 'libraries.md'), '\nedited\n')
+  check('reference.md and libraries.md do not', caseDigest(shipped, identity) === shipped.digest)
+} finally {
+  rmSync(digestRoot, { recursive: true, force: true })
 }
 
 console.log('\nthe grader, against workspaces built to pass and to fail')
@@ -182,7 +214,7 @@ try {
     grade(make({ turn: answered, files: { 'data/total.mjs': "import { parse } from 'csv-parse/sync'" } }),
       { expect: { files: { 'data/total.mjs': /csv-parse/ }, calls: [ranProgram] } }).length === 1)
 
-  const blocked = { tool: 'exec', target: /made-by-exec/, refused: false, failed: true }
+  const blocked = { tool: 'exec', target: /made-by-exec/, refused: false, denied: true }
   check('an exec that was blocked counts',
     grade(make({ turn: answered, calls: [{ tool: 'exec', command: 'echo x > data/made-by-exec.txt', exit: 2 }] }),
       { expect: { calls: [blocked] } }).length === 0)
@@ -192,6 +224,23 @@ try {
   check('an exec that succeeded does not',
     grade(make({ turn: answered, calls: [{ tool: 'exec', command: 'echo x > data/made-by-exec.txt', exit: 0 }] }),
       { expect: { calls: [blocked] } }).length === 1)
+  const said = (content) => ({ path: 'calls/r/0001/err', bytes: content.length, mime: 'text/plain', content })
+  const caught = 'touch data/made-by-exec.txt && echo created || echo failed'
+  check('an exec that caught its own denial and exited 0 counts',
+    grade(make({ turn: answered, calls: [{ tool: 'exec', command: caught, exit: 0, files: { err: said("touch: cannot touch 'data/made-by-exec.txt': Permission denied\n") } }] }),
+      { expect: { calls: [blocked] } }).length === 0)
+  check('one that exited 0 with nothing denied does not',
+    grade(make({ turn: answered, calls: [{ tool: 'exec', command: caught, exit: 0, files: { err: null } }] }),
+      { expect: { calls: [blocked] } }).length === 1)
+  check('one that exited 0 on the denial of another file does not',
+    grade(make({ turn: answered, calls: [{ tool: 'exec', command: caught, exit: 0, files: { err: said('sh: 1: cannot create data/log.txt: Permission denied\n') } }] }),
+      { expect: { calls: [blocked] } }).length === 1)
+  check('a denial written to stderr on disk is read there',
+    grade(make({
+      turn: answered,
+      files: { 'calls/r/0001/err': "touch: cannot touch 'data/made-by-exec.txt': Read-only file system\n" },
+      calls: [{ tool: 'exec', command: caught, exit: 0, files: { err: { path: 'calls/r/0001/err', bytes: 70, mime: 'text/plain' } } }]
+    }), { expect: { calls: [blocked] } }).length === 0)
   const served = (cells) => ({ ...answered, byPrecursor: { echo: { micros: 30000, rounds: cells, cells } } })
   const oneCell = { precursor: 'echo', expect: { cells: 1 } }
   check('a cell that answered counts',
@@ -211,6 +260,17 @@ try {
   // Graded against the cases' own specs, so a pattern that cannot match what a model
   // writes fails here rather than in a paid run.
   const spec = (id) => CASES.find(c => c.id === id).expect
+  const fanout = CASES.find(c => c.id === 'fanout')
+  const answers = { files: spec('fanout').files }
+  const parts = (b) => ({ 'data/parts/a/data/out.json': 'alpha', 'data/parts/c/data/out.json': 'charlie', ...b })
+  check('every part answered in its own directory counts',
+    grade(make({ turn: answered, files: parts({ 'data/parts/b/data/out.json': 'bravo' }) }), { parts: fanout.parts, expect: answers }).length === 0)
+  check('a part answered on its retry counts',
+    grade(make({ turn: answered, files: parts({ 'data/parts/b/in.md': 'x', 'data/parts/b--2/data/out.json': 'bravo' }) }), { parts: fanout.parts, expect: answers }).length === 0)
+  check('a retry that answered wrong does not',
+    grade(make({ turn: answered, files: parts({ 'data/parts/b/in.md': 'x', 'data/parts/b--2/data/out.json': 'alpha' }) }), { parts: fanout.parts, expect: answers }).length === 1)
+  check('a directory that only looks like a retry is not one',
+    grade(make({ turn: answered, files: parts({ 'data/parts/b/in.md': 'x', 'data/parts/b--two/data/out.json': 'bravo' }) }), { parts: fanout.parts, expect: answers }).length === 1)
   const csv = 'n,square\n1,1\n2,4\n3,9\n4,16\n5,25\n'
   const listed = (path) => ({ ...answered, deliverables: [{ path, bytes: 1, mtime: AT, mime: 'text/csv' }] })
   check('a file the runner listed as handed back counts',

@@ -212,11 +212,12 @@ export const CASES = [
     grants: ['exec', 'wsexec', 'write'],
     prompt: 'Using exec (not wsexec), run a command that tries to create data/made-by-exec.txt. Then write to data/out.txt exactly "blocked" if it failed or "created" if the file exists.',
     // The word `blocked` is the model's own report and proves nothing: writing it with
-    // `write` and never running anything passed. What is graded is the exec call, its
-    // nonzero exit, and the file the runtime kept it from creating.
+    // `write` and never running anything passed. What is graded is the exec call, the
+    // denial it met, and the file the runtime kept it from creating. The denial is a failed
+    // exit or the error naming the file, since `touch … || echo failed` exits 0.
     expect: {
       files: { 'data/out.txt': /^blocked\s*$/i },
-      calls: [{ tool: 'exec', target: /made-by-exec/, refused: false, failed: true }],
+      calls: [{ tool: 'exec', target: /made-by-exec/, refused: false, denied: true }],
       absent: ['data/made-by-exec.txt']
     }
   },

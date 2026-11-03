@@ -32,6 +32,7 @@ export const loopOf = (over) => {
     onMessage () {},
     interject: () => [],
     relimited: () => [],
+    deadline: () => Infinity,
     sessionMemory: createSessionMemory({ logger: silent }),
     cacheTtl: '5m',
     reasoning: [],
@@ -42,4 +43,4 @@ export const loopOf = (over) => {
 
 export const kernelOf = (over) => executeTools({ describe: () => ({}), emitter: QUIET, logger: silent, mutators: new Set(), ...over })
 
-export const recoveryOf = (model, over) => withRecovery(model, { sessionMemory: createSessionMemory({ logger: silent }), logger: silent, emitter: QUIET, ...over })
+export const recoveryOf = (model, over) => withRecovery(model, { sessionMemory: createSessionMemory({ logger: silent }), logger: silent, emitter: QUIET, deadline: () => Infinity, ...over })
