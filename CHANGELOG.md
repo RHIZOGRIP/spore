@@ -4,6 +4,16 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.51.1] — Fix: OpenRouter's free models set up in `spore setup` pass `mo check`
+
+### Fixed
+
+- mohdel 4.3.2, on both the npm and the Cargo side. Setting up OpenRouter's free models in
+  `spore setup` keyed each one with its listed id, `…:free`, which `mo check` and
+  `mo model apply` reject since `:` marks an effort. The key now ends in `-free`
+  (`openrouter/google/gemma-4-31b-it-free`), and the call still asks OpenRouter for the `:free`
+  model.
+
 ## [1.51.0] — Added: a service can reach a spore's own socket directory
 
 ### Added

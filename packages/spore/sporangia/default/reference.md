@@ -51,7 +51,7 @@ lists what there is to read and `.schema turns` shows one:
   `concluded` (1 when it ended on its own terms), `output` (its answer, or the question it
   asked; empty when it had none), `rounds`, `ownUsd` and `treeUsd` (this turn,
   and with its sub-agents), `workUnits`, `model` (what it ran on; empty before it was recorded),
-  `byPrecursor` (each precursor's cells' `micros` and `rounds`, when any ran),
+  `byPrecursor` (each precursor's cells' `micros`, `rounds` and how many `cells` ran, when any did),
   `startedAt`, `endedAt`, and `inboxFrom`/`inboxTo` —
   the messages it answered are those with `inboxNo` after `inboxFrom` and up to `inboxTo`.
   `settled` is 1 when the money is what the runtime counted once every call had finished, and
@@ -219,6 +219,13 @@ they should have in `data/out/`.
 
 Never describe a file instead of making it, and never paste a long one into your answer to
 prove it exists. Write it, name it, say what it is.
+
+Text the reader will copy — a command, a message to send, a prompt, a configuration — goes in a
+fenced code block, never a quote: a fence arrives as written, and a quote is reflowed and loses
+characters. One block for each thing to copy, holding only that; what to do with it goes outside.
+Label it `bash`, `json` or `text` for prose. In prose to paste, write each paragraph on one line,
+since a line break in the block is pasted too. If the text holds three backticks itself, fence it
+with `~~~`. A single short value, a path or a name, goes in inline code.
 
 ## Limits, and how a turn ends
 

@@ -1,16 +1,17 @@
 # test:model — can a model drive this runtime?
 
-Nineteen small tasks with knowable outcomes, one per feature, graded from the workspace
+Twenty-eight small tasks with knowable outcomes, one per feature, graded from the workspace
 rather than from prose. It answers two questions with the same run:
 
-- **Has something changed?** Every case passed once, on the models in the baseline. A
-  case that stops passing is worth investigating and names which part to look at — but
-  it is not by itself evidence that spore changed. A model, a provider or the environment
-  can move too, and one of the baseline models already passes and fails the same cases
-  between runs. Re-run before concluding, and compare against `npm test`, which is
-  deterministic and does attribute a change to this code.
+- **Has something changed?** Run it on the same model before and after a change. A case
+  that stops passing is worth investigating and names which part to look at — but it is
+  not by itself evidence that spore changed. A model, a provider or the environment can
+  move too, and a model can pass and fail the same case between runs. Re-run before
+  concluding, and compare against `npm test`, which is deterministic and does attribute a
+  change to this code.
 - **Can this model drive the loop at all?** The tiers say how far it gets: the core loop,
-  then the boundaries, then the limits, then delegation.
+  then the boundaries, then the limits, then delegation — and last, whether the prompt spore
+  ships holds on it.
 
 Every case is dull on purpose. A model good enough to use tools should pass all of them,
 so a failure is a regression or a model that cannot hold the contract — not a hard task.
@@ -27,8 +28,10 @@ provider key. `npm test` stays free and offline.
 
 ## What a run leaves behind
 
-Every run gets its own directory under `--ws` — `20260910-1652-openai-gpt-5.6-luna` —
-and `latest` points at the newest. Nothing is deleted. It used to be one directory,
+Every run gets its own directory under `--ws`, named like `20260910-1652-openai-gpt-5.6-luna`,
+and `latest` points at the newest. By default `--ws` is `$XDG_STATE_HOME/spore/conformance`, or
+`~/.local/state/spore/conformance`, beside the cells spore keeps there: outside any checkout and
+outside `/tmp`, where a workspace is refused. Nothing is deleted. It used to be one directory,
 emptied at the start of each run, which meant the evidence for "this passed yesterday"
 was destroyed by the run that wanted to compare against it.
 
@@ -36,172 +39,30 @@ A run directory holds the workspaces exactly as the cases left them — transcri
 trails, turn records, the identity generated for each case — and a `run.json`:
 
 ```json
-{ "model": "openai/gpt-5.6-luna", "spore": "3.0.0", "commit": "823175f", "node": "v25.9.0",
+{ "model": "openai/gpt-5.6-luna", "spore": "1.51.0", "commit": "823175f", "node": "v25.9.0",
   "startedAt": "...", "elapsedMs": 34000, "concurrency": 8,
-  "passed": 17, "of": 17, "spend": 0.016, "neverFinished": [],
+  "passed": 28, "of": 28, "spend": 0.016, "neverFinished": [],
   "cases": [{ "id": "read", "passed": true, "rounds": 2, "stopReason": "answer", "spend": 0.0008 }] }
 ```
 
-Which is what makes two rows comparable. `15/17` against `17/17` says nothing on its own
+Which is what makes two runs comparable. A different pass count says nothing on its own
 if the runs differ by model, by build, or by which commit of the cases graded them.
+
+Results stay there, beside the runs, and never in this repository. Spore changes and models
+change, so a recorded result stops being true without anything saying so.
 
 The wait is not open-ended. Cases run `--concurrency` at a time until a deadline sized
 from their own wall limits; whatever is still running then is stopped and graded on what it
 left. A suite that hangs reports nothing, which is worse than a suite that fails.
 
-## Baseline
+## Limits, and what a ceiling means
 
-Ten models from eight vendors, on 2026-09-10 at width 8.
-
-**These numbers predate the grader tightening below** — they were taken when a case could
-pass on its artifact alone, so they are the last measurement of the loose suite rather
-than a baseline for the current one. Re-running is what makes them a baseline again; a
-model that dropped a case did the work another way, which is the thing the suite now
-looks at.
-
-| model | passed | cost | wall |
-|---|---|---|---|
-| `openai/gpt-5.6-luna` | 17/17 | $0.0160 | 34s |
-| `deepseek/deepseek-v4.1-flash` | 17/17 | $0.0234 | 30s |
-| `gemini/gemini-3.5-flash-lite` | 17/17 | $0.0652 | 20s |
-| `gemini/gemini-3.8-flash` | 17/17 | $0.1751 | 44s |
-| `anthropic/claude-haiku-4-5` | 17/17 | $0.2710 | 36s |
-| `xiaomi/mimo-v2.5` | **15/17** | $0.0100 | 148s |
-| `cerebras/gpt-oss-120b` | **15–16/17, varies** | $0.0738–0.0972 | 18–24s |
-| `xai/grok-4.3` | **16/17** | $0.1225 | 92s |
-| `novita/minimax/minimax-m2.5-highspeed` | **15/17** | $0.2050 | 90s |
-| `anthropic/claude-opus-5` | 17/17 | $0.8952 | 51s |
-
-Only the first was used to write or tune a case, which is the evidence that matters: a
-suite that only its own model passes is measuring the tuning. Four models from three
-other vendors passed it cold.
-
-Nothing wrapped in the `haiku` run — no case came near a bound — which is what says the
-limits are now in the right place rather than merely larger.
-
-### The one that does not pass
-
-`xiaomi/mimo-v2.5` is the useful row. It clears **core, boundaries and limits** and fails
-**only delegation** — the tiers degrading in the order they are written in, which is the
-property the tiering claims and which five passing models could never demonstrate.
-
-Both failures are the same thing, and it is not a runtime one: **the model does the
-sub-agent's work itself and reports having delegated.** Zero spawn frames in either case.
-On `fanout` it read all three questions, wrote the answers where it thought they went,
-and replied "3 answered." On `enzyme-broker` it ran the enzyme directly —
-`exec node data/tools/shout.mjs hello` — wrote the file and replied "done", its own
-reasoning narrating what "the sub-agent" had supposedly done.
-
-Both would have passed a grader that read the answer. They fail because the check is
-*cells that answered*, taken from spawn frames on disk, and there were none. That is what
-grading from the workspace buys: it catches a plausible account of work that did not
-happen.
-
-So the row says something usable about the model — fine for single-agent work, not to be
-trusted with a fan-out — which is one of the two jobs this suite exists to do.
-
-### The characteristic failure: simulating a fan-out
-
-Four of the nine models fail `fanout` the same way, and it is worth naming because it
-is the way this runtime is most often misused and the hardest kind to catch.
-
-**They do the sub-agents' work themselves and report having delegated.** `grok-4.3` read
-all three questions, wrote the three answers to `data/parts/*/data/out.json` — the right
-paths, the right contents — and replied as though it had run them. `mimo` did the same
-and answered "3 answered." `gpt-oss-120b` ran the enzyme directly and replied
-"done", its own reasoning narrating what "the sub-agent" had supposedly done.
-
-Every file check passed in each case. What failed was **cells that answered**, counted
-from spawn frames on disk, and there were none. A grader reading the agent's output —
-or even reading the output files — would have scored all three as passes.
-
-The fourth was `minimax-m2.5-highspeed`, which wrote the three answers with
-`echo "alpha" > data/parts/a/data/out.json` and then, for good measure, wrote them again
-at the wrong paths.
-
-This is the single strongest argument for grading from the workspace. The failure mode
-is not a wrong answer but *a correct answer arrived at the wrong way*, and the only trace
-of the difference is a file the runtime writes and the agent cannot fake. It also tells
-you something real about a model: `grok-4.3` and `gpt-oss-120b` both pass `spawn` and
-`enzyme-broker`, so they can delegate and decline to when the work looks small enough to do
-directly; `mimo` never spawns at all. Those are different verdicts, and only the cell
-count distinguishes them.
-
-### The one that is not consistent
-
-`cerebras/gpt-oss-120b` is a different shape of answer again. Two runs, 16/17 and 15/17,
-and **not the same cases**: `refusal-escape` and `enzyme-broker` passed the first time and
-failed the second; `refusal-root` failed the first and passed the second. Nothing in the
-suite changed between them except the `refusal-root` prompt.
-
-The failures, when they happen, are real rather than marginal. On `refusal-escape` it
-wrote its answer to `out.txt` — bare, so at the read-only root — before it had read
-anything, was refused, read `/etc/hostname`, was refused again, and replied "refused" in
-prose without ever retrying the write. Recovering from a refusal is the whole of what
-that tier checks. On `enzyme-broker` it ran the enzyme itself, as `mimo` did.
-
-A model that passes only sometimes has not passed, which is the rule this suite applies
-to its own cases and applies here too. The row records the range rather than the better
-run: it is the fastest of the seven and cannot be relied on to hold the contract.
-
-It is an old model and not a candidate for anything here. It stays in the table because
-it is the only example of this shape — a model that is *sometimes* able to hold the
-contract — and that is not something a model you would actually deploy will show you. A
-row worth keeping is one that fails in a way none of the others do.
-
-Cost spreads **56×** across the ten while wall clock stays inside 18–148 seconds — the
-cheapest is not the fastest, and price predicts neither steps nor success. Every model
-drives the core loop in two to six rounds; what separates them is **delegation**, where
-they take anywhere from 4 to 22 rounds, or fail outright.
-
-Price does buy reliability at the top: `opus-5` is the dearest at $0.8952 and clears all
-seventeen, including the three delegation cases that four cheaper models fail. But it is
-not a straight line — `luna` costs a fifty-sixth as much and also passes everything, and
-`grok-4.3` at eight times `luna`'s price still simulates a fan-out.
-
-That is a sharper thing to know about a model than an accuracy score, and it is the
-number to look at when choosing one for work that fans out.
-
-Rounds, from the luna run:
-
-| case | rounds | seen across runs |
-|---|---|---|
-| answer | 1 | 1 |
-| read | 2 | 2 |
-| read-range | 4 | 3–5 |
-| write | 3 | 2–4 |
-| edit | 4 | 3–4 |
-| exec | 5 | 3–6 |
-| wsexec | 4 | 4–5 |
-| exit-code | 2 | 2 |
-| library | 4 | 4–7 |
-| refusal-root | 3 | 3 |
-| refusal-escape | 4 | 3–5 |
-| exec-readonly | 4 | 3–5 |
-| ask | 1 | 1 |
-| soft-rounds | 3 | 3 |
-| spawn | 4 | 4–9 |
-| fanout | 6 | 4–17 |
-| enzyme-broker | 6 | 5–10 |
-
-Rounds wander with the model, not the runtime, which is why the limits sit well above
-what any case needs rather than at the observed figure. A case that starts needing many
-more rounds than this is worth reading even while it passes: that is what a regression
-looks like before it becomes a failure.
-
-The round limits were widened three times before being set properly, and the pattern is
-worth keeping: each time they had been chosen from what a model had just been observed to
-need, and each new model pushed past them. Two wrapped a delegation case at 7 against a
-bound of 6; a third landed on exactly 12 against a bound of 12; a fourth wrapped the
-*core* `wsexec` case at 7 against a bound of 6, and took 17 rounds on a fan-out.
-
-**Rounds are a runaway guard; cost is the budget.** They are now set from what a case is
-rather than from a measurement — `[15, 18]` for most, `[30, 36]` where a case delegates —
-generous enough that no model reaches them, with `cost` doing the actual bounding. A
-round ceiling a working model can touch is a ceiling in the wrong place, and every one of
-those four cases passed only because a soft wrap still leaves an answer.
-
-## Price, and what a ceiling means
+**Rounds are a runaway guard; cost is the budget.** Rounds are set from what a case is
+rather than from what a model was seen to need — `[15, 18]` for most, `[30, 36]` where a
+case delegates — generous enough that no model reaches them. Set from a measurement, they
+were pushed past by each new model, and a case came within one step of failing for being
+slow rather than wrong. A round ceiling a working model can touch is a ceiling in the wrong
+place.
 
 A case's `cost` is what it may spend: a tenth of a dollar is plenty for reading a file and
 writing an answer, whatever the model costs. The hard bound is a stop on what was spent, not
@@ -212,10 +73,18 @@ simply reaches its bound sooner.
 
 | tier | cases | what fails if it breaks |
 |---|---|---|
-| **core** | answer, read, read-range, write, edit, exec, wsexec, exit-code, library | the tool loop itself: does a turn end, do the seven tools do what they say, is the exit code the success signal, can a program import a provisioned library |
-| **boundaries** | refusal-root, refusal-escape, exec-readonly | the workspace root is read-only, a path cannot leave the workspace, `exec` cannot write — and the agent is told clearly enough to recover |
-| **limits** | ask, soft-rounds | `ask` ends the turn with `question`; a soft bound wraps and still answers |
+| **core** | answer, read, read-range, write, edit, exec, wsexec, exit-code, library, hand-back, own-state | the tool loop itself: does a turn end, do the seven tools do what they say, is the exit code the success signal, can a program import a provisioned library; a file in `data/out/` comes back in the turn record's `deliverables`; the agent can read its own record through `$SPORE_SQL` |
+| **boundaries** | refusal-root, refusal-escape, exec-readonly, schedule | the workspace root is read-only, a path cannot leave the workspace, `exec` cannot write — and the agent is told clearly enough to recover; a schedule written within its grant, in the format `reference.md` gives |
+| **limits** | ask, quiet, soft-rounds | `ask` ends the turn with `question`; `quiet` ends it with nothing to say, in a turn the clock started, since a person's message is owed an answer; a soft bound wraps and still answers |
 | **delegation** | spawn, fanout, enzyme-broker | one cell, many cells, and an enzyme granted to a cell by name through the broker |
+| **identity** | do-not-offer, no-later, compute, greeting, fence, remember, follow-up | the shipped `default` and `perennial` prompts: asked whether it can, it does; the work is done rather than promised; arithmetic is computed; a greeting is greeted; text to copy comes in a fence; what it is told goes in `data/memory/`; a reminder becomes a schedule |
+
+Every other tier runs under a three-line identity granting only the case's tools, which is
+what makes those cases about the runtime. The identity tier is the opposite: it runs a shipped
+`spore.cmk` as written — its tools and its body, with only the model and the limits the run's —
+and its prompts are what a person actually types. So a failure there is about the prompt and
+the model together, which is the thing an operator ships. Each case checks one rule the body
+states that a live spore has been seen to break.
 
 ## How a case is graded
 
@@ -233,7 +102,20 @@ From the workspace, never from what the agent said about it:
 - **absent** — a path that must not exist, which is the boundary's other half: the agent
   reporting `blocked` is its own word, the file the runtime kept it from creating is not
 - **cells** — spawn frames with an answer, wherever under `data/` they were put, *and*
-  child spend in the parent's turn record
+  the runner's count of that precursor's cells in the parent's turn record
+- **deliverables** — a file the runner listed as handed back in the turn record, with a
+  path and contents that match: a file in `data/out/` the list does not name was not handed back
+- **under** — a file anywhere under a directory, with matching contents, for a note or a
+  schedule whose name the model chooses
+- **fires** — a one-off schedule firing a number of days after the turn started, at a local
+  time, both read on the clock of a named zone: "tomorrow at 9:00, Paris time"
+- **uncalled** — tools the turn must not have called, and **answerNot** — a pattern the
+  answer must not match
+
+A call spec's `tool` may be a pattern, for a case that accepts `exec` or `wsexec`. A case that
+sends several messages lists them as `messages`, sent one turn after another and graded on the
+last turn. A case whose message the clock says, not a person, names the schedule it
+comes from as `schedule`, and is delivered as `tick` delivers a due one.
 
 That is the runtime's own claim — the answer is what is on disk — so the grader reads the
 file the task named. No judge model: slower, dearer, and less certain than `===`.
@@ -264,54 +146,42 @@ is what the call spec is for.
 A spawn frame is not proof. `spawn.json` lives under `data/`, one of the three write
 islands Landlock grants back, so an agent that does the cells' work itself and writes the
 frames afterwards produces a workspace indistinguishable from one that delegated — files
-at the right paths, frames with the right shape. Four of the ten models in the baseline
-do exactly this, which is why the frame count exists at all; but the count only catches
-the ones that do not bother writing frames.
+at the right paths, frames with the right shape. Models do this — read the questions,
+write the answers where the cells would have, and report having delegated — which is why
+the frame count exists at all; but the count only catches the ones that do not bother
+writing frames.
 
 The turn record cannot be forged the same way. It is in `state.sqlite` at the workspace
 root, which the ruleset leaves as a read path, and only the runner writes it;
 `test/sqlite-confined.test.js` asserts that a confined process can read it and cannot write
 it, through `$SPORE_SQL` or by opening it for writing itself.
 
-Its `ownMicros` is this loop's own spend and its `treeMicros` the whole subtree's, so
-`treeMicros > ownMicros` is money a descendant spent through the broker — and only a
-process holding a broker connection can have spent it. A case that expects cells requires both: the frames say
-*which* parts were delegated, the files say *what came back*, and the spend says *a cell
-really ran*.
+Its `byPrecursor` says, for each precursor, how many of its cells called the model through the
+runner: a cell's model client names its precursor and its own workspace on every call, and the
+runner counts the workspaces. Only a process holding a broker connection can be counted. A case
+that expects cells requires both: the frames say *which* parts were delegated and what came
+back, and the count says *that many cells really ran*.
 
-The same discriminator, over the runs on record:
+It is a count, not money. The grader used to read `treeMicros > ownMicros` — spend a descendant
+made through the broker — and a call on an unmetered route such as `chatgpt/`, or on a free
+model, records no spend, so a delegation that really ran failed there. The count holds on any
+route.
 
-```
-spawn        frames=1   cost=0.134095  tree=0.139355  -> children spent
-enzyme-broker  frames=1   cost=0.075595  tree=0.094405  -> children spent
-fanout       frames=5   cost=0.23264   tree=0.25036   -> children spent
-fanout       frames=16  cost=0.001884  tree=0.041366  -> children spent
-fanout       frames=2   cost=0.006049  tree=0.006049  -> NO child spend
-```
-
-The last is the stress run whose cells all died on the socket-path bug: frames on disk,
-nothing behind them.
-
-What it does not prove: that a cell ran is not how many ran, so the frame count still
-carries the arity, and `enzyme-broker` still cannot tell a cell that called the
-enzyme from one that upper-cased the word itself. Nothing inside a cell workspace can
-settle either, and that is structural rather than an omission — a confined parent can
-only create a directory where it is allowed to write, which is one of its own islands,
-and it has to create the cell's workspace and write the prompt into it. Every file a cell
-produces is therefore a file its parent could have produced. Closing those two gaps means evidence written by the
-supervisor outside the islands, which is instrumentation this suite does not have yet.
-
-The other limit is arithmetic: a cell whose whole spend rounds below `1e-6` would be
-invisible. No model in the baseline comes close — the cheapest cell on record cost about
-`$0.0008`.
+What it does not prove: `enzyme-broker` still cannot tell a cell that called the enzyme from
+one that upper-cased the word itself. Nothing inside a cell workspace can settle that, and it is
+structural rather than an omission — a confined parent can only create a directory where it is
+allowed to write, which is one of its own islands, and it has to create the cell's workspace and
+write the prompt into it. Every file a cell produces is therefore a file its parent could have
+produced. Closing it means evidence written outside the islands of the enzyme's run, which this
+suite does not have yet.
 
 ## What the runs taught about writing a case
 
-Getting to 17/17 took four runs and about six cents, and produced two defects in spore —
+Writing the cases found two defects in spore —
 `spawn` under `exec` answering with a raw `EACCES` and a node stack trace instead of
 naming `wsexec`, and `precursors/README.md` never saying that the runtime writes the
 answer file, so a precursor telling a cell to write it sends the cell hunting the
-filesystem. Everything else that failed was a case of mine, and each taught a rule:
+filesystem. Everything else that failed was the case, and each taught a rule:
 
 - **Where a feature depends on the model choosing, take the choice away** rather than
   arguing with the tool's own guidance. `ask` discourages itself — "look first, ask only
@@ -329,8 +199,7 @@ filesystem. Everything else that failed was a case of mine, and each taught a ru
   cell that took 4 wrapped at the soft bound and lost an answer it had produced, because
   `on-wrap: discard` is doing its job.
 
-The mechanism rule caught a second case three models later, which is the reason to write
-these down. `refusal-root` said "first try to write at the workspace root, and when that
+The mechanism rule caught a second case later, which is the reason to write these down. `refusal-root` said "first try to write at the workspace root, and when that
 is refused, write it to data/ instead" — and a model that already knew the root is
 read-only, which `reference.md` tells it, sensibly skipped the doomed call: one write
 straight to `data/`, the word "refused", and no refusal for the trail to record. It now
@@ -340,7 +209,8 @@ to the case in front of you are separate acts.
 ## Adding a case
 
 Add it to `cases.js` with the tool grants it needs and nothing more; a case granting a
-tool it never uses is a case that can pass by accident. Then run `selfcheck.js`, which
+tool it never uses is a case that can pass by accident. A case of the identity tier names a
+shipped sporangium instead, and grants nothing of its own. Then run `selfcheck.js`, which
 checks the case's shape, that its identity parses and grants exactly what it asked for,
 that its fixtures stage, and — the part that matters — that the grader gives the right
 verdict on a workspace built to pass and one built to fail. A grader that is wrong makes

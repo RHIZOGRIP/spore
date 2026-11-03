@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createModelClient, IDLE_HEARTBEAT_MS } from '../src/infra/model-client.js'
-import { CALLER_HEADER, MODEL_CALL_HEADER, KEY_HEADER, PRECURSOR_CALLER, ROOT_CALLER } from '../src/infra/socket-request.js'
+import { CALLER_HEADER, CELL_HEADER, MODEL_CALL_HEADER, KEY_HEADER, PRECURSOR_CALLER, ROOT_CALLER } from '../src/infra/socket-request.js'
 import { createModelServer, testSocket } from './fixtures/model-server.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 
@@ -174,17 +174,24 @@ describe('the model client', () => {
     const root = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL, 'openai/text-embedding-3-small'], key: KEY, workspace: WS, tracksTree: true })
     const cell = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS, precursor: 'summarize' })
     const unnamed = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: WS })
+    const sibling = await createModelClient({ socketPath: server.socketPath, modelIds: [MODEL], key: KEY, workspace: `${WS}/data/parts/b`, precursor: 'summarize' })
     await root.use(MODEL).answer(PROMPT)
     await cell.use(MODEL).answer(PROMPT)
     await unnamed.use(MODEL).answer(PROMPT)
     await root.use('openai/text-embedding-3-small').embed(['a']).catch(() => {})
-    const [fromRoot, fromCell, fromNobody, embedded] = server.envelopes
+    await sibling.use(MODEL).answer(PROMPT)
+    const [fromRoot, fromCell, fromNobody, embedded, fromSibling] = server.envelopes
     expect(fromRoot.headers[MODEL_CALL_HEADER]).toBe(fromRoot.envelope.callId)
     expect(fromRoot.headers[CALLER_HEADER]).toBe(ROOT_CALLER)
     expect(fromCell.headers[MODEL_CALL_HEADER]).toBe(fromCell.envelope.callId)
     expect(fromCell.headers[CALLER_HEADER]).toBe(`${PRECURSOR_CALLER}summarize`)
     expect(fromNobody.headers[CALLER_HEADER]).toBeUndefined()
     expect(embedded.headers[CALLER_HEADER]).toBe(ROOT_CALLER)
+    expect(fromCell.headers[CELL_HEADER]).toMatch(/^[0-9a-f]{32}$/)
+    expect(fromSibling.headers[CELL_HEADER]).toMatch(/^[0-9a-f]{32}$/)
+    expect(fromSibling.headers[CELL_HEADER]).not.toBe(fromCell.headers[CELL_HEADER])
+    expect(fromRoot.headers[CELL_HEADER]).toBeUndefined()
+    expect(fromNobody.headers[CELL_HEADER]).toBeUndefined()
   })
 
   it('embeds through the socket with the tree key, and the tree counts it as spend but not a round', async () => {

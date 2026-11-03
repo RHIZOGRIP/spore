@@ -1,6 +1,5 @@
 import { mkdirSync, rmSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 
 import { CANCEL_SYMBOL } from '@clack/prompts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -51,8 +50,6 @@ vi.mock('@rhizogrip/spore', async (real) => ({
 }))
 vi.mock('../src/services.js', async (real) => ({ ...await real(), createServices: () => given.services }))
 vi.mock('../src/doctor.js', async (real) => ({ ...await real(), diagnose: async () => given.report() }))
-
-const base = process.env.SPORE_TEST_DIR || resolve(dirname(fileURLToPath(import.meta.url)), '../../../../tmp/spore-tests')
 
 let root
 let said
@@ -122,7 +119,7 @@ const run = ({
 beforeEach(() => {
   rmSync(CONFIG_DIR, { recursive: true, force: true })
   mkdirSync(CONFIG_DIR, { recursive: true })
-  root = outsideRoot('spore-setup', base)
+  root = outsideRoot('spore-setup')
   said = []
   asked = []
   onboarded = []

@@ -13,6 +13,8 @@ export const KEY_HEADER = 'x-spore-key'
 export const CALLER_HEADER = 'x-spore-caller'
 export const ROOT_CALLER = 'root'
 export const PRECURSOR_CALLER = 'precursor:'
+// A cell's calls name the cell too, so the turn can say how many cells of a precursor ran.
+export const CELL_HEADER = 'x-spore-cell'
 export const MODEL_CALL_HEADER = 'x-spore-model-call'
 
 export const typedError = (error) => new SporeError(error?.message || 'broker call failed', {

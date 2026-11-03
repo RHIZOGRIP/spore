@@ -6,8 +6,8 @@
  * call trail. That is the same contract the runtime states — the answer is what is on
  * disk — and it is what makes a case gradeable without a judge model.
  *
- * Two jobs at once. Against a known model it is a **regression baseline**: every case
- * here passed once, so a case that stops passing names the part to look at — though not,
+ * Two jobs at once. Against a known model it is a **regression check**: run before and
+ * after a change, a case that stops passing names the part to look at — though not,
  * on its own, what moved, since a model or a provider can change as readily as this code
  * can. Against an unknown model it is a **capability probe**: the tiers say whether it
  * can drive the loop at all, whether it respects the boundaries, and whether it can
@@ -40,8 +40,11 @@ const numbers = Array.from({ length: 40 }, (_, i) => `${i + 1}`).join('\n') + '\
 // `qty` sits behind a quoted comma, so splitting on commas reads ` 8mm"` as the
 // quantity. The total is only 50 if something parsed the CSV as a CSV.
 const csv = 'name,note,qty\nbolt,"hex, 8mm",12\nnut,"brass, plated",7\nwasher,plain,31\n'
+const notes = 'Weekly sync, 2 November\n\n- The launch moves from Tuesday to Thursday: the review is not finished.\n- Ana takes over the release notes.\n- The trial budget stays at 400 euros.\n'
+// Every row, in any order, with or without a header or spaces around the comma.
+const rows = (pairs) => new RegExp(pairs.map(([a, b]) => `(?=[\\s\\S]*^\\s*${a}\\s*,\\s*${b}\\s*\\r?$)`).join(''), 'm')
 
-export const TIERS = ['core', 'boundaries', 'limits', 'delegation']
+export const TIERS = ['core', 'boundaries', 'limits', 'delegation', 'identity']
 
 export const CASES = [
   // ── core: can it run the loop at all ──────────────────────────────────────
@@ -144,6 +147,32 @@ export const CASES = [
       calls: [{ tool: 'wsexec', target: /total\.mjs/, exit: 0 }]
     }
   },
+  {
+    id: 'hand-back',
+    tier: 'core',
+    feature: 'a file handed back',
+    grants: ['read', 'write'],
+    // Where a deliverable goes is in reference.md and nowhere in the prompt, as for
+    // `schedule`. What is graded is the turn record's list, which only the runner writes.
+    prompt: 'Make a CSV file of the numbers 1 to 5 and their squares, one row each, and hand it back to me as a file. reference.md says how a file is handed back.',
+    expect: { deliverables: [{ path: /\.csv$/, body: rows([[1, 1], [2, 4], [3, 9], [4, 16], [5, 25]]) }] }
+  },
+  {
+    id: 'own-state',
+    tier: 'core',
+    feature: 'reading its own record',
+    grants: ['read', 'exec'],
+    // The count is in the conversation too, so the answer alone proves nothing: what is
+    // graded is a query on the `turns` view through `$SPORE_SQL`.
+    messages: [
+      'Reply with the word ok.',
+      'How many turns have you finished before this one? Count them from your own record, which reference.md says how to read, not from this conversation. Reply with the number only.'
+    ],
+    expect: {
+      answer: /^\D*\b1\b\D*$/,
+      calls: [{ tool: 'exec', target: /SPORE_SQL[\s\S]*\bturns\b/i, exit: 0 }]
+    }
+  },
 
   // ── boundaries: does it respect what the runtime refuses ──────────────────
   {
@@ -227,8 +256,10 @@ export const CASES = [
     feature: 'quiet ends a turn with nothing to say',
     // The shortcut here is replying "nothing to report", which from the model's side is
     // saying nothing and from the caller's is an answer to forward. Only the tool records
-    // the turn as one that had nothing to say, so the case says so.
+    // the turn as one that had nothing to say, so the case says so. The clock says it: a
+    // person's message is owed an answer, and `quiet` is refused in a turn one started.
     grants: ['read', 'quiet'],
+    schedule: 'queue',
     files: { 'data/queue.txt': '' },
     prompt: 'Read data/queue.txt. If it lists any job, reply with the jobs. If it is empty there is nothing to report: end the turn with the tool named quiet, saying the queue was empty. Replying that there is nothing to report does not count — the caller would forward it as an answer.',
     expect: { stopReason: 'quiet', concluded: true }
@@ -289,6 +320,77 @@ export const CASES = [
     parts: { 'data/one': { 'in.md': 'Turn the word hello into upper case using the tool you were given.\n' } },
     prompt: 'The directory data/one already holds a question in in.md — do not change that file. Start one sub-agent on it with the shout precursor, passing in.md as the prompt and data/out.json as the answer. Wait for it, then reply with the word done.',
     expect: { cells: 1, files: { 'data/one/data/out.json': /HELLO/ } }
+  },
+
+  // ── identity: does the shipped prompt hold ────────────────────────────────
+  // Each case runs under a shipped sporangium's own `spore.cmk` — its tools and its body
+  // as written, only the model and the limits the run's — and each checks one rule that
+  // body states and a live spore has been seen to break.
+  {
+    id: 'do-not-offer',
+    tier: 'identity',
+    identity: 'default',
+    feature: 'asked whether it can, it does',
+    files: { 'data/numbers.txt': numbers },
+    prompt: 'Can you tell me how many lines data/numbers.txt has?',
+    expect: {
+      answer: /\b40\b/,
+      calls: [{ tool: /^(read|exec|wsexec)$/, target: /numbers\.txt/ }]
+    }
+  },
+  {
+    id: 'no-later',
+    tier: 'identity',
+    identity: 'default',
+    feature: 'the work is done, not promised',
+    files: { 'data/notes.md': notes },
+    prompt: 'Summarize data/notes.md into data/out/summary.md.',
+    expect: { files: { 'data/out/summary.md': /thursday/i } }
+  },
+  {
+    id: 'compute',
+    tier: 'identity',
+    identity: 'default',
+    feature: 'arithmetic is computed, not inferred',
+    prompt: 'What is 48,311 × 9,277?',
+    expect: {
+      answer: /448\D?181\D?147/,
+      calls: [{ tool: /^(exec|wsexec)$/, target: /48[_,]?311[\s\S]*9[_,]?277|9[_,]?277[\s\S]*48[_,]?311/, exit: 0 }]
+    }
+  },
+  {
+    id: 'greeting',
+    tier: 'identity',
+    identity: 'default',
+    feature: 'a greeting is greeted',
+    prompt: 'hi',
+    // Asking what they need, through `ask`, is what the identity says to do, so a turn
+    // ending `question` passes. Reaching for the workspace does not.
+    expect: { stopReason: /^(answer|question)$/, uncalled: ['read', 'write', 'edit', 'exec', 'wsexec'] }
+  },
+  {
+    id: 'fence',
+    tier: 'identity',
+    identity: 'default',
+    feature: 'text to copy comes in a fence',
+    prompt: 'Give me the command to count the lines of every .md file under ~/notes, ready to paste in my terminal.',
+    expect: { answer: /```[^\n]*\n[\s\S]*?\.md[\s\S]*?\n\s*```/, answerNot: /^\s*>/m }
+  },
+  {
+    id: 'remember',
+    tier: 'identity',
+    identity: 'perennial',
+    feature: 'what it is told, it writes down',
+    prompt: 'Remember that my invoice prefix is AX-.',
+    expect: { under: { 'data/memory': /AX-/ } }
+  },
+  {
+    id: 'follow-up',
+    tier: 'identity',
+    identity: 'perennial',
+    feature: 'a reminder is a schedule',
+    prompt: 'Remind me tomorrow at 9:00, Paris time, to call the bank.',
+    expect: { fires: { tz: 'Europe/Paris', days: 1, at: '09:00' }, under: { schedules: /bank/i } }
   }
 ]
 

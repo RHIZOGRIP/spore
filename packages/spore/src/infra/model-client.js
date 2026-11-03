@@ -22,7 +22,7 @@ import { call, callEmbedding, coalesce } from 'mohdel/client'
 
 import { formatTraceparent } from '../observability/tracing.js'
 import { SporeError } from '../observability/errors.js'
-import { CALLER_HEADER, MODEL_CALL_HEADER, KEY_HEADER, PRECURSOR_CALLER, ROOT_CALLER, request, typedError } from './socket-request.js'
+import { CALLER_HEADER, CELL_HEADER, MODEL_CALL_HEADER, KEY_HEADER, PRECURSOR_CALLER, ROOT_CALLER, request, typedError } from './socket-request.js'
 
 const CALL_OPTIONS = new Set(['tools', 'signal', 'parentSpan', 'realtimeHandler', 'idleHandler', 'bufferOpts', 'reasoningSummaries', 'rawReasoning'])
 
@@ -37,7 +37,8 @@ const ask = (socketPath, key, method, path, body) => request(socketPath, { key, 
  * measured against everything drawn on its allowance, cells included — that is what makes
  * its ceiling a bound on the tree. A cell is measured against its own precursor's budget:
  * the difference between the tree's total and its own spend is its *parent's*. `precursor` names
- * the cell's on every call, so the tree's record can say what each precursor spent.
+ * the cell's on every call, and the workspace's hash the cell itself, so the tree's record can
+ * say what each precursor spent and how many of its cells ran.
  * `workspace` names the conversation to the provider, as mohdel's `identifier`, which an
  * OpenAI call carries as `prompt_cache_key`: without one, calls that share a prefix are not
  * routed to where it is cached.
@@ -57,7 +58,9 @@ export async function createModelClient ({ socketPath, modelIds, key, tracksTree
     return ledger
   }
   const keyed = { [KEY_HEADER]: key }
-  const caller = tracksTree ? ROOT_CALLER : precursor ? `${PRECURSOR_CALLER}${precursor}` : null
+  const named = tracksTree
+    ? { [CALLER_HEADER]: ROOT_CALLER }
+    : precursor ? { [CALLER_HEADER]: `${PRECURSOR_CALLER}${precursor}`, [CELL_HEADER]: identifier } : {}
 
   return {
     ...(tracksTree ? { ledger, spend: settle } : {}),
@@ -95,7 +98,7 @@ export async function createModelClient ({ socketPath, modelIds, key, tracksTree
           // To the loop an abort is a rejection, which writes the turn down as cancelled.
           const cancelled = () => new SporeError('operation cancelled', { type: 'OPERATION_CANCELLED', detail: 'the call was left to finish without it', severity: 'info' })
           if (signal?.aborted) throw cancelled()
-          const events = call(envelope, { socketPath, headers: { ...keyed, [MODEL_CALL_HEADER]: envelope.callId, ...(caller ? { [CALLER_HEADER]: caller } : {}) } })
+          const events = call(envelope, { socketPath, headers: { ...keyed, [MODEL_CALL_HEADER]: envelope.callId, ...named } })
           const reading = (realtimeHandler ? coalesce(events, bufferOpts ?? {}) : events)[Symbol.asyncIterator]()
           let stopWaiting
           const stopped = new Promise(resolve => { stopWaiting = () => resolve(null) })
@@ -131,7 +134,7 @@ export async function createModelClient ({ socketPath, modelIds, key, tracksTree
         async embed (input, { inputType, signal } = {}) {
           const envelope = { callId: randomUUID(), authId: 'spore', model: modelId, input, ...(inputType ? { inputType } : {}) }
           try {
-            return await callEmbedding(envelope, { socketPath, signal, headers: { ...keyed, ...(caller ? { [CALLER_HEADER]: caller } : {}) } })
+            return await callEmbedding(envelope, { socketPath, signal, headers: { ...keyed, ...named } })
           } catch (e) {
             throw typedError(e)
           }

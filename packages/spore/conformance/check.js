@@ -3,15 +3,18 @@
  *
  * The runtime's own claim is that the answer is what is on disk, so that is what is
  * checked: exact bytes in a named file, the stop reason in the `turns` view, a call in the
- * trail matched to its tool and target, a cell's spawn frame. A judge model would be slower, dearer and less
- * certain than reading the file the task named.
+ * trail matched to its tool and target, what the runner listed as handed back, a schedule's
+ * firing, a cell's spawn frame and the runner's count of cells. A judge model would be
+ * slower, dearer and less certain than reading the file the task named.
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { relative, resolve } from 'node:path'
 
 import { readTranscript, turnSummary } from '../src/core/spore-dir.js'
 import { callRuns, readCalls } from '../src/core/call-record.js'
+import { walk } from '../src/core/deliverables.js'
+import { readSchedules } from '../src/core/schedule.js'
 
 const matches = (value, expected) =>
   expected instanceof RegExp ? expected.test(value) : value === expected
@@ -41,7 +44,7 @@ const SHAPED = new Set(['tool', 'target', 'refused', 'failed'])
  * fails the case rather than passing it.
  */
 const made = (record, spec) => {
-  if (record.tool !== spec.tool) return false
+  if (!matches(record.tool, spec.tool)) return false
   if (spec.target && !spec.target.test(aimedAt(record))) return false
   if (spec.refused !== undefined && Boolean(record.refused) !== spec.refused) return false
   if (spec.failed !== undefined && (record.exit !== 0) !== spec.failed) return false
@@ -108,6 +111,26 @@ const lastAnswer = (ws, turn) => {
   return message ? message.content.trim() : ''
 }
 
+const dayIn = (ms, tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms)
+const timeIn = (ms, tz) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms)
+const daysAfter = (day, n) => {
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
+}
+
+/**
+ * A one-off schedule firing `days` after the day the turn started, at `at`, both read on the
+ * clock of `tz` — which is what "tomorrow at 9:00, Paris time" means wherever the run is. One
+ * firing, so an `at` schedule: a cron that fires that morning fires every year after it too.
+ */
+const firing = (ws, turn, { tz, days, at }) => {
+  const day = daysAfter(dayIn(Date.parse(turn.startedAt), tz), days)
+  const found = readSchedules(ws)
+  if (found.some(s => s.parsed.at && dayIn(Date.parse(s.parsed.at), tz) === day && timeIn(Date.parse(s.parsed.at), tz) === at)) return null
+  const said = found.map(s => `${s.name}: ${s.parsed.error ?? s.parsed.when}`).join(', ')
+  return `no schedule fires once on ${day} at ${at} ${tz} — ${said || 'schedules/ holds none'}`
+}
+
 /**
  * Returns the failed expectations, so an empty array is a pass and a report can say
  * what was wrong rather than only that something was.
@@ -132,6 +155,9 @@ export function grade (ws, item) {
   if (expect.answer && !matches(lastAnswer(ws, turn), expect.answer)) {
     problems.push(`answer did not match ${expect.answer} — got ${JSON.stringify(lastAnswer(ws, turn).slice(0, 60))}`)
   }
+  if (expect.answerNot && expect.answerNot.test(lastAnswer(ws, turn))) {
+    problems.push(`answer matched ${expect.answerNot}, which the case forbids — got ${JSON.stringify(lastAnswer(ws, turn).slice(0, 60))}`)
+  }
 
   for (const [path, wanted] of Object.entries(expect.files || {})) {
     const full = resolve(ws, path)
@@ -154,6 +180,32 @@ export function grade (ws, item) {
     }
   }
 
+  if (expect.uncalled) {
+    const used = callRecords(ws).filter(record => expect.uncalled.includes(record.tool))
+    if (used.length) problems.push(`the case wanted no ${expect.uncalled.join(', ')} call — ${used.map(summarise).join(', ')}`)
+  }
+
+  // A file whose name the model chooses: anywhere under the directory, any one that matches.
+  for (const [dir, wanted] of Object.entries(expect.under || {})) {
+    const found = walk(resolve(ws, dir))
+    if (!found.some(full => matches(readFileSync(full, 'utf8'), wanted))) {
+      problems.push(`nothing under ${dir} matched ${wanted} — ${found.length ? found.map(full => relative(ws, full)).join(', ') : 'it holds no file'}`)
+    }
+  }
+
+  // What the turn handed back is the runner's list in the turn record, not a file the
+  // agent says it made: the list is what a consumer receives.
+  for (const spec of expect.deliverables || []) {
+    const handed = turn.deliverables ?? []
+    const ok = handed.some(d => matches(d.path, spec.path) && (!spec.body || matches(readFileSync(resolve(ws, d.path), 'utf8'), spec.body)))
+    if (!ok) problems.push(`no deliverable at ${spec.path}${spec.body ? ` matching ${spec.body}` : ''} — ${handed.length ? handed.map(d => d.path).join(', ') : 'the turn handed back nothing'}`)
+  }
+
+  if (expect.fires) {
+    const missed = firing(ws, turn, expect.fires)
+    if (missed) problems.push(missed)
+  }
+
   for (const path of expect.absent || []) {
     if (existsSync(resolve(ws, path))) {
       problems.push(`${path} exists — the call the case forbids went through`)
@@ -167,13 +219,14 @@ export function grade (ws, item) {
     }
     // Frames alone are not proof: `spawn.json` lives under `data/`, and a confined shell
     // writes one happily, so a parent that does the work itself and writes the frames
-    // afterwards passes every file and frame check. The turn record is out of reach —
-    // the runner writes it, into a database the agent can read and never write.
-    // `ownMicros` is this loop's own spend and `treeMicros` the
-    // subtree's, so the difference is money a descendant spent through the broker, which
-    // only a cell that really ran can have spent.
-    if (!(turn.treeMicros > turn.ownMicros)) {
-      problems.push(`no child spend recorded (own ${turn.ownUsd}, tree ${turn.treeUsd}) — the cells did not run, whatever the frames say`)
+    // afterwards passes every file and frame check. The turn record is out of reach — the
+    // runner writes it, into a database the agent can read and never write — and its
+    // `byPrecursor` counts the cells of each precursor that called the model through the
+    // broker. A count rather than spend, since a call on an unmetered route such as
+    // `chatgpt/`, or on a free model, records 0.
+    const ran = turn.byPrecursor?.[item.precursor]?.cells ?? 0
+    if (ran < expect.cells) {
+      problems.push(`the runner served ${ran} ${item.precursor} cells, wanted ${expect.cells} — the cells did not run, whatever the frames say`)
     }
   }
 

@@ -12,7 +12,7 @@
 //! for it, and is counted there: nothing spore does stops a call, and the
 //! turn that made it pays for all of it. Only the host's call ceiling cuts one.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::Infallible;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -43,6 +43,8 @@ pub const CALLER_HEADER: &str = "x-spore-caller";
 pub const ROOT_CALLER: &str = "root";
 /// A cell's calls name its precursor after this, so a precursor called `root` is still a cell's.
 pub const PRECURSOR_CALLER: &str = "precursor:";
+/// A cell's calls also name the cell, so the turn can say how many cells of each precursor ran.
+pub const CELL_HEADER: &str = "x-spore-cell";
 /// The call's `callId` again, since the envelope reaches the gate unread.
 pub const MODEL_CALL_HEADER: &str = "x-spore-model-call";
 /// The `authId` spore's model client sends, and what the embedded pool aborts by.
@@ -59,14 +61,14 @@ struct Ledger {
     own: f64,
     own_rounds: u64,
     cut: u64,
-    by_precursor: BTreeMap<String, (f64, u64)>,
+    by_precursor: BTreeMap<String, (f64, u64, BTreeSet<String>)>,
 }
 
 /// Who a call says made it: the root agent, a cell of a named precursor, or nobody — a program
 /// of the agent's own, an embedding for memory. Self-reported, as accounting inside one tree is.
 enum Caller {
     Own,
-    Precursor(String),
+    Precursor { name: String, cell: Option<String> },
     Unnamed,
 }
 
@@ -127,7 +129,10 @@ fn caller(req: &Request<Incoming>) -> Caller {
     match header(req, CALLER_HEADER) {
         Some(named) if named == ROOT_CALLER => Caller::Own,
         Some(named) => match named.strip_prefix(PRECURSOR_CALLER) {
-            Some(precursor) if !precursor.is_empty() => Caller::Precursor(precursor.to_string()),
+            Some(precursor) if !precursor.is_empty() => Caller::Precursor {
+                name: precursor.to_string(),
+                cell: header(req, CELL_HEADER).filter(|cell| !cell.is_empty()),
+            },
             _ => Caller::Unnamed,
         },
         None => Caller::Unnamed,
@@ -164,7 +169,13 @@ impl Model {
             own_rounds: ledger.own_rounds,
             child_rounds: ledger.rounds - ledger.own_rounds,
             cut: ledger.cut,
-            by_precursor: ledger.by_precursor.clone(),
+            by_precursor: ledger
+                .by_precursor
+                .iter()
+                .map(|(name, (spend, rounds, cells))| {
+                    (name.clone(), (*spend, *rounds, cells.len() as u64))
+                })
+                .collect(),
         }
     }
 
@@ -513,10 +524,11 @@ impl Model {
                 ledger.own += cost;
                 ledger.own_rounds += u64::from(round);
             }
-            Caller::Precursor(name) => {
+            Caller::Precursor { name, cell } => {
                 let share = ledger.by_precursor.entry(name.clone()).or_default();
                 share.0 += cost;
                 share.1 += u64::from(round);
+                share.2.extend(cell.clone());
             }
             Caller::Unnamed => {}
         }
@@ -888,9 +900,21 @@ mod tests {
             br#"{"type":"done","result":{"status":"completed","cost":0.25}}"#,
             &Caller::Own,
         );
+        let cell = |cell: &str| Caller::Precursor {
+            name: "summarize".into(),
+            cell: Some(cell.into()),
+        };
         m.observe(
             br#"{"type":"done","result":{"status":"tool_use","cost":0.5}}"#,
-            &Caller::Precursor("summarize".into()),
+            &cell("a"),
+        );
+        m.observe(
+            br#"{"type":"done","result":{"status":"completed","cost":0}}"#,
+            &cell("a"),
+        );
+        m.observe(
+            br#"{"type":"done","result":{"status":"completed","cost":0}}"#,
+            &cell("b"),
         );
         m.count(0.125, false, &Caller::Unnamed);
         assert_eq!(
@@ -899,9 +923,11 @@ mod tests {
                 own: 0.25,
                 tree: 0.875,
                 own_rounds: 1,
-                child_rounds: 1,
+                child_rounds: 3,
                 cut: 0,
-                by_precursor: [("summarize".to_string(), (0.5, 1))].into_iter().collect(),
+                by_precursor: [("summarize".to_string(), (0.5, 3, 2))]
+                    .into_iter()
+                    .collect(),
             }
         );
     }

@@ -11,13 +11,15 @@
  */
 
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import minimist from 'minimist'
 
 import { version } from '../src/index.js'
 import { runBatch } from '../src/core/batch.js'
+import { send } from '../src/core/send.js'
 import { turnSummary } from '../src/core/spore-dir.js'
 import { stateOf, stop } from '../src/core/state.js'
 import { openWorkspace } from '../src/core/workspace.js'
@@ -29,11 +31,12 @@ import { grade } from './check.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
+const RUNS = join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'spore', 'conformance')
 
 const argv = minimist(process.argv.slice(2), {
   string: ['ws', 'only'],
   boolean: ['help'],
-  default: { concurrency: 8, ws: resolve(ROOT, '..', 'tmp', 'conformance') },
+  default: { concurrency: 8, ws: RUNS },
   alias: { h: 'help' }
 })
 
@@ -43,7 +46,7 @@ if (argv.help) {
   npm run test:model                   every case
   npm run test:model -- --only core    one tier: ${TIERS.join(', ')}
   npm run test:model -- --only fanout  one case
-  npm run test:model -- --ws <dir>     where runs are kept (default ../tmp/conformance)
+  npm run test:model -- --ws <dir>     where runs are kept (default ${RUNS})
 
 Each run gets its own directory under --ws, named for when it ran and what it ran on,
 with "latest" pointing at the newest. Nothing is deleted: comparing two models, or the
@@ -87,11 +90,17 @@ const runs = wanted.map(item => {
   const { ws, cmk } = stage(RUN_DIR, item, process.env.MODEL)
   const opened = openWorkspace(ws, { definition: cmk })
   if (opened.error) fail(`${item.id}: ${opened.error}`)
-  return { ws, messages: [item.prompt], label: item.id, id: ws }
+  return { ws, messages: item.messages ?? [item.prompt], label: item.id, id: ws, schedule: item.schedule }
 })
+const scheduleOf = new Map(runs.filter(run => run.schedule).map(run => [run.ws, run.schedule]))
+
+// A case the clock speaks in is delivered as `tick` delivers a due schedule.
+const deliver = (ws, message, options) => scheduleOf.has(ws)
+  ? send(ws, message, { ...options, schedule: { name: scheduleOf.get(ws), due: new Date().toISOString() } })
+  : send(ws, message, options)
 
 process.stderr.write(`running ${wanted.length} cases at width ${argv.concurrency}\n`)
-const { stuck: left } = await runBatch(runs, { atOnce: Number(argv.concurrency), deadline, wait: sleep })
+const { stuck: left } = await runBatch(runs, { atOnce: Number(argv.concurrency), deadline, deliver, wait: sleep })
 const stuck = left.map(run => run.label)
 for (const run of left) {
   process.stderr.write(`test:model: ${run.label} never finished — stopping it and grading what it left\n`)

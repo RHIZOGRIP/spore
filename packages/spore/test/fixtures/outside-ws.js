@@ -9,19 +9,11 @@
  */
 
 import { writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 
-import { definitionWith, outsideRoot as outsideRootIn } from '../../src/testing.js'
+import { definitionWith, outsideRoot } from '../../src/testing.js'
 
-// Beside the checkout rather than under it, which is where this repo already puts
-// workspaces that have to be outside both. `$HOME` looks like the obvious answer and
-// is not: it is commonly mounted `noexec`, and a precursor's enzyme is a program
-// the enzyme broker has to be able to run.
-const base = () => process.env.SPORE_TEST_DIR ||
-  resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../tmp/spore-tests')
-
-export const outsideRoot = (name) => outsideRootIn(name, base())
+export { outsideRoot }
 
 /** A definition with the `auth` a gate needs, which a host without one never reads. */
 export const withAuth = (source) => source.replace(/^---\n/, '---\nauth: tests\n')

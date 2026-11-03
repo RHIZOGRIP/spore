@@ -222,6 +222,6 @@ describe('a turn that ends while a detached cell\'s call runs', () => {
     expect(turn.ownMicros).toBe(10000)
     expect(turn.treeMicros).toBe(80000)
     expect(turn.workUnitsChildren).toBe(1)
-    expect(turn.byPrecursor).toEqual({ summarize: { micros: 70000, rounds: 1 } })
+    expect(turn.byPrecursor).toEqual({ summarize: { micros: 70000, rounds: 1, cells: 1 } })
   })
 })

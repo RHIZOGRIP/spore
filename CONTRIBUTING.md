@@ -163,7 +163,8 @@ suite through the package config, never a bare `vitest` from somewhere it is not
 machine's `~/.config/spore` is the user's.
 
 Tests that run a turn need a workspace the sandbox does not refuse, which excludes `test/` and `/tmp`.
-They use `../tmp/spore-tests` beside the checkout, or `$SPORE_TEST_DIR`, and it must allow execution.
+They use `$SPORE_TEST_DIR`, or `spore/tests` in the user's state directory (`$XDG_STATE_HOME`, or
+`~/.local/state`), and it must allow execution: on a home mounted `noexec`, set `$SPORE_TEST_DIR`.
 
 ### Conventions
 

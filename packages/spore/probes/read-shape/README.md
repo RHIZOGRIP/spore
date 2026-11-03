@@ -30,10 +30,11 @@ line endings, trailing spaces and no final newline, and French text.
 node probes/read-shape/run.js --dry
 node probes/read-shape/run.js --show settings.ini:quote:0
 node probes/read-shape/run.js --models openai/gpt-6-luna,anthropic/claude-sonnet-5-5
-node probes/read-shape/run.js --report ../tmp/read-shape/<run>
+node probes/read-shape/run.js --report ~/.local/state/spore/read-shape/<run>
 ```
 
 Calls go through mohdel's in-process factory, with its catalog and keys, and cost money. Each
-run is kept in its own directory with `run.json` and every answer in `results.jsonl`. The report
+run is kept in its own directory under `$XDG_STATE_HOME/spore/read-shape` (`~/.local/state` when unset,
+`--out` to choose), with `run.json` and every answer in `results.jsonl`. The report
 compares arms item by item: for each pair, the items only one of them got right, and a sign
 test on that split. `test/read-shape-probe.test.js` checks the items and the grader offline.

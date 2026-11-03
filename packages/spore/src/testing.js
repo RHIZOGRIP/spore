@@ -7,7 +7,8 @@
  */
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
 
 import { grantedPathContaining } from './isolation/sandbox.js'
 import { DEFAULT_DEFINITION_PATH } from './core/sporangia.js'
@@ -21,13 +22,17 @@ export { appendTurn, acquireLock, releaseLock, writeTranscriptEntries, writeTurn
  */
 export const definitionWith = (model) => filledIn(readFileSync(DEFAULT_DEFINITION_PATH, 'utf8'), { model, plugins: [] })
 
+// Read once, at import: a suite gives each test file an `XDG_STATE_HOME` of its own afterwards.
+const TESTS_DIR = join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'spore', 'tests')
+
 /**
  * A fresh directory under `base` that no sandbox grant covers, as a cell's workspace must be:
- * `/tmp` is granted and spore's checkout is the runtime's tree. Refused loudly rather than
- * skipped, since a confinement test run somewhere already open tests nothing.
+ * `/tmp` is granted and spore's checkout is the runtime's tree. `base` is `$SPORE_TEST_DIR`, or
+ * `spore/tests` in the user's state directory, beside the cells spore keeps there; it must allow
+ * execution, since an enzyme is a program the broker runs. Refused loudly rather than skipped,
+ * since a confinement test run somewhere already open tests nothing.
  */
-export function outsideRoot (name, base = process.env.SPORE_TEST_DIR) {
-  if (!base) throw new Error('outsideRoot needs a directory outside spore\'s checkout and outside /tmp — set SPORE_TEST_DIR or pass one')
+export function outsideRoot (name, base = process.env.SPORE_TEST_DIR || TESTS_DIR) {
   mkdirSync(base, { recursive: true })
   const dir = mkdtempSync(resolve(base, name + '-'))
   const granted = grantedPathContaining(dir)

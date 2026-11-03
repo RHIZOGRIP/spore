@@ -1,22 +1,48 @@
 /**
  * Laying out one case: its fixtures, its precursor, and an identity granting only the
  * tools the case is about — a tool it does not name is a tool it cannot accidentally
- * pass with.
+ * pass with. A case of the identity tier gets a shipped sporangium instead, laid out as
+ * `spore define` lays it out, so what it grades is the prompt spore ships.
  *
  * Separate from the runner so the whole layout can be checked without calling a model.
  */
 
-import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { filledIn } from '../src/delegation/definition.js'
+import { DEFINITION_FILE } from '../src/core/spore-dir.js'
+import { recordSporangium, sporangiumTree } from '../src/core/sporangia.js'
 import { caseLimits } from './cases.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+const BOUNDED = ['rounds', 'cost', 'wall']
+
+const bounded = (source, limits) => {
+  const end = source.indexOf('\n---', 3)
+  const head = source.slice(0, end).split('\n')
+  for (const key of BOUNDED) {
+    const at = head.findIndex((line, i) => i > 0 && line.startsWith(`${key}:`))
+    if (at < 0) throw new Error(`the shipped identity has no ${key} line for the case to bound`)
+    head[at] = `${key}: [${limits[key].join(', ')}]`
+  }
+  return head.join('\n') + source.slice(end)
+}
 
 export function stage (root, item, model, limits = caseLimits(item)) {
   const ws = resolve(root, 'cases', item.id)
   mkdirSync(resolve(ws, 'data'), { recursive: true })
+
+  const shipped = item.identity ? sporangiumTree(item.identity) : null
+  if (shipped) {
+    recordSporangium(ws, item.identity)
+    for (const [file, from] of shipped) {
+      if (file === DEFINITION_FILE) continue
+      mkdirSync(dirname(resolve(ws, file)), { recursive: true })
+      copyFileSync(from, resolve(ws, file))
+    }
+  }
 
   for (const [path, body] of Object.entries(item.files || {})) {
     mkdirSync(dirname(resolve(ws, path)), { recursive: true })
@@ -37,9 +63,16 @@ export function stage (root, item, model, limits = caseLimits(item)) {
     chmodSync(dest, 0o755)
   }
 
+  const cmk = resolve(root, `${item.id}.cmk`)
+  if (shipped) {
+    // The run's model and the case's limits, so a run stays as cheap and as bounded as
+    // the rest; the tools and the body stay as shipped.
+    writeFileSync(cmk, bounded(filledIn(readFileSync(shipped.get(DEFINITION_FILE), 'utf8'), { model, plugins: [] }), limits))
+    return { ws, cmk }
+  }
+
   // One identity per case, granting only what the case is about: a tool the case does
   // not name is a tool it cannot accidentally pass with.
-  const cmk = resolve(root, `${item.id}.cmk`)
   writeFileSync(cmk, [
     '---',
     `name: ${item.id}`,

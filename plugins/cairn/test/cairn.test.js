@@ -17,7 +17,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SPORE = dirname(createRequire(join(ROOT, 'package.json')).resolve('@rhizogrip/spore/package.json'))
 const SOURCE_BIN = join(SPORE, 'bin', 'source.js')
 const SQL_BIN = join(SPORE, 'bin', 'sql.js')
-const OUTSIDE = process.env.SPORE_TEST_DIR || resolve(ROOT, '../../../tmp/spore-tests')
 
 const INSTANCE = {
   members: { alice: 'writer', bob: 'writer' },
@@ -168,7 +167,7 @@ describe('the cairn service', () => {
   let configFile
 
   beforeEach(() => {
-    dir = outsideRoot('cairn', OUTSIDE)
+    dir = outsideRoot('cairn')
     root = join(dir, 'root')
     const config = join(dir, 'config', 'spore')
     configFile = join(config, 'config.json')

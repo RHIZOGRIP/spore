@@ -2133,9 +2133,9 @@ fn finalize_row(
                     json!(settled
                         .by_precursor
                         .iter()
-                        .map(|(name, (spend, rounds))| (
+                        .map(|(name, (spend, rounds, cells))| (
                             name.clone(),
-                            json!({ "micros": crate::micros(*spend), "rounds": rounds })
+                            json!({ "micros": crate::micros(*spend), "rounds": rounds, "cells": cells })
                         ))
                         .collect::<serde_json::Map<String, Value>>())
                     .to_string()
@@ -3883,7 +3883,7 @@ mod tests {
             own_rounds: 2,
             child_rounds: 3,
             cut: 1,
-            by_precursor: [("summarize".to_string(), (0.015, 3))]
+            by_precursor: [("summarize".to_string(), (0.015, 3, 2))]
                 .into_iter()
                 .collect(),
         };
@@ -3900,7 +3900,7 @@ mod tests {
         );
         assert_eq!(
             serde_json::from_str::<Value>(done["byPrecursor"].as_str().unwrap()).unwrap(),
-            json!({ "summarize": { "micros": 15000, "rounds": 3 } })
+            json!({ "summarize": { "micros": 15000, "rounds": 3, "cells": 2 } })
         );
         assert_eq!(
             (

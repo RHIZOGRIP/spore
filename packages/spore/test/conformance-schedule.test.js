@@ -26,6 +26,12 @@ describe('how long a run is given', () => {
     const roomy = runDeadline([{ wall: '20m' }], { concurrency: 8, limitsOf, now: 0 })
     expect(roomy - tight).toBe(18 * 60_000)
   })
+
+  it('gives a case that sends several messages a wall for each, since they run one after another', () => {
+    const one = runDeadline([{ wall: '5m' }], { concurrency: 8, limitsOf, now: 0, slackMs: 0 })
+    const two = runDeadline([{ wall: '5m', messages: ['a', 'b'] }], { concurrency: 8, limitsOf, now: 0, slackMs: 0 })
+    expect(two).toBe(2 * one)
+  })
 })
 
 describe('where a run is kept', () => {

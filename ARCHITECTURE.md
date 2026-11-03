@@ -2712,10 +2712,12 @@ in `rust/workspace` and read only at those steps: each ends in one final turn, o
 and the inbox where it should be.
 
 **The root agent's share is counted where the calls go.** The agent's model client marks its
-own calls (`x-spore-caller: root`) and a cell's mark its precursor (`precursor:<name>`), and the
-runner keeps each beside the tree's total; `/spore/spend` returns the tree and the root's share,
-and the agent's `ledger.children` is the difference. Settling writes each precursor's spend and
-rounds into the turn as `byPrecursor`; what no call named — a program of the agent's own using
+own calls (`x-spore-caller: root`) and a cell's mark its precursor (`precursor:<name>`) and the
+cell itself (`x-spore-cell`, a hash of its workspace), and the runner keeps each beside the tree's
+total; `/spore/spend` returns the tree and the root's share, and the agent's `ledger.children` is
+the difference. Settling writes each precursor's spend, rounds and the number of its cells that
+made a call into the turn as `byPrecursor` — the count a delegation is checked by where calls cost
+nothing, as `chatgpt/` and free models do; what no call named — a program of the agent's own using
 the socket, an embedding for memory — stays in the tree and in nobody's share. The marks are
 self-reported, which is right for accounting inside one tree and would not be for a limit.
 

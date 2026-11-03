@@ -1323,9 +1323,9 @@ pub struct Settled {
     pub own_rounds: u64,
     pub child_rounds: u64,
     pub cut: u64,
-    /// Each precursor's spend and rounds, as its cells marked their calls: `tree` less `own` less
-    /// these is what no caller named.
-    pub by_precursor: BTreeMap<String, (f64, u64)>,
+    /// Each precursor's spend, rounds and cells, as its cells marked their calls: `tree` less
+    /// `own` less these is what no caller named.
+    pub by_precursor: BTreeMap<String, (f64, u64, u64)>,
 }
 
 /// Now, as ECMAScript's `toISOString` writes it: `2026-09-25T12:34:56.789Z`.

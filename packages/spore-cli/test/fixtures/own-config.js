@@ -9,8 +9,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll } from 'vitest'
 
+import { outsideRoot } from '@rhizogrip/spore/testing'
+
 const config = mkdtempSync(join(tmpdir(), 'spore-cli-config-'))
-const state = mkdtempSync(join(tmpdir(), 'spore-cli-state-'))
+const state = outsideRoot('state')
 process.env.XDG_CONFIG_HOME = config
 process.env.XDG_STATE_HOME = state
 

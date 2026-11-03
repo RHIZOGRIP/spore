@@ -2,6 +2,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { homedir } from 'node:os'
 
 import minimist from 'minimist'
 import mohdel from 'mohdel'
@@ -12,13 +13,14 @@ import { ARMS, CORPUS, SHAPED, TASKS, asking, buildItems, choiceOf, conversation
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..', '..')
+const RUNS = join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'spore', 'read-shape')
 const RESULTS = 'results.jsonl'
 const MANIFEST = 'run.json'
 
 const argv = minimist(process.argv.slice(2), {
   string: ['models', 'effort', 'tasks', 'arms', 'out', 'report', 'show'],
   boolean: ['help', 'dry'],
-  default: { 'per-file': 5, seed: 1, concurrency: 6, 'max-cost': 5, effort: 'low', tasks: TASKS.join(','), arms: ARMS.join(','), out: resolve(ROOT, '..', 'tmp', 'read-shape') },
+  default: { 'per-file': 5, seed: 1, concurrency: 6, 'max-cost': 5, effort: 'low', tasks: TASKS.join(','), arms: ARMS.join(','), out: RUNS },
   alias: { h: 'help' }
 })
 
@@ -36,7 +38,7 @@ const usage = `read-shape — does the shape of read's result change what a mode
   --concurrency N  calls in flight (default 6)
   --max-cost D     no call starts once this many dollars are spent (default 5)
   --seed N         which items are drawn (default 1)
-  --out DIR        where runs are kept (default ../tmp/read-shape)
+  --out DIR        where runs are kept (default ${RUNS})
 
 Every item is asked in every arm, so arms are compared item by item. Calls go through
 mohdel's in-process factory, with its catalog and keys.`

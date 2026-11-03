@@ -122,6 +122,13 @@ describe('wsexec under the call contract', () => {
     expect(await exec({ command: 'echo x', out: 'data/.hidden/o.txt' })).toMatch(/dotfile/)
   })
 
+  it('refuses an absolute in by saying that leaving it out is no input, which it is', async () => {
+    expect(await wsexec({ command: 'cat', in: '/dev/null' })).toMatch(/without in, stdin is already empty, so leave it out/)
+    const meta = JSON.parse(await wsexec({ command: 'cat', out: 'data/stdin.txt' }))
+    expect(meta.exit).toBe(0)
+    expect(readFileSync(resolve(WS, 'data/stdin.txt'), 'utf8')).toBe('')
+  })
+
   // The pattern blacklist that used to sit here refused `grep -n 'shutdown' manual.md`
   // and `node halt-analysis.js`, and stopped nothing the kernel does not already stop:
   // the root is a read path, `exec` runs read-only, and rebooting needs a capability an
