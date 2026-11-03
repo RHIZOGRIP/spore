@@ -239,7 +239,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
     if (res.status === 'incomplete') {
       throw new SporeError('the model stopped before finishing its reply', {
         type: 'MODEL_REPLY_INCOMPLETE',
-        detail: `round ${i}${res.warning ? `: ${res.warning}` : ''}`
+        detail: `round ${i}${res.warning ? `: ${res.warning}` : ''}${res.warningDetail ? ` (${res.warningDetail})` : ''}`
       })
     }
     const calling = res.status === 'tool_use'

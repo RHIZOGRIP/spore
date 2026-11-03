@@ -1140,8 +1140,8 @@ dependencies = [
 
 [[package]]
 name = "mohdel-client"
-version = "4.6.0"
-source = "git+https://github.com/clbrge/mohdel?tag=v4.6.0#1f04f5c703eddf2e506ac8cdfa63b5b6cc67ccef"
+version = "4.7.0"
+source = "git+https://github.com/clbrge/mohdel?tag=v4.7.0#05bef377d03f45f0b6025454f669ce3a7c85b49c"
 dependencies = [
  "async-trait",
  "futures",
@@ -1153,8 +1153,8 @@ dependencies = [
 
 [[package]]
 name = "mohdel-protocol"
-version = "4.6.0"
-source = "git+https://github.com/clbrge/mohdel?tag=v4.6.0#1f04f5c703eddf2e506ac8cdfa63b5b6cc67ccef"
+version = "4.7.0"
+source = "git+https://github.com/clbrge/mohdel?tag=v4.7.0#05bef377d03f45f0b6025454f669ce3a7c85b49c"
 dependencies = [
  "indexmap 2.11.4",
  "serde",
@@ -1164,8 +1164,8 @@ dependencies = [
 
 [[package]]
 name = "mohdel-thin-gate"
-version = "4.6.0"
-source = "git+https://github.com/clbrge/mohdel?tag=v4.6.0#1f04f5c703eddf2e506ac8cdfa63b5b6cc67ccef"
+version = "4.7.0"
+source = "git+https://github.com/clbrge/mohdel?tag=v4.7.0#05bef377d03f45f0b6025454f669ce3a7c85b49c"
 dependencies = [
  "async-trait",
  "bytes",

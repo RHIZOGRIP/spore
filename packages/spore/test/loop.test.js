@@ -394,6 +394,15 @@ describe('tool loop', () => {
       .rejects.toMatchObject({ type: 'MODEL_REPLY_INCOMPLETE', detail: 'round 0: insufficientOutputBudget' })
   })
 
+  it('never runs a tool call from a reply the provider stopped, and says why it stopped', async () => {
+    const ran = []
+    const toolFns = { ...makeToolFns(), echo: ({ text }) => { ran.push(text); return text } }
+    const refused = { status: 'incomplete', output: null, warning: 'contentBlocked', warningDetail: 'frontier_llm', toolCalls: [{ id: 'c1', name: 'echo', arguments: { text: 'x' } }] }
+    await expect(run({ model: mockModel([refused]), toolFns, limits: { rounds: { soft: 5, hard: 9 } } }))
+      .rejects.toMatchObject({ type: 'MODEL_REPLY_INCOMPLETE', detail: 'round 0: contentBlocked (frontier_llm)' })
+    expect(ran).toEqual([])
+  })
+
   it('never drops tool calls a reply carries, whatever its status says', async () => {
     const ran = []
     const toolFns = { ...makeToolFns(), echo: ({ text }) => { ran.push(text); return text } }

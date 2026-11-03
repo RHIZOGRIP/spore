@@ -18,6 +18,13 @@ All notable changes to this project are documented here. Format follows
   which an agent read as a field of its own and wrote `at: 2026-11-04T09:00:00+01:00`, a schedule
   that never parses and so never fires. It now shows the one-off form, `when: at <instant>`, says
   there is no `at:` field.
+- mohdel 4.7.0, on both the npm and the Cargo side. A reply Anthropic's safety classifiers refused
+  came back as a finished one, so a turn ended in `MODEL_REPLY_INCONSISTENT` when the refusal
+  followed a streamed tool call, or took three empty replies for its answer when it came first. A
+  refused reply is now `incomplete`, and the turn ends in `MODEL_REPLY_INCOMPLETE` with the reason
+  in its detail, such as `round 2: contentBlocked (frontier_llm)`: the warning, then the
+  provider's own reason when it gives one. The same holds for a content filter on OpenRouter and
+  the other chat-completions providers, and for Gemini's safety stops.
 
 ### Added
 
