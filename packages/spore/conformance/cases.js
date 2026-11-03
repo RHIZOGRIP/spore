@@ -387,6 +387,7 @@ export const CASES = [
     feature: 'a schedule written within its grant',
     grants: ['read', 'write'],
     definition: ['schedules: [1, 1h]'],
+    files: { 'data/queue.txt': '' },
     // The format is in reference.md and nowhere in the prompt: what is checked is that a
     // model can find it and write a file the pass would fire, not that it can copy one.
     prompt: 'Schedule yourself to check data/queue.txt every weekday at 09:00, Paris time. reference.md says how a schedule is written; name this one queue. Then reply with the word done.',

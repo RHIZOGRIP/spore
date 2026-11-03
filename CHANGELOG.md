@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.54.1] — Changed: the conformance `schedule` case stages the file its prompt names
+
+### Changed
+
+- The conformance `schedule` case stages `data/queue.txt`, the file its prompt schedules a check
+  of. A model that looked at it before writing the schedule read a file that did not exist, and
+  that failed read counted toward the five that wrap a turn at `soft:progress`. The case's digest
+  changes, so its results are not comparable with earlier runs.
+
 ## [1.54.0] — Fixed: a reply the provider refused ends the turn and says why, instead of passing for an answer
 
 ### Fixed
