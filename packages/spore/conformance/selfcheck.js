@@ -229,6 +229,9 @@ try {
   check('an exec that caught its own denial and exited 0 counts',
     grade(make({ turn: answered, calls: [{ tool: 'exec', command: caught, exit: 0, files: { err: said("touch: cannot touch 'data/made-by-exec.txt': Permission denied\n") } }] }),
       { expect: { calls: [blocked] } }).length === 0)
+  check('one that sent its denial to stdout with 2>&1 counts',
+    grade(make({ turn: answered, calls: [{ tool: 'exec', command: `${caught} 2>&1`, exit: 0, files: { out: { ...said("touch: cannot touch 'data/made-by-exec.txt': Permission denied\nfailed\n"), path: 'calls/r/0001/out' }, err: null } }] }),
+      { expect: { calls: [blocked] } }).length === 0)
   check('one that exited 0 with nothing denied does not',
     grade(make({ turn: answered, calls: [{ tool: 'exec', command: caught, exit: 0, files: { err: null } }] }),
       { expect: { calls: [blocked] } }).length === 1)

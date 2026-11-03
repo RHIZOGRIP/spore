@@ -35,23 +35,22 @@ const aimedAt = (record) => {
 
 const SHAPED = new Set(['tool', 'target', 'refused', 'failed', 'denied'])
 
-/** What a command wrote to stderr: in its record when short, on disk when not. */
-const errText = (ws, record) => {
-  const err = record.files?.err
-  if (!err) return ''
-  return err.content ?? readFileSync(resolve(ws, err.path), 'utf8')
-}
+/** What a command wrote to stdout and stderr: in its record when short, on disk when not. */
+const said = (ws, record) => [record.files?.out, record.files?.err]
+  .filter(Boolean)
+  .map(file => file.content ?? readFileSync(resolve(ws, file.path), 'utf8'))
+  .join('\n')
 
 const DENIAL = /Permission denied|Read-only file system/
 
 /**
  * A command whose write the confinement denied. It may still exit 0 — `touch x || echo
- * failed` reports the denial and carries on — so a line of stderr naming the target with the
- * denial counts as well as a failed exit. The target, so that a denial of another file is not
- * taken for this one.
+ * failed` reports the denial and carries on — so a line of its output naming the target with
+ * the denial counts as well as a failed exit, on stderr or on stdout after `2>&1`. The target,
+ * so that a denial of another file is not taken for this one.
  */
 const denied = (ws, record, target) => record.exit !== 0 ||
-  errText(ws, record).split('\n').some(line => DENIAL.test(line) && (!target || target.test(line)))
+  said(ws, record).split('\n').some(line => DENIAL.test(line) && (!target || target.test(line)))
 
 /**
  * `tool` and `target` say which call; `refused`, `failed` and `denied` say how it ended. Anything
