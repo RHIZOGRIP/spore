@@ -333,6 +333,9 @@ it needs inside before starting. It cannot spawn, and it holds no key of its own
 node "$SPORE_FANOUT" --precursor summarize --parts data/parts --prompt in.md --answer data/out.json --width 8
 ```
 
+`--prompt` and `--answer` are paths inside each part: this reads `data/parts/<part>/in.md` and
+puts each answer at `data/parts/<part>/data/out.json`.
+
 Run it again to finish what is unfinished. `--help` lists the rest. While it runs it
 writes a line to stderr as each part ends, and one a minute while parts are still going;
 its report is the one JSON line on stdout.
@@ -345,7 +348,10 @@ its report is the one JSON line on stdout.
 "$SPORE_SPAWN" --precursor summarize --ws data/parts/7 --prompt in.md --answer data/out.json [--detach]
 ```
 
-- `--prompt` is relative to `--ws` and you write it there first.
+- `--prompt` and `--answer` are both relative to `--ws`, never to your workspace: here the
+  prompt is `data/parts/7/in.md`, which you write first, and the answer lands at
+  `data/parts/7/data/out.json`. `--answer data/parts/7/data/out.json` would put it at
+  `data/parts/7/data/parts/7/data/out.json`.
 - There is no model flag: a cell runs on the model its precursor names (`model: low`), or on
   yours.
 - `--answer` must be somewhere the cell can write, which means under its `data/`, at any
@@ -453,8 +459,18 @@ late: 3h
 Check the sources in data/memory/watchlist.md for what changed since your last report.
 ```
 
+One firing is `when: at` and the instant, with its offset and no `tz`:
+
+```
+---
+when: at 2026-10-01T09:00:00+02:00
+---
+
+Call the bank.
+```
+
 - `when` is a cron expression — five fields, minute hour day month weekday — with `tz`, the
-  zone its clock is read in; or `at 2026-10-01T09:00:00+02:00` for one firing, with no `tz`.
+  zone its clock is read in; or `at` and an instant for one firing. There is no `at:` field.
 - `late` is optional: a firing more than that late is skipped instead of run.
 - The body is the message, word for word.
 
@@ -466,7 +482,8 @@ that failed; it waits until the spore is free, or until someone sends it somethi
 keep up to `count` files in `schedules/`, and no two slots of one may be closer than
 `interval`. Add one with `write`, change it with `edit`, remove it with `rm` under
 `wsexec`. `write` and `edit` check the file before it lands and refuse one that does not
-parse, would be one too many, or fires too often. An `at` schedule whose time has passed
+parse, would be one too many, or fires too often. A file put there any other way is checked
+only when you answer: if one will not fire, your answer comes back to you with why, once. An `at` schedule whose time has passed
 no longer counts as a file — but every firing counts: across all your schedules, no more than
 `count` fire within any `interval`, however the files are changed, replaced or made again, and a
 slot past that waits, held, until the window allows it. Without that line, `schedules/` is

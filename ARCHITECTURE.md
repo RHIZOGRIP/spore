@@ -1492,7 +1492,8 @@ under `spore` and back again.
 and the gate refuses a field its `Message` does not define. Spore's own facts sit beside it:
 `at`, and `marks` for what the message is to spore. In memory the marks live in a side table
 keyed by the message object (`src/core/marks.js`): `wrap` for the notice a soft limit adds,
-`compacted` for the summary that replaces a compacted head, `context-notice` for recovery's note
+`compacted` for the summary that replaces a compacted head, `schedule-notice` for the note that a
+schedule the turn wrote will not fire, `context-notice` for recovery's note
 after a drop — which lives only in the turn that made it, never written to the transcript — and `refused` and `record` (§One reading of what a call did).
 
 **The transcript is replayed; the trail is not.** The agent reads both and can rewrite neither
@@ -1605,7 +1606,13 @@ slots over the coming year — `*/5 9 * * *` fires in one hour of the day and is
 apart. `write` and `edit` check the file as it would be against the directory as it would stand,
 and refuse in the call that made the mistake. `wsexec` and a hand edit go around them, so the
 pass checks again and holds what breaks the grant, saying which file and why; nothing fires in
-its place. **The grant is also counted on what fired**: across every schedule, at most `count`
+its place. The turn that went around them is told before its answer goes out: when the model
+answers, `loop()` makes the same check on every schedule changed since the turn began, the count
+aside, and on a refusal hands the answer back with a note naming each file and why
+(`schedule-notice`), once a turn. An agent that wrote `at: …` for `when: at …` had told its user
+it would remind them, and the schedule could never fire; the turn is the one that can still fix
+the file or take the promise back. Each refusal found is a `schedule_refused` event, `answered`
+true when the answer went out with it standing. **The grant is also counted on what fired**: across every schedule, at most `count`
 firings within any `interval`, read from the inbox, which holds every firing. A slot past the window
 is held, saying so, and fires once the window allows. Without the line, `schedules/` is a read path
 to the agent and its operator's to write, and nothing is counted. `fork` and `--from` carry no

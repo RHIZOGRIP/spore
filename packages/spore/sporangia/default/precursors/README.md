@@ -7,6 +7,9 @@ is the name you spawn it by:
 "$SPORE_SPAWN" --precursor summarize --ws data/parts/1 --prompt in.md --answer data/out.json
 ```
 
+`--prompt` and `--answer` are relative to `--ws`: this reads `data/parts/1/in.md` and puts the
+answer at `data/parts/1/data/out.json`.
+
 **A sub-agent answers; it does not write the answer file.** `--answer` names where *you*
 want the result, and the runtime puts the sub-agent's reply there when the turn ends. So
 a precursor body says what to reply with — "return one object", "say plainly" — and never

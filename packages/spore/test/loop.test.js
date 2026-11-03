@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loopOf } from './fixtures/collaborators.js'
-import { WRAP, marked } from '../src/core/marks.js'
+import { SCHEDULE_NOTICE, WRAP, marked } from '../src/core/marks.js'
 import { textOf } from '../src/core/message.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -166,6 +166,59 @@ describe('tool loop', () => {
     // user → (empty turn placeholder + nudge) → recovered answer
     expect(m.calls).toHaveLength(2)
     expect(res.messages.some(msg => msg.role === 'user' && /empty/i.test(msg.content))).toBe(true)
+  })
+
+  describe('an answer while a schedule written this turn will not fire', () => {
+    const refusal = { name: 'call-bank', why: 'unknown field "at" — a schedule takes when, tz, late' }
+    const watched = () => {
+      const seen = []
+      return { seen, emitter: { emit: (event, data) => { if (event === 'schedule_refused') seen.push(data) }, on () {} } }
+    }
+
+    it('goes back to the model once with why, and the answer after the fix goes out', async () => {
+      const m = mockModel([completed('I will remind you tomorrow.'), completed('Fixed; I will remind you tomorrow.')])
+      let fixed = false
+      const { seen, emitter } = watched()
+      const res = await loopOf({
+        limits: { rounds: { soft: 10, hard: 12 } },
+        model: m,
+        prompt: 'q',
+        tools: TOOLS,
+        toolFns: makeToolFns(),
+        emitter,
+        refusedSchedules: () => {
+          if (fixed) return []
+          fixed = true
+          return [refusal]
+        }
+      })
+      expect(res).toMatchObject({ output: 'Fixed; I will remind you tomorrow.', stopReason: 'answer', rounds: 2 })
+      expect(m.calls).toHaveLength(2)
+      const notice = res.messages.find(msg => marked(msg, SCHEDULE_NOTICE))
+      expect(notice).toMatchObject({ role: 'user' })
+      expect(notice.content).toContain('schedules/call-bank.cmk: unknown field "at"')
+      expect(res.messages.at(-2)).toMatchObject({ role: 'assistant' })
+      expect(textOf(res.messages.at(-2))).toBe('I will remind you tomorrow.')
+      expect(seen).toEqual([{ round: 0, schedules: [refusal], answered: false }])
+    })
+
+    it('is told once a turn, and the next answer goes out with the refusal standing', async () => {
+      const m = mockModel([completed('first'), completed('second')])
+      const { seen, emitter } = watched()
+      const res = await loopOf({
+        limits: { rounds: { soft: 10, hard: 12 } },
+        model: m,
+        prompt: 'q',
+        tools: TOOLS,
+        toolFns: makeToolFns(),
+        emitter,
+        refusedSchedules: () => [refusal]
+      })
+      expect(res).toMatchObject({ output: 'second', stopReason: 'answer' })
+      expect(m.calls).toHaveLength(2)
+      expect(res.messages.filter(msg => marked(msg, SCHEDULE_NOTICE))).toHaveLength(1)
+      expect(seen.map(e => e.answered)).toEqual([false, true])
+    })
   })
 
   it('gives up after the empty-retry cap (no infinite loop)', async () => {

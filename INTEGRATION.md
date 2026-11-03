@@ -663,6 +663,7 @@ embedder, from outside the turn. `turn_end` is written by the supervisor.
 | `compaction_failed` | `why`, `estimated`, `sent`, `budget`: the history was over its bound and was not summarized |
 | `estimate_drift` | `round`, `model`, `estimated`, `sent`: once a turn, the provider counted far more than the estimate |
 | `empty_completion`, `recovery` | what the loop did about a bad or failed model answer |
+| `schedule_refused` | `round`, `schedules` (each `{ name, why }`), `answered`: at the model's answer, schedules changed this turn will not fire as written; `answered` false when the turn was told and went on, true when the answer went out anyway |
 | `annotation` | `text`: the embedder's line shown under the running turn's header, or `null` once taken away. Its `runId` is absent when it was written before the turn's first event |
 | `turn_end` | `turnNo`, `stopReason`, `concluded`, `error`, `rounds`, `ownUsd`, `treeUsd`, `workUnits`, `settled`, `inboxFrom`, `inboxTo` |
 

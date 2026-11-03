@@ -2,7 +2,7 @@ import { sanitizeTranscript, computeBudget } from '../resilience/transcript.js'
 import { createLoopGuard } from '../resilience/loop-guard.js'
 import { compactIfNeeded, estimateTokens } from '../resilience/context-guard.js'
 import { markConversationForCaching } from './prompt-cache.js'
-import { REFUSED, WRAP, mark, marked } from './marks.js'
+import { REFUSED, SCHEDULE_NOTICE, WRAP, mark, marked } from './marks.js'
 import { refusedResult } from './refusal.js'
 import { withRecovery } from '../resilience/recovery.js'
 import { executeTools } from './tool-kernel.js'
@@ -55,9 +55,11 @@ const DRIFT_FLOOR = 2_000
  * @param {object} opts.emitter  — what the turn emits, to the event log
  * @param {object} opts.logger
  * @param {() => number} opts.deadline — when the turn's hard wall falls, in epoch ms
+ * @param {() => Array<{name: string, why: string}>} opts.refusedSchedules — schedules this turn
+ *   changed that will not fire as written
  * @returns {{ output: string|null, messages: Array, rounds: number, usage: object }}
  */
-export async function loop ({ model, system, prompt, tools, toolFns, describe, limits, ledger, emitter, mutators, terminalTools, signal, deadline, logger, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning, from }) {
+export async function loop ({ model, system, prompt, tools, toolFns, describe, limits, ledger, emitter, mutators, terminalTools, signal, deadline, refusedSchedules, logger, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning, from }) {
   const userMsg = { role: 'user', content: prompt }
   for (const dim of ['rounds', 'cost', 'wall']) {
     if (typeof limits[dim]?.soft !== 'number' || typeof limits[dim]?.hard !== 'number') {
@@ -89,6 +91,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
   let lastInputTokens = 0
   let drifted = false
   const emptyState = { retries: 0 }
+  let toldOfSchedules = false
   const emit = (event, data) => emitter.emit(event, data)
   const startedAt = Date.now()
   let wrapped = null
@@ -316,6 +319,24 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
     // Degenerate completion (no tool call, no text): nudge for a real answer
     // (bounded) instead of returning empty.
     if (resolveEmptyCompletion(res, { emptyState, emit, append, logger, round: i })) continue
+
+    // An answer that says something will happen later is false while the schedule meant to make
+    // it happen will not fire, and the turn that wrote it is the one that can still put it right.
+    // Told once a turn; an answer given after that goes out, with the refusal in the event log.
+    const refused = refusedSchedules()
+    if (refused.length) {
+      emit('schedule_refused', { round: i, schedules: refused, answered: toldOfSchedules })
+      if (!toldOfSchedules) {
+        toldOfSchedules = true
+        logger.info({ round: i, schedules: refused.map(s => s.name) }, '[loop] a schedule written this turn will not fire — going on')
+        append({ role: 'assistant', content: assistantContent(res) })
+        append(mark({
+          role: 'user',
+          content: `[System: a schedule you wrote this turn will not fire as written:\n${refused.map(s => `- schedules/${s.name}.cmk: ${s.why}`).join('\n')}\nFix it with write, which checks a schedule before it lands, or remove it. Then answer again, and say nothing will happen later unless a schedule that fires makes it happen.]`
+        }, SCHEDULE_NOTICE))
+        continue
+      }
+    }
 
     const output = res.output || null
     const stopReason = wrapped ? `soft:${wrapped}` : 'answer'

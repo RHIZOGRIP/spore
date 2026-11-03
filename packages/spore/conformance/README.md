@@ -44,7 +44,7 @@ A run directory holds the workspaces exactly as the cases left them — transcri
 trails, turn records, the identity generated for each case — and a `run.json`:
 
 ```json
-{ "model": "openai/gpt-5.6-luna", "spore": "1.51.0", "commit": "823175f", "node": "v25.9.0",
+{ "model": "openai/gpt-5.6-luna", "spore": "1.51.0", "commit": "823175f", "dirty": [], "node": "v25.9.0",
   "startedAt": "...", "elapsedMs": 34000, "concurrency": 8,
   "passed": 28, "of": 28, "spend": 0.016, "neverFinished": [],
   "cases": [{ "id": "read", "digest": "9f2c…", "passed": true, "rounds": 2, "stopReason": "answer",
@@ -57,7 +57,10 @@ if the runs differ by model, by build, or by which commit of the cases graded th
 `digest` says whether two runs ran the same case, across releases: a hash of the staged
 identity without its `model:` line, every staged file, the messages, the schedule and
 `expect` (`digest.js`). It changes when the case changes and not when spore does; the
-grader, `reference.md` and `libraries.md` are pinned by `spore` and `commit` instead. `error`
+grader, `reference.md` and `libraries.md` are pinned by `spore` and `commit` instead, which
+pin them only while `dirty` is empty: it lists the files under the package that differed from
+`commit` when the run started, as `git status --porcelain` prints them, and is null with `commit`
+in an installed copy. `error`
 and `detail` are the turn's, for a turn that ended in `error`: mohdel's type and the
 provider's words.
 

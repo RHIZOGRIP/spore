@@ -38,7 +38,7 @@ export const SCHEMA = EVENT_SCHEMA
 const CARRIED = [
   'round', 'tool_start', 'tool_end', 'tool_block', 'wrap', 'unwrap', 'interject', 'inbox_read',
   'heartbeat', 'mohdel_idle', 'stream', 'usage', 'complete', 'deliverables', 'recall', 'compaction_started', 'compaction', 'compaction_failed',
-  'estimate_drift', 'empty_completion', 'recovery'
+  'estimate_drift', 'empty_completion', 'recovery', 'schedule_refused'
 ]
 
 export const EVENTS = [...CARRIED, 'annotation', 'turn_end']

@@ -26,7 +26,11 @@ export function runDir (base, { at = new Date(), model }) {
   return resolve(base, `${stamp}-${slug}`)
 }
 
-/** The build that produced a run. `commit` is null in an installed copy, which has no git. */
+/**
+ * The build that produced a run. `commit` is null in an installed copy, which has no git, and so
+ * is `dirty`; in a checkout `dirty` lists what under `root` differs from `commit`, as
+ * `git status --porcelain` prints it, so a run on uncommitted files does not pass for that commit.
+ */
 export function provenance ({ root, model, spore }) {
   let commit = null
   try {
@@ -34,5 +38,7 @@ export function provenance ({ root, model, spore }) {
   } catch {
     // Not a checkout. Recorded as unknown rather than guessed at.
   }
-  return { model, spore, commit, node: process.version }
+  const dirty = commit && execFileSync('git', ['status', '--porcelain', '--', '.'], { cwd: root })
+    .toString().split('\n').filter(Boolean)
+  return { model, spore, commit, dirty, node: process.version }
 }

@@ -25,7 +25,7 @@ import { describeCall } from './call-table.js'
 import { COMPACTED, marked } from './marks.js'
 import { DATA_DIR, appendCompaction, linkTurnTmp, appendTranscript, fromPerson, inboxConsumed, readInbox, readInboxFrom, readTreeKey, countSaidSoFar, runningLimits, writableDirs, writeOutcome } from './spore-dir.js'
 import { dataBytesIn, deliverablesIn } from './deliverables.js'
-import { scheduleDir } from './schedule.js'
+import { readSchedules, refusalOf, scheduleDir } from './schedule.js'
 import { composeSystem } from './system-prompt.js'
 import { callsIn, createCallTrail } from './call-record.js'
 
@@ -407,6 +407,16 @@ export async function runSpore ({
       limits: live,
       relimited: () => relimits.splice(0),
       deadline: () => wallFrom + live.wall.hard,
+      // What `write` would have refused, of the schedules changed since the turn began, but for
+      // their count: a file put there by `wsexec` was never checked.
+      refusedSchedules: () => schedules
+        ? readSchedules(WS)
+          .filter(s => s.changed >= wallFrom)
+          .flatMap(s => {
+            const why = refusalOf(s.source, { grant: schedules, writing: true, counting: false })
+            return why ? [{ name: s.name, why }] : []
+          })
+        : [],
       ledger,
       emitter: events,
       mutators: new Set(['write', 'edit', 'wsexec']),

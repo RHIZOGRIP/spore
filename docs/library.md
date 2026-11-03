@@ -1733,7 +1733,7 @@ The event schema version every event carries as `v`: `1`
 Every event name the log holds: `round`, `tool_start`, `tool_end`, `tool_block`, `wrap`,
 `unwrap`, `interject`, `inbox_read`, `heartbeat`, `mohdel_idle`, `stream`, `usage`, `complete`,
 `deliverables`, `recall`, `compaction_started`, `compaction`, `compaction_failed`,
-`estimate_drift`, `empty_completion`, `recovery`, `annotation` and `turn_end`.
+`estimate_drift`, `empty_completion`, `recovery`, `schedule_refused`, `annotation` and `turn_end`.
 
 ### `PROMISED`
 

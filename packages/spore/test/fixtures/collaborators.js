@@ -33,6 +33,7 @@ export const loopOf = (over) => {
     interject: () => [],
     relimited: () => [],
     deadline: () => Infinity,
+    refusedSchedules: () => [],
     sessionMemory: createSessionMemory({ logger: silent }),
     cacheTtl: '5m',
     reasoning: [],

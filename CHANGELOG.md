@@ -4,6 +4,37 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.53.0] — Added: a turn is told, before it answers, that a schedule it wrote will not fire
+
+### Fixed
+
+- `reference.md` and `precursors/README.md` said `--prompt` is relative to `--ws` and left
+  `--answer` to the examples. An agent that wrote `--answer` from its own workspace —
+  `--ws data/parts/a --answer data/parts/a/data/out.json` — had each answer put one level down, at
+  `data/parts/a/data/parts/a/data/out.json`, and reported every part answered. Both now say the two
+  are relative to `--ws`, with where the answer lands, and the fan-out section says the same of
+  its parts. A spore made before this gets the new text with `spore upgrade`.
+- `reference.md` gave a one-off schedule as "`when` is a cron expression…; or `at <instant>`",
+  which an agent read as a field of its own and wrote `at: 2026-11-04T09:00:00+01:00`, a schedule
+  that never parses and so never fires. It now shows the one-off form, `when: at <instant>`, says
+  there is no `at:` field.
+
+### Added
+
+- A schedule written this turn that will not fire as written now stops the answer once. When the
+  model answers, every file in `schedules/` changed since the turn began gets the check `write`
+  makes, the count aside. On a refusal the answer goes back to the model with a note naming each
+  file and why, and the turn goes on, within its limits. A schedule written with `wsexec` was never
+  checked: an agent wrote `at: …` for `when: at …`, told its user it would remind them, and the
+  schedule could never fire. Each check that finds one is a `schedule_refused` event — `round`,
+  `schedules` as `{ name, why }`, and `answered`, true when the answer went out with it standing.
+  Only a spore whose definition grants `schedules` is checked: without the grant, `schedules/` is
+  its operator's.
+
+- A conformance `run.json` records `dirty`: the files under the package that differed from
+  `commit` when the run started, as `git status --porcelain` prints them, and null in an installed
+  copy. A run on uncommitted files no longer passes for the commit it started from.
+
 ## [1.52.0] — Added: `spore setup` can sign in with OpenRouter instead of a pasted key
 
 ### Added
