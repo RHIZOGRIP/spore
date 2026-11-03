@@ -8,9 +8,11 @@ All notable changes to this project are documented here. Format follows
 
 ### Changed
 
-- The conformance `read-range` case asks to read only lines 12 to 14. It grades a read that asks
-  for a range, and its prompt asked only for the lines written, so a model that read the whole
-  file and kept three wrote the right answer and failed. Its digest changes too.
+- The conformance `read-range` case reads from a file of 200,000 lines, about 1.3 MB, and asks to
+  read only lines 12 to 14. It grades a read that asks for a range, and on a file of 40 lines a
+  model that followed `read`'s own advice, to slice only a file too large to return whole, read it
+  whole and failed. A whole read of this one is past the read budget and refused. Its digest
+  changes too.
 - The conformance `schedule` case stages `data/queue.txt`, the file its prompt schedules a check
   of. A model that looked at it before writing the schedule read a file that did not exist, and
   that failed read counted toward the five that wrap a turn at `soft:progress`. The case's digest

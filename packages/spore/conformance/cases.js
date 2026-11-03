@@ -37,6 +37,10 @@ const TIGHT = { rounds: [2, 3], cost: [0.05, 0.08], wall: ['2m', '3m'] }
 const ROOMY = { rounds: [30, 36], cost: [0.20, 0.30], wall: ['6m', '8m'] }
 
 const numbers = Array.from({ length: 40 }, (_, i) => `${i + 1}`).join('\n') + '\n'
+// About 1.3 MB: past `read`'s budget for any context we run (a tenth of it, at four characters a
+// token), so a whole read is refused and a range is the only way in. `read` tells a model to slice
+// only a file too large to return whole, and a small one was read whole and graded as a miss.
+const manyNumbers = Array.from({ length: 200_000 }, (_, i) => `${i + 1}`).join('\n') + '\n'
 // `qty` sits behind a quoted comma, so splitting on commas reads ` 8mm"` as the
 // quantity. The total is only 50 if something parsed the CSV as a CSV.
 const csv = 'name,note,qty\nbolt,"hex, 8mm",12\nnut,"brass, plated",7\nwasher,plain,31\n'
@@ -70,10 +74,8 @@ export const CASES = [
     tier: 'core',
     feature: 'read with offset and length',
     grants: ['read', 'write'],
-    files: { 'data/numbers.txt': numbers },
+    files: { 'data/numbers.txt': manyNumbers },
     prompt: 'Read only lines 12 to 14 of data/numbers.txt, and write them, and nothing else, to data/out.txt, each line ending in a newline.',
-    // Reading all forty lines and keeping three is the same answer by another route, and
-    // the route is the feature. A read that asked for a range stops short of the end.
     expect: {
       files: { 'data/out.txt': '12\n13\n14\n' },
       calls: [{ tool: 'read', target: /numbers\.txt/, eof: false }]
