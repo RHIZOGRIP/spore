@@ -224,7 +224,7 @@ export async function superviseJob ({ ws, name, count, wallMs, command, answer, 
         errAbs: files.err,
         confine: { writeRoot: writable, writes: jobWrites(definition), reads: [...definition.reads, ...definition.writes].map(grant => grant.path).concat(ws), scopeSignals: true, contain, keep },
         env: {
-          PATH: env.PATH,
+          PATH: env.SPORE_PATH,
           HOME: resolve(ws, 'home'),
           TMPDIR: join(island, 'tmp'),
           ...(env.LANG ? { LANG: env.LANG } : {}),

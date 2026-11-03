@@ -240,9 +240,10 @@ pub const SUN_PATH_MAX: usize = 107;
 
 /// Named here rather than filtered out: a denylist of key names goes stale the day a
 /// provider is added, so nothing reaches an agent that is not on this list. Not `HOME`: the
-/// host's is not granted, so its supervisor sets the workspace's own (`HOME_DIR`).
+/// host's is not granted, so its supervisor sets the workspace's own (`HOME_DIR`). Not `PATH`
+/// either: the host's is the operator's own and names their home (`agent_path`).
 pub const PASSED_THROUGH: [&str; 10] = [
-    "PATH",
+    AGENT_PATH_VAR,
     "LANG",
     "LC_ALL",
     "TZ",
@@ -256,7 +257,8 @@ pub const PASSED_THROUGH: [&str; 10] = [
 
 /// What the runtime itself sets in the environment of what it starts — the agent, a cell, a job,
 /// a command — which no variable a plugin declares may set.
-pub const RUNTIME_ENV: [&str; 28] = [
+pub const RUNTIME_ENV: [&str; 29] = [
+    "PATH",
     "HOME",
     "TMPDIR",
     "TRACEPARENT",
@@ -286,6 +288,22 @@ pub const RUNTIME_ENV: [&str; 28] = [
     PLUGIN_ENV,
     PLUGIN_CALLS,
 ];
+
+/// What an agent, its cells, its jobs and every command they run find programs on, unless the
+/// operator names another as `SPORE_PATH`, in `~/.config/spore/environment` or the runner's own
+/// environment.
+pub const AGENT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
+pub const AGENT_PATH_VAR: &str = "SPORE_PATH";
+
+/// The `PATH` they are given: the directory of the node the spore runs on first, which the
+/// sandbox grants and a version manager or a CI image puts outside the system's, so `node` is
+/// that node; then the operator's choice, or `AGENT_PATH`.
+pub fn agent_path(chosen: Option<&str>, node: &str) -> String {
+    let dir = Path::new(node)
+        .parent()
+        .expect("the node a spore runs on is named by an absolute path");
+    format!("{}:{}", dir.display(), chosen.unwrap_or(AGENT_PATH))
+}
 
 /// What the agent reads of its plugins, a JSON array of paths: their packages and what they
 /// depend on, less what the system's read paths already grant.
@@ -771,18 +789,25 @@ pub fn take_slot(turns: u32, dir: &Path) -> io::Result<Result<Slot, Refusal>> {
     }))
 }
 
-/// What an agent is given: the names above, and nothing else of its parent's environment.
+/// What an agent is given: the names above and its `PATH`, and nothing else of its parent's
+/// environment.
 pub fn agent_env<'a>(
     env: impl IntoIterator<Item = (&'a str, &'a str)>,
+    node: &str,
 ) -> BTreeMap<String, String> {
     let env: BTreeMap<&str, &str> = env.into_iter().collect();
-    PASSED_THROUGH
+    let mut passed: BTreeMap<String, String> = PASSED_THROUGH
         .iter()
         .filter_map(|name| {
             env.get(name)
                 .map(|value| (name.to_string(), value.to_string()))
         })
-        .collect()
+        .collect();
+    passed.insert(
+        "PATH".into(),
+        agent_path(env.get(AGENT_PATH_VAR).copied(), node),
+    );
+    passed
 }
 
 /// `path.resolve` for an absolute path: `.` and `..` collapse lexically, as the JS runtime
@@ -1608,10 +1633,26 @@ mod tests {
             ("BRAVE_API_SK", "b"),
             ("SOME_FUTURE_PROVIDER_API_SK", "sk"),
         ];
-        assert_eq!(
-            agent_env(env).keys().collect::<Vec<_>>(),
-            ["PATH", "TRACEPARENT"]
+        let passed = agent_env(env, "/usr/bin/node");
+        assert_eq!(passed.keys().collect::<Vec<_>>(), ["PATH", "TRACEPARENT"]);
+        assert_eq!(passed["PATH"], format!("/usr/bin:{AGENT_PATH}"));
+    }
+
+    #[test]
+    fn gives_the_path_the_operator_chose_and_never_the_hosts() {
+        let node = "/home/someone/.nvm/versions/node/v25.9.0/bin/node";
+        let passed = agent_env(
+            [
+                ("PATH", "/home/someone/.asdf/shims:/usr/bin"),
+                ("SPORE_PATH", "/opt/tools/bin:/usr/bin"),
+            ],
+            node,
         );
+        assert_eq!(
+            passed["PATH"],
+            "/home/someone/.nvm/versions/node/v25.9.0/bin:/opt/tools/bin:/usr/bin"
+        );
+        assert_eq!(passed["SPORE_PATH"], "/opt/tools/bin:/usr/bin");
     }
 
     #[test]

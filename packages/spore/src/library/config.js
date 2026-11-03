@@ -57,7 +57,7 @@ export const API_FILE = 'api.json'
 
 /**
  * The process environment the operator keeps for spore, beside `config.json`: provider keys,
- * `PATH`, the Telegram bots' tokens. Read by the commands, never by the library, whose callers pass
+ * `SPORE_PATH`, the Telegram bots' tokens. Read by the commands, never by the library, whose callers pass
  * their own `env`.
  */
 export const ENVIRONMENT_FILE = 'environment'

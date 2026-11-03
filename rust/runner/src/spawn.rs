@@ -464,7 +464,7 @@ async fn main() {
         };
 
         let env: Vec<(String, String)> = std::env::vars().collect();
-        let mut passed = agent_env(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+        let mut passed = agent_env(env.iter().map(|(k, v)| (k.as_str(), v.as_str())), &node);
         passed.insert("HOME".into(), plan.ws.join(HOME_DIR).display().to_string());
         passed.insert("SPORE_WS".into(), plan.ws.display().to_string());
         passed.insert(

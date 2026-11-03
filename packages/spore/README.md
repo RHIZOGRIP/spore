@@ -445,6 +445,7 @@ environment, and, for a store whose API differs from the protocol's defaults, `p
 | variable | |
 |---|---|
 | `MODEL` | what a spawned cell inherits when its precursor names no `model:` |
+| `SPORE_PATH` | where a spore's agent, cells, jobs and routers find programs, usually set in `~/.config/spore/environment`; without it, `/usr/local/bin:/usr/bin:/bin`. Their `PATH` is the directory of the Node spore runs on, then this. Your own `PATH` never reaches a spore: it is yours and names your home |
 | `SPORE_CELL_MODELS` | set by the runner: the spore's `cell-models`, which a precursor's `model:` is read against |
 | `<PROVIDER>_API_SK` | provider key, read by the runner as `mo` reads it, else from `~/.config/mohdel/environment` — never seen by the agent |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | enables span export; everything is a no-op without it |

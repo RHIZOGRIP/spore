@@ -622,7 +622,7 @@ async fn main() {
             supervisor: root().join("bin").join("spore-job.js"),
             count: grant.count,
             wall_ms: grant.wall,
-            env: job::supervisor_env(std::env::vars()),
+            env: job::supervisor_env(std::env::vars(), &node),
             largest_file: args.largest_file,
         })
     });
@@ -635,7 +635,7 @@ async fn main() {
             let key =
                 write_tree_key(&ws).map_err(|e| format!("cannot write the tree's key — {e}"))?;
             let env: Vec<(String, String)> = std::env::vars().collect();
-            let mut passed = agent_env(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+            let mut passed = agent_env(env.iter().map(|(k, v)| (k.as_str(), v.as_str())), &node);
             // What the plugins this spore uses give its agent, resolved and checked by `send`; set
             // before the runtime's own, so a value of the runtime's always wins.
             passed.extend(args.env.iter().cloned());

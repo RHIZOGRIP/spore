@@ -56,7 +56,7 @@ const supervise = (fields = {}) => {
     wallMs: 60_000,
     command: 'true',
     answer: (line) => { answered = line },
-    env: { PATH: process.env.PATH },
+    env: { PATH: process.env.PATH, SPORE_PATH: process.env.PATH },
     signal: stopping.signal,
     ...fields
   })

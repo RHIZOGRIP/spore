@@ -793,7 +793,7 @@ in [docs/operating.md](docs/operating.md).
 
 **Three directories, three kinds of thing.** `~/.config/spore/` holds what the operator authors:
 `config.json`, `sporangia/`, `sources.json`, `memory.json`, `hooks.json`, `api.json`,
-`environment` (provider keys, `PATH`, the bots' tokens), a plugin service's instance files — the
+`environment` (provider keys, `SPORE_PATH`, the bots' tokens), a plugin service's instance files — the
 Telegram plugin's `telegram/<bot>.json`, one per bot — and `ssh/`, the keys the `ssh-agent`
 service holds for spores to sign with. Every spore command reads `environment` itself at start
 (`loadEnvironment`), a variable already set winning; the library never does, since its callers
@@ -2643,7 +2643,12 @@ serves a gate and names it as the host's `gate`.
 **A cell's environment is assembled by name** — `PATH`, `HOME`, `TRACEPARENT`, the
 `SPORE_*` it needs (`PASSED_THROUGH`, `rust/workspace`) — and holds no provider key
 ([principle 10](PRINCIPLES.md#10-passwords-never-reach-the-assistant-the-internet-is-open)): the
-list that is kept is what may cross, not which names to strip. Landlock does not gate unix-socket
+list that is kept is what may cross, not which names to strip. The host's `PATH` does not cross
+either: it is the operator's own and names their home, and a command printing it would put it in
+the transcript. The runner sets `PATH` itself (`agent_path`) — the directory of the node the spore runs on,
+which the sandbox grants and a version manager or a CI image puts outside the system's, then
+`SPORE_PATH` when the operator names one, else `AGENT_PATH` (`/usr/local/bin:/usr/bin:/bin`) — for
+the agent, its cells, its jobs and its routers alike. Landlock does not gate unix-socket
 connect, which is what lets a confined agent reach the socket at all. `bin/spore-agent.js` and
 `bin/spawn-worker.js` each build their `mo` as a client of the tree's socket
 (`src/infra/model-client.js`): it builds a `CallEnvelope` from spore's wire-form messages, streams

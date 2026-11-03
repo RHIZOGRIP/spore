@@ -19,6 +19,7 @@ import { containOf } from './plugins.js'
 import { durationText } from './units.js'
 import { durationMs } from '../delegation/definition.js'
 import { containing, readConfig } from '../library/config.js'
+import { native } from '../native.js'
 import { errorText } from '../observability/errors.js'
 
 export const ROUTE_TIMEOUT_MS = 10_000
@@ -101,7 +102,7 @@ export async function runStep ({ argv, ws, cwd = null, payload, reads, timeoutMs
       outAbs: printedAbs,
       errAbs,
       confine: { writeRoot: scratch, reads, scopeSignals: true, contain, keep },
-      env: { PATH: process.env.PATH, HOME: scratch, TMPDIR: scratch },
+      env: { PATH: native.agentPath(process.env.SPORE_PATH, process.execPath), HOME: scratch, TMPDIR: scratch },
       timeoutMs,
       idleMs: timeoutMs
     })

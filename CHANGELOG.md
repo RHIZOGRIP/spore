@@ -13,11 +13,23 @@ All notable changes to this project are documented here. Format follows
   agent wrote its reminder as `schedules/call-bank.toml` with `wsexec` and told its user it was
   set. The check now covers every file changed under `schedules/` since the turn began, and names
   one that is no schedule by its name with the reason `write` gives.
+- mohdel 4.8.1, on both the npm and the Cargo side. Mistral refused every call with a 422, because
+  the identifier spore gives each conversation went in a `user` field Mistral does not have; it
+  now goes as `prompt_cache_key`, which routes Mistral's prompt cache. DeepSeek and Cerebras get
+  it in their own fields too.
 - `reference.md` says a schedule is one `<name>.cmk` file and that a file named otherwise never
   fires. A spore made before this gets the new text with `spore upgrade`.
 
 ### Changed
 
+- The host's `PATH` no longer reaches a spore. It is the operator's own and names their home, and
+  a command printing it put it in the transcript, which goes to the provider. The runner now sets
+  `PATH` itself for the agent, its cells, its jobs and its routers: the directory of the Node
+  spore runs on, so `node` is that one wherever it is installed, then `SPORE_PATH` when the
+  operator names one, in `~/.config/spore/environment` or the runner's environment, else
+  `/usr/local/bin:/usr/bin:/bin`. Any other tool found only under the home, such as an asdf
+  shim, no longer resolves inside a spore; it never ran there, since the sandbox grants nothing
+  else under the home.
 - A turn refused because every admission slot is taken now says the limit covers all of the user's
   spores: `8 turns are already running, across all your spores`, and that a conformance run or a
   batch counts too. It said `8 of your turns are already running`, which read as one spore's.

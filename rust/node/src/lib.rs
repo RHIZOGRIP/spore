@@ -787,6 +787,11 @@ fn errno_name(e: &std::io::Error) -> Option<&'static str> {
 }
 
 #[napi]
+pub fn agent_path(chosen: Option<String>, node: String) -> String {
+    workspace::agent_path(chosen.as_deref(), &node)
+}
+
+#[napi]
 pub fn provisioned_modules() -> Vec<String> {
     workspace::PROVISIONED_MODULES
         .iter()

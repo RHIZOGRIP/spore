@@ -13,7 +13,7 @@ use hyper::body::Incoming;
 use hyper::{Method, Request, Response, StatusCode};
 use mohdel_thin_gate::prelude::{not_found_response, Body};
 use serde_json::Value;
-use spore_workspace::{limit_file_size, yield_to_host};
+use spore_workspace::{agent_path, limit_file_size, yield_to_host, AGENT_PATH_VAR};
 
 use crate::broker::{answer, read_json, Refusal};
 
@@ -48,7 +48,8 @@ fn failed(detail: impl Into<String>) -> Refusal {
 /// What a job supervisor is started with, named rather than filtered, as an agent's is: where to
 /// find the host's config and state, and the tracing endpoint. No credential — it reads the
 /// operator's environment file when it releases what the job said, as the services do — and no
-/// owner token or trace context: the job is nobody's turn.
+/// owner token or trace context: the job is nobody's turn. Its command's `PATH` is an agent's,
+/// handed over as `SPORE_PATH`.
 const SUPERVISOR_PASSED: [&str; 10] = [
     "PATH",
     "HOME",
@@ -62,9 +63,22 @@ const SUPERVISOR_PASSED: [&str; 10] = [
     "OTEL_INIT_TIMEOUT_MS",
 ];
 
-pub fn supervisor_env(env: impl Iterator<Item = (String, String)>) -> Vec<(String, String)> {
-    env.filter(|(name, _)| SUPERVISOR_PASSED.contains(&name.as_str()))
-        .collect()
+pub fn supervisor_env(
+    env: impl Iterator<Item = (String, String)>,
+    node: &str,
+) -> Vec<(String, String)> {
+    let env: Vec<(String, String)> = env.collect();
+    let chosen = env
+        .iter()
+        .find(|(name, _)| name == AGENT_PATH_VAR)
+        .map(|(_, value)| value.as_str());
+    let mut passed: Vec<(String, String)> = env
+        .iter()
+        .filter(|(name, _)| SUPERVISOR_PASSED.contains(&name.as_str()))
+        .cloned()
+        .collect();
+    passed.push((AGENT_PATH_VAR.into(), agent_path(chosen, node)));
+    passed
 }
 
 impl Jobs {
@@ -169,8 +183,34 @@ mod tests {
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), v.to_string())),
+            "/usr/bin/node",
         );
         let names: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
-        assert_eq!(names, ["PATH", "XDG_STATE_HOME"]);
+        assert_eq!(names, ["PATH", "XDG_STATE_HOME", AGENT_PATH_VAR]);
+    }
+
+    #[test]
+    fn hands_the_job_an_agents_path_never_the_hosts() {
+        let given = |env: &[(&str, &str)]| {
+            supervisor_env(
+                env.iter().map(|(k, v)| (k.to_string(), v.to_string())),
+                "/opt/node/bin/node",
+            )
+            .into_iter()
+            .find(|(name, _)| name == AGENT_PATH_VAR)
+            .map(|(_, value)| value)
+        };
+        assert_eq!(
+            given(&[("PATH", "/home/someone/.asdf/shims")]).as_deref(),
+            Some(format!("/opt/node/bin:{}", spore_workspace::AGENT_PATH).as_str())
+        );
+        assert_eq!(
+            given(&[
+                ("PATH", "/home/someone/.asdf/shims"),
+                (AGENT_PATH_VAR, "/opt/bin")
+            ])
+            .as_deref(),
+            Some("/opt/node/bin:/opt/bin")
+        );
     }
 }
