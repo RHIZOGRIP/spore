@@ -4,10 +4,13 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
-## [1.54.1] — Changed: the conformance `schedule` case stages the file its prompt names
+## [1.54.1] — Changed: the conformance `read-range` and `schedule` cases
 
 ### Changed
 
+- The conformance `read-range` case asks to read only lines 12 to 14. It grades a read that asks
+  for a range, and its prompt asked only for the lines written, so a model that read the whole
+  file and kept three wrote the right answer and failed. Its digest changes too.
 - The conformance `schedule` case stages `data/queue.txt`, the file its prompt schedules a check
   of. A model that looked at it before writing the schedule read a file that did not exist, and
   that failed read counted toward the five that wrap a turn at `soft:progress`. The case's digest
