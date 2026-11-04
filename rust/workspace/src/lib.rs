@@ -30,8 +30,8 @@ pub use state::{
     migrate_state, origin_of, outbox, post_approval, prune_trail, record_cell, recover,
     refuse_approval, release_held, replace_transcript, replace_turns, request, reschedule_held,
     serve, set_aside, settle_approval, settle_outbox, start_limits, starting_since, turn_hop,
-    turn_limits, turn_state, unanswered_traceparents, unread, write_outcome, EVENT_SCHEMA,
-    MAX_FRAME, STATE_FILE,
+    turn_limits, turn_state, unanswered_traceparents, unread, unread_past, write_outcome,
+    EVENT_SCHEMA, MAX_FRAME, STATE_FILE,
 };
 
 /// The descriptor a supervisor hands its agent the channel on, named to it in
@@ -543,8 +543,34 @@ pub fn signal_holder_at(lock: &Path, signal: i32) -> io::Result<Option<u32>> {
     signalled
 }
 
+/// What a stop reached, and whether its mark was written.
+pub struct Stopped {
+    pub pid: u32,
+    pub marked: bool,
+}
+
 /// SIGTERM to the holder, which the runner passes to its agent: the turn aborts and is recorded.
-pub fn stop_holder(ws: &Path) -> io::Result<Option<u32>> {
+/// The mark goes first, and `reply_to` is whose queue it covers, none for a person with no
+/// conversation. A mark that cannot be written is said, and the signal still goes: nobody is
+/// refused a stop over a busy database.
+pub fn stop_holder(ws: &Path, reply_to: Option<&str>) -> io::Result<Option<Stopped>> {
+    if let Some(reply_to) = reply_to {
+        check_reply_to(reply_to).map_err(io::Error::other)?;
+    }
+    let Some(pid) = lock_holder(ws)? else {
+        return Ok(None);
+    };
+    let marked = state::mark_stop(ws, reply_to);
+    if matches!(marked, Ok(true)) {
+        return Ok(Some(Stopped { pid, marked: true }));
+    }
+    let marked = marked.is_ok();
+    Ok(signal_holder(ws, libc::SIGTERM)?.map(|pid| Stopped { pid, marked }))
+}
+
+/// SIGTERM to the holder with no mark: the turn ends as on a host going down, and what it left
+/// stays asked.
+pub fn interrupt_holder(ws: &Path) -> io::Result<Option<u32>> {
     signal_holder(ws, libc::SIGTERM)
 }
 

@@ -118,7 +118,7 @@ describe('stopping a spore', () => {
       ws], { stdio: ['ignore', 'pipe', 'inherit'] })
     await once(holder.stdout, 'data')
     const ended = once(holder, 'exit')
-    expect(stop(ws)).toEqual({ stopped: true, pid: holder.pid })
+    expect(stop(ws)).toEqual({ stopped: true, pid: holder.pid, marked: true })
     const [, signal] = await ended
     expect(signal).toBe('SIGTERM')
   })

@@ -191,10 +191,26 @@ pub fn lock_holder(ws: String) -> napi::Result<Option<u32>> {
     workspace::lock_holder(Path::new(&ws)).map_err(failed)
 }
 
-/// SIGTERM to whoever holds the workspace's lock; the pid signalled, or null.
+#[napi(object)]
+pub struct Stopped {
+    pub pid: u32,
+    pub marked: bool,
+}
+
+/// SIGTERM to whoever holds the workspace's lock, its mark first; what it reached, or null.
 #[napi]
-pub fn stop_holder(ws: String) -> napi::Result<Option<u32>> {
-    workspace::stop_holder(Path::new(&ws)).map_err(failed)
+pub fn stop_holder(ws: String, reply_to: Option<String>) -> napi::Result<Option<Stopped>> {
+    let stopped = workspace::stop_holder(Path::new(&ws), reply_to.as_deref()).map_err(failed)?;
+    Ok(stopped.map(|stopped| Stopped {
+        pid: stopped.pid,
+        marked: stopped.marked,
+    }))
+}
+
+/// SIGTERM to whoever holds the workspace's lock, with no mark; the pid signalled, or null.
+#[napi]
+pub fn interrupt_holder(ws: String) -> napi::Result<Option<u32>> {
+    workspace::interrupt_holder(Path::new(&ws)).map_err(failed)
 }
 
 #[napi]

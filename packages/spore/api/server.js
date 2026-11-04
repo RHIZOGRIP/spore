@@ -18,6 +18,7 @@ import { watch } from '../src/library/watch.js'
 import { annotateTurn, liveIn, renderLive } from '../src/library/live.js'
 import { send } from '../src/core/send.js'
 import { stop } from '../src/core/state.js'
+import { native } from '../src/native.js'
 import { extendTurn, wrapTurn } from '../src/core/limits.js'
 import { approvalOf, approvalsIn, readEvents } from '../src/core/spore-dir.js'
 import { askApproval } from '../src/library/approvals.js'
@@ -166,7 +167,12 @@ export function createApiServer ({ api, env, log = () => {} }) {
       return { status: 200, body: one }
     },
     'POST annotate': async ({ request, response, ws }) => ({ status: 200, body: annotateTurn(ws, (await jsonOf(request, response)).text) }),
-    'POST stop': ({ ws }) => ({ status: 200, body: stop(ws) }),
+    'POST stop': async ({ request, response, ws }) => {
+      const { replyTo } = await jsonOf(request, response)
+      const problem = replyTo === undefined ? null : typeof replyTo === 'string' ? native.replyToProblem(replyTo) : `got ${JSON.stringify(replyTo)}`
+      if (problem) throw failure('API_BAD_REQUEST', 'replyTo is not a conversation', problem)
+      return { status: 200, body: stop(ws, { replyTo }) }
+    },
     'POST wrap': async ({ request, response, ws }) => ({ status: 200, body: wrapTurn(ws, (await jsonOf(request, response)).wait) }),
     'POST extend': async ({ request, response, ws }) => {
       const { dimension, amount } = await jsonOf(request, response)

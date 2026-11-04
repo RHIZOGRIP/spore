@@ -65,7 +65,8 @@ import { runService } from '@rhizogrip/spore/relay'
   itself — status, notices — is plain.
 - **Commands**: `status`, `stop`, `wrap [10m]`, `extend <dimension> <amount>`, `flush`, and a help
   line for anything else. `stop` also sets aside what that conversation sent and no turn had read, once the
-  stopped turn has ended, and says how many — with nothing running, what waited. `flush` starts the
+  stopped turn has ended, and says how many — with nothing running, what waited. What it says after
+  the `stop` gets a turn of its own. `flush` starts the
   spore's conversation over between turns, naming the person and the conversation as who asked, and
   is refused while a turn runs. In a conversation
   many people share, `stop`, `wrap`, `extend` and `flush` are for someone its `people` name by id or role —

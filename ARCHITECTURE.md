@@ -662,10 +662,32 @@ leaves `inboxConsumed` at the last finalized turn.
 
 **What one place said can be set aside** (`setAside`, `t_set_aside`): marked beside the inbox, not
 on it, so no turn reads it, starts for it or answers it — `readInboxFrom`, `unread` and `address`
-all skip it, and a turn's `(inboxFrom, inboxTo]` means what it read less what was set aside. The
-mark is made only while no runner holds the workspace, inside the write that checks it: what a
-running turn has read is known when it ends, and a message it read is answered, never set aside. A
-relay's `stop` is what sets aside, up to the last message of that conversation it passed.
+all skip it, and a turn's `(inboxFrom, inboxTo]` means what it read less what was set aside.
+`setAside` marks only while no runner holds the workspace, inside the write that checks it: what a
+running turn has read is known when it ends. A relay's `stop` calls it when no turn is there to do
+it, up to the last message of that conversation it passed.
+
+**A stop someone asked for is carried out at the turn's end** (`stop`, `t_stops`). A stop and a host
+going down both reach the runner as SIGTERM, so `stop` writes a row before its signal: how far the
+inbox reached, and whose queue it covers (`replyTo`). A row with none speaks for a person with no
+conversation, so for what the terminal and the library said, and never for a clock, a webhook, a job
+or a caller of the API. `finalize_row` acts on the rows in the turn's own transaction, so a turn
+recovered after a crash needs no second path. If the turn ended `cancelled`:
+
+- A note goes in the transcript, role `user`, mark `stopped`, saying the turn was stopped unfinished
+  and its work is not to be taken up again unless asked. What the turn read stays read, and the note
+  is what keeps it from coming back. A turn that wrote nothing yet gets no note.
+- What each row covers and no turn read is set aside.
+- The runner carries on if anything unread was said past the furthest row: `send` found the spore
+  running and started nothing. What others left before the stop waits for the next `send`, or is
+  read by that turn.
+
+Any other ending only deletes the rows, so a stop that lost to an answer or a limit did nothing.
+`begin_turn` deletes them too, for a stop that reached no turn, as one landing while a runner lets
+go; one landing just before it begins is lost the same way, and that turn stops with no note. A stop
+that finds the turn already `cancelled` and waiting on its calls writes its row and sends no signal:
+the signal would wait in the runner and stop the turn it carries on to. `spore pause` sends the
+signal with no row (`interrupt`), and what its stopped turns left stays asked.
 
 **What was overheard asks nothing** (`overheard` on the entry, `send`'s `overheard: true`): a
 message said where the spore is and not to it — in a group, around what is addressed to it. It is
@@ -2675,7 +2697,9 @@ runs on a task of the runner's own, which reads it to its `done` and counts it; 
 that asked gets a copy while it is there to take one. On a stop or the hard wall the agent stops
 waiting — its model client leaves the call unread and throws, which is how the loop records
 `cancelled` — and exits on the usual schedule, its tools and cells with it. A call still waiting
-for a session when the turn ends has not started, and is dropped with its connection.
+for a session when the turn ends has not started, and is dropped with its connection. Until the
+last call ends the turn is `pending` and `stateOf` says `draining`, while `complete` has already
+fired; what the stop then does to what comes next is in §The inbox.
 
 **A stop also reaches the tool calls a round asked for.** The tool kernel starts no call once
 the turn is stopped: a later call in the batch is answered `not run`, the way calls after a

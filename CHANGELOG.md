@@ -4,6 +4,31 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.56.0] — Fixed: a stopped turn's work does not come back
+
+### Fixed
+
+- After `spore stop`, a relay's `/stop` or a stop through the HTTP API, the next turn no longer
+  takes up the stopped work. The stopped turn had read its message, so the message stayed in the
+  transcript with no answer and the next turn answered it. The turn now ends with a note in the
+  transcript saying it was stopped and its work is not to be taken up again unless asked.
+- What is said after a stop, while the turn waits on its model call, gets a turn at once. It used
+  to wait for the next `send`.
+- A stop that lands before the agent starts sets aside the message the turn was started for.
+  It used to be answered by the next turn.
+
+### Changed
+
+- `stop(ws, { replyTo })` takes whose queue it covers, and its result has `marked`, false when the
+  stop could not be written down. What that place queued up to the stop and no turn read is set
+  aside at the turn's end. With no `replyTo`, that is what was said from the terminal or the
+  library, and never a conversation's, a clock's, a webhook's, a job's or a caller of the API's.
+- `POST /v1/spores/<name>/stop` takes `replyTo` in its body, and refuses one that is no conversation.
+- A second `stop` while a stopped turn waits on its model call sends no signal.
+- `spore pause` and a SIGTERM from outside, such as a host shutting down, behave as before: no
+  note, nothing set aside and no new turn.
+- Schema 16: `t_stops`, the stops waiting for a turn's end. A spore migrates on its next write.
+
 ## [1.55.1] — Fixed: a conformance case that names a file says the check reads it where named
 
 ### Fixed

@@ -244,6 +244,11 @@ Limits are per turn. A turn that ended at a limit starts the next one with a ful
 budget, and the `turns` view says how each one ended: `answer`, `question`, `quiet`,
 `soft:<what>`, `hard:<what>`, `cancelled`, or `error` for one that could not run or died.
 
+**A turn can be stopped by whoever runs you.** The runtime then says so in your history, right
+after the stopped work. What was asked before that line is no longer asked: leave it alone
+unless someone asks for it again, and answer what comes after. A model call already running
+when the stop lands is not cut: it finishes and is billed to the turn, and what it said is dropped.
+
 **A long message, or one with a file, arrives as a pointer.** Past a few thousand
 characters a message is put in `inbox.d/` instead of being handed to you whole, and you get
 its first and last part with a line saying where the rest is. Read the file when the middle

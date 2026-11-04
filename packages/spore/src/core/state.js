@@ -59,8 +59,20 @@ export function endedIn (last) {
  * kills each running tool's process group and writes the turn record. SIGKILL would leave
  * the tree running and the turn unrecorded. Sent through a pidfd checked against the lock
  * (`stopHolder`), never to the pid a file names, which may since belong to anything.
+ *
+ * Someone asking leaves a mark first, and the turn's end carries it out: a note in the transcript,
+ * so the next turn does not take the stopped work up again, and what `replyTo` queued up to now set
+ * aside. With no `replyTo` it speaks for a person with no conversation, so for what the terminal
+ * and the library said. `marked` false means the mark could not be written and the signal went
+ * anyway: the turn ends, with no note and nothing set aside.
  */
-export function stop (ws) {
-  const pid = native.stopHolder(ws)
+export function stop (ws, { replyTo } = {}) {
+  const held = native.stopHolder(ws, replyTo)
+  return held === null ? { stopped: false, pid: null } : { stopped: true, pid: held.pid, marked: held.marked }
+}
+
+/** The same signal with no mark, for a stop nobody asked of this spore: what the turn left stays asked. */
+export function interrupt (ws) {
+  const pid = native.interruptHolder(ws)
   return pid === null ? { stopped: false, pid: null } : { stopped: true, pid }
 }

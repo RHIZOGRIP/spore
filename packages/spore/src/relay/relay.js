@@ -13,7 +13,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
-import { attemptOutbox, changeText, extendTurn, flush, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf, errorText } from '../index.js'
+import { attemptOutbox, changeText, extendTurn, flush, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, readInbox, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf, errorText } from '../index.js'
 import { createApprovals } from './approvals.js'
 import { filesOf, reactionsOf, routesOf, traceOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
@@ -135,14 +135,19 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
 
   /**
    * `stop`: the running turn signalled, and what this conversation said before it and no turn has
-   * read — up to the last of its messages this relay passed — set aside once nothing holds the
-   * spore, so no turn reads it later, and its `working…` message and reaction go. Followed in the
-   * background: a turn may wait on its model calls.
+   * read set aside, so no turn reads it later, and its `working…` message and reaction go. The
+   * turn's end sets it aside, and a turn may start at once for what was said after the stop, so
+   * the wait is on the fate of these messages and not on the spore falling quiet. With no turn to
+   * do it, the relay does: up to the last of its messages it passed, once nothing holds the spore.
+   * Followed in the background: a turn may wait on its model calls.
    */
   const stopTurn = async (conversation, ws, name) => {
-    const upto = Math.max(0, ...(state.pending[ws] ?? []).filter(entry => entry.conversation === conversation).map(entry => entry.inbox))
+    const replyTo = `${prefix}${conversation}`
+    const waiting = (state.pending[ws] ?? []).filter(entry => entry.conversation === conversation).map(entry => entry.inbox)
+    const upto = Math.max(0, ...waiting)
+    const fates = () => readInbox(ws, { after: Math.min(...waiting) - 1, upto }).filter(entry => waiting.includes(entry.inboxNo))
     try {
-      const { stopped } = stop(ws)
+      const { stopped } = stop(ws, { replyTo })
       if (stopped) tell(conversation, 'stopping it', name)
       if (upto === 0) {
         if (!stopped) tell(conversation, 'nothing is running', name)
@@ -150,7 +155,8 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
       }
       let marked = null
       while (!stopping.signal.aborted) {
-        if (stateOf(ws).state !== RUNNING) marked = setAside(ws, { replyTo: `${prefix}${conversation}`, upto })
+        if (fates().every(entry => entry.consumed || entry.setAside)) marked = fates().filter(entry => entry.setAside).map(entry => entry.inboxNo)
+        else if (stateOf(ws).state !== RUNNING) marked = setAside(ws, { replyTo, upto })
         if (marked !== null) break
         await sleep(SETTLE_EVERY_MS, stopping.signal)
       }

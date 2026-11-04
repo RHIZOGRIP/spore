@@ -21,7 +21,7 @@ import { cloneCapability } from '../core/clone.js'
 import { openWorkspace } from '../core/workspace.js'
 import { grantedPathContaining, writesRefusal } from '../isolation/sandbox.js'
 import { filledIn, parsedDefinition, parseDefinition, parseFrontmatter, sporeDefinition } from '../delegation/definition.js'
-import { RUNNING, isRunning, stateOf, stop } from '../core/state.js'
+import { RUNNING, interrupt, isRunning, stateOf } from '../core/state.js'
 import { historyOver } from '../resilience/compaction.js'
 import { paused, pauseSpores, unpauseSpores } from '../core/admission.js'
 import { dropSchedule, survey, writeSchedule } from '../core/schedule.js'
@@ -732,7 +732,7 @@ export function schedules ({ ws, configFile = CONFIG_FILE } = {}) {
  * message and a webhook's delivery are refused; unread messages, what jobs said and due
  * schedules wait.
  */
-export function pause ({ why, configFile = CONFIG_FILE, stopTurn = stop, stopJob = stopSupervisor } = {}) {
+export function pause ({ why, configFile = CONFIG_FILE, stopTurn = interrupt, stopJob = stopSupervisor } = {}) {
   const { mark, already } = pauseSpores({ why })
   const turns = []
   const stoppedJobs = []

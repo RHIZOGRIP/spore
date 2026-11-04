@@ -794,6 +794,27 @@ export function conformance (harness, platformTests = () => {}) {
         await until(() => posts(ONE).some(one => /^no answer · cancelled/.test(one.text)), 15000, where)
       })
 
+      it('answers what the conversation said after the stop, while the turn waited on its model call', async () => {
+        const opened = new Promise(resolve => { release = resolve })
+        let asked = 0
+        reply = async () => {
+          asked += 1
+          if (asked > 1) return answers('after')
+          await opened
+          return answers('late')
+        }
+        start()
+        say({ conversation: ONE, text: 'first' })
+        await until(() => asked === 1 && taken(ONE).length === 1)
+        say({ conversation: ONE, text: harness.command('stop') })
+        await until(() => posted(ONE, 'stopping it'), 15000, where)
+        say({ conversation: ONE, text: 'third' })
+        await until(() => taken(ONE).length === 2)
+        release()
+        await until(() => posted(ONE, 'after'), 15000, where)
+        expect(readInbox(ws).map(entry => [harness.words(entry.text), entry.setAside])).toEqual([['first', false], ['third', false]])
+      })
+
       it('is written down, having read what it read, when stopped from elsewhere as its model call ends', async () => {
         const opened = new Promise(resolve => { release = resolve })
         let asked = 0

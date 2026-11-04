@@ -29,9 +29,9 @@ use spore_workspace::{
     hand_over, iso_now, leave_wal, limit_file_size, make_spore_socket_dir, prune_trail,
     read_paths_refusal, record_unanswered, recover, release_lock, serve, spore_socket_dir,
     spore_socket_path, start_limits, turn_limits, turn_state, unanswered, unanswered_traceparents,
-    unread, write_lock, write_outcome, write_tree_key, writes_refusal, yield_to_host, Acquired,
-    Unanswered, DEFAULT_FREE_FLOOR, DEFAULT_LARGEST_FILE, DEFAULT_MODEL_SESSIONS, DEFINITION_FILE,
-    HOME_DIR, PLUGIN_ENV, PLUGIN_READS, STATE_FD,
+    unread, unread_past, write_lock, write_outcome, write_tree_key, writes_refusal, yield_to_host,
+    Acquired, Unanswered, DEFAULT_FREE_FLOOR, DEFAULT_LARGEST_FILE, DEFAULT_MODEL_SESSIONS,
+    DEFINITION_FILE, HOME_DIR, PLUGIN_ENV, PLUGIN_READS, STATE_FD,
 };
 use tokio::process::Command;
 use tokio::signal::unix::{signal, Signal, SignalKind};
@@ -938,15 +938,22 @@ async fn main() {
         };
         crash_at("after-finalize");
         // Only after a turn that answered on its own: it read what was pending, so anything
-        // unread now arrived during it. A stopped turn leaves what is pending for the next
-        // `send`; an errored or killed one left its own message unread, and carrying on would
-        // meet it — and the same failure — again and again.
+        // unread now arrived during it. After a stop someone asked for, only what was said past
+        // it: that person's next word, which nobody else would read. Others wait for the next
+        // `send`, as after any signal: a host going down starts nothing. An errored or killed
+        // turn left its own message unread, and carrying on would meet it — and the same
+        // failure — again and again.
+        let stopped_to = finalized.as_ref().and_then(|row| row["stoppedTo"].as_i64());
         let answered =
             agent_recorded && finalized.is_some_and(|row| row["concluded"].as_i64() == Some(1));
-        if ended.signalled || ended.walled || ended.killed || !answered {
+        if stopped_to.is_none() && (ended.signalled || ended.walled || ended.killed || !answered) {
             break code;
         }
-        match unread(&ws) {
+        let waiting = |ws: &Path| match stopped_to {
+            Some(upto) => unread_past(ws, upto),
+            None => unread(ws),
+        };
+        match waiting(&ws) {
             Ok(true) => continue,
             Ok(false) => {}
             Err(e) => {
@@ -955,7 +962,7 @@ async fn main() {
             }
         }
         let_go(&ws, lock.take().expect("held through the turn"));
-        if !matches!(unread(&ws), Ok(true)) {
+        if !matches!(waiting(&ws), Ok(true)) {
             break code;
         }
         match acquire_lock(&ws) {

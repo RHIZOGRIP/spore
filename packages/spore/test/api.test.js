@@ -152,6 +152,17 @@ describe('the running turn', () => {
   })
 })
 
+describe('stopping a turn', () => {
+  it('says nothing was running, and refuses a replyTo that is no conversation', async () => {
+    const idle = await call('POST', '/v1/spores/alpha/stop', { body: { replyTo: 'telegram:main/42' } })
+    expect([idle.status, idle.json()]).toEqual([200, { stopped: false, pid: null }])
+    for (const replyTo of ['nowhere', 42]) {
+      const refused = await call('POST', '/v1/spores/alpha/stop', { body: { replyTo } })
+      expect([refused.status, refused.json().error.type]).toEqual([400, 'API_BAD_REQUEST'])
+    }
+  })
+})
+
 describe('a line of the caller\'s own', () => {
   it('is refused while nothing runs, and when it is not a line', async () => {
     const idle = await call('POST', '/v1/spores/alpha/annotate', { body: { text: 'usually 2 min' } })

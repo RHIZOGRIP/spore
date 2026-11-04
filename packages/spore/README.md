@@ -247,8 +247,13 @@ rise through `spore extend` only as far as the definition's `extend.*` fields al
 | `quiet` | it called `quiet`: done, with nothing to say; no output, and the reason in the turn record's `because` |
 | `soft:<dim>` | it crossed a soft bound, was told to wrap up, and answered with what it had |
 | `hard:<dim>` | it crossed a hard bound and was stopped — `rounds`, `cost` or `wall` |
-| `cancelled` | it was stopped — `spore stop`, Ctrl-C twice in the terminal, a stop from the HTTP API |
+| `cancelled` | it was stopped — `spore stop`, a relay's `/stop`, a stop from the HTTP API, Esc twice in the TUI, `spore pause`, or the host going down. After a stop someone asked for, the next turn is told not to take the work up again, and what they queued is set aside. After the others, what the turn had not answered is for the next one |
 | `error` | it could not run, or died: the turn record's `error` says why (`START_FAILED`, `DISK_FULL`, `CONTAIN_FAILED`, …) and its message waits unread |
+
+A stop waits for a model call already running: the call finishes and is billed to the turn, and
+what it said is dropped. A program showing the turn as working can stop on the `complete` event or
+on `draining: true` from `stateOf`, since the spore stays `running` until the call ends. A message
+sent in that wait gets a turn of its own.
 
 Crossing a soft bound appends a message telling the agent
 to answer now and say what is unfinished — you get a partial answer. Crossing a hard bound

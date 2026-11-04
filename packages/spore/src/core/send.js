@@ -96,7 +96,8 @@ export function send (ws, message, { attach = [], schedule, hook, from, tracepar
   const said = enqueue(workspace, message, { attach, schedule, hook, from, traceparent, requestId, replyTo, approval })
   // Looked at again after appending, because the runner may have let go in between. It
   // looks at the inbox again after it lets go, so a message is read by it or finds the
-  // lock free here — never neither.
+  // lock free here, unless the turn failed or a signal nobody asked for ended it: then it
+  // waits for the next `send`.
   if (stateOf(workspace).state === RUNNING) return { ws: workspace, started: false, pid: null, ...said }
   try {
     const plugins = preparePlugins(workspace, { config: readConfig(configFile) })

@@ -146,8 +146,8 @@ setAside(ws, { replyTo, upto }) → inboxNo[] | null
 Sets aside what `replyTo` said, up to `inboxNo` `upto`, that no turn has read: no turn reads it,
 starts for it or answers it, and it stays in the inbox with `setAside`. Returns the `inboxNo`s set
 aside, or `null` while a runner holds the workspace, since what its turn read is known only once it
-ends — call it again then. A relay's `stop` is the use: what the person sent before stopping is not
-taken up by the next turn.
+ends — call it again then. `stop` does this itself at the turn's end; a relay calls it when no turn
+was there to, for what waited.
 
 ### `turnOfMessage`
 
@@ -922,22 +922,37 @@ names.
 ### `stop`
 
 ```
-stop(ws) → { stopped, pid }
+stop(ws, { replyTo }) → { stopped, pid, marked }
 ```
 
 Sends SIGTERM to the process holding the workspace lock; the turn is recorded `cancelled`.
 `stopped: false` and `pid: null` when nothing is running.
 
+The stop is written down first, and the turn's end carries it out. A note goes in the transcript,
+so the next turn does not take the stopped work up again. What `replyTo` said up to now and no turn
+read is set aside; with no `replyTo`, what the terminal and the library said, never a conversation's,
+a clock's, a webhook's, a job's or a caller of the API's. What is said after the stop gets a turn of
+its own with no further `send`.
+
+A stop that loses to an answer or a limit does nothing of this. `marked: false` means it could not
+be written down and the signal went anyway: the turn ends, with no note and nothing set aside.
+
+The turn ends at once, but the workspace is held until its model calls finish, since spore never
+cuts one. Meanwhile `complete` has fired and `stateOf` says `draining: true`, so a host can stop
+showing it as working. A second `stop` in that wait sets aside what its own `replyTo` queued and
+sends no signal.
+
 ### `pause`
 
 ```
-pause({ why, configFile, stopTurn = stop, stopJob }) → { mark, already, turns, jobs }
+pause({ why, configFile, stopTurn, stopJob }) → { mark, already, turns, jobs }
 ```
 
 Marks this user's spores paused, so no turn and no job starts and `send` refuses with `PAUSED`,
-then stops every running turn and job of the spores `list` finds. `already` is true when a pause
-was in force (its mark stands). `turns` and `jobs` name what was stopped. `stopTurn` and
-`stopJob` replace how each is stopped
+then stops every running turn and job of the spores `list` finds. A turn stopped so leaves no note
+and nothing set aside, as `stop` does: what it had not answered is for the next turn. `already` is
+true when a pause was in force (its mark stands). `turns` and `jobs` name what was stopped.
+`stopTurn` and `stopJob` replace how each is stopped
 ([docs/operating.md §Pausing every spore](operating.md#pausing-every-spore)).
 
 ### `unpause`

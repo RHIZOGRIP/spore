@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 15;
+pub const SCHEMA_VERSION: i64 = 16;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -195,6 +195,13 @@ CREATE TABLE t_set_aside (
   at       TEXT    NOT NULL
 );
 
+CREATE TABLE t_stops (
+  stopNo   INTEGER PRIMARY KEY,
+  at       TEXT    NOT NULL,
+  upto     INTEGER NOT NULL,
+  replyTo  TEXT
+);
+
 CREATE VIEW inbox AS
   SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
          i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
@@ -343,7 +350,7 @@ CREATE VIEW approvals AS
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 14] = [
+const MIGRATIONS: [(i64, &str); 15] = [
     (
         1,
         r#"
@@ -649,6 +656,17 @@ CREATE VIEW inbox AS
          EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside,
          NOT i.overheard AND NOT EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS asks
     FROM t_inbox i, t_workspace w;
+"#,
+    ),
+    (
+        15,
+        r#"
+CREATE TABLE t_stops (
+  stopNo   INTEGER PRIMARY KEY,
+  at       TEXT    NOT NULL,
+  upto     INTEGER NOT NULL,
+  replyTo  TEXT
+);
 "#,
     ),
 ];
@@ -1519,6 +1537,17 @@ pub fn unread(ws: &Path) -> Result<bool, String> {
     })
 }
 
+/// Whether anything unread that starts a turn was said past `upto`.
+pub fn unread_past(ws: &Path, upto: i64) -> Result<bool, String> {
+    reading(ws, false, |conn| {
+        conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM inbox WHERE NOT consumed AND asks AND startsTurn AND inboxNo > ?1)",
+            [upto],
+            |row| row.get(0),
+        )
+    })
+}
+
 /// The `traceparent` of each message the next turn will answer that carries one, in the order
 /// they were said. The turn's trace is the first one's.
 pub fn unanswered_traceparents(ws: &Path) -> Result<Vec<String>, String> {
@@ -1592,6 +1621,10 @@ pub fn begin_turn(
     }
     let turn_id = crate::new_turn_id().map_err(|e| format!("cannot name the turn — {e}"))?;
     writing(ws, |conn| {
+        // A stop that reached no turn, as one landing while the last runner let go, is not this
+        // turn's.
+        conn.execute("DELETE FROM t_stops", [])
+            .map_err(failed_to("begin the turn"))?;
         conn.execute(
             "INSERT INTO t_turns (turnId, state, startedAt, replyDefault) VALUES (?1, 'running', ?2, ?3)",
             (&turn_id, started_at, reply_default),
@@ -2083,8 +2116,9 @@ pub fn request(ws: &Path, turn: Option<&str>, frame: &str) -> Result<String, Str
 pub fn finalize_turn(ws: &Path, turn: &str, settled: Option<&Settled>) -> Result<Value, String> {
     writing(ws, |conn| {
         let tx = immediate(conn)?;
-        finalize_row(&tx, turn, settled, true)?;
-        let row = turn_row(&tx, turn)?;
+        let stopped_to = finalize_row(&tx, turn, settled, true)?;
+        let mut row = turn_row(&tx, turn)?;
+        row["stoppedTo"] = json!(stopped_to);
         tx.commit().map_err(failed_to("finalize the turn"))?;
         Ok(row)
     })
@@ -2095,7 +2129,7 @@ fn finalize_row(
     turn: &str,
     settled: Option<&Settled>,
     announce: bool,
-) -> Result<(), String> {
+) -> Result<Option<i64>, String> {
     let failed = failed_to("finalize the turn");
     let state: Option<String> = tx
         .query_row(
@@ -2107,7 +2141,7 @@ fn finalize_row(
         .map_err(&failed)?;
     match state.as_deref() {
         None => return Err(format!("no turn {turn}")),
-        Some("final") => return Ok(()),
+        Some("final") => return Ok(None),
         Some("running") => return Err(format!("turn {turn} has not said how it ended")),
         _ => {}
     }
@@ -2177,11 +2211,75 @@ fn finalize_row(
         (turn_no, inbox_to, tree.unwrap_or(0), units.unwrap_or(0)),
     )
     .map_err(&failed)?;
-    if announce {
-        address(tx, turn, consumed, inbox_to)?;
-        turn_end(tx, turn)?;
+    if !announce {
+        return Ok(None);
     }
-    Ok(())
+    address(tx, turn, consumed, inbox_to)?;
+    turn_end(tx, turn)?;
+    carry_out_stops(tx, turn, inbox_to)
+}
+
+/// What the runtime says in the transcript after a turn someone stopped, so the next turn does
+/// not take its unanswered message for one still asked.
+const STOPPED_NOTE: &str = "[The runtime: this turn was stopped on request, unfinished. Do not take up what it was doing again unless asked.]";
+
+/// The stops waiting when a turn ends, used up. One that reached a turn ending `cancelled` puts the
+/// note in the transcript, if the turn got as far as saying anything there, and sets aside what
+/// its place said up to it that the turn did not read. A stop with no place speaks for a person
+/// with none, so for no clock, webhook, job or conversation. Any other ending means the stop came
+/// too late or lost to a limit, and it does nothing. Returns how far the stops reached in the
+/// inbox, if they did anything: what is past that was said after them.
+fn carry_out_stops(tx: &Connection, turn: &str, read_to: i64) -> Result<Option<i64>, String> {
+    let failed = failed_to("carry out the stop");
+    let stops: Vec<(i64, Option<String>)> = {
+        let mut statement = tx
+            .prepare("SELECT upto, replyTo FROM t_stops ORDER BY stopNo")
+            .map_err(&failed)?;
+        let rows = statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(&failed)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(&failed)?
+    };
+    tx.execute("DELETE FROM t_stops", []).map_err(&failed)?;
+    let (stop_reason, spoke): (Option<String>, bool) = tx
+        .query_row(
+            "SELECT stopReason, EXISTS (SELECT 1 FROM t_transcript WHERE turnId = ?1)
+               FROM t_turns WHERE turnId = ?1",
+            [turn],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(&failed)?;
+    if stops.is_empty() || stop_reason.as_deref() != Some("cancelled") {
+        return Ok(None);
+    }
+    let at = crate::iso_now();
+    for (upto, reply_to) in &stops {
+        tx.execute(
+            "INSERT INTO t_set_aside (inboxNo, at)
+             SELECT inboxNo, ?1 FROM inbox
+              WHERE asks AND inboxNo > ?2 AND inboxNo <= ?3
+                AND CASE WHEN ?4 IS NULL
+                         THEN coalesce(replyTo, 'terminal') = 'terminal' AND schedule IS NULL
+                              AND hook IS NULL AND job IS NULL AND api IS NULL
+                         ELSE replyTo = ?4 END",
+            (&at, read_to, upto, reply_to),
+        )
+        .map_err(&failed)?;
+    }
+    if spoke {
+        tx.execute(
+            "INSERT INTO t_transcript (turnId, at, kind, role, message, marks)
+             VALUES (?1, ?2, 'message', 'user', ?3, ?4)",
+            (
+                turn,
+                &at,
+                json!({ "role": "user", "content": STOPPED_NOTE }).to_string(),
+                json!(["stopped"]).to_string(),
+            ),
+        )
+        .map_err(&failed)?;
+    }
+    Ok(stops.iter().map(|(upto, _)| *upto).max())
 }
 
 /// The turn's answer, addressed: one outbox entry per place the messages it read in
@@ -2301,6 +2399,32 @@ pub fn attempt_outbox(ws: &Path, outbox_no: i64) -> Result<bool, String> {
             )
             .map_err(failed_to("mark the outbox entry attempted"))?;
         Ok(changed == 1)
+    })
+}
+
+/// A stop on its way, written before the signal: what tells someone asking from a host going down,
+/// and says how far the inbox reached and whose queue it covers. True when the turn is stopped
+/// already and only waits on its model calls, which a signal would not reach: it would wait for
+/// the next turn and stop that.
+pub fn mark_stop(ws: &Path, reply_to: Option<&str>) -> Result<bool, String> {
+    writing(ws, |conn| {
+        let failed = failed_to("mark the stop");
+        let tx = immediate(conn)?;
+        tx.execute(
+            "INSERT INTO t_stops (at, upto, replyTo)
+             SELECT ?1, coalesce(max(inboxNo), 0), ?2 FROM t_inbox",
+            (crate::iso_now(), reply_to),
+        )
+        .map_err(&failed)?;
+        let draining: bool = tx
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM t_turns WHERE state = 'pending' AND stopReason = 'cancelled')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(&failed)?;
+        tx.commit().map_err(&failed)?;
+        Ok(draining)
     })
 }
 
@@ -2898,6 +3022,7 @@ mod tests {
                 "t_limits",
                 "t_outbox",
                 "t_set_aside",
+                "t_stops",
                 "t_transcript",
                 "t_turns",
                 "t_workspace"
@@ -4911,5 +5036,232 @@ mod tests {
         ] {
             assert!(append_inbox(&ws, &refused.to_string()).is_err());
         }
+    }
+
+    fn said_with(ws: &Path, fields: Value) {
+        let mut entry = json!({ "at": "a", "text": "x" });
+        entry
+            .as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        append_inbox(ws, &entry.to_string()).unwrap();
+    }
+
+    fn turn_that_spoke(ws: &Path) -> String {
+        let turn = begin_turn(ws, "t", None).unwrap();
+        let entry = json!({ "at": "a", "kind": "message", "role": "user", "message": { "role": "user", "content": "x" } });
+        ask(
+            ws,
+            Some(&turn),
+            json!({ "id": 1, "op": "transcript.append", "entries": [entry] }),
+        );
+        turn
+    }
+
+    fn says_it_ended(ws: &Path, turn: &str, stop: &str, inbox_to: i64) {
+        ask(
+            ws,
+            Some(turn),
+            json!({ "id": 2, "op": "turn.outcome", "turn": { "stopReason": stop, "concluded": false, "inboxTo": inbox_to } }),
+        );
+    }
+
+    fn notes(ws: &Path) -> i64 {
+        row(
+            ws,
+            "SELECT count(*) AS n FROM t_transcript WHERE marks = '[\"stopped\"]'",
+        )["n"]
+            .as_i64()
+            .unwrap()
+    }
+
+    fn aside(ws: &Path) -> Vec<i64> {
+        let conn = Connection::open(ws.join(STATE_FILE)).unwrap();
+        let mut statement = conn
+            .prepare("SELECT inboxNo FROM t_set_aside ORDER BY inboxNo")
+            .unwrap();
+        let rows = statement.query_map([], |row| row.get(0)).unwrap();
+        rows.map(Result::unwrap).collect()
+    }
+
+    fn stops_left(ws: &Path) -> i64 {
+        row(ws, "SELECT count(*) AS n FROM t_stops")["n"]
+            .as_i64()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_bare_stop_notes_the_turn_and_sets_aside_only_what_a_person_with_no_conversation_said() {
+        let ws = scratch("stop-bare");
+        said_with(&ws, json!({}));
+        let turn = turn_that_spoke(&ws);
+        said_with(&ws, json!({}));
+        said_with(&ws, json!({ "replyTo": "terminal" }));
+        said_with(&ws, json!({ "replyTo": "telegram:main/42" }));
+        said_with(&ws, json!({ "schedule": "s", "due": "b" }));
+        assert!(!mark_stop(&ws, None).unwrap());
+        said_with(&ws, json!({}));
+        says_it_ended(&ws, &turn, "cancelled", 1);
+        let row = finalize_turn(&ws, &turn, None).unwrap();
+        assert_eq!(row["stoppedTo"], json!(5));
+        assert_eq!(notes(&ws), 1);
+        assert_eq!(aside(&ws), [2, 3]);
+        assert_eq!(stops_left(&ws), 0);
+        assert!(unread_past(&ws, 5).unwrap());
+    }
+
+    #[test]
+    fn a_stop_from_a_conversation_sets_aside_what_that_conversation_said_up_to_it() {
+        let ws = scratch("stop-scoped");
+        said_with(&ws, json!({ "replyTo": "telegram:main/42" }));
+        let turn = turn_that_spoke(&ws);
+        said_with(&ws, json!({ "replyTo": "telegram:main/42" }));
+        said_with(&ws, json!({ "replyTo": "telegram:main/7" }));
+        said_with(&ws, json!({}));
+        mark_stop(&ws, Some("telegram:main/42")).unwrap();
+        said_with(&ws, json!({ "replyTo": "telegram:main/42" }));
+        says_it_ended(&ws, &turn, "cancelled", 1);
+        finalize_turn(&ws, &turn, None).unwrap();
+        assert_eq!(aside(&ws), [2]);
+    }
+
+    #[test]
+    fn a_stop_does_nothing_to_a_turn_that_ended_any_other_way() {
+        for stop in ["answer", "hard:wall", "error"] {
+            let ws = scratch(&format!("stop-lost-{}", stop.replace(':', "-")));
+            said_with(&ws, json!({}));
+            let turn = turn_that_spoke(&ws);
+            said_with(&ws, json!({}));
+            mark_stop(&ws, None).unwrap();
+            says_it_ended(&ws, &turn, stop, 1);
+            let row = finalize_turn(&ws, &turn, None).unwrap();
+            assert_eq!(row["stoppedTo"], Value::Null, "{stop}");
+            assert_eq!(notes(&ws), 0, "{stop}");
+            assert!(aside(&ws).is_empty(), "{stop}");
+            assert_eq!(stops_left(&ws), 0, "{stop}");
+        }
+    }
+
+    #[test]
+    fn a_turn_ending_cancelled_with_no_stop_changes_nothing() {
+        let ws = scratch("stop-none");
+        said_with(&ws, json!({}));
+        let turn = turn_that_spoke(&ws);
+        said_with(&ws, json!({}));
+        says_it_ended(&ws, &turn, "cancelled", 1);
+        let row = finalize_turn(&ws, &turn, None).unwrap();
+        assert_eq!(row["stoppedTo"], Value::Null);
+        assert_eq!(notes(&ws), 0);
+        assert!(aside(&ws).is_empty());
+    }
+
+    #[test]
+    fn a_stopped_turn_finalized_again_leaves_one_note() {
+        let ws = scratch("stop-again");
+        said_with(&ws, json!({}));
+        let turn = turn_that_spoke(&ws);
+        mark_stop(&ws, None).unwrap();
+        says_it_ended(&ws, &turn, "cancelled", 1);
+        finalize_turn(&ws, &turn, None).unwrap();
+        let again = finalize_turn(&ws, &turn, None).unwrap();
+        assert_eq!(again["stoppedTo"], Value::Null);
+        assert_eq!(notes(&ws), 1);
+    }
+
+    #[test]
+    fn a_stopped_turn_recovered_after_a_crash_is_carried_out_once() {
+        let ws = scratch("stop-recover");
+        said_with(&ws, json!({}));
+        let turn = turn_that_spoke(&ws);
+        said_with(&ws, json!({}));
+        mark_stop(&ws, None).unwrap();
+        says_it_ended(&ws, &turn, "cancelled", 1);
+        recover(&ws).unwrap();
+        recover(&ws).unwrap();
+        assert_eq!(notes(&ws), 1);
+        assert_eq!(aside(&ws), [2]);
+    }
+
+    #[test]
+    fn a_stop_with_nothing_said_yet_sets_aside_and_leaves_no_note() {
+        let ws = scratch("stop-silent");
+        said_with(&ws, json!({}));
+        let turn = begin_turn(&ws, "t", None).unwrap();
+        mark_stop(&ws, None).unwrap();
+        ask(
+            &ws,
+            Some(&turn),
+            json!({ "id": 1, "op": "turn.outcome", "turn": { "stopReason": "cancelled", "concluded": false } }),
+        );
+        let row = finalize_turn(&ws, &turn, None).unwrap();
+        assert_eq!(row["stoppedTo"], json!(1));
+        assert_eq!(notes(&ws), 0);
+        assert_eq!(aside(&ws), [1]);
+    }
+
+    #[test]
+    fn a_stop_before_the_agent_started_sets_aside_what_it_was_started_for() {
+        let ws = scratch("stop-leave");
+        said_with(&ws, json!({}));
+        mark_stop(&ws, None).unwrap();
+        crate::record_unanswered(
+            &ws,
+            &crate::Unanswered {
+                started_at: "a",
+                stop_reason: "cancelled",
+                error: "OPERATION_CANCELLED",
+                detail: "stopped before the agent started",
+            },
+        )
+        .unwrap();
+        assert_eq!(notes(&ws), 0);
+        assert_eq!(aside(&ws), [1]);
+        assert_eq!(stops_left(&ws), 0);
+    }
+
+    #[test]
+    fn a_stop_that_reached_no_turn_is_gone_when_the_next_begins() {
+        let ws = scratch("stop-stale");
+        said_with(&ws, json!({}));
+        mark_stop(&ws, None).unwrap();
+        let turn = turn_that_spoke(&ws);
+        says_it_ended(&ws, &turn, "cancelled", 1);
+        let row = finalize_turn(&ws, &turn, None).unwrap();
+        assert_eq!(row["stoppedTo"], Value::Null);
+        assert_eq!(notes(&ws), 0);
+    }
+
+    #[test]
+    fn says_a_turn_is_stopped_already_while_it_waits_on_its_calls() {
+        let ws = scratch("stop-draining");
+        said_with(&ws, json!({}));
+        let turn = turn_that_spoke(&ws);
+        assert!(!mark_stop(&ws, None).unwrap());
+        says_it_ended(&ws, &turn, "cancelled", 1);
+        assert!(mark_stop(&ws, None).unwrap());
+        finalize_turn(&ws, &turn, None).unwrap();
+        assert_eq!(notes(&ws), 1);
+    }
+
+    #[test]
+    fn a_turn_copied_in_carries_out_no_stop() {
+        let ws = scratch("stop-copied");
+        mark_stop(&ws, None).unwrap();
+        let record = crate::unanswered(&crate::Unanswered {
+            started_at: "a",
+            stop_reason: "cancelled",
+            error: "OPERATION_CANCELLED",
+            detail: "copied",
+        });
+        replace_turns(&ws, &mut [record]).unwrap();
+        assert_eq!(stops_left(&ws), 1);
+    }
+
+    #[test]
+    fn says_whether_anything_that_starts_a_turn_was_said_past_a_point() {
+        let ws = scratch("unread-past");
+        said_with(&ws, json!({}));
+        assert!(unread_past(&ws, 0).unwrap());
+        assert!(!unread_past(&ws, 1).unwrap());
     }
 }
