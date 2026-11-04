@@ -22,7 +22,7 @@ import { DEFINITION_FILE, writeTranscriptEntries, writeTurnRecords } from '../sr
 import { sporangiumOf, sporangiumTree } from '../src/core/sporangia.js'
 import { NAMES } from '../src/core/names.js'
 import { writeCall } from '../src/core/call-record.js'
-import { CASES, TIERS, caseLimits } from './cases.js'
+import { CASES, REFERENCE_PRICE, TIERS, caseLimits, inputPrice, pricedLimits } from './cases.js'
 import { stage } from './stage.js'
 import { caseDigest } from './digest.js'
 import { grade } from './check.js'
@@ -101,17 +101,52 @@ try {
   rmSync(root, { recursive: true, force: true })
 }
 
+console.log('\nthe cost each case may spend, scaled to the model\'s price')
+{
+  const set = { rounds: [15, 18], cost: [0.10, 0.15], wall: ['4m', '5m'] }
+  const dear = pricedLimits(set, 4 * REFERENCE_PRICE)
+  check('a model four times the reference price gets four times the cost, and nothing else changes',
+    dear.cost[0] === 0.4 && dear.cost[1] === 0.6 && dear.rounds === set.rounds && dear.wall === set.wall,
+    JSON.stringify(dear))
+  const cheap = pricedLimits(set, REFERENCE_PRICE / 10)
+  check('a model at a tenth of it gets a tenth', cheap.cost[0] === 0.01 && cheap.cost[1] === 0.015, JSON.stringify(cheap.cost))
+  check('a model with no price, or a price of 0, keeps the budgets as set',
+    pricedLimits(set, null) === set && pricedLimits(set, 0) === set)
+  check('a flat input price is read as it is', inputPrice({ model: 'm', inputPrice: 4 }) === 4)
+  check('a tiered input price is read at its default tier', inputPrice({ model: 'm', inputPrice: { default: 0.1, '>272000': 0.2 } }) === 0.1)
+  check('an entry with no input price has none', inputPrice({ model: 'm' }) === null)
+  let refused = null
+  try {
+    inputPrice({ model: 'm', inputPrice: { '>272000': 0.2 } })
+  } catch (err) {
+    refused = err.message
+  }
+  check('a tiered price with no default tier is refused, not guessed', refused?.includes('no default tier'), refused ?? 'not refused')
+  const root = mkdtempSync(join(tmpdir(), 'conformance-cost-'))
+  try {
+    const item = CASES.find(c => !c.identity && !c.limits)
+    const { cmk } = stage(root, item, 'selfcheck/no-model', dear)
+    const parsed = parseDefinition(readFileSync(cmk, 'utf8'), { knownTools: TOOL_NAMES })
+    check(`${item.id} is staged with the scaled cost`, parsed.limits?.cost?.soft === 0.4 && parsed.limits?.cost?.hard === 0.6,
+      JSON.stringify(parsed.limits?.cost ?? parsed.error))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+}
+
 console.log('\nthe digest each case is counted under')
 const digestRoot = mkdtempSync(join(tmpdir(), 'conformance-digest-'))
 try {
-  const staged = (item, model = 'selfcheck/no-model') => {
+  const staged = (item, model = 'selfcheck/no-model', limits = caseLimits(item)) => {
     const at = mkdtempSync(join(digestRoot, 'run-'))
-    const placed = stage(at, item, model)
+    const placed = stage(at, item, model, limits)
     return { ...placed, digest: caseDigest(placed, item) }
   }
   const digests = CASES.map(item => staged(item).digest)
   check('a case staged twice, on two models, has one digest',
     CASES.every((item, i) => staged(item, 'other/model').digest === digests[i]))
+  check('a case staged with its cost scaled to a dearer model has the same digest',
+    CASES.every((item, i) => staged(item, 'other/model', pricedLimits(caseLimits(item), 4 * REFERENCE_PRICE)).digest === digests[i]))
   check('every case has its own digest', new Set(digests).size === CASES.length)
 
   const matcher = CASES.find(c => c.expect.answer instanceof RegExp)

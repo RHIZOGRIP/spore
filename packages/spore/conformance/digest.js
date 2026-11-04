@@ -3,6 +3,7 @@
  * is judged on, so a case's runs count together across spore releases until the case changes.
  *
  * Given: the staged identity without its `model:` line, since the model is what a run measures,
+ * and with its `cost:` as the case sets it, before the run scales it to the model's price,
  * and every file staged into the workspace. Judged on: the messages, the schedule and `expect`.
  * Left out: `reference.md` and `libraries.md`, which every workspace gets and which change with
  * the runtime, and the grader; `run.json` pins both through `spore` and `commit`.
@@ -11,6 +12,8 @@
 import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
+
+import { caseLimits } from './cases.js'
 
 const RUNTIME_DOCS = new Set(['reference.md', 'libraries.md'])
 
@@ -26,9 +29,11 @@ export function canonical (value) {
   return value
 }
 
-function withoutModel (source) {
+function asSet (source, item) {
   const end = source.indexOf('\n---', 3)
-  const head = source.slice(0, end).split('\n').filter((line, i) => i === 0 || !line.startsWith('model:'))
+  const head = source.slice(0, end).split('\n')
+    .filter((line, i) => i === 0 || !line.startsWith('model:'))
+    .map((line, i) => i > 0 && line.startsWith('cost:') ? `cost: [${caseLimits(item).cost.join(', ')}]` : line)
   return head.join('\n') + source.slice(end)
 }
 
@@ -44,7 +49,7 @@ function stagedFiles (ws, dir = ws) {
 /** Called after `stage()` and before `openWorkspace()`, which seeds what every workspace gets. */
 export function caseDigest ({ ws, cmk }, item) {
   return sha256(JSON.stringify(canonical({
-    definition: withoutModel(readFileSync(cmk, 'utf8')),
+    definition: asSet(readFileSync(cmk, 'utf8'), item),
     files: Object.fromEntries(stagedFiles(ws)),
     messages: item.messages ?? [item.prompt],
     schedule: item.schedule ?? null,

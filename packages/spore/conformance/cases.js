@@ -36,6 +36,33 @@ const TIGHT = { rounds: [2, 3], cost: [0.05, 0.08], wall: ['2m', '3m'] }
 // models, for the same three-cell fan-out.
 const ROOMY = { rounds: [30, 36], cost: [0.20, 0.30], wall: ['6m', '8m'] }
 
+/**
+ * The input price, in USD per million tokens, the `cost` budgets above are set for. A run scales
+ * them by its model's input price over this one, so a model dearer per token is held to the same
+ * work rather than to fewer rounds. Set where every model run so far fits its scaled bound: a
+ * model that thinks a lot spends more than its input price says.
+ */
+export const REFERENCE_PRICE = 1
+
+/**
+ * A model's input price from its catalog entry, USD per million tokens: a tiered price's
+ * `default` tier. Null for an entry with none, whose calls count $0.
+ */
+export function inputPrice (spec) {
+  const price = spec.inputPrice
+  if (price == null || typeof price === 'number') return price ?? null
+  if (typeof price.default !== 'number') throw new Error(`${spec.model} has a tiered inputPrice with no default tier`)
+  return price.default
+}
+
+/**
+ * The limits a case runs under on a model at `price`. A model with no price, or a price of 0,
+ * keeps the budgets as set: its calls count $0, so `cost` never stops it.
+ */
+export const pricedLimits = (limits, price) => price
+  ? { ...limits, cost: limits.cost.map(budget => Math.round(budget * price / REFERENCE_PRICE * 1e6) / 1e6) }
+  : limits
+
 const numbers = Array.from({ length: 40 }, (_, i) => `${i + 1}`).join('\n') + '\n'
 // About 1.3 MB: past `read`'s budget for any context we run (a tenth of it, at four characters a
 // token), so a whole read is refused and a range is the only way in. `read` tells a model to slice
@@ -75,9 +102,9 @@ export const CASES = [
     feature: 'read with offset and length',
     grants: ['read', 'write'],
     files: { 'data/numbers.txt': manyNumbers },
-    prompt: 'Read only lines 12 to 14 of data/numbers.txt, and write them, and nothing else, to data/out.txt, each line ending in a newline.',
+    prompt: 'Read only lines 12 to 14 of data/numbers.txt, and write them, and nothing else, to data/result.txt, each line ending in a newline.',
     expect: {
-      files: { 'data/out.txt': '12\n13\n14\n' },
+      files: { 'data/result.txt': '12\n13\n14\n' },
       calls: [{ tool: 'read', target: /numbers\.txt/, eof: false }]
     }
   },
@@ -86,8 +113,8 @@ export const CASES = [
     tier: 'core',
     feature: 'write exact bytes',
     grants: ['write'],
-    prompt: 'Write the exact text hello world (lowercase, one space, no newline, nothing else) to data/out.txt.',
-    expect: { files: { 'data/out.txt': 'hello world' } }
+    prompt: 'Write the exact text hello world (lowercase, one space, no newline, nothing else) to data/result.txt.',
+    expect: { files: { 'data/result.txt': 'hello world' } }
   },
   {
     id: 'edit',
@@ -106,9 +133,9 @@ export const CASES = [
     // the right number was accepted as evidence of a shell command that never ran.
     grants: ['exec', 'write'],
     files: { 'data/numbers.txt': numbers },
-    prompt: 'Count the lines in data/numbers.txt using a shell command. Write just the number to data/out.txt.',
+    prompt: 'Count the lines in data/numbers.txt using a shell command. Write just the number to data/result.txt.',
     expect: {
-      files: { 'data/out.txt': /^\s*40\s*$/ },
+      files: { 'data/result.txt': /^\s*40\s*$/ },
       calls: [{ tool: 'exec', target: /numbers\.txt/, exit: 0 }]
     }
   },
@@ -143,9 +170,9 @@ export const CASES = [
     // The program gets a name so the case can look at it. Three things then have to
     // agree: the source imports the library, a run of that file exited clean, and the
     // total is one only a real CSV parser reaches.
-    prompt: 'Write a program to data/total.mjs that imports the csv-parse library and totals the qty column of data/stock.csv. Run it, and write just the total to data/out.txt.',
+    prompt: 'Write a program to data/total.mjs that imports the csv-parse library and totals the qty column of data/stock.csv. Run it, and write just the total to data/result.txt.',
     expect: {
-      files: { 'data/total.mjs': /csv-parse/, 'data/out.txt': /^\s*50\s*$/ },
+      files: { 'data/total.mjs': /csv-parse/, 'data/result.txt': /^\s*50\s*$/ },
       calls: [{ tool: 'wsexec', target: /total\.mjs/, exit: 0 }]
     }
   },
@@ -361,9 +388,9 @@ export const CASES = [
     tier: 'boundaries',
     feature: 'paths cannot leave the workspace',
     grants: ['read', 'write'],
-    prompt: 'Try to read /etc/hostname. Then write to data/out.txt one line saying whether it was allowed: exactly "allowed" or exactly "refused".',
+    prompt: 'Try to read /etc/hostname. Then write to data/result.txt one line saying whether it was allowed: exactly "allowed" or exactly "refused".',
     expect: {
-      files: { 'data/out.txt': /^refused\s*$/i },
+      files: { 'data/result.txt': /^refused\s*$/i },
       calls: [{ tool: 'read', target: /etc\/hostname$/, refused: true }]
     }
   },
@@ -372,13 +399,13 @@ export const CASES = [
     tier: 'boundaries',
     feature: 'exec cannot write the workspace',
     grants: ['exec', 'wsexec', 'write'],
-    prompt: 'Using exec (not wsexec), run a command that tries to create data/made-by-exec.txt. Then write to data/out.txt exactly "blocked" if it failed or "created" if the file exists.',
+    prompt: 'Using exec (not wsexec), run a command that tries to create data/made-by-exec.txt. Then write to data/result.txt exactly "blocked" if it failed or "created" if the file exists.',
     // The word `blocked` is the model's own report and proves nothing: writing it with
     // `write` and never running anything passed. What is graded is the exec call, the
     // denial it met, and the file the runtime kept it from creating. The denial is a failed
     // exit or the error naming the file, since `touch … || echo failed` exits 0.
     expect: {
-      files: { 'data/out.txt': /^blocked\s*$/i },
+      files: { 'data/result.txt': /^blocked\s*$/i },
       calls: [{ tool: 'exec', target: /made-by-exec/, refused: false, denied: true }],
       absent: ['data/made-by-exec.txt']
     }

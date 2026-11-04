@@ -45,7 +45,7 @@ trails, turn records, the identity generated for each case — and a `run.json`:
 
 ```json
 { "model": "openai/gpt-5.6-luna", "spore": "1.51.0", "commit": "823175f", "dirty": [], "node": "v25.9.0",
-  "startedAt": "...", "elapsedMs": 34000, "concurrency": 8,
+  "startedAt": "...", "elapsedMs": 34000, "concurrency": 8, "inputPrice": 0.1, "costScale": 0.1,
   "passed": 28, "of": 28, "spend": 0.016, "neverFinished": [],
   "cases": [{ "id": "read", "digest": "9f2c…", "passed": true, "rounds": 2, "stopReason": "answer",
                "error": null, "detail": null, "wallMs": 2100, "spend": 0.0008 }] }
@@ -55,7 +55,8 @@ Which is what makes two runs comparable. A different pass count says nothing on 
 if the runs differ by model, by build, or by which commit of the cases graded them.
 
 `digest` says whether two runs ran the same case, across releases: a hash of the staged
-identity without its `model:` line, every staged file, the messages, the schedule and
+identity without its `model:` line and with its `cost:` as the case sets it, before the run
+scales it, every staged file, the messages, the schedule and
 `expect` (`digest.js`). It changes when the case changes and not when spore does; the
 grader, `reference.md` and `libraries.md` are pinned by `spore` and `commit` instead, which
 pin them only while `dirty` is empty: it lists the files under the package that differed from
@@ -80,10 +81,18 @@ were pushed past by each new model, and a case came within one step of failing f
 slow rather than wrong. A round ceiling a working model can touch is a ceiling in the wrong
 place.
 
-A case's `cost` is what it may spend: a tenth of a dollar is plenty for reading a file and
-writing an answer, whatever the model costs. The hard bound is a stop on what was spent, not
-a forecast of what a call will cost, so a dear model runs the same cases as a cheap one and
-simply reaches its bound sooner.
+A case's `cost` is what it may spend on a model whose input costs `REFERENCE_PRICE`, $1 per
+million tokens (`cases.js`): a tenth of a dollar for reading a file and writing an answer. A
+run scales every case's `cost` by its model's input price over that one, read from mohdel's
+catalog (a tiered price's `default` tier), so a model five times dearer per token gets five
+times the budget and is held to the same work, not to fewer rounds; a cheaper one gets less.
+`run.json` records the price and the scale as `inputPrice` and `costScale`. `$MODEL` must be the
+model's catalog id, as `mo model show` prints it; one the catalog does not hold stops the run
+before anything is staged. A model with no
+price, or a price of 0, keeps the budgets as set: its calls count $0, so `cost` never stops it.
+The reference sits where every model run so far fits its scaled bound — a model that thinks a
+lot spends more than its input price says. The hard bound is still a stop on what was spent,
+not a forecast of what a call will cost.
 
 ## What it covers
 

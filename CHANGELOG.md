@@ -35,6 +35,19 @@ All notable changes to this project are documented here. Format follows
   batch counts too. It said `8 of your turns are already running`, which read as one spore's.
 - A `schedule_refused` event names each file by its `path` in the workspace, such as
   `schedules/call-bank.toml`, where it gave a schedule `name`.
+- Six conformance cases (`read-range`, `write`, `exec`, `library`, `refusal-escape` and
+  `exec-readonly`) ask for `data/result.txt` where they asked for `data/out.txt`. That name sat
+  beside `data/out/`, which `reference.md` teaches as the folder a turn hands back, and models of
+  eight families wrote `data/out/out.txt` instead, in 12 of 57 runs, failing a case for the folder
+  rather than for what it grades. Their digests change.
+- A conformance run scales every case's `cost` limits by its model's input price over $1 per
+  million tokens, read from mohdel's catalog, so a dear model is held to the same work as a cheap
+  one rather than to fewer rounds. Muse Wonder 1.0, at $4, finished `library` correctly and failed
+  it at `soft:cost` after reading all of `reference.md`; it now gets four times the budget, and
+  Luna, at $0.10, a tenth. A model with no price keeps the budgets as set. `run.json` records
+  `inputPrice` and `costScale`. Replayed against every kept run, each model's costliest case used
+  at most 0.8 of its scaled soft bound. Digests are computed on the budgets as set, so they do not
+  change.
 
 ## [1.54.1] — Changed: the conformance `read-range` and `schedule` cases
 

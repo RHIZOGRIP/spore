@@ -16,6 +16,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import minimist from 'minimist'
+import { loadCuratedCache } from 'mohdel'
 
 import { version } from '../src/index.js'
 import { runBatch } from '../src/core/batch.js'
@@ -23,7 +24,7 @@ import { send } from '../src/core/send.js'
 import { turnSummary } from '../src/core/spore-dir.js'
 import { stateOf, stop } from '../src/core/state.js'
 import { openWorkspace } from '../src/core/workspace.js'
-import { CASES, TIERS, caseLimits } from './cases.js'
+import { CASES, REFERENCE_PRICE, TIERS, caseLimits, inputPrice, pricedLimits } from './cases.js'
 import { LATEST, MANIFEST, provenance, runDir } from './record.js'
 import { caseDigest } from './digest.js'
 import { runDeadline } from './schedule.js'
@@ -68,6 +69,10 @@ const fail = (message) => {
 const wanted = CASES.filter(item => !argv.only || item.id === argv.only || item.tier === argv.only)
 if (!wanted.length) fail(`nothing matches "${argv.only}"`)
 if (!process.env.MODEL) fail('$MODEL is not set — this runs a model and costs money')
+const entry = (await loadCuratedCache())[process.env.MODEL]
+if (!entry) fail(`${process.env.MODEL} is not an entry of mohdel's catalog here, so its price is unknown — name the model by its catalog id, as mo model show prints it`)
+const price = inputPrice(entry)
+const limitsOf = (item) => pricedLimits(caseLimits(item), price)
 
 // One directory per run, kept. It used to be one directory, emptied at the start of
 // every run: the evidence for "it passed yesterday" was deleted by the run asking.
@@ -83,13 +88,13 @@ try {
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 const started = Date.now()
-const deadline = runDeadline(wanted, { concurrency: Number(argv.concurrency), limitsOf: caseLimits })
+const deadline = runDeadline(wanted, { concurrency: Number(argv.concurrency), limitsOf })
 
 // Every case staged and opened before any starts, so a definition that does not parse stops
 // the run before anything has been spent.
 const digests = new Map()
 const runs = wanted.map(item => {
-  const { ws, cmk } = stage(RUN_DIR, item, process.env.MODEL)
+  const { ws, cmk } = stage(RUN_DIR, item, process.env.MODEL, limitsOf(item))
   digests.set(item.id, caseDigest({ ws, cmk }, item))
   const opened = openWorkspace(ws, { definition: cmk })
   if (opened.error) fail(`${item.id}: ${opened.error}`)
@@ -102,7 +107,7 @@ const deliver = (ws, message, options) => scheduleOf.has(ws)
   ? send(ws, message, { ...options, schedule: { name: scheduleOf.get(ws), due: new Date().toISOString() } })
   : send(ws, message, options)
 
-process.stderr.write(`running ${wanted.length} cases at width ${argv.concurrency}\n`)
+process.stderr.write(`running ${wanted.length} cases at width ${argv.concurrency}, ${price ? `cost limits × ${price / REFERENCE_PRICE} for $${price}/M input` : 'cost limits as set: the model has no price'}\n`)
 const { stuck: left } = await runBatch(runs, { atOnce: Number(argv.concurrency), deadline, deliver, wait: sleep })
 const stuck = left.map(run => run.label)
 for (const run of left) {
@@ -147,6 +152,8 @@ writeFileSync(resolve(RUN_DIR, MANIFEST), JSON.stringify({
   elapsedMs,
   concurrency: Number(argv.concurrency),
   only: argv.only || null,
+  inputPrice: price,
+  costScale: price ? price / REFERENCE_PRICE : 1,
   passed: passed.length,
   of: results.length,
   spend: Math.round(spend * 1000000) / 1000000,
