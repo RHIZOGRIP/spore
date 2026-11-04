@@ -4,6 +4,18 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.55.1] — Fixed: a conformance case that names a file says the check reads it where named
+
+### Fixed
+
+- Every conformance case now says that the check reads a file the task names in the workspace,
+  at the path it names. The identity tells a model that whoever reads its answer never sees the
+  workspace, and to put a file they should have in `data/out/`, unless its instructions say
+  otherwise; the cases did not, so a model that followed the identity handed the file back as
+  `data/out/result.txt` and failed. Muse Wonder 1.0 did so in two cases of 1.55.0's run and in
+  three of 1.54.1's, where the cause was put down to the name `data/out.txt`; renaming it in
+  1.55.0 did not change it. Every case's digest changes.
+
 ## [1.55.0] — Fixed: a file in `schedules/` that is not `<name>.cmk` stops the answer that promised it
 
 ### Fixed

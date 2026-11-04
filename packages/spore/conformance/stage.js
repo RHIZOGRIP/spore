@@ -88,7 +88,8 @@ export function stage (root, item, model, limits = caseLimits(item)) {
     '',
     'You are being checked against one small task. Do exactly what it asks and stop.',
     'Where it names a file, that file is the answer and its contents must be exactly what',
-    'was asked for — no heading, no explanation, no trailing commentary.',
+    'was asked for — no heading, no explanation, no trailing commentary. The check reads it',
+    'in your workspace, at the path the task names.',
     ''
   ].join('\n'))
   return { ws, cmk }
