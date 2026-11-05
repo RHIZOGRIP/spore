@@ -40,7 +40,7 @@ describe('a vm named in vm.json', () => {
 
   it('takes every command there, and says so when Lima is not installed', () => {
     writeFileSync(VM_FILE, JSON.stringify({ lima: 'spore' }))
-    for (const args of [['ls'], ['send', 'main', 'hello'], ['vm', 'start']]) {
+    for (const args of [['ls'], ['send', 'main', 'hello'], ['vm', 'start'], ['setup', 'model']]) {
       const ran = spore(...args)
       expect(ran.status).toBe(2)
       expect(ran.stderr).toMatch(/^spore: spore runs in the vm spore, made with Lima, and limactl is not on PATH/)

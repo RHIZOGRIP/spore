@@ -1465,6 +1465,42 @@ curate(provider, ids) → Promise<[{ model, priced }]>
 Adds those ids of the provider's listing to the catalog. Throws a plain `Error` naming why when
 one is not listed, already in the catalog, excluded, or not described well enough. From mohdel.
 
+### `mohdexRecommended`
+
+```
+mohdexRecommended({ tool, bar }) → Promise<[{ key, version }]>
+```
+
+The models mohdex.dev says meet `bar`, one tag or several, at `tool`. `version` is the tool version a
+model was last judged on. Throws when mohdex.dev cannot be reached or answers badly. From mohdel.
+
+### `mohdexEntries`
+
+```
+mohdexEntries(provider) → Promise<{ [key]: entry }>
+```
+
+The catalog entries mohdex.dev serves for a provider mohdel knows. A price in an entry is a number, or
+one per context size, as `{ default: 1, '>272000': 2 }`. Throws when mohdex.dev cannot be reached or
+answers badly. From mohdel.
+
+### `addFromMohdex`
+
+```
+addFromMohdex(picked) → Promise<void>
+```
+
+Writes each `{ key, entry }` to the catalog, all of them or none. Throws a plain `Error` naming the
+field when the catalog would reject one. From mohdel.
+
+### `PROVIDER_INFO`
+
+```
+PROVIDER_INFO → { [provider]: { label, description, url, hint, free } }
+```
+
+What a first-run setup shows about each provider mohdel knows. From mohdel (`mohdel/provider-info`).
+
 ### `billingFor`
 
 ```

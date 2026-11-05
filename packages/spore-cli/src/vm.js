@@ -171,11 +171,12 @@ function setupVm (named) {
  * else to a vm `vm.json` names, and returns only when the command runs here.
  */
 export async function host (args) {
-  const [verb] = args
+  const [verb, second] = args
+  const firstRun = verb === 'setup' && second === undefined
   const vm = vmNamed()
   if (verb === 'vm') vmVerb(vm, args)
-  if (verb === 'setup' && !vm && process.stdin.isTTY && process.stdout.isTTY) intro('spore setup')
-  if (verb === 'setup' && (vm || await wantsVm())) setupVm(vm)
+  if (firstRun && !vm && process.stdin.isTTY && process.stdout.isTTY) intro('spore setup')
+  if (firstRun && (vm || await wantsVm())) setupVm(vm)
   if (vm) {
     running(vm)
     forward(vm, args)

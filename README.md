@@ -80,8 +80,8 @@ for every program also works; and where no one else's spores run as your user, `
 contain off` runs turns without namespaces, still confined by the kernel's Landlock.
 [docs/operating.md](docs/operating.md#contain) weighs the three.
 
-`spore setup` walks you through the first run: it checks the machine, helps you connect a model —
-a ChatGPT plan, OpenRouter, or another provider — and sets what new spores run on.
+`spore setup` walks you through the first run: it checks the machine, helps you connect a provider,
+offers the models that pass spore's conformance suite, and sets what new spores run on.
 
 `spore here` opens a spore that works in the directory you are in. The first time, you pick what
 kind of spore it is:
@@ -153,7 +153,7 @@ The details are in [SECURITY.md](SECURITY.md).
 - **Unprivileged user namespaces**, so each turn runs shut off from your other processes. Most
   distributions allow them; on Ubuntu, see [above](#try-it-in-a-project).
 - **Node 24 or newer**, with a bundled SQLite of 3.51.3 or newer.
-- **A model**: a ChatGPT plan, an OpenRouter key, or a key for any provider
+- **A model**: a ChatGPT plan, or a key for any provider
   [mohdel](https://www.npmjs.com/package/mohdel) supports. `spore setup` connects one.
 
 `spore doctor` says what is missing on a machine and how to fix it.

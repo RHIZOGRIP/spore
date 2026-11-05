@@ -752,6 +752,10 @@ its `mo` command:
 | `modelReadiness(model)` | async: `{ model, inCatalog, priced, billing, credential, ready, fix }` |
 | `upstream(provider)` | async: what the provider lists beyond the catalog, each `{ id, label, inputPrice, outputPrice }`, or `null` when mohdel cannot list it |
 | `curate(provider, ids)` | async: adds those ids to the catalog, each `{ model, priced }`. Throws a plain `Error` naming why when it cannot |
+| `mohdexRecommended({ tool, bar })` | async: the models that meet a bar at a tool, each `{ key, version }`. Throws when mohdex.dev cannot be reached or answers badly |
+| `mohdexEntries(provider)` | async: the catalog entries mohdex.dev serves for a provider, by catalog key |
+| `addFromMohdex(picked)` | async: writes each `{ key, entry }` to the catalog, all or none. Throws a plain `Error` naming the field when the catalog would reject one |
+| `PROVIDER_INFO` | what setup shows about each provider: `{ [provider]: { label, description, url, hint, free } }` |
 
 ```js
 import { spawnSync } from 'node:child_process'

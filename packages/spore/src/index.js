@@ -48,6 +48,8 @@ export { DEFAULT_SPORANGIUM } from './core/sporangia.js'
 export { loadDefaultEnv as loadMohdelEnvironment, modelReadiness, modelsOf, providerReadiness } from 'mohdel/readiness'
 export { CLI as MO } from 'mohdel/cli'
 export { curate, upstream } from 'mohdel/curate'
+export { addFromMohdex, mohdexEntries, mohdexRecommended } from 'mohdel/mohdex'
+export { default as PROVIDER_INFO } from 'mohdel/provider-info'
 
 // What one is doing now, stopping it, and running many at once.
 export { stateOf, stateWord, stop, RUNNING } from './core/state.js'

@@ -36,6 +36,7 @@ const argv = minimist(process.argv.slice(2), {
 
 const VERBS = `Usage:
   spore setup                               the first run: this machine, your models, a first spore
+  spore setup model                         pick a recommended model for new spores, from any provider
   spore vm start|stop                       the Linux vm spore runs in, where spore setup made one
   spore define <name>                       say what a spore is; . for here
   spore define <name> --model <m> --plugin <p>  the same, with its model and plugins filled in
@@ -187,7 +188,7 @@ const SHAPES = {
   hook: { bare: 'ls', subs: { ls: withJson(0), show: withJson(1) } },
   tui: { flags: [], most: 1 },
   here: { flags: ['sporangium', 'model', 'no-git'], most: 1 },
-  setup: { flags: [], most: 0 },
+  setup: { flags: [], most: 1 },
   vm: { subs: { start: { flags: [], most: 0 }, stop: { flags: [], most: 0 } } }
 }
 const verb = argv._[0]
@@ -262,13 +263,14 @@ if (verb === 'tui') {
 }
 
 if (verb === 'setup') {
+  if (argv._[1] && argv._[1] !== 'model') fail(`setup takes model or nothing — not "${argv._[1]}"`)
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     fail('setup asks questions, and this is not a terminal — the same steps are spore config set home <dir>, ' +
       'mo onboard <provider>, spore config set model <provider>/<name>, spore doctor')
   }
-  const { setup } = await import('../src/setup.js')
+  const { setup, setupModel } = await import('../src/setup.js')
   try {
-    process.exit(await setup())
+    process.exit(await (argv._[1] ? setupModel() : setup()))
   } catch (err) {
     if (!err.type) throw err
     fail(errorText(err))

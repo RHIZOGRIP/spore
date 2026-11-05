@@ -61,8 +61,8 @@ and projects under the Linux home rather than `/mnt/c`, and run `spore setup` in
 ## Quick start
 
 `spore setup` is the first run. It checks this machine — Node's SQLite, Landlock, whether turns
-can be contained — asks where spores live, sets up a provider through mohdel's `mo onboard`
-(ChatGPT, OpenRouter or another), sets the model new spores run on, offers the tick timer, runs `spore doctor` and makes a first spore, `main`. Each step looks first,
+can be contained — asks where spores live, connects a provider through mohdel's `mo onboard`,
+offers the models that pass spore's conformance suite and sets the one new spores run on, offers the tick timer, runs `spore doctor` and makes a first spore, `main`. Each step looks first,
 so running it again is a check. The same by hand:
 
 ```bash

@@ -6,23 +6,21 @@
 import { spawnSync } from 'node:child_process'
 import { basename } from 'node:path'
 
-import { autocomplete, cancel, confirm, isCancel, log, note, outro, text } from '@clack/prompts'
+import { autocomplete, cancel, confirm, intro, isCancel, log, note, outro, text } from '@clack/prompts'
 
 import {
-  checkSqlite, CONFIG_FILE, defaultModel, define, doctor, list, loadMohdelEnvironment, MO,
-  modelReadiness, modelsOf, providerReadiness, readConfig, setDefaultModel, setKey
+  addFromMohdex, checkSqlite, CONFIG_FILE, defaultModel, define, doctor, list, loadMohdelEnvironment,
+  MO, modelReadiness, modelsOf, mohdexEntries, mohdexRecommended, PROVIDER_INFO, providerReadiness,
+  readConfig, setDefaultModel, setKey
 } from '@rhizogrip/spore'
 
 import { createServices } from './services.js'
 import { diagnose, renderDoctor } from './doctor.js'
 
-const ANOTHER = 'another'
+const EXPERT = 'expert'
 
-const PROVIDERS = [
-  { value: 'chatgpt', label: 'ChatGPT', description: 'sign in to your ChatGPT plan — its calls are not metered' },
-  { value: 'openrouter', label: 'OpenRouter', description: 'one key for many providers\' models, priced by mohdel' },
-  { value: ANOTHER, label: 'another provider', description: 'mohdel\'s own setup, every provider it knows' }
-]
+// The two tiers the page at mohdex.dev/spore judges on.
+const BAR = ['tier:core', 'tier:identity']
 
 const providerOf = (model) => model.split('/')[0]
 
@@ -59,11 +57,26 @@ async function yes (message) {
   return answer
 }
 
-export const onboardWithMo = (provider) => spawnSync(process.execPath, [MO, 'onboard', ...(provider ? [provider] : []), '--caller', 'spore'], { stdio: 'inherit' }).status
+export const onboardWithMo = (provider, { credentialOnly = false } = {}) => spawnSync(process.execPath, [
+  MO, 'onboard', ...(provider ? [provider] : []), '--caller', 'spore', ...(credentialOnly ? ['--credential-only'] : [])
+], { stdio: 'inherit' }).status
 
 const billingText = ({ billing, priced }) => billing === 'plan'
   ? 'your plan — not metered'
   : priced === false ? 'no prices: its calls count as $0 against cost' : billing
+
+/** A price is one number, or one per context size, `{ default: 1, '>272000': 2 }`. Infinity when there is none. */
+const basePrice = (price) => (typeof price === 'object' ? price?.default : price) ?? Infinity
+
+const hasPrices = (entry) => basePrice(entry?.inputPrice) !== Infinity && basePrice(entry?.outputPrice) !== Infinity
+
+const tierText = (price) => {
+  const sizes = Object.keys(Object(price)).filter(key => key.startsWith('>')).map(key => Number(key.slice(1)))
+  return sizes.length ? `, more above ${Math.round(Math.min(...sizes) / 1000)}k` : ''
+}
+
+const priceText = ({ inputPrice, outputPrice }) =>
+  `$${basePrice(inputPrice).toFixed(2)} / $${basePrice(outputPrice).toFixed(2)} per M${tierText(inputPrice)}`
 
 /**
  * Resolves with the exit code: 0 once every step is done, 1 when one stops, saying what to do
@@ -142,6 +155,7 @@ export async function setup () {
     [`spore tui ${first}`, `talk to ${first} in a terminal screen`],
     [`spore send ${first} "…"`, 'or send it one message; the answer is printed'],
     ['cd <project> && spore here', 'a spore that works on that project\'s files — git undoes what it changes'],
+    ['spore setup model', 'another recommended model, from any provider'],
     ['spore', 'every command']
   ].map(([command, what]) => `${command.padEnd(30)}${what}`).join('\n'), 'next')
   outro('spore setup again checks all of this')
@@ -151,12 +165,37 @@ export async function setup () {
 /** Where another model comes from, and how a spore is given it: said, never done, by setup. */
 function otherModels (provider) {
   log.message([
-    `another model: /curate in spore tui, or mo curate ${provider}, adds it to your catalog —`,
+    'another model: spore setup model offers the recommended ones, from any provider —',
+    `or /curate in spore tui, or mo curate ${provider}, adds any other ${provider} model,`,
     'then spore config set model <provider>/<name> for new spores, or spore edit <spore> and add it to models:'
   ])
 }
 
-/** The default model, ready to run: the one set, or a provider set up through mohdel and one of its models picked. Null stops setup. */
+/** One line when the model set is not among those mohdex recommends. Nothing here stops setup. */
+async function sayWhenNotRecommended (current) {
+  let recommended
+  try {
+    recommended = await mohdexRecommended({ tool: 'spore', bar: BAR })
+  } catch (err) {
+    log.warn(`could not reach mohdex.dev, so setup can't say whether ${current} is recommended (${err.message})`)
+    return
+  }
+  const key = current.split(/[:@]/)[0]
+  if (recommended.length && !recommended.some(one => one.key === key)) {
+    line('model', `${current} is not among the models spore recommends — spore setup model offers them`)
+  }
+}
+
+function settle (chosen) {
+  const { model, priced } = chosen
+  setDefaultModel(model)
+  line('model', `${model}, ${priced === false ? `${billingText(chosen)} — mo model instructions ${providerOf(model)} fills them` : 'ready'}`)
+  log.message('new spores run on it')
+  otherModels(providerOf(model))
+  return model
+}
+
+/** The default model, ready to run: the one set, or one of the recommended models, or any model through mohdel's own setup. Null stops setup. */
 async function chooseModel () {
   loadMohdelEnvironment()
   const current = defaultModel().model
@@ -173,28 +212,110 @@ async function chooseModel () {
       }
     }
     line('model', `${current}, ${ready.priced === false ? `${billingText(ready)} — ${ready.fix}` : 'ready'}`)
+    await sayWhenNotRecommended(current)
     otherModels(providerOf(current))
     return current
   }
+  return chooseRecommended()
+}
 
-  const provider = await pickFromList({ title: 'which provider should they come from?', header: ['mohdel calls the models your spores run on — a provider set up here is set up for mo as well'], items: PROVIDERS })
+/** One of the recommended models, whatever is set now: provider, credential, model. Null stops. */
+async function chooseRecommended () {
+  let recommended
+  try {
+    recommended = await mohdexRecommended({ tool: 'spore', bar: BAR })
+  } catch (err) {
+    log.warn(`could not reach mohdex.dev, so setup can't say which models spore recommends (${err.message}) — mohdel's own setup follows`)
+    return chooseAnyModel()
+  }
+  // The list is live and the mohdel spore pins is not, so mohdex can name a provider this mohdel does not know.
+  const keys = recommended.map(one => one.key).filter(key => PROVIDER_INFO[providerOf(key)])
+  if (!keys.length) {
+    log.warn('mohdex.dev recommends no model for spore right now — mohdel\'s own setup follows')
+    return chooseAnyModel()
+  }
+
+  const provider = await pickProvider(keys)
   if (!provider) return null
-  if (provider === ANOTHER) {
-    onboardWithMo(null)
-    loadMohdelEnvironment()
-  } else if (!(await providerReadiness(provider)).ready) {
-    onboardWithMo(provider)
-    loadMohdelEnvironment()
-    const ready = await providerReadiness(provider)
-    if (!ready.ready) {
-      line('model', `${provider} is not ready — ${ready.fix}, then spore setup again`)
-      return null
+  if (provider === EXPERT) return chooseAnyModel()
+
+  if (onboardWithMo(provider, { credentialOnly: true }) !== 0) {
+    line('model', `${provider} has no working credential — mo onboard ${provider}, then spore setup again`)
+    return null
+  }
+  loadMohdelEnvironment()
+
+  let entries
+  try {
+    entries = await mohdexEntries(provider)
+  } catch (err) {
+    log.warn(`could not reach mohdex.dev, so setup can't say what ${provider}'s models cost (${err.message}) — mohdel's own setup follows`)
+    return chooseAnyModel()
+  }
+  const offers = await offersOf(keys.filter(key => providerOf(key) === provider), entries, provider)
+  if (!offers.length) {
+    log.warn(`mohdex.dev has no entry for ${provider}'s recommended models — mohdel's own setup follows`)
+    return chooseAnyModel()
+  }
+  const model = await pickFromList({
+    title: 'the model new spores run on',
+    header: ['later, spore model <name> <model> changes the model of one spore'],
+    items: offers.map(one => ({ value: one.model, label: one.model, description: one.description }))
+  })
+  if (!model) return null
+  const chosen = offers.find(one => one.model === model)
+  if (!chosen.inCatalog) {
+    try {
+      await addFromMohdex([{ key: model, entry: entries[model] }])
+    } catch (err) {
+      log.warn(`${model} could not go in the catalog: ${err.message} — mohdel's own setup follows`)
+      return chooseAnyModel()
     }
   }
+  return settle(chosen)
+}
+
+/** The providers of the recommended models, ChatGPT first, the rest by label, then the way to any model. */
+async function pickProvider (keys) {
+  const items = []
+  for (const provider of new Set(keys.map(providerOf))) {
+    const count = keys.filter(key => providerOf(key) === provider).length
+    const { credential } = await providerReadiness(provider)
+    const found = credential ? `, ${provider === 'chatgpt' ? 'signed in' : 'key found'}` : ''
+    items.push({ value: provider, label: PROVIDER_INFO[provider].label, description: `${count} recommended${found}` })
+  }
+  items.sort((a, b) => (b.value === 'chatgpt') - (a.value === 'chatgpt') || a.label.localeCompare(b.label))
+  return pickFromList({
+    title: 'which provider should they come from?',
+    header: ['mohdel calls the models your spores run on — a provider set up here is set up for mo as well'],
+    items: [...items, { value: EXPERT, label: EXPERT, description: 'any model, any provider' }]
+  })
+}
+
+/** The recommended models this setup can offer, cheapest first: each has a mohdex entry to add, or is in the catalog already. */
+async function offersOf (keys, entries, provider) {
+  const held = new Map((await modelsOf(provider)).map(one => [one.model, one]))
+  const offers = []
+  for (const key of keys.filter(one => entries[one] || held.has(one))) {
+    const entry = entries[key]
+    const { billing } = await modelReadiness(key)
+    const inCatalog = held.has(key)
+    const priced = billing === 'plan' ? null : inCatalog ? held.get(key).priced : hasPrices(entry)
+    const description = billing !== 'plan' && hasPrices(entry) ? priceText(entry) : billingText({ billing, priced })
+    offers.push({ model: key, billing, priced, inCatalog, entry, description })
+  }
+  const price = (one, field) => basePrice(one.entry?.[field])
+  return offers.sort((a, b) => price(a, 'inputPrice') - price(b, 'inputPrice') || price(a, 'outputPrice') - price(b, 'outputPrice'))
+}
+
+/** Expert: mohdel's own setup, then every model of every provider with a credential. */
+async function chooseAnyModel () {
+  onboardWithMo(null)
+  loadMohdelEnvironment()
 
   const credentials = new Map()
   const usable = []
-  for (const one of await modelsOf(provider === ANOTHER ? null : provider)) {
+  for (const one of await modelsOf(null)) {
     const named = providerOf(one.model)
     if (!credentials.has(named)) credentials.set(named, (await providerReadiness(named)).credential)
     if (credentials.get(named)) usable.push(one)
@@ -209,12 +330,16 @@ async function chooseModel () {
     items: usable.map(one => ({ value: one.model, label: one.model, description: billingText(one) }))
   })
   if (!model) return null
-  const chosen = usable.find(one => one.model === model)
-  setDefaultModel(model)
-  line('model', `${model}, ${chosen.priced === false ? `${billingText(chosen)} — mo model instructions ${providerOf(model)} fills them` : 'ready'}`)
-  log.message('new spores run on it')
-  otherModels(providerOf(model))
-  return model
+  return settle(usable.find(one => one.model === model))
+}
+
+/** `spore setup model`: resolves with the exit code, 0 once a recommended model is the default. */
+export async function setupModel () {
+  intro('spore setup model')
+  loadMohdelEnvironment()
+  if (await chooseRecommended() === null) return 1
+  outro('spores you already have keep their model — spore model <name> <model> moves one')
+  return 0
 }
 
 async function tickTimer ({ services }) {
@@ -230,7 +355,7 @@ async function tickTimer ({ services }) {
     line('tick', 'on — schedules fire')
     return
   }
-  if (!await yes('a spore acts on a schedule only with the tick timer — turn it on?')) {
+  if (list().workspaces.length || !await yes('a spore acts on a schedule only with the tick timer — turn it on?')) {
     line('tick', 'off — spore service define tick, then enable it, once a spore has a schedule')
     return
   }

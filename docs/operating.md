@@ -260,6 +260,18 @@ What the user's spores share while they run, under `$XDG_STATE_HOME/spore/`, els
 `spore config set home <dir>`, `mo onboard <provider>`, `spore config set model <provider>/<name>`,
 `spore doctor`.
 
+With no default model, `spore setup` asks mohdex.dev which models pass the `core` and `identity`
+tiers of spore's conformance suite. It offers their providers, runs `mo onboard <provider>
+--credential-only` for the one picked, then offers that provider's models, cheapest first. They are
+not checked against your account, because a provider's own list can lag a new model: one your
+account cannot use fails at its first turn, and `spore config set model` changes it. The last row,
+`expert`, is mohdel's own setup and then any model of any provider. Setup goes there, with a
+warning, when mohdex.dev cannot be reached. With a default model set, setup says in one line if
+that model is not recommended, and carries on.
+
+`spore setup model` runs those same steps on their own, to change the default for a model of any
+provider. Spores you already have keep their model; `spore model <name> <model>` moves one.
+
 `spore doctor`'s **models** area reads every model a spore names — `model`, `models` and the
 `cell-models` values — once each: a problem when a turn on it cannot run, a note when it has no
 prices in mohdel's catalog, its calls then counting as $0 against `cost`.

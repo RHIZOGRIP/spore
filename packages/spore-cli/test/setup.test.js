@@ -4,10 +4,10 @@ import { join } from 'node:path'
 import { CANCEL_SYMBOL } from '@clack/prompts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CONFIG_DIR, defaultModel, describeHost, getKey, isWorkspace, readConfig } from '@rhizogrip/spore'
+import { CONFIG_DIR, defaultModel, describeHost, getKey, isWorkspace, readConfig, setDefaultModel } from '@rhizogrip/spore'
 import { outsideRoot } from '@rhizogrip/spore/testing'
 
-import { pickFromList, setup } from '../src/setup.js'
+import { pickFromList, setup, setupModel } from '../src/setup.js'
 
 const given = vi.hoisted(() => ({}))
 
@@ -35,7 +35,7 @@ vi.mock('node:child_process', async (real) => {
       const at = rest.indexOf('--caller')
       if (at === -1 || rest[at + 1] !== 'spore') throw new Error(`setup ran mo onboard without --caller spore: ${rest.join(' ')}`)
       rest.splice(at, 2)
-      return { status: given.onboard(rest[0] ?? null) }
+      return { status: given.onboard(rest[0] ?? null, rest.includes('--credential-only')) }
     }
   }
 })
@@ -46,7 +46,10 @@ vi.mock('@rhizogrip/spore', async (real) => ({
   loadMohdelEnvironment: () => {},
   modelReadiness: (model) => given.mohdel.modelReadiness(model),
   modelsOf: (provider) => given.mohdel.modelsOf(provider),
-  providerReadiness: (provider) => given.mohdel.providerReadiness(provider)
+  providerReadiness: (provider) => given.mohdel.providerReadiness(provider),
+  mohdexRecommended: (query) => given.mohdex.recommended(query),
+  mohdexEntries: (provider) => given.mohdex.entries(provider),
+  addFromMohdex: (picked) => given.mohdex.add(picked)
 }))
 vi.mock('../src/services.js', async (real) => ({ ...await real(), createServices: () => given.services }))
 vi.mock('../src/doctor.js', async (real) => ({ ...await real(), diagnose: async () => given.report() }))
@@ -55,10 +58,13 @@ let root
 let said
 let asked
 let onboarded
+let credentialOnly
+let added
 let acted
 let offers
 
 const offered = (title) => offers.findLast(offer => offer.message.startsWith(title)).labels
+const hints = (title) => offers.findLast(offer => offer.message.startsWith(title)).hints
 
 /** A person at the terminal: a question answered by the first pattern it matches, a pick by the label of what to choose, or null to leave it. */
 const person = (answers, picks) => ({
@@ -70,7 +76,7 @@ const person = (answers, picks) => ({
   },
   pick: async ({ message, options }) => {
     asked.push(message)
-    offers.push({ message, labels: options.map(option => option.label) })
+    offers.push({ message, labels: options.map(option => option.label), hints: options.map(option => option.hint) })
     if (!picks.length) throw new Error('setup offered a pick the test did not expect')
     const label = picks.shift()
     if (label === null) return CANCEL_SYMBOL
@@ -85,14 +91,35 @@ const OPENROUTER = [
   { model: 'openrouter/unpriced', billing: 'metered', priced: false }
 ]
 
+const billingOf = (model) => model.startsWith('chatgpt/') ? 'plan' : 'metered'
+
 const mohdelWith = ({ ready = new Set(), models = OPENROUTER } = {}) => ({
   ready,
   modelReadiness: async (model) => ready.has(model.split('/')[0])
-    ? { model, ready: true, priced: models.find(one => one.model === model)?.priced ?? true, fix: null }
-    : { model, ready: false, fix: `mo onboard ${model.split('/')[0]}` },
+    ? { model, billing: billingOf(model), ready: true, priced: models.find(one => one.model === model)?.priced ?? true, fix: null }
+    : { model, billing: billingOf(model), ready: false, fix: `mo onboard ${model.split('/')[0]}` },
   providerReadiness: async (provider) => ({ provider, credential: ready.has(provider), models: models.length, ready: ready.has(provider), fix: `mo onboard ${provider}` }),
   modelsOf: async (provider) => models.filter(one => provider === null || one.model.startsWith(`${provider}/`))
 })
+
+const entryOf = (provider, model, inputPrice, outputPrice) => ({ provider, sdk: 'openai', model, creator: 'openai', inputPrice, outputPrice, inputFormat: ['text'] })
+
+const ENTRIES = {
+  'openai/gpt-dear': entryOf('openai', 'gpt-dear', 4, 20),
+  'openai/gpt-cheap': entryOf('openai', 'gpt-cheap', 0.5, 2),
+  'openai/gpt-tiered': entryOf('openai', 'gpt-tiered', { default: 1, '>272000': 2 }, { default: 5, '>272000': 7.5 }),
+  'chatgpt/gpt-plan': entryOf('chatgpt', 'gpt-plan', 1, 5)
+}
+
+const RECOMMENDED = Object.keys(ENTRIES).map(key => ({ key, version: '1.56.0' }))
+
+const mohdexWith = ({ recommended = RECOMMENDED, entries = ENTRIES } = {}) => ({
+  recommended: async () => recommended,
+  entries: async (provider) => Object.fromEntries(Object.entries(entries).filter(([key]) => key.startsWith(`${provider}/`))),
+  add: async (picked) => { added.push(...picked) }
+})
+
+const unreachable = async () => { throw new Error('fetch failed') }
 
 const servicesWith = (tick) => ({
   show: () => tick,
@@ -106,14 +133,21 @@ const run = ({
   answers = {},
   picks = [],
   mohdel = mohdelWith(),
-  onboard = (provider) => { onboarded.push(provider); mohdel.ready.add(provider ?? 'openrouter'); return 0 },
+  mohdex = mohdexWith(),
+  onboard = (provider, narrowed) => {
+    onboarded.push(provider)
+    if (narrowed) credentialOnly.push(provider)
+    mohdel.ready.add(provider ?? 'openrouter')
+    return 0
+  },
   services = servicesWith({ defined: false, enabled: false }),
   examine = () => ({ findings: [] }),
   report = async () => ({ findings: [], boundary: HELD, host: describeHost() }),
-  sqlite = () => '3.51.3'
+  sqlite = () => '3.51.3',
+  verb = setup
 } = {}) => {
-  Object.assign(given, { ...person(answers, picks), mohdel, onboard, services, examine, report, sqlite })
-  return setup()
+  Object.assign(given, { ...person(answers, picks), mohdel, mohdex, onboard, services, examine, report, sqlite })
+  return verb()
 }
 
 beforeEach(() => {
@@ -123,6 +157,8 @@ beforeEach(() => {
   said = []
   asked = []
   onboarded = []
+  credentialOnly = []
+  added = []
   acted = []
   offers = []
   given.say = (message) => said.push(...[].concat(message).flatMap(text => text.split('\n')))
@@ -139,27 +175,30 @@ describe('spore setup', () => {
     const home = join(root, 'spores')
     const code = await run({
       answers: { 'hold your spores\\?': home, 'tick timer': 'y' },
-      picks: ['OpenRouter', 'openrouter/priced']
+      picks: ['OpenAI', 'openai/gpt-cheap']
     })
     expect(code).toBe(0)
     expect(readConfig().home).toBe(home)
-    expect(onboarded).toEqual(['openrouter'])
-    expect(defaultModel().model).toBe('openrouter/priced')
+    expect(onboarded).toEqual(['openai'])
+    expect(credentialOnly).toEqual(['openai'])
+    expect(added).toEqual([{ key: 'openai/gpt-cheap', entry: ENTRIES['openai/gpt-cheap'] }])
+    expect(defaultModel().model).toBe('openai/gpt-cheap')
     expect(acted).toEqual([['define', 'tick'], ['enable', 'tick'], ['start', 'tick']])
     expect(isWorkspace(join(home, 'main'))).toBe(true)
     expect(said).toContain(`made      main, your first spore, in ${join(home, 'main')}`)
     expect(said).toContain('spore tui main                talk to main in a terminal screen')
-    expect(said.some(text => /another model: \/curate in spore tui, or mo curate openrouter/.test(text))).toBe(true)
+    expect(said).toContain('spore setup model             another recommended model, from any provider')
+    expect(said.some(text => /or \/curate in spore tui, or mo curate openai, adds any other openai model/.test(text))).toBe(true)
   })
 
   it('says what a turn\'s commands tried on this machine and were refused, once nothing is wrong', async () => {
-    expect(await run({ answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenRouter', 'openrouter/priced'] })).toBe(0)
+    expect(await run({ answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenAI', 'openai/gpt-cheap'] })).toBe(0)
     expect(said).toContain('boundary  a turn\'s commands tried 2 ways out here and were refused every one — spore doctor lists them')
   })
 
   it('counts what was refused when a way out was not, as on a host running uncontained', async () => {
     const crossed = [...HELD, { tried: 'see a process outside it', outcome: 'crossed', why: 'contain is off' }]
-    expect(await run({ answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenRouter', 'openrouter/priced'], report: async () => ({ findings: [], boundary: crossed, host: describeHost() }) })).toBe(0)
+    expect(await run({ answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenAI', 'openai/gpt-cheap'], report: async () => ({ findings: [], boundary: crossed, host: describeHost() }) })).toBe(0)
     expect(said).toContain('boundary  a turn\'s commands tried 3 ways out here and were refused 2 — spore doctor lists them')
   })
 
@@ -167,7 +206,7 @@ describe('spore setup', () => {
     const home = join(root, 'spores')
     const code = await run({
       answers: { 'hold your spores\\?': home, 'tick timer': 'n' },
-      picks: ['OpenRouter', 'openrouter/priced'],
+      picks: ['OpenAI', 'openai/gpt-cheap'],
       report: async () => ({ findings: [{ area: 'services', subject: 'tick', severity: 'problem', problem: 'is failing', fix: 'spore service log tick' }], boundary: HELD, host: describeHost() })
     })
     expect(code).toBe(1)
@@ -177,7 +216,7 @@ describe('spore setup', () => {
 
   it('asks nothing a second time once each step is done', async () => {
     const mohdel = mohdelWith()
-    await run({ mohdel, answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'y' }, picks: ['OpenRouter', 'openrouter/priced'] })
+    await run({ mohdel, answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'y' }, picks: ['OpenAI', 'openai/gpt-cheap'] })
     asked = []
     onboarded = []
     const code = await run({ mohdel, services: servicesWith({ defined: true, enabled: true }) })
@@ -189,34 +228,138 @@ describe('spore setup', () => {
     expect(said.slice(-2)).toEqual([`spore${' '.repeat(25)}every command`, 'spore setup again checks all of this'])
   })
 
+  it('asks about the tick timer only until there is a spore, then says it is off', async () => {
+    const mohdel = mohdelWith()
+    await run({ mohdel, answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenAI', 'openai/gpt-cheap'] })
+    asked = []
+    said = []
+    expect(await run({ mohdel })).toBe(0)
+    expect(asked).toEqual([])
+    expect(said).toContain('tick      off — spore service define tick, then enable it, once a spore has a schedule')
+  })
+
   it('says a model chosen without prices counts as $0, and how to fill them', async () => {
-    await run({ answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['OpenRouter', 'openrouter/unpriced'] })
+    await run({ answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' }, picks: ['expert', 'openrouter/unpriced'] })
     expect(said.find(line => line.startsWith('model'))).toMatch(/openrouter\/unpriced, no prices: its calls count as \$0.*mo model instructions openrouter/)
   })
 
-  it('offers every ready provider\'s models after mohdel\'s own setup', async () => {
+  it('expert offers every ready provider\'s models after mohdel\'s own setup', async () => {
     const models = [...OPENROUTER, { model: 'gemini/flash', billing: 'metered', priced: true }]
     const mohdel = mohdelWith({ ready: new Set(['gemini']), models })
     await run({
       mohdel,
       onboard: (provider) => { onboarded.push(provider); return 0 },
       answers: { 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' },
-      picks: ['another provider', 'gemini/flash']
+      picks: ['expert', 'gemini/flash']
     })
     expect(onboarded).toEqual([null])
+    expect(credentialOnly).toEqual([])
     expect(offered('the model new spores run on')).toEqual(['gemini/flash'])
     expect(defaultModel().model).toBe('gemini/flash')
   })
 
-  it('stops when the provider is still not ready after mohdel\'s setup, naming what is missing', async () => {
+  it('stops when mohdel\'s onboarding fails, even with a refused key still stored', async () => {
     const code = await run({
+      mohdel: mohdelWith({ ready: new Set(['openai']) }),
       onboard: (provider) => { onboarded.push(provider); return 1 },
       answers: { 'hold your spores\\?': join(root, 'spores') },
-      picks: ['OpenRouter']
+      picks: ['OpenAI']
     })
     expect(code).toBe(1)
-    expect(said.at(-1)).toMatch(/openrouter is not ready — mo onboard openrouter, then spore setup again/)
+    expect(said.at(-1)).toMatch(/openai has no working credential — mo onboard openai, then spore setup again/)
     expect(defaultModel().model).toBe(null)
+  })
+
+  describe('the recommended models', () => {
+    const answers = () => ({ 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' })
+
+    it('lists their providers, ChatGPT first, the rest by label, expert last, and what is found', async () => {
+      const recommended = [...RECOMMENDED, { key: 'anthropic/claude-test', version: '1.56.0' }]
+      await run({ mohdel: mohdelWith({ ready: new Set(['openai', 'chatgpt']) }), mohdex: mohdexWith({ recommended }), answers: answers(), picks: [null] })
+      expect(offered('which provider')).toEqual(['ChatGPT plan', 'Anthropic', 'OpenAI', 'expert'])
+      expect(hints('which provider')).toEqual(['1 recommended, signed in', '1 recommended', '3 recommended, key found', 'any model, any provider'])
+    })
+
+    it('offers one the catalog holds and adds nothing', async () => {
+      const models = [{ model: 'openai/gpt-cheap', billing: 'metered', priced: true }]
+      await run({ mohdel: mohdelWith({ models }), answers: answers(), picks: ['OpenAI', 'openai/gpt-cheap'] })
+      expect(added).toEqual([])
+      expect(defaultModel().model).toBe('openai/gpt-cheap')
+    })
+
+    it('runs cheapest first, a tiered price by its default, naming where it rises', async () => {
+      await run({ answers: answers(), picks: ['OpenAI', 'openai/gpt-cheap'] })
+      expect(offered('the model new spores')).toEqual(['openai/gpt-cheap', 'openai/gpt-tiered', 'openai/gpt-dear'])
+      expect(hints('the model new spores')).toEqual(['$0.50 / $2.00 per M', '$1.00 / $5.00 per M, more above 272k', '$4.00 / $20.00 per M'])
+    })
+
+    it('shows a plan with no price, though its entry carries one', async () => {
+      await run({ answers: answers(), picks: ['ChatGPT plan', 'chatgpt/gpt-plan'] })
+      expect(hints('the model new spores')).toEqual(['your plan — not metered'])
+      expect(defaultModel().model).toBe('chatgpt/gpt-plan')
+    })
+
+    it('goes to expert with a warning when mohdex cannot be reached', async () => {
+      await run({ mohdex: { ...mohdexWith(), recommended: unreachable }, answers: answers(), picks: ['openrouter/priced'] })
+      expect(said.some(text => /could not reach mohdex\.dev, so setup can't say which models spore recommends \(fetch failed\)/.test(text))).toBe(true)
+      expect(onboarded).toEqual([null])
+      expect(defaultModel().model).toBe('openrouter/priced')
+    })
+
+    it('goes to expert with a warning when the entries cannot be fetched', async () => {
+      await run({ mohdex: { ...mohdexWith(), entries: unreachable }, answers: answers(), picks: ['OpenAI', 'openrouter/priced'] })
+      expect(said.some(text => /could not reach mohdex\.dev, so setup can't say what openai's models cost/.test(text))).toBe(true)
+      expect(onboarded).toEqual(['openai', null])
+    })
+
+    it('goes to expert with its own warning when mohdex recommends nothing', async () => {
+      await run({ mohdex: mohdexWith({ recommended: [] }), answers: answers(), picks: ['openrouter/priced'] })
+      expect(said.some(text => /mohdex\.dev recommends no model for spore right now/.test(text))).toBe(true)
+      expect(onboarded).toEqual([null])
+    })
+
+    it('leaves out a model with no entry that the catalog does not hold', async () => {
+      const recommended = [...RECOMMENDED, { key: 'openai/gpt-unserved', version: '1.56.0' }]
+      await run({ mohdex: mohdexWith({ recommended }), answers: answers(), picks: ['OpenAI', 'openai/gpt-cheap'] })
+      expect(offered('the model new spores')).not.toContain('openai/gpt-unserved')
+    })
+
+    it('goes to expert with a warning when the catalog refuses the entry', async () => {
+      const refused = async () => { throw new Error('the catalog would reject openai/gpt-cheap: inputPrice — must be >= 0') }
+      await run({ mohdex: { ...mohdexWith(), add: refused }, answers: answers(), picks: ['OpenAI', 'openai/gpt-cheap', 'openrouter/priced'] })
+      expect(said.some(text => /openai\/gpt-cheap could not go in the catalog: the catalog would reject/.test(text))).toBe(true)
+      expect(defaultModel().model).toBe('openrouter/priced')
+    })
+
+    it('leaves out a provider this mohdel does not know', async () => {
+      const recommended = [...RECOMMENDED, { key: 'nosuch/model', version: '1.56.0' }]
+      await run({ mohdex: mohdexWith({ recommended }), answers: answers(), picks: [null] })
+      expect(offered('which provider')).toEqual(['ChatGPT plan', 'OpenAI', 'expert'])
+    })
+  })
+
+  describe('a model already set', () => {
+    const ready = () => mohdelWith({ ready: new Set(['openai', 'openrouter']) })
+    const answers = () => ({ 'hold your spores\\?': join(root, 'spores'), 'tick timer': 'n' })
+    const notRecommended = () => said.filter(text => /is not among the models spore recommends/.test(text))
+
+    it('says so in one line when it is not recommended, and goes on', async () => {
+      setDefaultModel('openrouter/priced')
+      expect(await run({ mohdel: ready(), answers: answers() })).toBe(0)
+      expect(notRecommended()).toHaveLength(1)
+    })
+
+    it('says nothing when it is recommended under an effort', async () => {
+      setDefaultModel('openai/gpt-cheap:high')
+      expect(await run({ mohdel: ready(), answers: answers() })).toBe(0)
+      expect(notRecommended()).toEqual([])
+    })
+
+    it('warns in one line when mohdex cannot be reached, and goes on', async () => {
+      setDefaultModel('openrouter/priced')
+      expect(await run({ mohdel: ready(), mohdex: { ...mohdexWith(), recommended: unreachable }, answers: answers() })).toBe(0)
+      expect(said.filter(text => /could not reach mohdex\.dev, so setup can't say whether openrouter\/priced is recommended/.test(text))).toHaveLength(1)
+    })
   })
 
   it('offers to run uncontained on a host without namespaces, and stops when that is declined', async () => {
@@ -238,6 +381,31 @@ describe('spore setup', () => {
   it('stops first at a Node whose SQLite is too old', async () => {
     const tooOld = Object.assign(new Error('this Node\'s SQLite is 3.45.0'), { type: 'SQLITE_TOO_OLD' })
     await expect(run({ sqlite: () => { throw tooOld }, examine: () => { throw new Error('examined') } })).rejects.toBe(tooOld)
+  })
+})
+
+describe('spore setup model', () => {
+  it('replaces the default with a recommended model of any provider, and checks nothing else', async () => {
+    setDefaultModel('openrouter/priced')
+    const examine = () => { throw new Error('examined') }
+    expect(await run({ verb: setupModel, examine, picks: ['OpenAI', 'openai/gpt-cheap'] })).toBe(0)
+    expect(credentialOnly).toEqual(['openai'])
+    expect(added).toEqual([{ key: 'openai/gpt-cheap', entry: ENTRIES['openai/gpt-cheap'] }])
+    expect(defaultModel().model).toBe('openai/gpt-cheap')
+    expect(said.at(-1)).toBe('spores you already have keep their model — spore model <name> <model> moves one')
+  })
+
+  it('leaves the default as it is when the pick is left', async () => {
+    setDefaultModel('openrouter/priced')
+    expect(await run({ verb: setupModel, picks: [null] })).toBe(1)
+    expect(defaultModel().model).toBe('openrouter/priced')
+  })
+
+  it('goes to expert with a warning when mohdex cannot be reached', async () => {
+    const mohdex = { ...mohdexWith(), recommended: unreachable }
+    expect(await run({ verb: setupModel, mohdex, picks: ['openrouter/priced'] })).toBe(0)
+    expect(said.some(text => /could not reach mohdex\.dev, so setup can't say which models spore recommends/.test(text))).toBe(true)
+    expect(onboarded).toEqual([null])
   })
 })
 

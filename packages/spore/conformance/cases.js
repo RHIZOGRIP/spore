@@ -252,7 +252,7 @@ export const CASES = [
     grants: ['read', 'write', 'exec', 'wsexec'],
     precursor: 'echo',
     parts: { 'data/one': { 'in.md': 'Reply with exactly the word pong.\n' } },
-    prompt: 'The directory data/one already holds a question in in.md — do not change that file. Start one sub-agent on it with the echo precursor, passing in.md as the prompt and data/out.json as the answer. Wait for it, then reply with the word done.',
+    prompt: 'The directory data/one already holds a question in in.md — do not change that file. Start one sub-agent on it with the echo precursor, passing in.md as the prompt and writing its answer to data/out.json in that directory. Wait for it, then reply with the word done.',
     expect: { cells: 1, files: { 'data/one/data/out.json': /pong/i } }
   },
   {
@@ -286,7 +286,7 @@ export const CASES = [
     precursor: 'shout',
     enzyme: true,
     parts: { 'data/one': { 'in.md': 'Turn the word hello into upper case using the tool you were given.\n' } },
-    prompt: 'The directory data/one already holds a question in in.md — do not change that file. Start one sub-agent on it with the shout precursor, passing in.md as the prompt and data/out.json as the answer. Wait for it, then reply with the word done.',
+    prompt: 'The directory data/one already holds a question in in.md — do not change that file. Start one sub-agent on it with the shout precursor, passing in.md as the prompt and writing its answer to data/out.json in that directory. Wait for it, then reply with the word done.',
     expect: { cells: 1, files: { 'data/one/data/out.json': /HELLO/ } }
   },
 

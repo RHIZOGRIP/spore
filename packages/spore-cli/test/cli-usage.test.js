@@ -117,6 +117,10 @@ describe('what a verb takes', () => {
     const removed = spore('rm', WS, 'b')
     expect(removed.status).toBe(2)
     expect(removed.stderr).toBe('spore: rm takes at most one argument — "b" is one too many\n')
+
+    const setupWhat = spore('setup', 'models')
+    expect(setupWhat.status).toBe(2)
+    expect(setupWhat.stderr).toBe('spore: setup takes model or nothing — not "models"\n')
     expect(existsSync(resolve(WS, 'spore.cmk'))).toBe(true)
   })
 

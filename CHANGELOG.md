@@ -4,6 +4,37 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.57.0] — Changed: `spore setup` offers the recommended models first
+
+### Changed
+
+- On a machine with no default model, `spore setup` asks mohdex.dev which models pass the `core` and
+  `identity` tiers of the conformance suite, and offers those. It asks which provider you have, gets
+  its key or sign-in, then lists that provider's models, cheapest first, with their prices. It used
+  to offer ChatGPT, OpenRouter or another provider, then every model in the catalog, including free
+  ones that cannot drive spore. The last row, `expert`, keeps that choice of anything.
+- The models offered are not checked against the account, because a provider's own list can lag a
+  new model. One the account cannot use fails at its first turn.
+- When mohdex.dev cannot be reached, setup warns and goes to `expert`. With a default model set, it
+  says in one line if that model is not recommended, and carries on.
+- `mohdel` 4.8.1 → 4.9.1.
+
+### Added
+
+- `spore setup model` offers the recommended models on its own, whatever is set, so a model of
+  another provider is one command away. Spores you already have keep theirs.
+- `mohdexRecommended`, `mohdexEntries`, `addFromMohdex` and `PROVIDER_INFO`, re-exported from mohdel.
+
+### Fixed
+
+- `spore setup` asks about the tick timer only while there are no spores. A second run asked again
+  after every "no"; it now says the timer is off and how to turn it on.
+- The `spawn` and `enzyme-broker` cases named `data/out.json` as the answer, which is relative to
+  the sub-agent's directory, and the check reads `data/one/data/out.json`. Since 1.55.1 every case
+  says the check reads a file at the path the task names, so a model could not tell which was
+  meant: some wrote a second copy at `data/out.json`, spending extra rounds on it. The cases now
+  say the answer goes to `data/out.json` in that directory, as `fanout` does. Their digests change.
+
 ## [1.56.0] — Fixed: a stopped turn's work does not come back
 
 ### Fixed
