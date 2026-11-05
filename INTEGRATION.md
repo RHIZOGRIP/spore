@@ -748,13 +748,14 @@ its `mo` command:
 | `MO` | the path of the `mo` command spore is installed with, to run with `process.execPath` |
 | `loadMohdelEnvironment()` | loads `~/.config/mohdel/environment`, where `mo onboard` writes keys. Call it before a reading |
 | `providerReadiness(provider)` | async: `{ provider, credential, models, ready, fix }` |
-| `modelsOf(provider)` | async: the catalog's models, or one provider's, each `{ model, billing, priced }` |
+| `modelsOf(provider)` | async: the catalog's models, or one provider's, each `{ model, type, tags, billing, priced }` |
 | `modelReadiness(model)` | async: `{ model, inCatalog, priced, billing, credential, ready, fix }` |
 | `upstream(provider)` | async: what the provider lists beyond the catalog, each `{ id, label, inputPrice, outputPrice }`, or `null` when mohdel cannot list it |
 | `curate(provider, ids)` | async: adds those ids to the catalog, each `{ model, priced }`. Throws a plain `Error` naming why when it cannot |
 | `mohdexRecommended({ tool, bar })` | async: the models that meet a bar at a tool, each `{ key, version }`. Throws when mohdex.dev cannot be reached or answers badly |
 | `mohdexEntries(provider)` | async: the catalog entries mohdex.dev serves for a provider, by catalog key |
 | `addFromMohdex(picked)` | async: writes each `{ key, entry }` to the catalog, all or none. Throws a plain `Error` naming the field when the catalog would reject one |
+| `tagModel(model, tag)` | async: adds a tag to a catalog entry. Throws when the catalog does not hold the model |
 | `PROVIDER_INFO` | what setup shows about each provider: `{ [provider]: { label, description, url, hint, free } }` |
 
 ```js

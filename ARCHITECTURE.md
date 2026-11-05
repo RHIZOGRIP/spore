@@ -1123,10 +1123,11 @@ adds to the terminal (`runTui`'s `commands`).
 
 `spore setup` (`packages/spore-cli/src/setup.js`) is a path through what other commands do,
 keeping no state of its own: each step reads what is there first and says so, so a second run
-asks nothing already answered and is a check. The models step is mohdel's own setup, run from the
-`mo` installed with spore (`MO`); its readiness is read again afterwards rather than its exit
-code taken, since a user can finish the catalog after it exits. `spore doctor`'s models area is
-the same reading for every model the spores name. The catalog is mohdel's alone: adding a model
+asks nothing already answered and is a check. The models step offers what mohdex.dev recommends and
+gets a credential from the `mo` installed with spore (`MO`), stopping on its exit code. `expert`,
+the way to any model, reads readiness again after `mo onboard` rather than take the exit code, since
+a user can finish the catalog after it exits. `spore doctor`'s models area is the same reading for
+every model the spores name. The catalog is mohdel's alone: adding a model
 to it offers it to no spore, which stays `models:` in that spore's `spore.cmk`.
 
 ### Material it does not own

@@ -265,9 +265,11 @@ tiers of spore's conformance suite. It offers their providers, runs `mo onboard 
 --credential-only` for the one picked, then offers that provider's models, cheapest first. They are
 not checked against your account, because a provider's own list can lag a new model: one your
 account cannot use fails at its first turn, and `spore config set model` changes it. The last row,
-`expert`, is mohdel's own setup and then any model of any provider. Setup goes there, with a
-warning, when mohdex.dev cannot be reached. With a default model set, setup says in one line if
-that model is not recommended, and carries on.
+`expert`, offers every provider mohdel knows, runs `mo onboard <provider>` for the one picked, then
+lists that provider's text models, with a last row that runs `mo curate <provider>` for a model the
+catalog lacks. Setup goes there, with a warning, when mohdex.dev cannot be reached. A model chosen
+here gets the tag `spore` in mohdel's catalog, and `expert` lists those first. With a default model
+set, setup says in one line if that model is not recommended, and carries on.
 
 `spore setup model` runs those same steps on their own, to change the default for a model of any
 provider. Spores you already have keep their model; `spore model <name> <model>` moves one.

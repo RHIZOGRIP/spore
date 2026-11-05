@@ -12,18 +12,23 @@ All notable changes to this project are documented here. Format follows
   `identity` tiers of the conformance suite, and offers those. It asks which provider you have, gets
   its key or sign-in, then lists that provider's models, cheapest first, with their prices. It used
   to offer ChatGPT, OpenRouter or another provider, then every model in the catalog, including free
-  ones that cannot drive spore. The last row, `expert`, keeps that choice of anything.
+  ones that cannot drive spore.
+- The last row, `expert`, offers every provider mohdel knows, runs `mo onboard <provider>` for the
+  one picked, then lists that provider's text models, with a last row that runs
+  `mo curate <provider>` for a model the catalog lacks. Embedding and image models are left out.
+- A model chosen in setup gets the tag `spore` in mohdel's catalog, and `expert` lists those first.
 - The models offered are not checked against the account, because a provider's own list can lag a
   new model. One the account cannot use fails at its first turn.
 - When mohdex.dev cannot be reached, setup warns and goes to `expert`. With a default model set, it
   says in one line if that model is not recommended, and carries on.
-- `mohdel` 4.8.1 → 4.9.1.
+- `mohdel` 4.8.1 → 4.9.2.
 
 ### Added
 
 - `spore setup model` offers the recommended models on its own, whatever is set, so a model of
   another provider is one command away. Spores you already have keep theirs.
-- `mohdexRecommended`, `mohdexEntries`, `addFromMohdex` and `PROVIDER_INFO`, re-exported from mohdel.
+- `mohdexRecommended`, `mohdexEntries`, `addFromMohdex`, `tagModel` and `PROVIDER_INFO`, re-exported
+  from mohdel. `modelsOf` also says each model's `type` and `tags`.
 
 ### Fixed
 

@@ -11,13 +11,16 @@ import { autocomplete, cancel, confirm, intro, isCancel, log, note, outro, text 
 import {
   addFromMohdex, checkSqlite, CONFIG_FILE, defaultModel, define, doctor, list, loadMohdelEnvironment,
   MO, modelReadiness, modelsOf, mohdexEntries, mohdexRecommended, PROVIDER_INFO, providerReadiness,
-  readConfig, setDefaultModel, setKey
+  readConfig, setDefaultModel, setKey, tagModel
 } from '@rhizogrip/spore'
 
 import { createServices } from './services.js'
 import { diagnose, renderDoctor } from './doctor.js'
 
 const EXPERT = 'expert'
+const ANOTHER_MODEL = 'another model'
+
+const TAG = 'spore'
 
 // The two tiers the page at mohdex.dev/spore judges on.
 const BAR = ['tier:core', 'tier:identity']
@@ -58,8 +61,12 @@ async function yes (message) {
 }
 
 export const onboardWithMo = (provider, { credentialOnly = false } = {}) => spawnSync(process.execPath, [
-  MO, 'onboard', ...(provider ? [provider] : []), '--caller', 'spore', ...(credentialOnly ? ['--credential-only'] : [])
+  MO, 'onboard', provider, '--caller', 'spore', ...(credentialOnly ? ['--credential-only'] : [])
 ], { stdio: 'inherit' }).status
+
+const curateWithMo = (provider) => spawnSync(process.execPath, [MO, 'curate', provider], { stdio: 'inherit' }).status
+
+const foundText = (provider, credential) => credential ? (provider === 'chatgpt' ? 'signed in' : 'key found') : null
 
 const billingText = ({ billing, priced }) => billing === 'plan'
   ? 'your plan — not metered'
@@ -186,8 +193,9 @@ async function sayWhenNotRecommended (current) {
   }
 }
 
-function settle (chosen) {
+async function settle (chosen) {
   const { model, priced } = chosen
+  await tagModel(model, TAG)
   setDefaultModel(model)
   line('model', `${model}, ${priced === false ? `${billingText(chosen)} — mo model instructions ${providerOf(model)} fills them` : 'ready'}`)
   log.message('new spores run on it')
@@ -195,7 +203,7 @@ function settle (chosen) {
   return model
 }
 
-/** The default model, ready to run: the one set, or one of the recommended models, or any model through mohdel's own setup. Null stops setup. */
+/** The default model, ready to run: the one set, or one of the recommended models, or any model of any provider. Null stops setup. */
 async function chooseModel () {
   loadMohdelEnvironment()
   const current = defaultModel().model
@@ -225,13 +233,13 @@ async function chooseRecommended () {
   try {
     recommended = await mohdexRecommended({ tool: 'spore', bar: BAR })
   } catch (err) {
-    log.warn(`could not reach mohdex.dev, so setup can't say which models spore recommends (${err.message}) — mohdel's own setup follows`)
+    log.warn(`could not reach mohdex.dev, so setup can't say which models spore recommends (${err.message}) — every provider follows`)
     return chooseAnyModel()
   }
   // The list is live and the mohdel spore pins is not, so mohdex can name a provider this mohdel does not know.
   const keys = recommended.map(one => one.key).filter(key => PROVIDER_INFO[providerOf(key)])
   if (!keys.length) {
-    log.warn('mohdex.dev recommends no model for spore right now — mohdel\'s own setup follows')
+    log.warn('mohdex.dev recommends no model for spore right now — every provider follows')
     return chooseAnyModel()
   }
 
@@ -249,16 +257,16 @@ async function chooseRecommended () {
   try {
     entries = await mohdexEntries(provider)
   } catch (err) {
-    log.warn(`could not reach mohdex.dev, so setup can't say what ${provider}'s models cost (${err.message}) — mohdel's own setup follows`)
+    log.warn(`could not reach mohdex.dev, so setup can't say what ${provider}'s models cost (${err.message}) — every provider follows`)
     return chooseAnyModel()
   }
   const offers = await offersOf(keys.filter(key => providerOf(key) === provider), entries, provider)
   if (!offers.length) {
-    log.warn(`mohdex.dev has no entry for ${provider}'s recommended models — mohdel's own setup follows`)
+    log.warn(`mohdex.dev has no entry for ${provider}'s recommended models — every provider follows`)
     return chooseAnyModel()
   }
   const model = await pickFromList({
-    title: 'the model new spores run on',
+    title: 'which model should new spores run on?',
     header: ['later, spore model <name> <model> changes the model of one spore'],
     items: offers.map(one => ({ value: one.model, label: one.model, description: one.description }))
   })
@@ -268,7 +276,7 @@ async function chooseRecommended () {
     try {
       await addFromMohdex([{ key: model, entry: entries[model] }])
     } catch (err) {
-      log.warn(`${model} could not go in the catalog: ${err.message} — mohdel's own setup follows`)
+      log.warn(`${model} could not go in the catalog: ${err.message} — every provider follows`)
       return chooseAnyModel()
     }
   }
@@ -281,8 +289,8 @@ async function pickProvider (keys) {
   for (const provider of new Set(keys.map(providerOf))) {
     const count = keys.filter(key => providerOf(key) === provider).length
     const { credential } = await providerReadiness(provider)
-    const found = credential ? `, ${provider === 'chatgpt' ? 'signed in' : 'key found'}` : ''
-    items.push({ value: provider, label: PROVIDER_INFO[provider].label, description: `${count} recommended${found}` })
+    const found = foundText(provider, credential)
+    items.push({ value: provider, label: PROVIDER_INFO[provider].label, description: `${count} ${count === 1 ? 'model' : 'models'} recommended${found ? `, ${found}` : ''}` })
   }
   items.sort((a, b) => (b.value === 'chatgpt') - (a.value === 'chatgpt') || a.label.localeCompare(b.label))
   return pickFromList({
@@ -308,29 +316,44 @@ async function offersOf (keys, entries, provider) {
   return offers.sort((a, b) => price(a, 'inputPrice') - price(b, 'inputPrice') || price(a, 'outputPrice') - price(b, 'outputPrice'))
 }
 
-/** Expert: mohdel's own setup, then every model of every provider with a credential. */
+/** Expert: any provider mohdel knows, its full setup, then its text models and the way to one the catalog lacks. */
 async function chooseAnyModel () {
-  onboardWithMo(null)
-  loadMohdelEnvironment()
-
-  const credentials = new Map()
-  const usable = []
-  for (const one of await modelsOf(null)) {
-    const named = providerOf(one.model)
-    if (!credentials.has(named)) credentials.set(named, (await providerReadiness(named)).credential)
-    if (credentials.get(named)) usable.push(one)
+  const items = []
+  for (const [provider, { label, description }] of Object.entries(PROVIDER_INFO)) {
+    const { credential } = await providerReadiness(provider)
+    items.push({ value: provider, label, description: foundText(provider, credential) ?? description })
   }
-  if (!usable.length) {
-    line('model', 'no provider has a model ready yet — mo onboard <provider>, then spore setup again')
+  const provider = await pickFromList({
+    title: 'which provider should they come from?',
+    items: items.sort((a, b) => a.label.localeCompare(b.label))
+  })
+  if (!provider) return null
+
+  onboardWithMo(provider)
+  loadMohdelEnvironment()
+  const { credential, fix } = await providerReadiness(provider)
+  if (!credential) {
+    line('model', `${provider} is not ready — ${fix}, then spore setup again`)
     return null
   }
-  const model = await pickFromList({
-    title: 'the model new spores run on',
-    header: ['later, spore model <name> <model> changes the model of one spore'],
-    items: usable.map(one => ({ value: one.model, label: one.model, description: billingText(one) }))
-  })
-  if (!model) return null
-  return settle(usable.find(one => one.model === model))
+
+  const chosenBefore = (one) => one.tags.includes(TAG)
+  while (true) {
+    const models = (await modelsOf(provider))
+      .filter(one => one.type === 'model')
+      .sort((a, b) => chosenBefore(b) - chosenBefore(a))
+    const model = await pickFromList({
+      title: 'which model should new spores run on?',
+      header: ['later, spore model <name> <model> changes the model of one spore'],
+      items: [
+        ...models.map(one => ({ value: one.model, label: one.model, description: `${billingText(one)}${chosenBefore(one) ? ', chosen before' : ''}` })),
+        { value: ANOTHER_MODEL, label: `another ${provider} model`, description: `mo curate ${provider} adds it to your catalog` }
+      ]
+    })
+    if (!model) return null
+    if (model !== ANOTHER_MODEL) return settle(models.find(one => one.model === model))
+    curateWithMo(provider)
+  }
 }
 
 /** `spore setup model`: resolves with the exit code, 0 once a recommended model is the default. */

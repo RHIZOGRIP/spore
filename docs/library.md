@@ -1432,11 +1432,12 @@ Whether a provider can be called: its credential, how many catalog models it has
 ### `modelsOf`
 
 ```
-modelsOf(provider = null) → Promise<[{ model, billing, priced }]>
+modelsOf(provider = null) → Promise<[{ model, type, tags, billing, priced }]>
 ```
 
-The catalog's models, or one provider's, deprecated ones left out. `priced` is `null` for a
-model whose calls are not metered. From mohdel.
+The catalog's models, or one provider's, deprecated ones left out. `type` is `model` unless the
+entry names another, such as `embedding`. `priced` is `null` for a model whose calls are not
+metered. From mohdel.
 
 ### `modelReadiness`
 
@@ -1492,6 +1493,16 @@ addFromMohdex(picked) → Promise<void>
 
 Writes each `{ key, entry }` to the catalog, all of them or none. Throws a plain `Error` naming the
 field when the catalog would reject one. From mohdel.
+
+### `tagModel`
+
+```
+tagModel(model, tag) → Promise<void>
+```
+
+Adds `tag` to the entry `model` names in the catalog. `spore setup` sets `spore` on a model someone
+chose. Throws a plain `Error` when the catalog does not hold the model or the tag is invalid. From
+mohdel.
 
 ### `PROVIDER_INFO`
 

@@ -47,7 +47,7 @@ export { DEFAULT_SPORANGIUM } from './core/sporangia.js'
 // spore, so a setup runs it without `mo` on PATH and on the one mohdel spore pins.
 export { loadDefaultEnv as loadMohdelEnvironment, modelReadiness, modelsOf, providerReadiness } from 'mohdel/readiness'
 export { CLI as MO } from 'mohdel/cli'
-export { curate, upstream } from 'mohdel/curate'
+export { curate, tagModel, upstream } from 'mohdel/curate'
 export { addFromMohdex, mohdexEntries, mohdexRecommended } from 'mohdel/mohdex'
 export { default as PROVIDER_INFO } from 'mohdel/provider-info'
 
