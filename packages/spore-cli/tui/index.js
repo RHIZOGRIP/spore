@@ -114,7 +114,7 @@ class Conversation {
   /** The code blocks of the last answer, numbered on screen from 1. */
   lastBlocks () {
     const last = this.lastAnswer()
-    return last ? this.markdown(last).blocks : []
+    return last ? this.markdown(last).codeBlocks : []
   }
 
   render (width) {

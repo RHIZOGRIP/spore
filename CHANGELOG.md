@@ -4,6 +4,13 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.57.1] — Changed: `spore tui` runs on pi-tui 1.5.0
+
+### Changed
+
+- `@earendil-works/pi-tui` 1.2.0 → 1.5.0. Page Up and Page Down now move through the open
+  autocomplete menu, and a direct exit gives the terminal back as it found it.
+
 ## [1.57.0] — Changed: `spore setup` offers the recommended models first
 
 ### Changed

@@ -315,7 +315,7 @@ describe('the code blocks of an answer', () => {
   it('are kept as written, a line wider than the screen and a block inside a list included', () => {
     const answer = new Answer(text, theme)
     answer.render(60)
-    expect(answer.blocks).toEqual([{ lang: 'sh', text: long }, { lang: 'sh', text: 'az account list --output table' }])
+    expect(answer.codeBlocks).toEqual([{ lang: 'sh', text: long }, { lang: 'sh', text: 'az account list --output table' }])
   })
 
   it('are numbered on their opening fence when the answer is labelled, and only then', () => {
@@ -333,6 +333,21 @@ describe('the code blocks of an answer', () => {
     answer.render(60)
     answer.render(60)
     answer.render(90)
-    expect(answer.blocks).toHaveLength(2)
+    expect(answer.codeBlocks).toHaveLength(2)
+  })
+
+  it('keep their text and their numbers when the screen changes width', () => {
+    const answer = new Answer(text, theme, { labelled: true })
+    answer.render(200)
+    const lines = answer.render(190).map(line => line.trim())
+    expect(lines).toContain('```sh · /copy 1')
+    expect(lines).toContain('```sh · /copy 2')
+    expect(answer.codeBlocks).toEqual([{ lang: 'sh', text: long }, { lang: 'sh', text: 'az account list --output table' }])
+  })
+
+  it('are each kept when a list holds the same one twice', () => {
+    const answer = new Answer('- first:\n\n  ```sh\n  same\n  ```\n\n  ```sh\n  same\n  ```\n', theme)
+    answer.render(60)
+    expect(answer.codeBlocks).toEqual([{ lang: 'sh', text: 'same' }, { lang: 'sh', text: 'same' }])
   })
 })
