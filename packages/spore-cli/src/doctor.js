@@ -4,6 +4,7 @@ import { getSystemErrorName } from 'node:util'
 
 import { boundary, describeHost, doctor, loadMohdelEnvironment, modelFindings } from '@rhizogrip/spore'
 
+import { withMoHint } from './mo.js'
 import { createServices } from './services.js'
 
 const AREAS = ['operator', 'spores', 'models', 'plugins', 'services', 'machine']
@@ -116,7 +117,7 @@ export function renderDoctor ({ findings, boundary }) {
     console.log(area)
     for (const found of here) {
       console.log(`  ${found.severity === 'note' ? 'note: ' : ''}${found.subject} — ${found.problem}`)
-      if (found.fix) console.log(found.fix.split('\n').map(line => `      ${line}`).join('\n'))
+      if (found.fix) console.log(withMoHint(found.fix).split('\n').map(line => `      ${line}`).join('\n'))
     }
   }
   if (boundary.length) {

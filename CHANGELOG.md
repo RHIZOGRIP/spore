@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.58.0] — Added: spore says how to install `mo` when it names it
+
+### Added
+
+- `mo` comes inside spore for `spore setup`, and npm does not put it on your `PATH`. Wherever `spore`,
+  `spore doctor`, `spore setup` or `spore tui` names a `mo` command and `mo` is missing, the message
+  now gives the install command, at the mohdel spore pins. JSON output is unchanged.
+
 ## [1.57.1] — Changed: `spore tui` runs on pi-tui 1.5.0
 
 ### Changed

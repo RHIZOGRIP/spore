@@ -260,6 +260,10 @@ What the user's spores share while they run, under `$XDG_STATE_HOME/spore/`, els
 `spore config set home <dir>`, `mo onboard <provider>`, `spore config set model <provider>/<name>`,
 `spore doctor`.
 
+Setup runs the `mo` that comes inside spore, which npm does not put on your `PATH`. For low-level
+work on models and keys, install `mo` on its own, at the mohdel spore pins. Wherever spore names a
+`mo` command and `mo` is missing, it gives that install command.
+
 With no default model, `spore setup` asks mohdex.dev which models pass the `core` and `identity`
 tiers of spore's conformance suite. It offers their providers, runs `mo onboard <provider>
 --credential-only` for the one picked, then offers that provider's models, cheapest first. They are

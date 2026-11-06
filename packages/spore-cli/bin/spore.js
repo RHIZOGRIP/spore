@@ -14,6 +14,7 @@ import { basename, resolve } from 'node:path'
 
 import minimist from 'minimist'
 
+import { withMoHint } from '../src/mo.js'
 import { host } from '../src/vm.js'
 
 await host(process.argv.slice(2))
@@ -320,7 +321,7 @@ async function events (ws, after) {
 }
 
 function fail (problem) {
-  console.error(`spore: ${problem}`)
+  console.error(`spore: ${withMoHint(problem)}`)
   process.exit(2)
 }
 

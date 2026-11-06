@@ -8,6 +8,7 @@ import { applyEvent, changeText, createLive, curate, durationText, errorText, ex
 import chalk from 'chalk'
 
 import { runningJob, scheduleLine } from '../src/dispatch.js'
+import { withMoHint } from '../src/mo.js'
 import { COMMANDS, parseCommand } from './commands.js'
 import { history, markOf } from './conversation.js'
 import { changeOf, counts, hunks } from './diff.js'
@@ -319,7 +320,8 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
   const state = { ws: null, grant: null, limits: null, shown: null, attention: new Map(), lastSeq: 0, overlay: null, pressed: {} }
   let finish
 
-  const notice = (text) => {
+  const notice = (message) => {
+    const text = withMoHint(message)
     status.notice = text
     clearTimeout(state.noticeTimer)
     state.noticeTimer = setTimeout(() => { status.notice = ''; tui.requestRender() }, Math.max(NOTICE_MS, text.length * 60))

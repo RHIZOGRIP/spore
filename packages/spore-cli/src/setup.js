@@ -16,6 +16,7 @@ import {
 
 import { createServices } from './services.js'
 import { diagnose, renderDoctor } from './doctor.js'
+import { moHint, withMoHint } from './mo.js'
 
 const EXPERT = 'expert'
 const ANOTHER_MODEL = 'another model'
@@ -29,7 +30,7 @@ const providerOf = (model) => model.split('/')[0]
 
 const SHOWN = 20
 
-const line = (label, text) => log.step(`${label.padEnd(10)}${text}`)
+const line = (label, text) => log.step(`${label.padEnd(10)}${withMoHint(text)}`)
 
 /** A pick from a list that words narrow, each matched in the label or the description; null when left. */
 export async function pickFromList ({ title, header = [], items }) {
@@ -171,11 +172,13 @@ export async function setup () {
 
 /** Where another model comes from, and how a spore is given it: said, never done, by setup. */
 function otherModels (provider) {
-  log.message([
+  const lines = [
     'another model: spore setup model offers the recommended ones, from any provider —',
     `or /curate in spore tui, or mo curate ${provider}, adds any other ${provider} model,`,
     'then spore config set model <provider>/<name> for new spores, or spore edit <spore> and add it to models:'
-  ])
+  ]
+  const hint = moHint(lines.join('\n'))
+  log.message(hint ? [...lines, hint] : lines)
 }
 
 /** One line when the model set is not among those mohdex recommends. Nothing here stops setup. */

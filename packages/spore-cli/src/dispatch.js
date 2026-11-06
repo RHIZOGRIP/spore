@@ -16,6 +16,7 @@ import { basename, join, resolve } from 'node:path'
 import { addTo, allowPlugin, annotate, billingFor, bytesText, changeText, define, defaultModel, disallowPlugin, durationText, edit, extend, flush, getKey, jobs, list, listApprovals, listPlugins, log, pause, remake, remove, removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings, show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM, errorText } from '@rhizogrip/spore'
 import { diagnose, hostReport, renderDoctor, renderReport } from './doctor.js'
 import { hook } from './hooks.js'
+import { withMoHint } from './mo.js'
 import { createServices } from './services.js'
 import { saidBy, saidText } from '../tui/conversation.js'
 
@@ -787,7 +788,7 @@ export async function manage (verb, argv) {
     if (verb === 'ls') return emit(list({ where: argv._[1], disk: true }), renderList, listExit)
     if (verb === 'show') return emit(show({ ws: argv._[1] }), renderShow)
   } catch (err) {
-    console.error(`spore: ${errorText(err)}`)
+    console.error(`spore: ${withMoHint(errorText(err))}`)
     return 2
   }
 }
