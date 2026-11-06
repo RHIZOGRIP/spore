@@ -105,6 +105,26 @@ describe('spore doctor', () => {
     expect(examine().findings).toEqual([expect.objectContaining({ problem: expect.stringMatching(/wants \$HOOK_TOKEN, which is not set/) })])
   })
 
+  describe('a hook or a caller with no maxWait', () => {
+    const delivering = () => {
+      spore('main')
+      operator('hooks.json', { gh: { spore: ['main'], verify: { token: '${HOOK_TOKEN}' } } }) // eslint-disable-line no-template-curly-in-string
+      operator('api.json', { socket: '/run/spore-api.sock', callers: { app: { token: '${API_APP}', spores: ['*'] } } }) // eslint-disable-line no-template-curly-in-string
+    }
+    const secrets = { HOOK_TOKEN: 't', API_APP: 'x'.repeat(32) }
+
+    it('needs the tick timer, for what it delivers with every slot taken', () => {
+      delivering()
+      expect(examine(secrets).needsTick).toEqual(['hook gh holds deliveries', 'caller app holds deliveries'])
+    })
+
+    it('does not when the caller admits turns, since nothing is held for the pass', () => {
+      delivering()
+      operator('config.json', { home, admission: 'caller' })
+      expect(examine(secrets).needsTick).toEqual([])
+    })
+  })
+
   it('says which spores need the tick timer', () => {
     spore('worker', 'jobs: [2, 1m]\n')
     expect(examine().needsTick).toEqual(['worker is granted jobs'])

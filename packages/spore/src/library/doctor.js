@@ -11,7 +11,7 @@ import { getSystemErrorName } from 'node:util'
 import { callInfo } from 'mohdel/client'
 import { modelReadiness } from 'mohdel/readiness'
 
-import { CONFIG_FILE, containing, ENVIRONMENT_FILE, ENVIRONMENT_LINE, environmentLines, MEMORY_FILE, SOURCES_FILE, readConfig, workspaceFor } from './config.js'
+import { callerAdmits, CONFIG_FILE, containing, ENVIRONMENT_FILE, ENVIRONMENT_LINE, environmentLines, MEMORY_FILE, SOURCES_FILE, readConfig, workspaceFor } from './config.js'
 import { isWorkspace } from './discover.js'
 import { list, show, sporangia } from './verbs.js'
 import { CONFINE_BIN, containCheck, keptRefusal } from '../core/command.js'
@@ -245,6 +245,9 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
   described(SOURCES_FILE, raw => Object.entries(raw).map(([source, spec]) => ({ what: `source ${source}`, spec, uses: spore => spore.sources.includes(source), wrong: misplaced(spec) })))
   described(MEMORY_FILE, raw => [{ what: 'the vector store', spec: raw, uses: spore => spore.memory?.backend === 'vectors' }])
 
+  // With every slot taken a delivery waits for the pass, whatever its maxWait says.
+  const holding = !callerAdmits(config)
+
   const hooks = hooksPath(configFile)
   if (existsSync(hooks)) {
     try {
@@ -253,7 +256,7 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
           if (!isWorkspace(workspaceFor(spore, { config }).path)) problem('operator', hooks, `hook ${hook.name} reaches spore ${spore}, which does not exist`, `fix the name, or spore define ${spore}`)
           else startsUnasked(spore, `hook ${hook.name}`)
         }
-        if (hook.maxWait) needsTick.push(`hook ${hook.name} holds deliveries`)
+        if (holding) needsTick.push(`hook ${hook.name} holds deliveries`)
       }
     } catch (err) {
       problem('operator', hooks, err.message, err.detail)
@@ -263,7 +266,8 @@ export function doctor ({ configFile = CONFIG_FILE, env = process.env, abi = lan
   const api = apiPath(configFile)
   if (existsSync(api)) {
     try {
-      for (const caller of loadApi(api, env).callers.filter(each => each.maxWait)) needsTick.push(`caller ${caller.name} holds deliveries`)
+      const { callers } = loadApi(api, env)
+      if (holding) needsTick.push(...callers.map(caller => `caller ${caller.name} holds deliveries`))
     } catch (err) {
       problem('operator', api, err.message, err.detail)
     }

@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.58.1] — Fixed: `spore doctor` asks for the tick timer for every hook and API caller
+
+### Fixed
+
+- A delivery with every turn slot taken waits for a `spore tick` pass, even from a hook or an API
+  caller with no `maxWait`. `spore doctor` only asked for the tick timer when `maxWait` was set, so
+  a host without it could hold such a delivery forever and show nothing. It now asks for every hook
+  and caller, except under `admission: caller`, where nothing is held for the pass.
+
 ## [1.58.0] — Added: spore says how to install `mo` when it names it
 
 ### Added

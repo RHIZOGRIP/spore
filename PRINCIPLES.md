@@ -150,9 +150,11 @@ afterwards.
 Limits that protect the computer — how many spores work at once, how big a file may grow, how much
 disk must stay free, how long a model call may run — are set by the computer's owner, once for all
 spores, and not in each spore's file. A spore writing a helper must not decide how safe the computer
-is. When a limit is reached, spore says no; it keeps no waiting line. Whoever asked decides when to
-try again. An owner whose own program already decides how many work at once says so, once
-(`admission: caller`), and spore then counts nothing beside it.
+is. When a limit is reached, spore says not now. It never says who is next: nothing keeps an order
+between spores. Whoever can ask again decides when. What nobody can ask again, such as a webhook or
+the end of a job, waits in its own spore's folder until a pass finds room. An owner whose own
+program already decides how many work at once says so, once (`admission: caller`), and spore then
+counts nothing beside it.
 
 ## Where things live
 
@@ -165,9 +167,10 @@ asked of the operating system, which always knows.
 ### 16. Every message lands in the same inbox
 
 A person's message, a scheduled reminder, an alert from another service, the end of a long task:
-each one is added to the spore's inbox. Starting work on it is a separate step. If the spore is
-already working, the new message joins that work; if not, a turn starts. There is no other way in.
-Spore never looks for magic words in a message: what a message means is for the spore to decide.
+each one is added to the spore's inbox, and one nobody typed may first wait in the spore's folder.
+Starting work on it is a separate step. If the spore is already working, the new message joins that
+work; if not, a turn starts. There is no other way in. Spore never looks for magic words in a
+message: what a message means is for the spore to decide.
 
 ### 17. Spore watches; it runs no central service
 

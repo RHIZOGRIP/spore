@@ -1431,10 +1431,11 @@ it marks the descriptor close-on-exec (`check_slot`, `rust/runner/src/main.rs`),
 agent nor anything it runs holds the slot, and a process a tool leaves behind cannot keep one.
 A message to a turn already running takes no slot: it joins that turn through the inbox.
 
-**Refusing is spore's, waiting is the caller's.** Nothing queues inside spore. `runBatch` tries
+**Refusing is spore's, waiting is the caller's.** Nothing keeps an order between spores. `runBatch` tries
 a refused start again on its next poll; `spore tick` holds a due schedule for a later pass;
 `spore send` and `spore fork` say so and stop; the chat plugins tell the chat it is busy; the
-HTTP API answers `503`.
+HTTP API answers `503`. A delivery nobody typed has no caller left to wait, so it stays held in
+its own spore for the pass (§Deliveries nobody typed).
 
 **The directory is outside every sandbox grant.** `flock` needs only a readable descriptor, so
 a slot a confined agent could open is a slot it could hold.
