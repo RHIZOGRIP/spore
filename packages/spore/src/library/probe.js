@@ -14,11 +14,12 @@ import { landlockAbi, systemReadPaths } from '../isolation/sandbox.js'
 import { CONFIG_FILE, containing, readConfig } from './config.js'
 
 const TRY_MS = 10_000
+const WORKER_LOADS = ['../core/spore-run.js', '../infra/model-client.js'].map(file => new URL(file, import.meta.url).href)
 
 /**
  * Each crossing tried on this host: `{ boundary: [{ tried, outcome, why }], findings }`, `outcome`
  * `refused`, `crossed` or `untried`, and a problem among `findings` for each crossing this host
- * should have refused. With no Landlock, or a config.json it cannot read, it tries nothing, and
+ * should have refused, or if a cell could not load the runtime. With no Landlock, or a config.json it cannot read, it tries nothing, and
  * `doctor` says why.
  */
 export async function boundary ({ configFile = CONFIG_FILE } = {}) {
@@ -72,6 +73,14 @@ export async function boundary ({ configFile = CONFIG_FILE } = {}) {
     if (control.exit !== 0) {
       const why = control.spawnError ?? (control.said || `exited ${control.exit ?? control.signal}`)
       return { boundary: [{ tried: 'anything', outcome: 'untried', why: `a confined command could not read what it is granted and write where it may, so a refusal would prove nothing — ${why}` }], findings }
+    }
+
+    // An agent imports the runtime before it confines itself; a cell's worker starts inside that
+    // sandbox, so a dependency outside what is granted stops only the cell.
+    const worker = await attempt(`'${process.execPath}' --input-type=module -e "${WORKER_LOADS.map(file => `await import('${file}')`).join(';')}"`)
+    if (worker.exit !== 0) {
+      const why = worker.said.split('\n').find(line => line.startsWith('Error')) ?? (worker.said || `exited ${worker.exit ?? worker.signal}`)
+      findings.push({ area: 'machine', subject: 'runtime', severity: 'problem', problem: `a sub-agent cannot load spore inside a turn's sandbox — ${why}`, fix: 'install spore with what it depends on under the same node_modules: npm install -g @rhizogrip/spore-cli' })
     }
 
     const crossings = [

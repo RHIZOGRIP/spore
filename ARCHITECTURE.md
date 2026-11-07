@@ -1309,9 +1309,11 @@ an agent. The documents plugin's examples read files built rather than committed
 `test/fixtures/make-documents.mjs`.
 
 **`provisionModules()` links one entry per declared library into `<ws>/node_modules/`**, at
-both levels: `openWorkspace()` for the spore, `rust/runner/src/spawn.rs` for a cell. Node
-resolves a bare import by walking up from the importing file, and an agent's program lives in
-`<ws>/data/`, which never reaches the package.
+both levels: `openWorkspace()` and each turn's start for the spore, `rust/runner/src/spawn.rs`
+for a cell. Node resolves a bare import by walking up from the importing file, and an agent's
+program lives in `<ws>/data/`, which never reaches the package. A spore outlives the install that
+made it, so a link naming another install is laid again; the old target may be gone, or outside
+what the sandbox grants now.
 
 - **Links, not copies**, and **one per library, not the directory**: what is offered is what
   was declared.
@@ -2374,7 +2376,11 @@ the cell, through `read` and `exec cat` alike
 grants read on the system paths and on **the runtime** — `bin/`, `src/`, `native/`,
 `package.json` and the dependencies, since a cell's worker is a node process that loads spore's
 own modules, and `sporangia/`, from which the agent restores a missing root document when it
-opens its workspace.
+opens its workspace. The dependencies are every `node_modules` spore is installed under, not only
+the nearest: npm leaves a package already installed higher up where it is, and Node walks up to it.
+So a global install grants all of that prefix's global packages, as `/usr` does on the default
+prefix. An agent imports the runtime before it confines itself, so only a cell, which starts inside
+that sandbox, stops on a dependency outside these; `spore doctor` loads the runtime as a cell does.
 **`/tmp` is not granted**: an agent writes its islands, the directories its definition `writes`,
 and its spore's socket directory, nothing else. A workspace under `/tmp` is still refused, since
 every spore's sockets live there. A cell confined beneath a granted path could read and write its

@@ -26,12 +26,12 @@ use spore_runner::supervise::{
 use spore_runner::{broker, job, model, source, store, trace, vectors};
 use spore_workspace::{
     acquire_lock, agent_env, begin_turn, crash_at, end_channel, finalize_turn, free_bytes,
-    hand_over, iso_now, leave_wal, limit_file_size, make_spore_socket_dir, prune_trail,
-    read_paths_refusal, record_unanswered, recover, release_lock, serve, spore_socket_dir,
-    spore_socket_path, start_limits, turn_limits, turn_state, unanswered, unanswered_traceparents,
-    unread, unread_past, write_lock, write_outcome, write_tree_key, writes_refusal, yield_to_host,
-    Acquired, Unanswered, DEFAULT_FREE_FLOOR, DEFAULT_LARGEST_FILE, DEFAULT_MODEL_SESSIONS,
-    DEFINITION_FILE, HOME_DIR, PLUGIN_ENV, PLUGIN_READS, STATE_FD,
+    hand_over, iso_now, leave_wal, limit_file_size, make_spore_socket_dir, provision_modules,
+    prune_trail, read_paths_refusal, record_unanswered, recover, release_lock, serve,
+    spore_socket_dir, spore_socket_path, start_limits, turn_limits, turn_state, unanswered,
+    unanswered_traceparents, unread, unread_past, write_lock, write_outcome, write_tree_key,
+    writes_refusal, yield_to_host, Acquired, Unanswered, DEFAULT_FREE_FLOOR, DEFAULT_LARGEST_FILE,
+    DEFAULT_MODEL_SESSIONS, DEFINITION_FILE, HOME_DIR, PLUGIN_ENV, PLUGIN_READS, STATE_FD,
 };
 use tokio::process::Command;
 use tokio::signal::unix::{signal, Signal, SignalKind};
@@ -471,6 +471,14 @@ async fn main() {
             lock,
             &started_at,
             &format!("{} {problem}", ws.display()),
+        );
+    }
+    if let Err(refused) = provision_modules(&ws, &root()) {
+        refuse(
+            &ws,
+            lock,
+            &started_at,
+            &format!("{} — {}", refused.message, refused.detail),
         );
     }
 

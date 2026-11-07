@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFile, spawn } from 'node:child_process'
-import { closeSync, existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -111,6 +111,20 @@ describe('a confined turn', () => {
 
     // Released rather than removed: the file stays, empty, and the next turn takes it.
     expect(readFileSync(resolve(ws, 'lock'), 'utf8')).toBe('')
+  })
+
+  it('imports its libraries from where spore is now, whatever install laid its links', async () => {
+    mkdirSync(resolve(ws, 'node_modules'), { recursive: true })
+    rmSync(resolve(ws, 'node_modules/yaml'), { force: true })
+    symlinkSync('/nowhere/lib/node_modules/yaml', resolve(ws, 'node_modules/yaml'))
+    await start(async (input, round) => round === 0
+      ? calls('wsexec', { command: 'echo "import { parse } from \'yaml\'; console.log(parse(\'a: 1\').a)" > data/check.mjs && node data/check.mjs', out: 'data/parsed.txt' })
+      : answers('one'))
+
+    const turn = await spore('parse it')
+    expect(turn.code, turn.stderr).toBe(0)
+    expect(readFileSync(resolve(ws, 'data/parsed.txt'), 'utf8')).toBe('1\n')
+    expect(readlinkSync(resolve(ws, 'node_modules/yaml'))).not.toContain('/nowhere')
   })
 
   it('holds its admission slot in the runner alone, and frees it when the turn ends', async () => {

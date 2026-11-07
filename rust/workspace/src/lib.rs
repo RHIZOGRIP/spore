@@ -958,23 +958,32 @@ pub fn safe_path(ws: &Path, user_path: &str, grants: &[PathBuf]) -> Result<PathB
     }
 }
 
-/// Where the spore root's hoisted dependencies live: installed inside another package, the
-/// node_modules that contains it; in a checkout, the nearest node_modules above it, where npm
-/// workspaces hoist and where Node resolves from. Found by looking, never by reading a file:
-/// `spore-spawn` asks from inside a sandbox that grants none above the root.
-pub fn node_modules_root(root: &Path) -> Option<PathBuf> {
+/// Where the spore root's hoisted dependencies live, nearest first: installed inside another
+/// package, every node_modules that contains it, since npm leaves a package already present
+/// higher up where it is and Node walks up to it; in a checkout, the nearest node_modules above
+/// it, where npm workspaces hoist. Found by looking, never by reading a file: `spore-spawn` asks
+/// from inside a sandbox that grants none above the root.
+pub fn node_modules_roots(root: &Path) -> Vec<PathBuf> {
     let root = absolute(root);
-    let installed = root
+    let installed: Vec<PathBuf> = root
         .ancestors()
         .skip(1)
-        .find(|dir| dir.file_name().is_some_and(|name| name == "node_modules"));
-    if let Some(installed) = installed {
-        return Some(installed.to_path_buf());
+        .filter(|dir| dir.file_name().is_some_and(|name| name == "node_modules"))
+        .map(Path::to_path_buf)
+        .collect();
+    if !installed.is_empty() {
+        return installed;
     }
     root.ancestors()
         .skip(1)
         .map(|dir| dir.join("node_modules"))
         .find(|dir| dir.is_dir())
+        .into_iter()
+        .collect()
+}
+
+pub fn node_modules_root(root: &Path) -> Option<PathBuf> {
+    node_modules_roots(root).into_iter().next()
 }
 
 pub fn system_read_paths(root: &Path) -> Vec<PathBuf> {
@@ -985,7 +994,7 @@ pub fn system_read_paths(root: &Path) -> Vec<PathBuf> {
     if own.exists() {
         paths.push(own);
     }
-    paths.extend(node_modules_root(&root));
+    paths.extend(node_modules_roots(&root));
     paths
 }
 
@@ -1104,7 +1113,7 @@ pub fn writes_refusal(
 
 fn provisioned_targets(root: &Path) -> Vec<(&'static str, Option<PathBuf>)> {
     let root = absolute(root);
-    let hoisted = node_modules_root(&root);
+    let hoisted = node_modules_roots(&root);
     PROVISIONED_MODULES
         .iter()
         .map(|name| {
@@ -1128,7 +1137,8 @@ pub fn unprovisioned(root: &Path) -> Vec<String> {
 /// program in `<ws>/data/` never reaches this package, so each declared library is linked
 /// into `<ws>/node_modules/` by name — one link each, never the directory, so what is
 /// offered is what was declared. A declared library that is not installed is a broken
-/// install, refused before anything is linked.
+/// install, refused before anything is linked. A link naming another install is laid again,
+/// since spore moves under a spore that outlives it; what is not a link is left alone.
 pub fn provision_modules(ws: &Path, root: &Path) -> Result<Vec<String>, Refusal> {
     let found = provisioned_targets(root);
     let missing: Vec<&str> = found
@@ -1156,12 +1166,18 @@ pub fn provision_modules(ws: &Path, root: &Path) -> Result<Vec<String>, Refusal>
     };
     let mut linked = Vec::new();
     for (name, target) in found {
+        let target = target.expect("checked above");
         let link = dir.join(name);
-        if fs::symlink_metadata(&link).is_ok() {
-            continue;
+        if let Ok(entry) = fs::symlink_metadata(&link) {
+            let stale = entry.file_type().is_symlink()
+                && fs::read_link(&link).is_ok_and(|now| now != target);
+            if !stale {
+                continue;
+            }
+            fs::remove_file(&link).map_err(failed)?;
         }
         fs::create_dir_all(&dir).map_err(failed)?;
-        symlink(target.expect("checked above"), &link).map_err(failed)?;
+        symlink(&target, &link).map_err(failed)?;
         linked.push(name.to_string());
     }
     Ok(linked)
@@ -1938,6 +1954,42 @@ mod tests {
     }
 
     #[test]
+    fn grants_every_node_modules_spore_is_installed_under() {
+        let base = fs::canonicalize(scratch("hoisted-global")).unwrap();
+        let global = base.join("lib/node_modules");
+        let cli = global.join("@rhizogrip/spore-cli/node_modules");
+        let root = cli.join("@rhizogrip/spore");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(base.join("node_modules")).unwrap();
+
+        assert_eq!(node_modules_roots(&root), [cli.clone(), global.clone()]);
+        assert_eq!(node_modules_root(&root), Some(cli.clone()));
+        let granted = system_read_paths(&root);
+        assert!(granted.contains(&cli) && granted.contains(&global));
+        assert!(!granted.contains(&base.join("node_modules")));
+    }
+
+    #[test]
+    fn finds_a_library_npm_left_higher_up() {
+        let base = fs::canonicalize(scratch("provision-global")).unwrap();
+        let global = base.join("lib/node_modules");
+        let cli = global.join("@rhizogrip/spore-cli/node_modules");
+        let root = cli.join("@rhizogrip/spore");
+        let ws = scratch("provision-global-ws");
+        fs::create_dir_all(&root).unwrap();
+        for name in &PROVISIONED_MODULES[1..] {
+            fs::create_dir_all(cli.join(name)).unwrap();
+        }
+        fs::create_dir_all(global.join(PROVISIONED_MODULES[0])).unwrap();
+
+        provision_modules(&ws, &root).unwrap();
+        assert_eq!(
+            fs::read_link(ws.join("node_modules").join(PROVISIONED_MODULES[0])).unwrap(),
+            global.join(PROVISIONED_MODULES[0])
+        );
+    }
+
+    #[test]
     fn finds_the_node_modules_of_the_workspace_a_checkout_is_in() {
         let base = fs::canonicalize(scratch("workspaces")).unwrap();
         let root = base.join("packages/spore");
@@ -1973,5 +2025,51 @@ mod tests {
             fs::read_link(ws.join("node_modules/luxon")).unwrap(),
             root.join("node_modules/luxon")
         );
+    }
+
+    #[test]
+    fn lays_a_link_again_when_spore_is_installed_elsewhere() {
+        let was = fs::canonicalize(scratch("provision-was")).unwrap();
+        let now = fs::canonicalize(scratch("provision-now")).unwrap();
+        let ws = scratch("provision-moved");
+        for root in [&was, &now] {
+            for name in PROVISIONED_MODULES {
+                fs::create_dir_all(root.join("node_modules").join(name)).unwrap();
+            }
+        }
+        provision_modules(&ws, &was).unwrap();
+        fs::remove_dir_all(was.join("node_modules/yaml")).unwrap();
+
+        assert_eq!(
+            provision_modules(&ws, &now).unwrap().len(),
+            PROVISIONED_MODULES.len()
+        );
+        assert_eq!(
+            fs::read_link(ws.join("node_modules/yaml")).unwrap(),
+            now.join("node_modules/yaml")
+        );
+        assert_eq!(
+            fs::read_link(ws.join("node_modules/luxon")).unwrap(),
+            now.join("node_modules/luxon")
+        );
+        assert!(provision_modules(&ws, &now).unwrap().is_empty());
+    }
+
+    #[test]
+    fn leaves_alone_what_is_not_a_link() {
+        let root = fs::canonicalize(scratch("provision-kept-root")).unwrap();
+        let ws = scratch("provision-kept");
+        for name in PROVISIONED_MODULES {
+            fs::create_dir_all(root.join("node_modules").join(name)).unwrap();
+        }
+        fs::create_dir_all(ws.join("node_modules/yaml")).unwrap();
+
+        assert_eq!(
+            provision_modules(&ws, &root).unwrap().len(),
+            PROVISIONED_MODULES.len() - 1
+        );
+        assert!(fs::symlink_metadata(ws.join("node_modules/yaml"))
+            .unwrap()
+            .is_dir());
     }
 }

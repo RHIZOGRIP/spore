@@ -4,10 +4,16 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
-## [1.58.2] — Fixed: `spore tui` shows the files a turn delivered, and a click on any link does something
+## [1.58.2] — Fixed: sub-agents start outside the default npm prefix, and `spore tui` shows delivered files
 
 ### Fixed
 
+- With spore installed globally outside `/usr`, and `mohdel` installed globally beside it, every
+  sub-agent started by a turn died with `Cannot find package …/mohdel/index.js`. Turns themselves
+  worked. The sandbox granted only the nearest `node_modules`; it now grants every `node_modules`
+  spore is installed under, so an agent can read that prefix's global packages, as it can on `/usr`.
+- `spore doctor` now loads the runtime as a sub-agent does, inside the sandbox, and reports a problem
+  when it cannot.
 - A file a turn left in `data/out/` never reached the terminal: an answer could link to it, and the
   screen showed only the link's text. `spore tui` now lists those files under the answer, by their
   full path and size, up to five and then how many more, for earlier turns too.
@@ -15,6 +21,10 @@ All notable changes to this project are documented here. Format follows
   copies where the link points and says so: a web address as it is, a file by its full path, or
   says there is no such file. A relative link is read from the spore's workspace. On a delivered
   file's line, Shift-click leaves it to the terminal, which can open it.
+- A spore kept the `node_modules/` links it was made with, so after spore moved to another npm prefix
+  its programs could no longer import `yaml`, `csv-parse` or the other provided libraries. Each turn
+  now lays a link naming another install again. A turn is also refused, saying so, when one of those
+  libraries is missing from the install.
 
 ## [1.58.1] — Fixed: `spore doctor` asks for the tick timer for every hook and API caller
 

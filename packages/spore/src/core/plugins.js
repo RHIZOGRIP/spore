@@ -600,7 +600,7 @@ export function preparePlugins (ws, { config = readConfig(), roots = pluginRoots
 
 /**
  * `<ws>/node_modules` holds one link per library a spore is offered: the provisioned ones,
- * laid when the workspace opens, and those of the plugins it uses. A link no longer offered
+ * `provisionModules`'s to keep, and those of the plugins it uses. A link no longer offered
  * goes, so dropping a plugin takes its libraries with it; what is not a link was not put
  * there by spore and is left alone.
  */

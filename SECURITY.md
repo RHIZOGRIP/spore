@@ -20,8 +20,9 @@ same user can read every workspace and every key; spore does not defend against 
 Every turn's agent, and everything it runs, is held by the kernel, not by the tool list:
 
 - **Files** (Landlock): it writes only its own write islands and the directories its definition
-  `writes`, and reads only those, its workspace, its declared corpora, the runtime and the
-  system's own directories (`/usr`, `/etc` and the like). It cannot
+  `writes`, and reads only those, its workspace, its declared corpora, the runtime, every
+  `node_modules` the runtime is installed under (for a global install, that prefix's global
+  packages) and the system's own directories (`/usr`, `/etc` and the like). It cannot
   read `~/.config/spore/` or another spore's workspace, and `/tmp` is not granted. `exec` runs
   read-only.
 - **Credentials**: no provider key, bot token or source secret reaches an agent's environment.
