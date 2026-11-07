@@ -49,6 +49,26 @@ describe('history', () => {
     expect(items[1]).toMatchObject({ error: 'START_FAILED', detail: 'writes here=/x, which overlaps the runtime at /x/packages/spore' })
   })
 
+  it('names what a turn delivered by its full path, between its answer and its end', () => {
+    const report = { path: 'data/out/report.md', bytes: 3406, mtime: '2026-10-07T10:00:20.000Z', mime: 'text/markdown' }
+    const items = history({ ws: '/spores/main', turns: [turn(1, 0, 1, { deliverables: [report] })], inbox: [said(1, 'go')] })
+    expect(items.map(i => i.kind)).toEqual(['said', 'answer', 'delivered', 'end'])
+    expect(items[2]).toEqual({ kind: 'delivered', files: [{ path: '/spores/main/data/out/report.md', bytes: 3406 }], more: 0 })
+  })
+
+  it('shows five delivered files and counts the rest, those the record left out included', () => {
+    const files = Array.from({ length: 7 }, (_, i) => ({ path: `data/out/${i}.md`, bytes: 1 }))
+    const items = history({ ws: '/spores/main', turns: [turn(1, 0, 1, { deliverables: files, deliverablesMore: 3 })], inbox: [said(1, 'go')] })
+    const delivered = items.find(i => i.kind === 'delivered')
+    expect(delivered.files.map(f => f.path).at(-1)).toBe('/spores/main/data/out/4.md')
+    expect(delivered.more).toBe(5)
+  })
+
+  it('shows nothing delivered for a turn that left no file', () => {
+    const items = history({ ws: '/spores/main', turns: [turn(1, 0, 1, { deliverables: [] })], inbox: [said(1, 'go')] })
+    expect(items.map(i => i.kind)).toEqual(['said', 'answer', 'end'])
+  })
+
   it('names attachments and strips what a terminal would act on', () => {
     const [item] = history({ turns: [], inbox: [said(1, 'see\x1b[2J', { consumed: false, files: [{ name: 'a.pdf' }] })] })
     expect(item.text).toBe('see[2J [a.pdf]')

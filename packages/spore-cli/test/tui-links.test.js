@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { getCapabilities, getOsc8LinkAtColumn, setCapabilityOverrides, stripTerminalSequences, visibleWidth } from '@earendil-works/pi-tui'
+import { getCapabilities, getOsc8LinkAtColumn, setCapabilityOverrides, stripTerminalSequences, visibleWidth, wrapTextWithAnsi } from '@earendil-works/pi-tui'
 
 import { Answer } from '../tui/answer.js'
-import { copyNumber, copyUrl, fenceLabel } from '../tui/links.js'
+import { copyNumber, copyUrl, deliveredLine, fenceLabel, fileOf } from '../tui/links.js'
 
 const same = (text) => text
 const withBorder = (border) => Object.fromEntries([
@@ -66,5 +66,62 @@ describe('the link a labelled code block carries', () => {
     expect(noLinks[rowOf(noLinks, '/copy 1')]).not.toContain('\x1b]8;;')
     expect(stripTerminalSequences(noLinks[rowOf(noLinks, '/copy 1')])).toContain('```sh · /copy 1')
     setCapabilityOverrides({ ...getCapabilities(), hyperlinks: true })
+  })
+})
+
+describe('a delivered file', () => {
+  const report = { path: '/spores/main/data/out/my report.md', bytes: 3406 }
+
+  it('reads as its full path and its size', () => {
+    expect(stripTerminalSequences(deliveredLine(report))).toBe('delivered  /spores/main/data/out/my report.md  3.3KB')
+  })
+
+  it('links the path, and a click on it gives the path back', () => {
+    const line = deliveredLine(report)
+    const url = getOsc8LinkAtColumn(line, colOf(line, 'report'))
+    expect(url).toBe('file:///spores/main/data/out/my%20report.md')
+    expect(fileOf(url, '/elsewhere')).toBe(report.path)
+    expect(getOsc8LinkAtColumn(line, colOf(line, 'delivered'))).toBe(undefined)
+    expect(getOsc8LinkAtColumn(line, colOf(line, '3.3KB'))).toBe(undefined)
+  })
+
+  it('stays one link when a narrow screen wraps it', () => {
+    const wrapped = wrapTextWithAnsi(deliveredLine(report), 24)
+    const second = wrapped.findIndex(line => stripTerminalSequences(line).includes('out'))
+    expect(second).toBeGreaterThan(0)
+    expect(getOsc8LinkAtColumn(wrapped[second], colOf(wrapped[second], 'out'))).toBe('file:///spores/main/data/out/my%20report.md')
+  })
+
+  it('puts nothing on the terminal that a file name asked for', () => {
+    const line = deliveredLine({ path: '/w/data/out/a\x1b]0;x\x07.md', bytes: 1 })
+    expect(stripTerminalSequences(line)).toBe('delivered  /w/data/out/a]0;x.md  1B')
+    expect(line).not.toContain('\x07')
+    expect(fileOf(getOsc8LinkAtColumn(line, colOf(line, 'a]0')), '/w')).toBe('/w/data/out/a\x1b]0;x\x07.md')
+  })
+
+  it('is not linked when the terminal shows no hyperlinks', () => {
+    setCapabilityOverrides({ ...getCapabilities(), hyperlinks: false })
+    expect(deliveredLine(report)).not.toContain('\x1b]8;;')
+    setCapabilityOverrides({ ...getCapabilities(), hyperlinks: true })
+  })
+})
+
+describe('what a link in an answer points at', () => {
+  it('reads a relative link from the workspace', () => {
+    expect(fileOf('data/out/brief.md', '/spores/main')).toBe('/spores/main/data/out/brief.md')
+    expect(fileOf('data/out/my%20brief.md', '/spores/main')).toBe('/spores/main/data/out/my brief.md')
+  })
+
+  it('takes an absolute path or a file URL as it stands', () => {
+    expect(fileOf('/etc/hosts', '/spores/main')).toBe('/etc/hosts')
+    expect(fileOf('file:///etc/hosts', '/spores/main')).toBe('/etc/hosts')
+  })
+
+  it('finds no file in a web address, or in a link that does not parse', () => {
+    expect(fileOf('https://example.com/a', '/spores/main')).toBe(null)
+    expect(fileOf('mailto:a@example.com', '/spores/main')).toBe(null)
+    expect(fileOf('https://', '/spores/main')).toBe(null)
+    expect(fileOf('data/out/100%.md', '/spores/main')).toBe(null)
+    expect(fileOf('file://server/share/a.md', '/spores/main')).toBe(null)
   })
 })

@@ -4,9 +4,13 @@
  * events arrive. Pure: records and events in, items out.
  */
 
+import { join } from 'node:path'
+
 import { asked, originLabel } from '@rhizogrip/spore'
 
 import { printable } from './printable.js'
+
+const MOST_FILES_SHOWN = 5
 
 /** Who said an entry, when that is known: a person by name, or what said it when no person did. */
 export function saidBy (entry) {
@@ -28,12 +32,18 @@ export function saidText (entry) {
 
 const said = (entry) => ({ kind: 'said', inboxNo: entry.inboxNo, origin: originOf(entry), text: saidText(entry), at: entry.at })
 
-/** The finished turns, then what no turn has read yet. */
-export function history ({ turns, inbox }) {
+/** The finished turns of the spore at `ws`, then what no turn has read yet. */
+export function history ({ ws, turns, inbox }) {
   const items = []
   for (const turn of turns) {
     for (const entry of asked(turn, inbox)) items.push(said(entry))
     if (turn.output) items.push({ kind: 'answer', text: printable(turn.output) })
+    // A turn that never ran has no list, its record being written elsewhere.
+    const handed = turn.deliverables ?? []
+    if (handed.length) {
+      const files = handed.slice(0, MOST_FILES_SHOWN).map(file => ({ path: join(ws, file.path), bytes: file.bytes }))
+      items.push({ kind: 'delivered', files, more: handed.length - files.length + (turn.deliverablesMore ?? 0) })
+    }
     items.push({
       kind: 'end',
       turnNo: turn.turnNo,

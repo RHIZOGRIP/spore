@@ -14,6 +14,8 @@ ctrl+p         open another spore
 ctrl+o         tool calls in full — an edit or a write as its diff
 alt+c          copy the last code block of the last answer, exactly as written
 click          the `· /copy <n>` on a code block's opening fence copies that block
+click          any other link copies where it points: a file by its full path, a web address as it is
+shift+click    a delivered file's path: left to the terminal, which can open it
 ctrl+g         write the message in $EDITOR
 esc esc        stop the running turn; when none runs, clear the line
 ctrl+c         clear the line

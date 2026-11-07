@@ -4,6 +4,18 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.58.2] — Fixed: `spore tui` shows the files a turn delivered, and a click on any link does something
+
+### Fixed
+
+- A file a turn left in `data/out/` never reached the terminal: an answer could link to it, and the
+  screen showed only the link's text. `spore tui` now lists those files under the answer, by their
+  full path and size, up to five and then how many more, for earlier turns too.
+- A click on a link in an answer did nothing, unless it was a code block's `/copy` label. It now
+  copies where the link points and says so: a web address as it is, a file by its full path, or
+  says there is no such file. A relative link is read from the spore's workspace. On a delivered
+  file's line, Shift-click leaves it to the terminal, which can open it.
+
 ## [1.58.1] — Fixed: `spore doctor` asks for the tick timer for every hook and API caller
 
 ### Fixed

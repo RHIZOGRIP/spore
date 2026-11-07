@@ -12,7 +12,7 @@ import { withMoHint } from '../src/mo.js'
 import { COMMANDS, parseCommand } from './commands.js'
 import { history, markOf } from './conversation.js'
 import { changeOf, counts, hunks } from './diff.js'
-import { copyNumber, fenceLabel } from './links.js'
+import { copyNumber, deliveredLine, fenceLabel, fileOf } from './links.js'
 import { printable } from './printable.js'
 import { PromptEditor } from './prompt.js'
 import { Answer } from './answer.js'
@@ -130,6 +130,10 @@ class Conversation {
         const answer = this.markdown(item)
         answer.label(item === last)
         out.push('', ...answer.render(width))
+      } else if (item.kind === 'delivered') {
+        out.push('')
+        for (const file of item.files) out.push(...lines(deliveredLine(file), width))
+        if (item.more) out.push(dim(`and ${item.more} more in data/out/`))
       } else if (item.kind === 'end') {
         const how = [item.stopReason, item.error].filter(Boolean).join(' · ')
         const took = item.durationMs === null ? '' : ` · ${durationText(item.durationMs)}`
@@ -353,7 +357,7 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
   }
 
   const reload = () => {
-    conversation.items = history({ turns: readTurns(state.ws), inbox: readInbox(state.ws) })
+    conversation.items = history({ ws: state.ws, turns: readTurns(state.ws), inbox: readInbox(state.ws) })
     conversation.live = null
     state.limits = null
     const running = liveIn(state.ws)
@@ -448,15 +452,21 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
   }
 
   /**
-   * A click on a code block's `· /copy <n>` label, which is drawn as a link carrying
-   * `spore-copy:<n>`: the same as typing `/copy <n>`.
+   * A click on a link. On a code block's `· /copy <n>` label, which carries `spore-copy:<n>`, it is
+   * the same as typing `/copy <n>`. Any other link copies where it points, since the terminal shows
+   * only its text, and this screen may be running on another machine than the one clicked on.
    */
   function copiedByLink (url) {
     const n = copyNumber(url)
-    if (n === null) return
-    const block = conversation.lastBlocks()[n - 1]
-    if (!block) return notice(`the last answer has no code block ${n}`)
-    return copy(block.text, `code block ${n}`)
+    if (n !== null) {
+      const block = conversation.lastBlocks()[n - 1]
+      if (!block) return notice(`the last answer has no code block ${n}`)
+      return copy(block.text, `code block ${n}`)
+    }
+    const file = fileOf(url, state.ws)
+    if (file !== null && !existsSync(file)) return notice(`no file at ${printable(file)}`)
+    const target = file ?? url
+    return copy(target, printable(target))
   }
 
   const say = (text) => {

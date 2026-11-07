@@ -1,10 +1,16 @@
 /**
- * The `· /copy <n>` label on a code block's opening fence, made a link. It is drawn as an OSC 8
- * hyperlink, so a click on it reaches pi-tui's `openUrl` with a
- * URL this module reads back into the number of the block to copy. The label's own look is
- * unchanged, and the link adds no width to the line.
+ * The links the terminal draws and reads back. They are OSC 8 hyperlinks, so a click reaches
+ * pi-tui's `openUrl`, and they add no width to a line. The `· /copy <n>` label on a code block's
+ * opening fence carries the number of the block to copy; a delivered file carries its `file:` URL,
+ * which the terminal itself can open on Shift-click.
  */
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
 import { getCapabilities, hyperlink } from '@earendil-works/pi-tui'
+import { bytesText } from '@rhizogrip/spore'
+import chalk from 'chalk'
+
+import { printable } from './printable.js'
 
 const LABEL = /^(.*) · \/copy (\d+)$/
 const SCHEME = 'spore-copy:'
@@ -26,4 +32,24 @@ export const copyNumber = (url) => {
 export const fenceLabel = (label, style) => {
   const url = copyUrl(label)
   return url && getCapabilities().hyperlinks ? hyperlink(style(label), url) : style(label)
+}
+
+/** A file the turn handed back, as a line: its full path, linked when the terminal shows hyperlinks. */
+export const deliveredLine = ({ path, bytes }) => {
+  const shown = chalk.cyan(printable(path))
+  const linked = getCapabilities().hyperlinks ? hyperlink(shown, pathToFileURL(path).href) : shown
+  return `${chalk.dim('delivered')}  ${linked}  ${chalk.dim(bytesText(bytes))}`
+}
+
+/**
+ * The file a clicked link points at, a relative one read from the workspace `ws`; null for a link
+ * that names no file here. An answer's links are the model's own text, so one may not parse.
+ */
+export const fileOf = (url, ws) => {
+  try {
+    const target = new URL(url, pathToFileURL(`${ws}/`))
+    return target.protocol === 'file:' ? fileURLToPath(target) : null
+  } catch {
+    return null
+  }
 }
