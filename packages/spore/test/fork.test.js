@@ -133,6 +133,7 @@ describe('spore fork', () => {
     writeFileSync(definition, definitionWith('anthropic/claude-haiku-4-5').replace(/\n---\n[\s\S]*$/, '\n---\n\nYou are the other one.\n'))
     const made = forkWorkspace({ run: original, at: '0001', into: join(root, 'other'), definition })
     expect(readFileSync(join(made.ws, 'spore.cmk'), 'utf8')).toMatch(/You are the other one/)
+    expect(readFileSync(join(made.ws, 'spore.cmk'), 'utf8')).toMatch(/^name: other$/m)
   })
 
   it('refuses a definition that does not parse', () => {

@@ -909,7 +909,9 @@ from the package's once and is authoritative afterwards, so upgrading spore cann
 what your spores are. A workspace records the sporangium it was made from in `sporangium.json` — a
 clone records its origin's — and that is what `spore upgrade` and the "differs from what is
 installed" warning compare its root documents against. A workspace with no record, a cell's, is of
-the default sporangium. `openWorkspace`, which runs confined, restores a missing root document from
+the default sporangium. A spore is named by its directory, so the `name:` of its `spore.cmk` is
+written as that name whenever spore lays the file — `define` from a sporangium, a file or another
+spore, a redefinition and `fork` — and never the name of what it was cut from. `openWorkspace`, which runs confined, restores a missing root document from
 the package's sporangia alone.
 
 **No shipped sporangium names a model, and the first `define` copies the default sporangium and

@@ -90,7 +90,8 @@ describe('making a spore from a sporangium', () => {
     const made = define({ ws: 'r', sporangium: 'reviewer', configFile: CONFIG })
     const ws = made.ws
     const definition = readFileSync(join(ws, 'spore.cmk'), 'utf8')
-    expect(definition).toMatch(/^name: reviewer$/m)
+    expect(definition).toMatch(/^description: Code review — /m)
+    expect(definition).toMatch(/^name: r$/m)
     expect(definition).toContain(`model: ${MODEL}`)
     expect(readFileSync(join(ws, 'precursors/verify-finding.cmk'), 'utf8')).toBe(readFileSync(shipped('reviewer', 'precursors/verify-finding.cmk'), 'utf8'))
     expect(existsSync(join(ws, 'precursors/README.md'))).toBe(true)
@@ -120,6 +121,13 @@ describe('making a spore from a sporangium', () => {
     const hook = join(ws, 'data', 'prepare-commit-msg')
     expect(readFileSync(hook, 'utf8')).toMatch(/--attach "\$dir\/staged\.diff"/)
     expect(statSync(hook).mode & 0o111).not.toBe(0)
+  })
+
+  it('names a spore after itself, not after the sporangium it was made from', () => {
+    yours('custom', 'spore.cmk', definitionWith(MODEL).replace(/^name: .*$/m, 'name: custom'))
+    const { ws } = define({ ws: 'mine', sporangium: 'custom', configFile: CONFIG })
+    expect(readFileSync(join(ws, 'spore.cmk'), 'utf8')).toMatch(/^name: mine$/m)
+    expect(show({ ws, configFile: CONFIG })).toMatchObject({ name: 'mine', sporangium: 'custom' })
   })
 
   it('compares and upgrades a root document against the sporangium that gave it', () => {

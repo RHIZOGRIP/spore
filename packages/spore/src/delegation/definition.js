@@ -43,14 +43,19 @@ export function parseFrontmatter (head) {
 }
 
 /**
- * The frontmatter with `model:` replaced or added, and the plugins added to any it already
- * names. Line by line, so everything else in the file stays as its author wrote it.
+ * The frontmatter with `name:` and `model:` replaced or added, and the plugins added to any it
+ * already names. Line by line, so everything else in the file stays as its author wrote it.
  */
-export function filledIn (source, { model, plugins, writes = [] }) {
+export function filledIn (source, { name, model, plugins = [], writes = [] }) {
   const end = source.indexOf('\n---', 3)
   const head = source.slice(0, end).split('\n')
   const body = source.slice(end)
   const at = (key) => head.findIndex((line, i) => i > 0 && line.startsWith(`${key}:`))
+  if (name) {
+    const line = `name: ${name}`
+    if (at('name') > 0) head[at('name')] = line
+    else head.splice(1, 0, line)
+  }
   if (model) {
     const line = `model: ${model}`
     if (at('model') > 0) head[at('model')] = line

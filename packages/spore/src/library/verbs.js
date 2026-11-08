@@ -201,22 +201,20 @@ export function defaultModel ({ configFile = CONFIG_FILE } = {}) {
 
 const inside = (path, home) => Boolean(home) && (path === home || path.startsWith(home + sep))
 
-const nameOf = (file) => parseDefinition(readFileSync(file, 'utf8'), { knownTools: TOOL_NAMES }).name
-
 /**
  * Written whole and renamed into place, for the reason the configuration is: a definition
  * half-replaced by an interrupted process is refused at the next open, and the spore is
- * gone with it.
+ * gone with it. `name` is set when given, so a definition taken from elsewhere names this spore.
  */
-function install (source, ws) {
+function install (source, ws, { name = null } = {}) {
   const text = readFileSync(source, 'utf8')
   const definition = parseDefinition(text, { knownTools: TOOL_NAMES })
   if (definition.error) throw new SporeError(`${source} ${definition.error}`, { type: 'DEFINITION_INVALID' })
   const target = definitionPath(ws)
   const temporary = `${target}.${process.pid}.tmp`
-  writeFileSync(temporary, text)
+  writeFileSync(temporary, name ? filledIn(text, { name }) : text)
   renameSync(temporary, target)
-  return definition.name
+  return name ? { ...definition, name } : definition
 }
 
 const pairText = (dimension, pair) => {
@@ -342,9 +340,9 @@ export function define ({ ws, definition, from, sporangium, model, plugins = [],
       })
     }
     if (definition) {
-      const was = nameOf(held)
-      const now = install(resolve(definition), target.path)
-      return { ...answer, definition: resolve(definition), redefined: { from: was, to: now } }
+      const was = parseDefinition(readFileSync(held, 'utf8'), { knownTools: TOOL_NAMES })
+      const now = install(resolve(definition), target.path, { name: basename(target.path) })
+      return { ...answer, definition: resolve(definition), redefined: { changes: changesOf(was, now) } }
     }
     return { ...answer, already: true, definition: held }
   }
@@ -386,16 +384,19 @@ export function define ({ ws, definition, from, sporangium, model, plugins = [],
     throw err
   }
 
+  // A spore is named by its directory, so its `spore.cmk` says that name, not the one of the
+  // sporangium, file or spore it was cut from.
   const text = readFileSync(cut.path, 'utf8')
-  const asTemplate = grown ? parseDefinition(text, { knownTools: TOOL_NAMES, seed: true }) : null
-  if (asTemplate?.error) {
+  const asTemplate = parseDefinition(text, { knownTools: TOOL_NAMES, seed: true })
+  const fill = asTemplate.error ? null : { name: basename(target.path), model: model ?? (grown && !asTemplate.model ? defaultModel({ configFile: config.file }).model : null), plugins, writes }
+  const filled = fill ? filledIn(text, fill) : null
+  const invalid = asTemplate.error ?? parseDefinition(filled, { knownTools: TOOL_NAMES }).error
+  if (invalid) {
     undo()
-    throw new SporeError(`${cut.path} ${asTemplate.error}`, { type: 'DEFINITION_INVALID' })
+    throw new SporeError(`${cut.path} ${invalid}`, { type: 'DEFINITION_INVALID' })
   }
-  const fill = { model: model ?? (asTemplate && !asTemplate.model ? defaultModel({ configFile: config.file }).model : null), plugins, writes }
-  const written = Boolean(fill.model) || plugins.length > 0 || writes.length > 0
-  if (written) writeFileSync(definitionPath(target.path), filledIn(text, fill))
-  const opened = openWorkspace(target.path, written ? {} : { definition: cut.path })
+  writeFileSync(definitionPath(target.path), filled)
+  const opened = openWorkspace(target.path)
   if (opened.error) {
     undo()
     throw new SporeError(opened.error, { type: 'WORKSPACE_REFUSED' })

@@ -436,7 +436,8 @@ describe('defining a spore', () => {
 
     const made = define({ ws: 'two', configFile: CONFIG })
 
-    expect(readFileSync(resolve(made.ws, 'spore.cmk'), 'utf8')).toContain('name: mine')
+    expect(readFileSync(resolve(made.ws, 'spore.cmk'), 'utf8')).toContain('mine.')
+    expect(readFileSync(resolve(made.ws, 'spore.cmk'), 'utf8')).toMatch(/^name: two$/m)
   })
 
   it('takes a definition over the default', () => {
@@ -446,7 +447,8 @@ describe('defining a spore', () => {
 
     const made = define({ ws: 'one', definition: own, configFile: CONFIG })
 
-    expect(readFileSync(resolve(made.ws, 'spore.cmk'), 'utf8')).toContain('name: own')
+    expect(readFileSync(resolve(made.ws, 'spore.cmk'), 'utf8')).toContain('own.')
+    expect(readFileSync(resolve(made.ws, 'spore.cmk'), 'utf8')).toMatch(/^name: one$/m)
     expect(made.seeded).toBe(null)
   })
 
@@ -491,8 +493,9 @@ describe('defining a spore', () => {
 
     const again = define({ ws: 'one', definition: own, configFile: CONFIG })
 
-    expect(again.redefined).toEqual({ from: 'spore', to: 'analyst' })
-    expect(readFileSync(resolve(at, 'one', 'spore.cmk'), 'utf8')).toContain('name: analyst')
+    expect(again.redefined.changes).toContain('identity — the next turn writes its prompt cache anew')
+    expect(readFileSync(resolve(at, 'one', 'spore.cmk'), 'utf8')).toContain('analyse.')
+    expect(readFileSync(resolve(at, 'one', 'spore.cmk'), 'utf8')).toMatch(/^name: one$/m)
     expect(readTranscriptEntries(made.ws).map(entry => entry.message.content)).toContain('hello')
     expect(readFileSync(resolve(made.ws, 'data', 'kept.txt'), 'utf8')).toBe('work')
   })
@@ -517,7 +520,7 @@ describe('defining a spore', () => {
 
     expect(() => define({ ws: 'one', definition: bad, configFile: CONFIG })).toThrow(/rounds/)
 
-    expect(readFileSync(resolve(made.ws, 'spore.cmk'), 'utf8')).toContain('name: spore')
+    expect(readFileSync(resolve(made.ws, 'spore.cmk'), 'utf8')).toMatch(/^name: one$/m)
   })
 
   const pluginsBeside = () => {

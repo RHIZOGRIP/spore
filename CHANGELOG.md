@@ -4,6 +4,22 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.59.0] — Fixed: a spore carries its own name
+
+### Fixed
+
+- A spore made from a sporangium other than the default kept that sporangium's name in its
+  `spore.cmk`, and `spore show` printed it as the spore's name: `spore define substack
+  --sporangium humanizer` showed `name humanizer`. A spore made from the default one showed
+  `name spore`. `define`, from a sporangium, a file or another spore, and `fork` now write the
+  spore's own name, its directory's. Existing spores keep what they have; `spore edit` changes it.
+
+### Changed
+
+- Redefining a spore with `spore define <name> --definition <file>` keeps the spore's name, and
+  says what changed, as `spore edit` does. In the library, `define`'s `redefined` is now
+  `{ changes }` rather than `{ from, to }`.
+
 ## [1.58.2] — Fixed: sub-agents start outside the default npm prefix, and `spore tui` shows delivered files
 
 ### Fixed

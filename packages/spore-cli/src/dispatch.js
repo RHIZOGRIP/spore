@@ -89,7 +89,7 @@ function renderDefine (result) {
     console.error(`spore: seeded ${result.seeded} from the package's default sporangium\n` +
       '       every spore is made over it — edit it to change them')
   }
-  if (result.redefined) console.error(`spore: redefined ${result.redefined.from} → ${result.redefined.to}, keeping the conversation`)
+  if (result.redefined) console.error(['spore: redefined, keeping the conversation', ...result.redefined.changes.map(line => `       ${line}`)].join('\n'))
   if (result.already) console.error('spore: already defined — pass --definition to replace what it is, or edit its spore.cmk')
   if (result.cloned) {
     const { precursors, programs } = result.cloned

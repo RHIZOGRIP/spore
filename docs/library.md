@@ -742,8 +742,9 @@ define({ ws, definition, from, sporangium, model, plugins = [], writes = [], con
 Makes a spore, or revises one's `spore.cmk`. A new spore comes from one place: `sporangium` (the
 default sporangium when nothing is given), `definition` (a `.cmk` file) or `from` (another spore,
 whose precursors and granted enzymes are carried over: `cloned`). `model`, `plugins` and `writes`
-(`name=path` grants) fill in the new spore's `spore.cmk`. For an existing spore, `definition`
-replaces its `spore.cmk` and keeps its conversation and `data/` (`redefined: { from, to }`);
+(`name=path` grants) fill in the new spore's `spore.cmk`, and its `name:` is always the spore's own
+name, its directory's. For an existing spore, `definition` replaces its `spore.cmk`, named the same
+way, and keeps its conversation and `data/` (`redefined: { changes }`, the lines `edit` reports);
 nothing given answers `already: true`. A spore made outside `home` is added to `workspaces`
 (`remembered`). `seeded` is the default sporangium's `spore.cmk` when this call created it.
 

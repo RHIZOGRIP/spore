@@ -330,6 +330,7 @@ describe('define --from', () => {
     writeFileSync(resolve(from, 'spore.cmk'), readFileSync(resolve(from, 'spore.cmk'), 'utf8').replace('retain: 10', 'retain: 3'))
     const made = define({ ws: successor(), from, configFile: CONFIG })
     expect(readFileSync(resolve(made.ws, 'spore.cmk'), 'utf8')).toContain('retain: 3')
+    expect(readFileSync(resolve(made.ws, 'spore.cmk'), 'utf8')).toMatch(/^name: successor$/m)
   })
 
   it('carries an authored precursor as it was written', () => {

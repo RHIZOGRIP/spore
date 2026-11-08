@@ -20,7 +20,7 @@
  */
 
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 
 import { TOOL_NAMES } from './tool-names.js'
 import { callRuns, readCall, readCalls, writeCall } from './call-record.js'
@@ -29,7 +29,7 @@ import { preparePlugins } from './plugins.js'
 import { startRunner } from './send.js'
 import { INBOX_DIR, PLUGINS_DIR, ROOT_DOCS, copyInbox, definitionPath, readPending, readTranscriptEntries, readTurns, writableDirs, writeTranscriptEntries, writeTurnRecords } from './spore-dir.js'
 import { openWorkspace } from './workspace.js'
-import { parseDefinition } from '../delegation/definition.js'
+import { filledIn, parseDefinition } from '../delegation/definition.js'
 import { RUNNING, stateOf } from './state.js'
 import { SPORANGIUM_RECORD } from './sporangia.js'
 import { SporeError } from '../observability/errors.js'
@@ -241,7 +241,7 @@ export function forkWorkspace ({ run, at = null, into, definition, replay = fals
       mkdirSync(dirname(target), { recursive: true })
       copyFileSync(file, target)
     }
-    copyFileSync(definition ? resolve(definition) : definitionPath(from), definitionPath(ws))
+    writeFileSync(definitionPath(ws), filledIn(readFileSync(definition ? resolve(definition) : definitionPath(from), 'utf8'), { name: basename(ws) }))
     const opened = openWorkspace(ws)
     if (opened.error) throw refuse(`${ws} did not open`, opened.error)
     const record = { ...cut.record, definition: definition ? resolve(definition) : null }
