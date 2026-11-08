@@ -4,6 +4,16 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.60.0] — Added: Thinking Machines' Inkling models, through mohdel 4.10.0
+
+### Added
+
+- mohdel 4.10.0, on both the npm and the Cargo side. It adds the `tinker` provider, Thinking
+  Machines' serverless inference for the Inkling models, with the key in `TINKER_API_SK`. A spore
+  can name a `tinker/` model in `spore.cmk` once the catalog has an entry for it. Tinker lists no
+  models, so the entries come from a file, with `mo model apply`.
+- `spore setup`'s expert path lists Thinking Machines Tinker among the providers, and sets up its key.
+
 ## [1.59.0] — Fixed: a spore carries its own name
 
 ### Fixed
