@@ -1,4 +1,8 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterAll } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { textOf } from '../src/core/message.js'
 import { compactIfNeeded, estimateTokens } from '../src/resilience/context-guard.js'
@@ -8,7 +12,14 @@ import { silent } from '../src/observability/logger.js'
 import { createLoopGuard } from '../src/resilience/loop-guard.js'
 import { sanitizeTranscript } from '../src/resilience/transcript.js'
 
-const image = { type: 'image', fileUri: 'file:///ws/data/page-7.jpg', mimeType: 'image/jpeg' }
+const pictures = mkdtempSync(join(tmpdir(), 'message-parts-'))
+afterAll(() => rmSync(pictures, { recursive: true, force: true }))
+const picture = (name) => {
+  const path = join(pictures, name)
+  writeFileSync(path, Buffer.from([0xff, 0xd8, 0xff, 0xe0]))
+  return path
+}
+const image = { type: 'image', fileUri: pathToFileURL(picture('page-7.jpg')).href, mimeType: 'image/jpeg' }
 const parts = (text) => [{ type: 'text', text }, image]
 // A tool result is kept only after the assistant message that asked for it.
 const asked = { role: 'assistant', content: '', toolCalls: [{ id: 'c1', name: 'read', arguments: {} }] }
@@ -44,6 +55,36 @@ describe('a message whose content is parts', () => {
     const messages = [asked, { role: 'tool', toolCallId: 'c1', toolName: 'read', content: parts('short') }]
     sanitizeTranscript(messages, { maxResultSize: 10000 })
     expect(messages[1].content).toEqual(parts('short'))
+  })
+
+  it('becomes a note when its picture was removed after it was looked at', () => {
+    const path = picture('removed.jpg')
+    const gone = { type: 'image', fileUri: pathToFileURL(path).href, mimeType: 'image/jpeg' }
+    rmSync(path)
+    const warned = []
+    const logger = { ...silent, warn: (fields) => warned.push(fields) }
+    const messages = [asked, { role: 'tool', toolCallId: 'c1', toolName: 'read', content: [{ type: 'text', text: 'looked' }, gone] }]
+    sanitizeTranscript(messages, { maxResultSize: 10000, logger })
+    expect(messages[1].content).toEqual([
+      { type: 'text', text: 'looked' },
+      { type: 'text', text: `[a picture was looked at here: ${path}, which is no longer on disk]` }
+    ])
+    expect(warned).toEqual([{ path, why: 'is no longer on disk' }])
+  })
+
+  it('becomes a note when its picture can no longer be read', () => {
+    const path = picture('locked.jpg')
+    chmodSync(path, 0o000)
+    const messages = [{ role: 'user', content: [{ type: 'text', text: 'see this' }, { type: 'image', fileUri: pathToFileURL(path).href, mimeType: 'image/jpeg' }] }]
+    sanitizeTranscript(messages)
+    expect(messages[0].content[1]).toEqual({ type: 'text', text: `[a picture was looked at here: ${path}, which can no longer be read (EACCES)]` })
+  })
+
+  it('keeps a picture that is inline rather than on disk', () => {
+    const inline = { type: 'image', fileUri: 'data:image/png;base64,iVBORw==', mimeType: 'image/png' }
+    const messages = [{ role: 'user', content: [{ type: 'text', text: 'see this' }, inline] }]
+    sanitizeTranscript(messages)
+    expect(messages[0].content[1]).toBe(inline)
   })
 
   it('is compacted away like any other oversized tool result', () => {

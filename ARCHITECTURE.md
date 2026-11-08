@@ -142,6 +142,10 @@ as the container it is: a `.wav` opens with the same four bytes as a WebP.
 **An image is a message part, not an envelope field.** As a part it replays with the rest of the
 transcript, and **compaction is the bound** — there is no second retention policy beside it.
 
+It replays by its path, not its bytes. A file deleted, or no longer granted, after it was looked at
+is replaced by a note saying so before each call (`sanitizeTranscript`), so the spore can still answer;
+unreadable, the part failed every later call.
+
 The seam is the tool kernel. A tool returns a call record with images, `{ record, images }`; the
 record's text is still the result and what `readOutcome`, the loop
 guard and session memory read, and the images become parts beside it. `content` stays a plain

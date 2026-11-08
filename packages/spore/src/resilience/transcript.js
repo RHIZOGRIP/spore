@@ -3,8 +3,13 @@
  *   - a tool result over the current model's budget is cut down — results replayed from turns
  *     on a model with a larger context can be over it;
  *   - a tool call with no result is answered as interrupted — an agent killed mid-batch leaves
- *     one, and a provider refuses a call without its result.
+ *     one, and a provider refuses a call without its result;
+ *   - a picture that can no longer be read is replaced by a note saying so — an image part
+ *     replays by its path, so a file removed after it was looked at would fail every later call.
  */
+
+import { accessSync, constants } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 import { effectiveContextLimit } from 'mohdel'
 
@@ -62,6 +67,30 @@ function compactResult (content, limit) {
   return content.slice(0, limit) + TRUNCATION_NOTICE
 }
 
+function unreadable (fileUri) {
+  if (typeof fileUri !== 'string' || !fileUri.startsWith('file:')) return null
+  try {
+    accessSync(fileURLToPath(fileUri), constants.R_OK)
+    return null
+  } catch (err) {
+    return err.code === 'ENOENT' ? 'is no longer on disk' : `can no longer be read (${err.code})`
+  }
+}
+
+function withoutLostPictures (msg, logger) {
+  if (!Array.isArray(msg.content)) return
+  let lost = false
+  const content = msg.content.map(part => {
+    const why = part?.type === 'image' ? unreadable(part.fileUri) : null
+    if (!why) return part
+    lost = true
+    const path = fileURLToPath(part.fileUri)
+    logger.warn({ path, why }, '[transcript] a picture looked at earlier is gone — replaying a note in its place')
+    return { type: 'text', text: `[a picture was looked at here: ${path}, which ${why}]` }
+  })
+  if (lost) msg.content = content
+}
+
 /**
  * Sanitize a messages array in-place before sending to the model.
  * Returns the same array (mutated) for convenience.
@@ -74,6 +103,8 @@ function compactResult (content, limit) {
  */
 export function sanitizeTranscript (messages, { maxResultSize = FALLBACK_MAX_RESULT_SIZE, logger = silent } = {}) {
   const resolvedCalls = new Set()
+
+  for (const msg of messages) withoutLostPictures(msg, logger)
 
   for (const msg of messages) {
     if (msg.role !== 'tool') continue

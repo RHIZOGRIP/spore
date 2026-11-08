@@ -4,6 +4,17 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.60.1] — Fixed: a spore keeps answering after a picture it looked at is deleted
+
+### Fixed
+
+- A picture a spore looked at with `read` stays in its conversation as the file's path, and every
+  later call sends it again. Once that file was deleted, every turn failed before the model
+  answered, with `SESSION_INVALID_IMAGE`, until the conversation was flushed. A picture that can
+  no longer be read, because it was deleted or is no longer granted, is now replaced by a note:
+  `[a picture was looked at here: <path>, which is no longer on disk]`. The turn goes on, and
+  the spore's log has a warning. If the file comes back, the picture is sent again.
+
 ## [1.60.0] — Added: Thinking Machines' Inkling models, through mohdel 4.10.0
 
 ### Added
