@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.62.1] — Fixed: an interaction's handler program starts a user service and opens a page from a turn
+
+### Fixed
+
+- A handler that is a program was started from a turn without the operator's session: no
+  `XDG_RUNTIME_DIR`, `DBUS_SESSION_BUS_ADDRESS`, `DISPLAY`, `WAYLAND_DISPLAY` or `XAUTHORITY`. A
+  program that ran `systemctl --user` failed on `create`, the interaction stayed `asked`, and it
+  went through only when `spore tick` handed it over, up to a minute later. A program that opened
+  a page in the browser opened none. The runner now gives the handler those five from its own
+  environment, so a handler behaves the same from a turn as from `spore tick`. A turn started
+  where there is no display, over SSH for one, has none to give.
+
+### Changed
+
+- A handler program started from a turn no longer gets `SPORE_PATH`, which it never got from
+  `spore tick`.
+- `docs/interactions.md` lists the environment a handler program runs in.
+
 ## [1.62.0] — Added: a person's own conversation reaches several spores
 
 ### Added

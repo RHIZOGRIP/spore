@@ -162,8 +162,12 @@ interaction stays `asked` and `spore tick` sends it again.
 ### A handler that is a program
 
 The runner's helper starts the program once per request, outside the turn's confinement, as the
-operator, in the operator's home directory and environment (`environment` beside `config.json`),
-with no other argument than the verb:
+operator, in the operator's home directory, with no other argument than the verb. Its environment
+is `environment` beside `config.json`, over what the runner keeps for it: `PATH`, `HOME`, the
+locale and time zone, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, and the operator's session and display,
+`XDG_RUNTIME_DIR`, `DBUS_SESSION_BUS_ADDRESS`, `DISPLAY`, `WAYLAND_DISPLAY` and `XAUTHORITY`, so a
+program can start a user service or open a page. A turn started where there is no display, over
+SSH for one, has none to give. A request `spore tick` hands over runs in tick's own environment.
 
 ```
 <program> create    # the request on stdin

@@ -672,7 +672,7 @@ async fn main() {
             helper: root().join("bin").join("spore-interaction.js"),
             most: granted.most,
             handlers: granted.handlers.clone(),
-            env: job::supervisor_env(std::env::vars(), &node),
+            env: interact::helper_env(std::env::vars()),
             turn: std::sync::RwLock::new(None),
         })
     });

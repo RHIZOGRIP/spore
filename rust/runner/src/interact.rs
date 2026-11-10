@@ -33,6 +33,32 @@ const MOST_PATH: usize = 255;
 // the agent told, rather than the turn waiting on it.
 const HELPER_PATIENCE: Duration = Duration::from_secs(90);
 
+/// What the helper is started with, and so what a handler that is a program runs in. The session
+/// and its display are there because such a program starts a user service or opens a page. No
+/// credential: the helper reads the operator's environment file itself.
+const HELPER_PASSED: [&str; 15] = [
+    "PATH",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "TZ",
+    "XDG_CONFIG_HOME",
+    "XDG_STATE_HOME",
+    "XDG_RUNTIME_DIR",
+    "DBUS_SESSION_BUS_ADDRESS",
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "XAUTHORITY",
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_SERVICE_NAME",
+    "OTEL_INIT_TIMEOUT_MS",
+];
+
+pub fn helper_env(env: impl Iterator<Item = (String, String)>) -> Vec<(String, String)> {
+    env.filter(|(name, _)| HELPER_PASSED.contains(&name.as_str()))
+        .collect()
+}
+
 pub struct Interactions {
     pub ws: PathBuf,
     pub node: PathBuf,
@@ -506,6 +532,41 @@ impl Interactions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use spore_workspace::owners::OWNERS;
+
+    #[test]
+    fn gives_the_helper_the_operators_session_and_no_credential() {
+        let env = helper_env(
+            [
+                ("PATH", "/usr/bin"),
+                (OWNERS, "a:b"),
+                ("TRACEPARENT", "00-x"),
+                ("ANTHROPIC_API_KEY", "k"),
+                ("XDG_STATE_HOME", "/s"),
+                ("XDG_RUNTIME_DIR", "/run/user/1000"),
+                ("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus"),
+                ("WAYLAND_DISPLAY", "wayland-0"),
+                ("DISPLAY", ":0"),
+                ("XAUTHORITY", "/run/user/1000/xauth"),
+                ("SPORE_PATH", "/opt/bin"),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string())),
+        );
+        let names: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "PATH",
+                "XDG_STATE_HOME",
+                "XDG_RUNTIME_DIR",
+                "DBUS_SESSION_BUS_ADDRESS",
+                "WAYLAND_DISPLAY",
+                "DISPLAY",
+                "XAUTHORITY"
+            ]
+        );
+    }
 
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("spore-interact-{name}-{}", new_id().unwrap()));
