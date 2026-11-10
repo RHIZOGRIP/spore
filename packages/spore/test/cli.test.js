@@ -674,7 +674,7 @@ describe('flushing a spore', () => {
 
   it('starts the next turn over, keeping every entry of the record', () => {
     writeTranscriptEntries(ws, [said('user', 'my locker code is 4417'), said('assistant', 'noted')])
-    expect(flush({ ws: 'test', by: 'its operator', configFile: CONFIG }).open).toEqual({ question: null, approvals: [], jobs: [] })
+    expect(flush({ ws: 'test', by: 'its operator', configFile: CONFIG }).open).toEqual({ question: null, approvals: [], jobs: [], interactions: [] })
 
     const replayed = readTranscript(ws)
     expect(replayed).toHaveLength(1)

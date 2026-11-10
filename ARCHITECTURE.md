@@ -299,8 +299,8 @@ turn, `estimate_drift`, when the count is more than a quarter higher.
 the terminal or a conversation — appends a compaction entry that keeps none of the history
 (`append_flush`, `rust/workspace/src/state.rs`): its summary is a fixed note saying who flushed and
 what is still open from before — the question the last turn asked, approvals not yet settled, jobs
-still running — and `flushed: { by, at }`. The next turn replays that note and nothing before it.
-No model writes the note, since a flush is asked for when what is in front of the model is the
+still running, interactions not yet answered — and `flushed: { by, at }`. The next turn replays
+that note and nothing before it. No model writes the note, since a flush is asked for when what is in front of the model is the
 problem. It runs between turns under the spore's lock, as a model switch does, and is refused while
 a turn runs or after a crash. Every entry stays in the transcript, `data/` is untouched, and memory
 indexes all that was said before the flush, since it has left the context; `spore log` shows each

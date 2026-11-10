@@ -523,7 +523,7 @@ export async function runTui ({ ws, commands = [], renderTool = null, greeting =
     if (name === 'flush') {
       try {
         const { open } = flush({ ws: state.ws, by: 'its operator' })
-        const still = (open.question ? 1 : 0) + open.approvals.length + open.jobs.length
+        const still = (open.question ? 1 : 0) + open.approvals.length + open.jobs.length + open.interactions.length
         return notice(`flushed — the next turn starts over; nothing is forgotten${still ? `, and it is told of ${still} thing${still > 1 ? 's' : ''} still open` : ''}`)
       } catch (err) {
         return notice(errorText(err))

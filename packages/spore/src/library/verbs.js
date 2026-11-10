@@ -13,7 +13,7 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 
 import { readConfig, existing, addTo, workspaceFor, CONFIG_FILE, containing, recordLayout } from './config.js'
 import { isWorkspace, sporesInHome } from './discover.js'
-import { acquireLock, appendFlush, approvalsIn, asked, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readLock, flushesIn, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
+import { acquireLock, appendFlush, approvalsIn, asked, definitionPath, DEFINITION_FILE, diskUsage, heldIn, interactionsIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readLock, flushesIn, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
 import { askApproval } from './approvals.js'
 import { takeOutcome } from '../core/interactions.js'
 import { sqlLines } from './sql.js'
@@ -151,7 +151,8 @@ function openWork (path) {
   return {
     question: last?.stopReason === 'question' ? last.output : null,
     approvals: approvalsIn(path).filter(one => !one.settledAt).map(({ id, place, until }) => ({ id, place, until })),
-    jobs: jobsIn(path, { running: true }).map(({ name, startedAt }) => ({ name, startedAt }))
+    jobs: jobsIn(path, { running: true }).map(({ name, startedAt }) => ({ name, startedAt })),
+    interactions: interactionsIn(path).filter(one => ['asked', 'handed'].includes(one.state)).map(({ id, handler, askedAt }) => ({ id, handler, askedAt }))
   }
 }
 
@@ -160,7 +161,8 @@ function flushNote ({ by, memory, open }) {
   const still = [
     ...(open.question ? [`- the question you asked: ${open.question}`] : []),
     ...open.approvals.map(one => `- approval ${one.id} in ${one.place}, open until ${one.until}`),
-    ...open.jobs.map(one => `- job ${one.name}, running since ${one.startedAt}`)
+    ...open.jobs.map(one => `- job ${one.name}, running since ${one.startedAt}`),
+    ...open.interactions.map(one => `- interaction ${one.id}, asked of ${one.handler} at ${one.askedAt}, its data in interactions/${one.id}/`)
   ]
   return `${by} flushed the conversation: what was said before this point is no longer in front of you. Nothing is forgotten — ${kept}.` +
     (still.length ? `\n\nStill open from before:\n${still.join('\n')}` : '')

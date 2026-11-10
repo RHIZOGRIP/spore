@@ -23,6 +23,8 @@ import { loadApi } from '../api/config.js'
 import { createApiServer } from '../api/server.js'
 import { definitionWith } from '../src/testing.js'
 import { forkWorkspace } from '../src/core/fork.js'
+import { readCalls } from '../src/core/call-record.js'
+import { flush } from '../src/library/verbs.js'
 
 const run = promisify(execFile)
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -436,5 +438,46 @@ describe('the outcome of an interaction', () => {
     const closed = await spore('interaction', 'outcome', 'asker', later.id, file)
     expect(closed.code).toBe(1)
     expect(JSON.parse(closed.stdout)).toMatchObject({ type: 'INTERACTION_CLOSED' })
+  }, 40_000)
+
+  it('outlives the run that asked it once retain drops that run, is named in a flush\'s note, and is answered after both', async () => {
+    const definition = readFileSync(join(ws, 'spore.cmk'), 'utf8')
+    expect(definition).toContain('\nretain: 10\n')
+    writeFileSync(join(ws, 'spore.cmk'), definition.replace('\nretain: 10\n', '\nretain: 1\n'))
+    script.push(
+      ...writeData('data/later'),
+      calls('wsexec', { command: 'node "$SPORE_INTERACT" create to-file data/later', out: 'data/later.json' }),
+      answers('asked')
+    )
+    const asked = await send('ask the file')
+    expect(asked.code, asked.stderr).toBe(0)
+    const { id } = JSON.parse(said('later.json'))
+    const [first] = readTurns(ws)
+    expect(readCalls(ws, first.runId)).not.toHaveLength(0)
+
+    script.push(answers('meanwhile'))
+    const other = await send('something else')
+    expect(other.code, other.stderr).toBe(0)
+    expect(readCalls(ws, first.runId)).toEqual([])
+    const row = interactionsIn(ws).find(one => one.id === id)
+    expect(row).toMatchObject({ handler: 'to-file', state: 'handed', turnId: first.turnId })
+    expect(readFileSync(join(ws, 'interactions', id, 'changes.json'), 'utf8')).toBe('[{"line":3}]')
+
+    const flushed = flush({ ws, by: 'its operator', configFile: config('config.json') })
+    expect(flushed.open.interactions).toEqual([{ id, handler: 'to-file', askedAt: row.askedAt }])
+
+    script.push(answers('read it'))
+    const file = join(root, 'outcome.json')
+    writeFileSync(file, JSON.stringify(submitted(row, { written: true })))
+    const taken = await spore('interaction', 'outcome', 'asker', id, file)
+    expect(taken.code, taken.stderr).toBe(0)
+    await until(() => readTurns(ws).length === 3)
+    const prompt = prompts.at(-1)
+    expect(prompt).toContain(`- interaction ${id}, asked of to-file at ${row.askedAt}, its data in interactions/${id}/`)
+    expect(prompt).toContain(`Asked of to-file at ${row.askedAt}, submitted 2028-03-02T09:14:40Z.`)
+    const messages = JSON.parse(prompt)
+    expect(messages[1].content).toMatch(/^\[The conversation was flushed\]/)
+    expect(messages.map(message => message.content)).not.toContain('ask the file')
+    expect(interactionsIn(ws).find(one => one.id === id)).toMatchObject({ state: 'submitted', processed: 1 })
   }, 40_000)
 })

@@ -4,6 +4,37 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.61.0] — Added: a spore asks for something outside itself and reads the result later
+
+### Added
+
+- Interactions. A spore can hand data to a handler the operator describes, end its turn, and
+  read the result when it comes back, as a new message, however much later. The handler does
+  whatever it does: shows a page to a person, writes a file a cron job answers, asks another
+  system. Spore ships no handler. It defines only the protocol between them, in
+  [docs/interactions.md](docs/interactions.md).
+- `config.json` takes `interactions`: each handler by name, as `{ url, secret, what }` or
+  `{ program, what }`. A handler at a URL gets signed requests; a program gets the request on
+  stdin. Only `what` reaches a turn, never a URL, a path or a secret.
+- `spore.cmk` takes `interactions: <n>`, the most one turn may ask, and
+  `interactions.handlers: [...]`, the handlers this spore may use. A turn granted a handler
+  `config.json` does not describe is refused when it starts.
+- The agent asks through `$SPORE_INTERACT` (`handlers`, `create <handler> <dir>`, `status`, `ls`,
+  `cancel`). The runner freezes the data into `interactions/<id>/`, read-only to the
+  agent, and stamps who asked and where the answer goes. `spore tick` hands over what a handler
+  could not take at once.
+- The outcome comes back through `spore-api`, at `POST /v1/spores/<name>/interactions/<id>/outcome`,
+  or on the host through `spore interaction outcome <spore> <id> [<file>|-]`, and from the
+  library through `interactionOutcome`. Spore checks it against what it asked, says it once to
+  the conversation the interaction was asked from, and starts a turn to read it.
+- A flush's note lists the interactions not yet answered, beside the open question, approvals
+  and jobs.
+
+### Changed
+
+- The workspace schema is 17. A spore migrates on the first open; an older spore then refuses
+  the workspace.
+
 ## [1.60.1] — Fixed: a spore keeps answering after a picture it looked at is deleted
 
 ### Fixed

@@ -809,16 +809,17 @@ and `SPORE_CRASHED` when its last runner died without recording its turn.
 ### `flush`
 
 ```
-flush({ ws, by, configFile }) → { ws, entryNo, by, open: { question, approvals, jobs } }
+flush({ ws, by, configFile }) → { ws, entryNo, by, open: { question, approvals, jobs, interactions } }
 ```
 
 Starts the spore's conversation over from its next turn, which replays a note in place of all that
 was said before; the transcript keeps every entry, and memory reaches what was said. `by` is who
 asked, as the note and `log` name it. The note lists what is still open, which `open` returns: the
-question the last turn asked or null, approvals not yet settled `{ id, place, until }`, and running
-jobs `{ name, startedAt }`. No model is called. Only between turns, under the spore's lock. Throws
-`FLUSH_INVALID` without `by`, `NOT_A_WORKSPACE`, `SPORE_RUNNING` while a turn runs, and
-`SPORE_CRASHED` when its last runner died without recording its turn.
+question the last turn asked or null, approvals not yet settled `{ id, place, until }`, running
+jobs `{ name, startedAt }`, and interactions not yet answered `{ id, handler, askedAt }`. No model
+is called. Only between turns, under the spore's lock. Throws `FLUSH_INVALID` without `by`,
+`NOT_A_WORKSPACE`, `SPORE_RUNNING` while a turn runs, and `SPORE_CRASHED` when its last runner died
+without recording its turn.
 
 ### `setDefaultModel`
 

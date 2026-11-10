@@ -75,7 +75,8 @@ function renderFlush ({ open }) {
   const still = [
     ...(open.question ? [`the question it asked: ${cut(open.question)}`] : []),
     ...open.approvals.map(one => `approval ${one.id} in ${one.place}, open until ${when(one.until)}`),
-    ...open.jobs.map(one => `job ${one.name}, running since ${when(one.startedAt)}`)
+    ...open.jobs.map(one => `job ${one.name}, running since ${when(one.startedAt)}`),
+    ...open.interactions.map(one => `interaction ${one.id}, asked of ${one.handler} at ${when(one.askedAt)}`)
   ]
   if (still.length) console.log(`still open, and it is told so:\n${still.map(line => `  ${line}`).join('\n')}`)
 }
