@@ -1,6 +1,6 @@
 export { createRelay } from './relay.js'
 export { runService } from './service.js'
-export { botNames, botPath, botsDir, credentialOf, filesOf, reactionsOf, readBot, routesOf } from './bot-file.js'
+export { botNames, botPath, botsDir, credentialOf, filesOf, namesOf, reactionsOf, readBot, routesOf } from './bot-file.js'
 export { download } from './download.js'
 export { backoff, createDelivery, platformFailed, retryAfterOf } from './delivery.js'
 export { loadState, saveState, statePath } from './state.js'

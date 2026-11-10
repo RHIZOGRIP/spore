@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 
 import {
   announce, backoff, botNames, botPath, createDelivery, credentialOf,
-  loadState, pieces, reactionsOf, reply, routesOf, saveState, statePath, waiting
+  loadState, namesOf, pieces, reactionsOf, reply, routesOf, saveState, statePath, waiting
 } from '../src/relay/index.js'
 import { createApprovals } from '../src/relay/approvals.js'
 
@@ -111,6 +111,58 @@ describe('a bot file', () => {
     expect(() => routesOf(SHARED, path)).toThrow(/has a hall h1 whose people are not users or \*/)
     write('ops', { token, halls: { h1: { spores: ['ops'], people: ['*'], loud: 'yes' } } })
     expect(() => routesOf(SHARED, path)).toThrow(/has a hall h1 whose loud is not true or false/)
+  })
+
+  it('lets a person reach several spores, or every one in home, only where their section takes spores', () => {
+    const SEVERAL = {
+      ...SPEC,
+      fields: ['token', 'people', 'halls'],
+      conversations: {
+        people: { noun: 'person', id: /^u\d+$/, says: 'which is not a user', fix: 'a user is u and a number', called: 'their number', fields: ['spore', 'spores', 'details', 'brief'] },
+        halls: { noun: 'hall', id: /^h\d+$/, says: 'which is not a hall', fix: 'a hall is h and a number', fields: ['spores', 'people'], people: { id: /^u\d+$/, says: 'users', example: 'user' } }
+      }
+    }
+    const path = botPath(SEVERAL, 'ops', CONFIG)
+    const token = '${OPS_TOKEN}' // eslint-disable-line no-template-curly-in-string
+    write('ops', { token, people: { u1: '*', u2: { spores: ['ops', 'qa'], details: true }, u3: { spore: 'ops' } } })
+    expect([...routesOf(SEVERAL, path)].map(([who, { spores, details }]) => [who, spores, details])).toEqual([['u1', ['*'], false], ['u2', ['ops', 'qa'], true], ['u3', ['ops'], false]])
+    write('ops', { token, people: { u1: { spore: 'ops', spores: ['qa'] } } })
+    expect(() => routesOf(SEVERAL, path)).toThrow(/gives person u1 both spore and spores/)
+    write('ops', { token, people: { u1: { spores: [] } } })
+    expect(() => routesOf(SEVERAL, path)).toThrow(/maps person u1 to something that is not a spore/)
+    write('ops', { token, people: { u1: { spores: ['*', 'ops'] } } })
+    expect(() => routesOf(SEVERAL, path)).toThrow(expect.objectContaining({ message: expect.stringMatching(/gives person u1 "\*" beside other spores/), detail: '"*" already reaches every spore in home' }))
+    write('ops', { token, halls: { h1: { spores: ['*'], people: ['*'] } } })
+    expect(() => routesOf(SEVERAL, path)).toThrow(/gives hall h1 "\*"/)
+
+    const one = botPath(SPEC, 'one', CONFIG)
+    writeFileSync(one, JSON.stringify({ token, rooms: { r1: '*' } }))
+    expect(() => routesOf(SPEC, one)).toThrow(expect.objectContaining({ message: expect.stringMatching(/gives room r1 "\*"/), detail: expect.stringMatching(/^a room reaches one spore here/) }))
+    writeFileSync(one, JSON.stringify({ token, rooms: { r1: { spores: ['ops', 'qa'] } } }))
+    expect(() => routesOf(SPEC, one)).toThrow(/gives room r1 spores, which a room does not take/)
+  })
+
+  it('names the spores a conversation reaches as written, and "*" as every spore in home when it is asked', () => {
+    const home = resolve(DIR, 'home')
+    const make = (name) => {
+      mkdirSync(resolve(home, name), { recursive: true })
+      writeFileSync(resolve(home, name, 'spore.cmk'), '')
+    }
+    make('ops')
+    mkdirSync(resolve(home, 'notes'))
+    expect(namesOf({ spores: ['ops', 'gone'] }, {})).toEqual(['ops', 'gone'])
+    expect(namesOf({ spores: ['*'] }, { home })).toEqual(['ops'])
+    make('qa')
+    expect(namesOf({ spores: ['*'] }, { home }).sort()).toEqual(['ops', 'qa'])
+    expect(() => namesOf({ spores: ['*'] }, {})).toThrow(expect.objectContaining({ type: 'CONFIG_NO_HOME' }))
+  })
+
+  it('asks no credential of a connector that has none', () => {
+    const OPEN = { ...SPEC, fields: ['rooms'], credentials: [], example: '{ "rooms": {} }' }
+    const path = botPath(OPEN, 'ops', CONFIG)
+    expect(() => routesOf(OPEN, path)).toThrow(expect.objectContaining({ type: 'CHAT_NO_BOT', detail: expect.stringMatching(/^it names who may reach which spore, as /) }))
+    write('ops', { rooms: { r1: 'triage' } })
+    expect([...routesOf(OPEN, path).keys()]).toEqual(['r1'])
   })
 
   it('reacts with the emoji it names, the others as they come, and refuses one the platform does not take', () => {

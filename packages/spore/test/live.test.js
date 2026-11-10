@@ -3,7 +3,7 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { annotateTurn, applyEvent, createLive, liveIn, liveOf, renderLive } from '../src/library/live.js'
+import { annotateTurn, applyEvent, createLive, liveIn, liveOf, liveView, renderLive } from '../src/library/live.js'
 import { describeCall } from '../src/core/call-table.js'
 import { acquireLock, appendEvents, appendTurn, readEvents, releaseLock } from '../src/core/spore-dir.js'
 import { native } from '../src/native.js'
@@ -111,6 +111,26 @@ describe('the default rendering of a running turn', () => {
     const heard = [start('read', { path: 'a' }, 'a'), { event: 'interject', round: 2 }]
     expect(shown(heard).at(-1)).toBe('heard you')
     expect(shown([...heard, start('read', { path: 'b' }, 'b')]).at(-1)).toBe('· reading a file')
+  })
+})
+
+describe('a running turn as data', () => {
+  const view = (events, options) => liveView(liveOf(events, { startedAt: STARTED }), options)
+
+  it('lists its calls as the default rendering names them, each with how it ended, and never a question', () => {
+    const events = [start('read', { path: 'data/report.md' }, 'a'), end('a', { outcome: 'exit', exit: 1, error: true }), start('exec', { command: 'x' }, 'b'), end('b'), start('ask', { question: 'which?' }, 'c')]
+    expect(view(events).calls).toEqual([
+      expect.objectContaining({ title: 'reading a file', done: true, ending: 'exit 1' }),
+      expect.objectContaining({ title: 'running a command', done: true, ending: null })
+    ])
+    expect(view(events, { level: 'details' }).calls[0].title).toBe('reading data/report.md')
+    expect(JSON.stringify(view(events))).not.toMatch(/report/)
+  })
+
+  it('carries what the default rendering says beside the calls, and is none for a brief conversation', () => {
+    const events = [start('read', { path: 'a' }, 'a'), { event: 'wrap', dimension: 'rounds' }]
+    expect(view(events)).toMatchObject({ wrapping: 'rounds', heard: false, notes: expect.any(Array), text: expect.any(String) })
+    expect(view(events, { level: 'brief' })).toBe(null)
   })
 })
 

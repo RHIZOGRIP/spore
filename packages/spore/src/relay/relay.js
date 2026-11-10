@@ -15,11 +15,11 @@ import { basename, resolve } from 'node:path'
 
 import { attemptOutbox, changeText, extendTurn, flush, isWorkspace, lastEventSeq, loadEnvironment, outbox, readConfig, readInbox, RUNNING, send, setAside, settleOutbox, stateOf, stop, turnsSince, watchAll, workspaceFor, wrapTurn, CONFIG_FILE, databaseOf, errorText } from '../index.js'
 import { createApprovals } from './approvals.js'
-import { filesOf, reactionsOf, routesOf, traceOf } from './bot-file.js'
+import { EVERY, filesOf, namesOf, reactionsOf, routesOf, traceOf } from './bot-file.js'
 import { createDelivery } from './delivery.js'
 import { announce, endingOf, leftOut, notCome, originOf, pieces, reply, statusText, waiting } from './render.js'
 import { bytesText, sizeSpelling } from '../core/units.js'
-import { applyEvent, createLive, renderLive } from '../library/live.js'
+import { applyEvent, createLive, liveView, renderLive } from '../library/live.js'
 import { isZone, runningLimits } from '../core/spore-dir.js'
 import { loadState, saveState } from './state.js'
 
@@ -391,8 +391,21 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     const allow = `add "${message.person.id}" to its people in ${botFile}`
     if (gate === 'unlisted') return log(`refused ${message.person.name} (${message.person.id}) in ${where(conversation)} — to allow them, ${allow}`)
 
+    let names
+    try {
+      names = namesOf(routed, read.config)
+    } catch (err) {
+      log(`${where(conversation)}: ${errorText(err)}`)
+      return tell(conversation, `${err.message} — tell whoever runs me`)
+    }
+    if (message.addresses === null && routed.spores.includes(EVERY)) return tell(conversation, `this ${noun} reaches every spore — say which one a message is for`)
     const reached = []
-    for (const name of message.addresses?.length ? message.addresses : routed.spores) {
+    for (const name of message.addresses?.length ? message.addresses : names) {
+      if (!names.includes(name)) {
+        log(`${where(conversation)}: a message for "${name}", which it does not reach`)
+        if (gate === 'pass') tell(conversation, `this ${noun} does not reach "${name}"`)
+        continue
+      }
       let ws
       try {
         ws = sporeOf(name, read.config)
@@ -469,7 +482,14 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     detailed = new Set([...read.table].filter(([, routed]) => routed.details).map(([conversation]) => conversation))
     briefed = new Set([...read.table].filter(([, routed]) => routed.brief).map(([conversation]) => conversation))
     const next = new Map()
-    for (const [conversation, { spores: names }] of read.table) {
+    for (const [conversation, routed] of read.table) {
+      let names
+      try {
+        names = namesOf(routed, read.config)
+      } catch {
+        // Told to the conversation, and logged, when someone there next writes.
+        continue
+      }
       for (const name of names) {
         let ws
         try {
@@ -499,6 +519,12 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
 
   const levelOf = (conversation) => detailed.has(keyOf(conversation)) ? 'details' : briefed.has(keyOf(conversation)) ? 'brief' : 'plain'
   const textFor = (live, entry, now) => renderLive(live, { level: levelOf(entry.conversation), now }).join('\n')
+  const viewFor = (live, entry) => adapter.can.live === true ? liveView(live, { level: levelOf(entry.conversation) }) : null
+  const paintOf = (live, entry, now) => {
+    const text = textFor(live, entry, now)
+    const view = viewFor(live, entry)
+    return { text, view, key: view === null ? text : JSON.stringify([text, view]) }
+  }
 
   /** The running turn's default rendering, edited into each `working…` message whose text it changes. */
   const repaint = (ws) => {
@@ -507,13 +533,13 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     lines.at = Date.now()
     for (const entry of state.pending[ws] ?? []) {
       const { conversation } = entry
-      const text = textFor(lines.live, entry, lines.at)
-      if (text === painted.get(entry)) continue
+      const { text, view, key } = paintOf(lines.live, entry, lines.at)
+      if (key === painted.get(entry)) continue
       droppable(conversation, 'progress', async () => {
         const note = await noteOf(entry)
         if (note === null || !state.pending[ws]?.includes(entry)) return
-        await adapter.edit(conversation, note, text, { for: forOf([entry]) })
-        painted.set(entry, text)
+        await adapter.edit(conversation, note, text, { for: forOf([entry]), ...(view === null ? {} : { live: view }) })
+        painted.set(entry, key)
       })
     }
   }
@@ -557,7 +583,7 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
     applyEvent(lines.live, event)
     if (lines.timer) return
     const now = Date.now()
-    if (state.pending[ws].every(entry => textFor(lines.live, entry, now) === painted.get(entry))) return
+    if (state.pending[ws].every(entry => paintOf(lines.live, entry, now).key === painted.get(entry))) return
     lines.timer = setTimeout(() => repaint(ws), Math.max(0, editEveryMs - (now - lines.at)))
   }
 

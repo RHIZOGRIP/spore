@@ -215,3 +215,27 @@ export function renderLive (live, { level = 'plain', now = Date.now() } = {}) {
   else if (live.heard) lines.push('heard you')
   return lines
 }
+
+/**
+ * The running turn as data, for a surface that lays it out itself: what `renderLive` shows at
+ * `level`, each call with how it ended, and the answer as far as it is written. `brief` shows none
+ * of how the turn runs, so it has no view.
+ */
+export function liveView (live, { level = 'plain' } = {}) {
+  if (level === 'brief') return null
+  return {
+    startedAt: live.startedAt,
+    annotation: live.annotation,
+    headline: live.headline?.text ?? null,
+    calls: live.calls.filter(call => !TERMINAL.has(call.name)).map(call => ({
+      title: level === 'details' ? call.detail : call.title,
+      category: call.category,
+      done: call.done,
+      ending: ending(call).replace(/^ — /, '') || null
+    })),
+    notes: live.notes,
+    wrapping: live.wrapping?.dimension ?? null,
+    heard: live.heard,
+    text: live.text
+  }
+}

@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.62.0] — Added: a person's own conversation reaches several spores
+
+### Added
+
+- A connector whose people's section takes `spores` lets a person's entry reach several spores,
+  `{ "spores": ["research", "ops"] }`, or every spore in home, `"*"`, read again for each
+  message, so a spore made or removed is reached or not without a restart. The platform says
+  which spore each message is for in `addresses`. A name the conversation does not reach is
+  refused there, and so is a message naming none where the entry is `"*"`.
+- `"*"` is refused in a conversation many people share, and in any connector whose people's
+  section does not take `spores`.
+- A connector that says `can.live` gets the running turn as data with each edit of its
+  `working…` message, and an edit each time the answer being written grows, so it can show the
+  answer as it is written. `liveView` is that view, exported beside `renderLive`.
+- `namesOf` in `@rhizogrip/spore/relay` says which spores a conversation's routing reaches, `"*"`
+  read from home.
+- A connector may have no credentials: its spec's `credentials` is `[]`.
+
 ## [1.61.0] — Added: a spore asks for something outside itself and reads the result later
 
 ### Added

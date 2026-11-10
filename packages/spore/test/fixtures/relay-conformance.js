@@ -5,7 +5,8 @@
  *
  * harness:
  *   spec                                   the adapter's description
- *   credentials                            { <variable>: <value> } its bot files name, the first bot's first;
+ *   credentials                            { <variable>: <value> } its bot files name, the first bot's first —
+ *                                          {} for a connector that has none;
  *                                          none reaches a turn's runner, its spore granting no plugin
  *   botFile(bot, table, fields)            a bot file for { <conversation>: { spore, details, show, brief,
  *                                          shared, people } } — `shared` a conversation many people
@@ -17,7 +18,8 @@
  *                                          own conversation, theirs
  *   shared(n)                              the id of the nth conversation many people share — left out
  *                                          where the platform has none
- *   platform()                             a fresh fake platform
+ *   platform(root)                         a fresh fake platform, keeping what it writes under the
+ *                                          test's `root`
  *   adapter(platform, bot, botFile)        the live adapter over it
  *   words(text)                            the person's words in what the spore was given for them
  *   formats                                whether the platform has a formatted mode beside a plain one
@@ -85,6 +87,7 @@ export function conformance (harness, platformTests = () => {}) {
   const namesStrangers = spec.refusal({ conversation: STRANGER, person: { id: STRANGER, name: 'U99', username: 'u99', groups: [] } }, 'bot.json') !== null
   const otherVariable = Object.keys(harness.credentials)[1]
   const replyOf = (asked) => harness.replyInPrivate === false ? null : asked.message
+  const [ownKey, ownSection] = Object.entries(spec.conversations).find(([, section]) => !section.people) ?? []
   let root
   let ws
   let configFile
@@ -146,6 +149,23 @@ export function conformance (harness, platformTests = () => {}) {
   const taken = (conversation) => spec.can.edit ? notes(conversation) : reactions(conversation).filter(one => one.emoji === TAKEN)
   const posted = (conversation, text) => posts(conversation).some(one => one.text === text)
   const lastText = (conversation, note) => seen(conversation).filter(one => one.note === note && 'text' in one).at(-1).text
+  const spore = (name) => {
+    const made = join(root, 'home', name)
+    mkdirSync(made, { recursive: true })
+    writeFileSync(join(made, 'spore.cmk'), withAuth(definitionWith('anthropic/claude-haiku-4-5')))
+    return made
+  }
+  /** The first person reaching `entry`, their section taking `spores`, each message for the spores `to()` names. */
+  const reaching = (entry, to) => {
+    const file = harness.botFile('triage', { [ONE]: { spore: 'triage' } })
+    for (const id of Object.keys(file[ownKey])) file[ownKey][id] = entry
+    writeFileSync(join(root, spec.kind, 'triage.json'), JSON.stringify(file))
+    shaping = (adapter) => ({
+      ...adapter,
+      conversations: { ...adapter.conversations, [ownKey]: { ...ownSection, fields: [...ownSection.fields, 'spores'] } },
+      listen: (given) => adapter.listen({ ...given, onMessage: (message) => given.onMessage({ ...message, addresses: to() }) })
+    })
+  }
 
   const ctx = {
     get root () { return root },
@@ -179,7 +199,7 @@ export function conformance (harness, platformTests = () => {}) {
       logs = []
       release = null
       shaping = (adapter) => adapter
-      platform = harness.platform()
+      platform = harness.platform(root)
       reply = async () => answers('hello back')
       tests += 1
       gate = await startGate({ mo: scriptedMo((input, round, options) => reply(input, round, options)), name: `${spec.kind}-relay-${tests}` })
@@ -263,12 +283,12 @@ export function conformance (harness, platformTests = () => {}) {
           return answers('hello back')
         }
         start()
-        writeFileSync(join(root, 'environment'), `LATE_KEY=added-after\n${otherVariable}=from-the-file\n`)
+        writeFileSync(join(root, 'environment'), `LATE_KEY=added-after\n${otherVariable ? `${otherVariable}=from-the-file\n` : ''}`)
         say({ conversation: ONE, text: 'hello' })
 
         await until(() => posted(ONE, 'hello back'))
         expect(environ).toContain('LATE_KEY=added-after')
-        expect(environ).not.toContain(otherVariable)
+        if (otherVariable) expect(environ).not.toContain(otherVariable)
       })
 
       it('never gets an earlier answer for a turn that has none', async () => {
@@ -395,6 +415,85 @@ export function conformance (harness, platformTests = () => {}) {
         say({ conversation: ONE, text: 'write them all' })
         await until(() => posted(ONE, "and 2 more files in data/out/, in the spore's workspace"))
         expect(seen(ONE).filter(one => spec.can.upload ? one.op === 'upload' : / is in the spore's workspace$/.test(one.text ?? ''))).toHaveLength(50)
+      })
+    })
+
+    describe.runIf(ownKey)('a person who reaches several spores', () => {
+      it('reaches the one a message is for and no other, and is told of one they do not reach', async () => {
+        const second = spore('second')
+        let to = ['second']
+        reaching({ spores: ['triage', 'second'] }, () => to)
+        reply = async () => answers('from second')
+        start()
+        say({ conversation: ONE, text: 'hello second' })
+        await until(() => posted(ONE, 'from second'))
+        expect(readInbox(second)).toHaveLength(1)
+        expect(readInbox(ws)).toEqual([])
+
+        to = ['elsewhere']
+        say({ conversation: ONE, text: 'hello stranger' })
+        await until(() => posts(ONE).some(one => /does not reach .*elsewhere/.test(one.text)))
+        expect(logs.some(line => line.includes('a message for "elsewhere", which it does not reach'))).toBe(true)
+        expect(readInbox(second)).toHaveLength(1)
+        expect(readInbox(ws)).toEqual([])
+        await until(() => stateOf(second).state !== RUNNING)
+      })
+
+      it('reaches, with "*", every spore in home as it stands, and is asked which one a message naming none is for', async () => {
+        let to = ['late']
+        reaching('*', () => to)
+        reply = async () => answers('from late')
+        start()
+        const late = spore('late')
+        say({ conversation: ONE, text: 'are you there' })
+        await until(() => posted(ONE, 'from late'))
+        expect(readInbox(late)).toHaveLength(1)
+
+        to = null
+        say({ conversation: ONE, text: 'anyone' })
+        await until(() => posts(ONE).some(one => /reaches every spore — say which one a message is for/.test(one.text)))
+        expect(readInbox(late)).toHaveLength(1)
+        expect(readInbox(ws)).toEqual([])
+        await until(() => stateOf(late).state !== RUNNING)
+      })
+    })
+
+    describe.runIf(spec.can.edit)('a connector that lays out a running turn itself', () => {
+      const edits = []
+      const live = (adapter) => ({
+        ...adapter,
+        can: { ...adapter.can, live: true },
+        edit: (conversation, note, text, given) => {
+          edits.push(given.live ?? null)
+          return adapter.edit(conversation, note, text, given)
+        }
+      })
+      beforeEach(() => edits.splice(0))
+
+      it('is handed the turn as data with each edit of its working message, its calls and the answer so far', async () => {
+        shaping = live
+        const shown = () => edits.some(view => view?.calls.length === 1)
+        reply = async (input, round) => {
+          if (round === 0) return calls('wsexec', { command: 'echo checked > data/check.txt', out: 'data/log.txt' })
+          await until(shown)
+          return answers('checked')
+        }
+        start()
+        say({ conversation: ONE, text: 'check' })
+        await until(() => posted(ONE, 'checked'))
+        expect(shown()).toBe(true)
+        expect(edits.filter(view => view !== null).every(view => Array.isArray(view.notes) && typeof view.text === 'string')).toBe(true)
+        expect(JSON.stringify(edits)).not.toContain('echo checked')
+      })
+
+      it('is handed none for a brief conversation', async () => {
+        routes({ [ONE]: { spore: 'triage', brief: true } })
+        shaping = live
+        reply = async (input, round) => round === 0 ? calls('wsexec', { command: 'sleep 0.4', out: 'data/slept.txt' }) : answers('slept')
+        start()
+        say({ conversation: ONE, text: 'sleep a little' })
+        await until(() => posted(ONE, 'slept'))
+        expect(edits.every(view => view === null)).toBe(true)
       })
     })
 

@@ -17,12 +17,16 @@
  * carried into the routing. A section of conversations many people share also has `people`,
  * `{ id, says, example }`, who may address its spores — and `one` when it has one spore; an entry
  * there is `{ spores, people, … }`. Any other is a person's own conversation, its entry the spore's
- * name or `{ spore, … }`, and `called` how that person is identified, as "their member id".
+ * name or `{ spore, … }`, and `called` how that person is identified, as "their member id". Where
+ * its fields take `spores`, the platform addresses each message to one of them: the entry may be
+ * `{ spores, … }`, and `*`, alone, is every spore in home, read when it is used.
  */
 
 import { existsSync } from 'node:fs'
+import { basename } from 'node:path'
 
 import { CONFIG_FILE, instanceFile, instanceNames, instancesDir, readJson } from '../library/config.js'
+import { sporesInHome } from '../library/discover.js'
 import { native } from '../native.js'
 import { NAMES } from '../core/names.js'
 import { variableOf } from '../core/variables.js'
@@ -49,7 +53,7 @@ export function readBot (spec, path) {
   if (!existsSync(path)) {
     throw new SporeError(`no ${path}`, {
       type: typeOf(spec, 'NO_BOT'),
-      detail: `it names the bot's ${spec.credentials.join(' and ')} and who may reach which spore, as ${spec.example} — a bot reaching no one is refused rather than left open`
+      detail: `it names ${spec.credentials.length ? `the bot's ${spec.credentials.join(' and ')} and ` : ''}who may reach which spore, as ${spec.example} — a bot reaching no one is refused rather than left open`
     })
   }
   const raw = readJson(path, typeOf(spec, 'BOT_INVALID'))
@@ -83,6 +87,7 @@ export function readBot (spec, path) {
 
 const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
 const RELAY_FLAGS = ['details', 'brief', 'overhear']
+export const EVERY = '*'
 
 function routesFrom (spec, raw, path) {
   const invalid = (problem, detail = `a bot is ${spec.example}`) => new SporeError(`${path} ${problem}`, { type: typeOf(spec, 'BOT_INVALID'), detail })
@@ -117,15 +122,21 @@ function routesFrom (spec, raw, path) {
       if (wrong) throw invalid(`names "${id}" among its ${key}, ${wrong.says}`, wrong.fix)
       if (!section.people) {
         const shaped = isRecord(entry)
-        const spore = shaped ? entry.spore : entry
         const read = checked(id, shaped ? entry : {})
-        if (typeof spore !== 'string' || !spore) throw invalid(`maps ${noun} ${id} to something that is not a spore`, `each ${noun} is ${section.called} against the name of the spore they reach, or { "spore": "<name>", "details": true }`)
-        table.set(id, { spores: [spore], ...read, people: null })
+        const several = section.fields.includes('spores')
+        const shapes = `each ${noun} is ${section.called} against the name of the spore they reach, or { "spore": "<name>", "details": true }${several ? `, or { "spores": ["<name>", …] } — or "${EVERY}", every spore in home` : ''}`
+        if (shaped && entry.spore !== undefined && entry.spores !== undefined) throw invalid(`gives ${noun} ${id} both spore and spores`, shapes)
+        const spores = shaped ? (entry.spores ?? [entry.spore]) : [entry]
+        if (!Array.isArray(spores) || !spores.length || !spores.every(spore => typeof spore === 'string' && spore)) throw invalid(`maps ${noun} ${id} to something that is not a spore`, shapes)
+        if (spores.includes(EVERY) && !several) throw invalid(`gives ${noun} ${id} "${EVERY}"`, `a ${noun} reaches one spore here — ${shapes}`)
+        if (spores.includes(EVERY) && spores.length > 1) throw invalid(`gives ${noun} ${id} "${EVERY}" beside other spores`, `"${EVERY}" already reaches every spore in home`)
+        table.set(id, { spores, ...read, people: null })
         continue
       }
       if (!isRecord(entry)) throw invalid(`has a ${noun} ${id} that is not { "spores": [...], "people": [...] }`)
       const read = checked(id, entry)
       if (!Array.isArray(entry.spores) || !entry.spores.length || !entry.spores.every(spore => typeof spore === 'string' && spore)) throw invalid(`has a ${noun} ${id} with no spores`)
+      if (entry.spores.includes(EVERY)) throw invalid(`gives ${noun} ${id} "${EVERY}"`, `a ${noun} names each spore it reaches — "${EVERY}" is for a person's own conversation`)
       if (section.one && entry.spores.length > 1) throw invalid(`gives ${noun} ${id} ${entry.spores.length} spores`, `a bot speaks in a ${noun} as itself, so a ${noun} has one spore — a second spore there is a second bot`)
       if (!Array.isArray(entry.people) || !entry.people.every(who => who === '*' || (typeof who === 'string' && section.people.id.test(who)))) {
         throw invalid(`has a ${noun} ${id} whose people are not ${section.people.says} or *`, `people is who may address its spores — ["<${section.people.example}>", …], or ["*"] for everyone in the ${noun}, written out`)
@@ -134,6 +145,13 @@ function routesFrom (spec, raw, path) {
     }
   }
   return table
+}
+
+/** The spores a conversation's routing reaches, by name: `*` is every spore in home as it stands now. */
+export function namesOf (routed, config) {
+  if (!routed.spores.includes(EVERY)) return routed.spores
+  if (!config.home) throw new SporeError(`"${EVERY}" reaches every spore in home, and no home is set`, { type: 'CONFIG_NO_HOME', detail: 'spore config set home <dir> names the directory spores are made in' })
+  return sporesInHome(config.home, config.homeSplit).map(ws => basename(ws))
 }
 
 /**

@@ -258,6 +258,18 @@ for how long; the embedder's line; the headline; the current call by its title; 
 `brief`, `plain` (adds how the call ended and which limit was reached) or `details` (the call's
 path or command).
 
+### `liveView`
+
+```
+liveView(live, { level = 'plain' }) → { startedAt, annotation, headline, calls, notes, wrapping, heard, text } | null
+```
+
+The running turn as data, for a surface that lays it out itself: what `renderLive` shows at
+`level`. `calls` are each `{ title, category, done, ending }`, the title the call's path or command
+at `details`, `ending` how it ended when that is worth saying; `wrapping` is the limit reached, or
+null; `text` is the answer as far as it is written. `null` at `brief`, which shows none of how a
+turn runs.
+
 ### `annotate`
 
 ```
