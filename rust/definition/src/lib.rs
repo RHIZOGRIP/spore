@@ -29,7 +29,7 @@ pub use schedule::{parse_schedule, Due, Schedule};
 /// The tool suite, by name. Contract: ARCHITECTURE.md, "Tools".
 pub const TOOL_NAMES: [&str; 7] = ["read", "write", "edit", "exec", "wsexec", "ask", "quiet"];
 
-const FIELDS: [&str; 42] = [
+const FIELDS: [&str; 44] = [
     "name",
     "description",
     "model",
@@ -61,6 +61,8 @@ const FIELDS: [&str; 42] = [
     "jobs.maxWait",
     "jobs.perDay",
     "jobs.writes",
+    "interactions",
+    "interactions.handlers",
     "dream",
     "dream.cost",
     "dream.wall",
@@ -88,7 +90,7 @@ const AUTH_MAX_BYTES: usize = 128;
 
 /// What sits at the workspace root under a name a grant could take: staging a grant there would
 /// replace the workspace's own directory with a link.
-const WORKSPACE_NAMES: [&str; 8] = [
+const WORKSPACE_NAMES: [&str; 9] = [
     "data",
     "home",
     "calls",
@@ -97,6 +99,7 @@ const WORKSPACE_NAMES: [&str; 8] = [
     "node_modules",
     "lock",
     "tmp",
+    "interactions",
 ];
 
 const MEMORY_BACKENDS: [&str; 2] = ["bm25", "vectors"];
@@ -259,6 +262,15 @@ pub struct Jobs {
     pub writes: Vec<String>,
 }
 
+/// How many interactions one turn may create, supersessions included, and the handlers the host
+/// describes that this spore may name.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Interactions {
+    pub most: u64,
+    pub handlers: Vec<String>,
+}
+
 /// One of a plugin's programs, by its variable, run on every delivery from `origin` before any turn reads it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PrepareStep {
@@ -335,6 +347,8 @@ pub struct Definition {
     pub schedules: Option<Schedules>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub jobs: Option<Jobs>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interactions: Option<Interactions>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dream: Option<Dream>,
     pub plugins: Vec<String>,
@@ -935,6 +949,53 @@ fn parse_jobs(fields: &Fields, cell: bool, granted: &[Grant]) -> Result<Option<J
         per_day,
         writes,
     }))
+}
+
+// Per turn, because any program the agent runs reaches the socket: a loop in one call would
+// otherwise create a thousand. Across turns, what starts a turn bounds it.
+fn parse_interactions(fields: &Fields, cell: bool) -> Result<Option<Interactions>, String> {
+    let named = fields.get("interactions.handlers");
+    let most = match fields.get("interactions") {
+        None if named.is_some() => {
+            return Err("declares interactions.handlers without interactions — it names the handlers this spore may ask, as interactions: 2".into());
+        }
+        None => return Ok(None),
+        Some(_) if cell => {
+            return Err("declares interactions, which are the root definition's — what answers one comes back to the spore, and a cell has gone by then".into());
+        }
+        Some(_) => one(
+            "interactions",
+            scalar(fields, "interactions")?.unwrap_or_default(),
+            |t| whole_number(t, 1),
+            "how many interactions one turn may create, at least 1",
+        )?,
+    };
+    let handlers = match named {
+        Some(Value::List(names)) if !names.is_empty() => names.clone(),
+        Some(Value::List(_)) | None => {
+            return Err("declares interactions without interactions.handlers — name the handlers config.json describes that this spore may ask, as interactions.handlers: [review]".into());
+        }
+        Some(_) => {
+            return Err(
+                "\"interactions.handlers\" must be a list, as interactions.handlers: [review]"
+                    .into(),
+            );
+        }
+    };
+    for (i, handler) in handlers.iter().enumerate() {
+        if is_name("handler", handler) != Ok(true) {
+            return Err(format!(
+                "names a handler \"{handler}\" in interactions.handlers — a handler's name is {}",
+                name_rule("handler")?
+            ));
+        }
+        if handlers[..i].contains(handler) {
+            return Err(format!(
+                "names the handler {handler} twice in interactions.handlers"
+            ));
+        }
+    }
+    Ok(Some(Interactions { most, handlers }))
 }
 
 // Absent, the spore never dreams. Its limits are declared beside it, never defaulted: a dream
@@ -1587,6 +1648,8 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
     };
 
     let jobs = parse_jobs(&fields, opts.cell, &writes)?;
+
+    let interactions = parse_interactions(&fields, opts.cell)?;
     let dream = parse_dream(&fields, opts.cell)?;
 
     // Named here and resolved by the host, which knows which plugins are enabled on this
@@ -1701,6 +1764,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         images,
         schedules,
         jobs,
+        interactions,
         dream,
         plugins,
         plugin_options,
@@ -1911,6 +1975,7 @@ mod tests {
             "images",
             "schedules",
             "jobs",
+            "interactions",
             "dream",
         ] {
             assert!(json.get(key).is_none(), "{key} is present");
@@ -2433,6 +2498,55 @@ mod tests {
                 .unwrap_err()
                 .contains("root definition's")
         );
+    }
+
+    #[test]
+    fn reads_the_interactions_grant_and_its_handlers_at_the_root_only() {
+        let with = |lines: &str| {
+            parse(&WELL_FORMED.replace("tools: [read]\n", &format!("tools: [read]\n{lines}")))
+        };
+        assert_eq!(
+            with("interactions: 3\ninteractions.handlers: [review, to-file]\n")
+                .unwrap()
+                .interactions,
+            Some(Interactions {
+                most: 3,
+                handlers: vec!["review".into(), "to-file".into()]
+            })
+        );
+        assert_eq!(with("").unwrap().interactions, None);
+        assert!(with("interactions: 0\ninteractions.handlers: [review]\n")
+            .unwrap_err()
+            .contains("interactions"));
+        assert!(
+            with("interactions: [1, 2]\ninteractions.handlers: [review]\n")
+                .unwrap_err()
+                .contains("takes one value")
+        );
+        assert!(with("interactions: 1\n")
+            .unwrap_err()
+            .contains("without interactions.handlers"));
+        assert!(with("interactions: 1\ninteractions.handlers: []\n")
+            .unwrap_err()
+            .contains("without interactions.handlers"));
+        assert!(with("interactions.handlers: [review]\n")
+            .unwrap_err()
+            .contains("without interactions"));
+        assert!(with("interactions: 1\ninteractions.handlers: review\n")
+            .unwrap_err()
+            .contains("must be a list"));
+        assert!(with("interactions: 1\ninteractions.handlers: [-x]\n")
+            .unwrap_err()
+            .contains("a handler's name is"));
+        assert!(with("interactions: 1\ninteractions.handlers: [a, a]\n")
+            .unwrap_err()
+            .contains("twice"));
+        assert!(cell(&CHART.replace(
+            "on-wrap: keep\n",
+            "on-wrap: keep\ninteractions: 1\ninteractions.handlers: [review]\n"
+        ))
+        .unwrap_err()
+        .contains("root definition's"));
     }
 
     #[test]

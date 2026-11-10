@@ -24,9 +24,10 @@ pub mod source_spec;
 pub mod state;
 
 pub use state::{
-    annotate, answer_approval, append_flush, append_inbox, ask_approval, attach_held,
-    attempt_outbox, begin_job, begin_turn, change_limits, check_reply_to, copy_inbox, end_channel,
-    end_job, expire_approval, finalize, finalize_turn, hold_delivery, inbox_consumed, leave_wal,
+    annotate, answer_approval, answer_interaction, append_flush, append_inbox, ask_approval,
+    ask_interaction, attach_held, attempt_outbox, begin_job, begin_turn, cancel_interaction,
+    change_limits, check_reply_to, copy_inbox, end_channel, end_job, expire_approval, finalize,
+    finalize_turn, hand_interaction, hold_delivery, inbox_consumed, interaction_origin, leave_wal,
     migrate_state, origin_of, outbox, post_approval, prune_trail, record_cell, recover,
     refuse_approval, release_held, replace_transcript, replace_turns, request, reschedule_held,
     serve, set_aside, settle_approval, settle_outbox, start_limits, starting_since, turn_hop,
@@ -257,7 +258,7 @@ pub const PASSED_THROUGH: [&str; 10] = [
 
 /// What the runtime itself sets in the environment of what it starts — the agent, a cell, a job,
 /// a command — which no variable a plugin declares may set.
-pub const RUNTIME_ENV: [&str; 29] = [
+pub const RUNTIME_ENV: [&str; 31] = [
     "PATH",
     "HOME",
     "TMPDIR",
@@ -269,6 +270,8 @@ pub const RUNTIME_ENV: [&str; 29] = [
     "SPORE_ENZYME",
     "SPORE_ENZYMES",
     "SPORE_FANOUT",
+    "SPORE_INTERACT",
+    "SPORE_INTERACT_SOCKET",
     "SPORE_JOB",
     "SPORE_JOB_DIR",
     "SPORE_JOB_NAME",

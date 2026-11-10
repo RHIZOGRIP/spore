@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
-import { addTo, allowPlugin, annotate, billingFor, bytesText, changeText, define, defaultModel, disallowPlugin, durationText, edit, extend, flush, getKey, jobs, list, listApprovals, listPlugins, log, pause, remake, remove, removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings, show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM, errorText } from '@rhizogrip/spore'
+import { addTo, allowPlugin, annotate, billingFor, bytesText, changeText, define, defaultModel, disallowPlugin, durationText, edit, extend, flush, getKey, interactionOutcome, jobs, list, listApprovals, listPlugins, log, pause, remake, remove, removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings, show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM, errorText } from '@rhizogrip/spore'
 import { diagnose, hostReport, renderDoctor, renderReport } from './doctor.js'
 import { hook } from './hooks.js'
 import { withMoHint } from './mo.js'
@@ -767,6 +767,33 @@ export async function manage (verb, argv) {
         return 2
       }
       return emit(requestApproval({ ws, request }), (r) => { console.log(`asked ${r.approval}, open until ${when(r.until)} — the service of the place it names posts it`) })
+    }
+    if (verb === 'interaction') {
+      const [, sub, ws, id, from] = argv._
+      if (sub !== 'outcome') {
+        console.error(sub ? `spore: interaction has no "${sub}" — outcome` : 'spore: interaction needs outcome — spore interaction outcome <name> <id> [<outcome.json>|-]')
+        return 2
+      }
+      if (!ws || !id) {
+        console.error('spore: interaction outcome needs a spore and an interaction — spore interaction outcome <name> <id> [<outcome.json>|-]')
+        return 2
+      }
+      const source = !from || from === '-' ? await readStdin() : readFileSync(resolve(from), 'utf8')
+      const said = (line, code) => {
+        console.log(JSON.stringify(line))
+        return code
+      }
+      let outcome
+      try {
+        outcome = JSON.parse(source)
+      } catch (err) {
+        return said({ type: 'INTERACTION_OUTCOME', message: 'the outcome is not JSON', detail: err.message }, 1)
+      }
+      try {
+        return said(interactionOutcome({ ws, id, outcome }), 0)
+      } catch (err) {
+        return said({ type: err.type, message: err.message, detail: err.detail }, ['ADMISSION_FULL', 'PAUSED'].includes(err.type) ? 75 : 1)
+      }
     }
     if (verb === 'rm') {
       const name = argv._[1]

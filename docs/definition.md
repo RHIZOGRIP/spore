@@ -139,6 +139,8 @@ that level. **Absent** says what leaving the field out means where it is accepte
 | [`jobs.maxWait`](#jobsmaxwait) | duration | optional² | refused | released once timed | longest the spore's router or triage cell may keep a job's delivery waiting | [Deliveries nobody typed](../ARCHITECTURE.md#deliveries-nobody-typed) |
 | [`jobs.perDay`](#jobsperday) | whole number | optional² | refused | 100 | triage cells a job's deliveries may start a day | same |
 | [`jobs.writes`](#jobswrites) | list of `writes` names | optional² | refused | none | `writes` directories a job may write | [Jobs](../ARCHITECTURE.md#jobs) |
+| [`interactions`](#interactions) | whole number | with `interactions.handlers` | refused | no interactions | interactions one turn may create | [Interactions](../ARCHITECTURE.md#interactions) |
+| [`interactions.handlers`](#interactionshandlers) | list of handler names | with `interactions` | refused | — | handlers `config.json` describes that the spore may ask | same |
 | [`dream`](#dream) | `[turns, quiet]` | optional | refused | never dreams | when a dream is due: the turns and the quiet that together make it | [Dreams](../ARCHITECTURE.md#dreams) |
 | [`dream.cost`](#dreamcost-and-dreamwall) | `[soft, hard]` amounts | with `dream` | refused | — | dollars one dream may spend | same |
 | [`dream.wall`](#dreamcost-and-dreamwall) | `[soft, hard]` durations | with `dream` | refused | — | how long one dream may hold the spore | same |
@@ -570,7 +572,7 @@ where on `5m` every turn writes the whole prefix again. Only a provider that tak
 one that caches a repeated prefix on its own ignores it. A cell's calls are seconds apart, so a
 precursor declaring it is refused, and every cell caches for `5m`.
 
-## The clock and jobs
+## The clock, jobs and interactions
 
 ### `schedules`
 
@@ -634,6 +636,32 @@ grant is refused. A job may write these directories as well as read them. Absent
 
 `jobs.maxWait`, `jobs.perDay` and `jobs.writes` each require `jobs`. Declared without it, the file
 is refused.
+
+### `interactions`
+
+```
+interactions: 2
+```
+
+**`spore.cmk` only.** A whole number from 1: how many interactions one turn may create,
+supersessions included. An interaction hands data to a handler the operator describes in
+`config.json`, through `node "$SPORE_INTERACT" create <handler> <dir>`, and its outcome comes back
+as a message. The bound is per turn because any program the agent runs can reach the socket. Absent,
+the runner serves no interact socket. A cell declaring it is refused: its outcome comes back to the
+spore, and a cell has gone by then ([Interactions](../ARCHITECTURE.md#interactions),
+[interactions.md](interactions.md)).
+
+### `interactions.handlers`
+
+```
+interactions.handlers: [review, to-file]
+```
+
+**`spore.cmk` only.** A list of handler names, each once, each a name of letters, digits, `.`, `-`
+and `_`, starting with a letter or digit, at most 64: the handlers the spore may ask. A turn is
+refused when it starts if one is not described under `interactions` in `config.json`
+([operating.md §`interactions`](operating.md#interactions)). `interactions` and
+`interactions.handlers` each require the other; declared alone, the file is refused.
 
 ## Dreams
 

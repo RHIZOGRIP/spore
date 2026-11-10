@@ -15,6 +15,7 @@ import { readConfig, existing, addTo, workspaceFor, CONFIG_FILE, containing, rec
 import { isWorkspace, sporesInHome } from './discover.js'
 import { acquireLock, appendFlush, approvalsIn, asked, definitionPath, DEFINITION_FILE, diskUsage, heldIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readLock, flushesIn, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
 import { askApproval } from './approvals.js'
+import { takeOutcome } from '../core/interactions.js'
 import { sqlLines } from './sql.js'
 import { TOOL_NAMES } from '../core/tool-names.js'
 import { cloneCapability } from '../core/clone.js'
@@ -789,6 +790,14 @@ export function removeSchedule ({ ws, name, configFile = CONFIG_FILE } = {}) {
 export function requestApproval ({ ws, request, configFile = CONFIG_FILE } = {}) {
   const path = here(ws, configFile)
   return { ws: path, ...askApproval(path, request, { configFile }) }
+}
+
+/**
+ * The outcome of the spore's interaction `id`, from a handler on this host, checked and said to the
+ * spore as `spore-api` takes one: `{ inbox, repeated }`.
+ */
+export function interactionOutcome ({ ws, id, outcome, env = process.env, configFile = CONFIG_FILE } = {}) {
+  return takeOutcome(here(ws, configFile), id, outcome, { env, configFile })
 }
 
 /** The spore's approvals, oldest first, each as far as it has gone. */

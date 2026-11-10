@@ -87,6 +87,7 @@ const FANOUT_BIN = resolve(SPORE_ROOT, 'bin', 'fanout.js')
 const RECALL_BIN = resolve(SPORE_ROOT, 'bin', 'recall.js')
 const SOURCE_BIN = resolve(SPORE_ROOT, 'bin', 'source.js')
 const JOB_BIN = resolve(SPORE_ROOT, 'bin', 'job.js')
+const INTERACT_BIN = resolve(SPORE_ROOT, 'bin', 'interact.js')
 const SQL_BIN = resolve(SPORE_ROOT, 'bin', 'sql.js')
 
 /**
@@ -245,7 +246,7 @@ export function makeTools (WS, maxOutput, trail, {
       // subprocess shares with us. A spawned cell picks it up and makes its own
       // dispatch span a child of this one, which is what joins a fan-out into one
       // trace instead of fifty roots.
-      env: { ...process.env, TMPDIR: tmp, SPORE_SPAWN: SPAWN_BIN, SPORE_FANOUT: FANOUT_BIN, SPORE_RECALL: RECALL_BIN, SPORE_SOURCE: SOURCE_BIN, SPORE_SQL: SQL_BIN, SPORE_JOB: JOB_BIN, ...(traceparent ? { TRACEPARENT: traceparent } : {}), ...(modelSocket ? { SPORE_MODEL_SOCKET: modelSocket } : {}), ...(storeSocket ? { SPORE_STORE_SOCKET: storeSocket } : {}), ...(sourceSocket ? { SPORE_SOURCE_SOCKET: sourceSocket } : {}) },
+      env: { ...process.env, TMPDIR: tmp, SPORE_SPAWN: SPAWN_BIN, SPORE_FANOUT: FANOUT_BIN, SPORE_RECALL: RECALL_BIN, SPORE_SOURCE: SOURCE_BIN, SPORE_SQL: SQL_BIN, SPORE_JOB: JOB_BIN, SPORE_INTERACT: INTERACT_BIN, ...(traceparent ? { TRACEPARENT: traceparent } : {}), ...(modelSocket ? { SPORE_MODEL_SOCKET: modelSocket } : {}), ...(storeSocket ? { SPORE_STORE_SOCKET: storeSocket } : {}), ...(sourceSocket ? { SPORE_SOURCE_SOCKET: sourceSocket } : {}) },
       timeoutMs,
       idleMs,
       signal: sig

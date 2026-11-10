@@ -131,7 +131,7 @@ export function loadEnvironment (file = CONFIG_FILE, env = process.env) {
 }
 
 function validate (raw, file) {
-  const known = [...KEYS, 'plugins', 'replyTo', 'approvals']
+  const known = [...KEYS, 'plugins', 'replyTo', 'approvals', 'interactions']
   const unknown = isRecord(raw) ? Object.keys(raw).filter(key => !known.includes(key)) : []
   if (!isRecord(raw) || unknown.length) {
     throw new SporeError(isRecord(raw) ? `${file} has ${unknown.join(', ')}, which spore does not read` : `${file} is not a JSON object`, {
@@ -220,6 +220,13 @@ function validate (raw, file) {
       throw new SporeError(`${file} has an approval hook "${name}" spore cannot read`, { type: 'CONFIG_INVALID', detail: APPROVALS_DETAIL })
     }
   }
+  if (raw.interactions !== undefined && !isRecord(raw.interactions)) {
+    throw new SporeError(`${file} has an interactions that is not a map`, { type: 'CONFIG_INVALID', detail: INTERACTIONS_DETAIL })
+  }
+  for (const [name, handler] of Object.entries(raw.interactions ?? {})) {
+    const problem = handlerProblem(name, handler)
+    if (problem) throw new SporeError(`${file} has an interaction handler "${name}" spore cannot read — ${problem}`, { type: 'CONFIG_INVALID', detail: INTERACTIONS_DETAIL })
+  }
   if (raw.contain !== undefined && typeof raw.contain !== 'boolean') {
     throw new SporeError(`${file} has a contain that is not true or false`, {
       type: 'CONFIG_INVALID',
@@ -306,6 +313,20 @@ const KEYS = new Set(['home', 'homeSplit', 'workspaces', 'admission', 'turns', '
 const DOCS = ['follow', 'kept']
 const ADMISSIONS = ['spore', 'caller']
 const ADMISSION_DETAIL = 'admission says who admits turns: spore, counting them in turns slots and holding deliveries for later, or caller, the one program in front of spore that schedules every turn, which spore then starts at once or refuses — spore config set admission spore|caller'
+const INTERACTIONS_DETAIL = 'interactions names each handler a spore may ask, as { "review": { "url": "https://…", "secret": "${REVIEW_SECRET}", "what": "…" } } or { "to-file": { "program": "/abs/path", "what": "…" } } — a secret set in environment beside config.json' // eslint-disable-line no-template-curly-in-string
+
+function handlerProblem (name, handler) {
+  if (!NAMES.handler.pattern.test(name)) return `a handler's name is ${NAMES.handler.says}`
+  if (!isRecord(handler)) return 'a handler is an object'
+  if (typeof handler.what !== 'string' || !handler.what.trim() || handler.what.includes('\n')) return 'what is one line, which the agent reads'
+  if ('url' in handler === 'program' in handler) return 'a handler has a url or a program, one of them'
+  const keys = 'url' in handler ? ['url', 'secret', 'what'] : ['program', 'what']
+  const stray = Object.keys(handler).filter(key => !keys.includes(key))
+  if (stray.length) return `it has ${stray.join(', ')}, which a handler with a ${keys[0]} does not take`
+  if ('program' in handler) return typeof handler.program === 'string' && handler.program.startsWith('/') ? null : 'program is an absolute path'
+  if (typeof handler.url !== 'string' || !URL.canParse(handler.url) || !['http:', 'https:'].includes(new URL(handler.url).protocol)) return 'url is an http or https address'
+  return variableOf(handler.secret) === null ? 'secret names a variable, as ${REVIEW_SECRET}' : null // eslint-disable-line no-template-curly-in-string
+}
 const APPROVALS_DETAIL = `approvals names each hook an approval may call, by a name of ${NAMES.approval.says}, as { "kpi": { "url": "https://…", "secret": "\${KPI_HOOK_SECRET}" } } — the secret set in environment beside config.json`
 const DOCS_DETAIL = 'docs says whether a runner starts by replacing the root documents that differ from what is installed (follow) or leaves them to spore upgrade (kept) — spore config set docs follow|kept'
 const SWITCHES = { on: true, off: false }

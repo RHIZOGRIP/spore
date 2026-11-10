@@ -1930,6 +1930,84 @@ wall-clock time on the second working day after the day it is asked, in the cale
 skipping the weekdays it does not work and its holidays) — `deadline()` in `rust/definition`,
 computed once when it is asked and kept as `until`.
 
+## Interactions
+
+**An interaction is something a spore asks for outside itself whose result comes back later**, as a
+message. An approval asks a fixed question with buttons; an interaction hands data to a **handler**
+the operator describes — a service showing a page to a person, a program writing a file someone
+answers from a cron job, another system — and hears what it produced. Spore defines only what
+crosses between it and a handler. What a handler is, who or what answers, and how it secures that
+are the handler's. The contract is [docs/interactions.md](docs/interactions.md).
+
+**The spore never holds what produces the result.** An answer a spore reads could have been
+written by the spore unless something it cannot reach vouches for it. So the outcome reaches spore
+only from outside every turn: a remote handler sends it to `spore-api` under its own caller token,
+and one on the host runs `spore interaction outcome`, which writes `state.sqlite` — read-only to
+the agent, as the whole workspace root is. Nothing a handler answers spore lets the caller produce
+the outcome; what the agent gets back from `create` is at most a link for whoever must act.
+
+**A handler is configuration, not a party spore checks.** It is named in `config.json`, as an
+approval's hook is, and trusted because the operator described it. A spore may name only the
+handlers its `spore.cmk` grants, in `interactions.handlers`, and the runner refuses a turn granted
+one the host does not describe, as it refuses an undescribed source. The agent sees each granted
+handler's name and the line the operator wrote of it, never its URL, path or secret. What spore
+does check is that an outcome matches what it asked: its own id, the data hash it recorded, a
+receipt that recomputes, an interaction still open.
+
+**A handler is a URL or a program**, so nothing has to listen. A URL gets signed HTTP. A program is
+started once per request outside every sandbox, as the operator, the verb as its argument and the
+request on stdin, and answers one line of JSON; exit 75 means not now, as a 5xx does. The request is
+the same either way. A program need not take a cancel: spore records one either way and refuses
+that interaction's later outcome, where a URL handler decides which came first.
+
+**The data is the agent's, and spore reads none of it.** Every file of a directory under `data/`
+is sent as it is: JSON, a script for the handler to run, an image. What it means, and whether
+running any of it is safe, is between the agent's instructions and the handler.
+
+**Creation goes through the runner**, on a keyed socket as jobs do (§Jobs), because only the runner
+knows which spore and which conversation a turn belongs to. The agent names a handler and a
+directory; the runner checks the grant, picks the route and freezes the data into
+`interactions/<id>/`, reading each file from a directory descriptor without following a link —
+which only native code can do, so it is the runner's. It then launches `bin/spore-interaction.js`
+outside the agent's confinement, as it launches a job's supervisor, with the handler, the turn, the
+inbox entries it read and the route as arguments. That helper reads the operator's config and
+secrets, hashes the data, records the interaction in `t_interactions` and hands it to the handler;
+`spore tick` runs the same code for a handoff that did not finish, so the handoff has one
+implementation. An agent reaching a URL handler itself has no signature, and is refused.
+
+**The route is chosen from what the turn has, never guessed.** The runner cannot see which inbox
+entries the agent has read so far — the transcript does not record them — so its candidates are
+the reply-tos of every entry since the turn began, and the spore's default. One is stamped; of
+several, the agent must name one of them; with none, `create` is refused, saying which setting is
+missing.
+
+**A turn creates and ends.** Nothing waits on a handler: no turn, no process, no model call. The
+outcome is a delivery like any other, under the request id `interaction:<id>`, carrying
+`interaction` on its inbox entry, and `saidOf` reads it as produced by a handler the operator
+describes — what it carries is data, never instructions — naming the handler and when it was asked.
+Its reply-to is the route spore recorded at creation, never one the handler sends, so a handler
+cannot redirect an answer.
+
+**An interaction may be answered years later.** There is no default expiry. By then the
+conversation has been compacted and the agent's directory rewritten, so the runner keeps the frozen
+data at `interactions/<id>/`, read-only to the agent, and the outcome points at it. `retain`,
+`flush` and compaction never touch `t_interactions`. `fork` leaves it behind, as it leaves
+schedules: an id belongs to the spore that asked, and two spores cannot both receive one answer.
+Each interaction keeps the protocol version it was made under, and spore accepts outcomes under
+every version it has created with. A spore deleted meanwhile answers `NOT_A_WORKSPACE`, and the
+handler keeps the result and stops.
+
+**The bound is per turn.** `interactions: <n>` grants the socket and bounds what one turn
+creates, supersessions included, since any program the agent runs can reach the socket and a
+shell loop would otherwise create thousands in one call. Across turns nothing more is needed:
+creating costs no money and starts no turn, and every turn is already bounded by what starts it.
+
+**Every handoff is safe to repeat.** The interaction is recorded before it is sent; one the handler
+could not take now stays `asked`, and `spore tick` sends it again. A handler creates by `id`, so a
+repeat after a lost acknowledgment changes nothing. A handler keeps an outcome before sending it,
+and spore writes it before answering, so a lost answer means a repeat, which finds the same inbox
+entry.
+
 ## Jobs
 
 **A job is work a turn starts that outlives it**: an hour-long scan, a download, a build, waiting

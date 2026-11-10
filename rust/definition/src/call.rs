@@ -117,6 +117,14 @@ static RUNTIME_ROWS: LazyLock<Vec<CallRow>> = LazyLock::new(|| {
             Some("job $1 $2"),
         ),
         row(
+            "interact",
+            commands,
+            Some(r#"^node\s+"?\$SPORE_INTERACT"?\s+(\w+)\s*(.*)$"#),
+            "asking a person",
+            "ask",
+            Some("interact $1 $2"),
+        ),
+        row(
             "enzyme",
             commands,
             Some(r#"^node\s+"?\$SPORE_ENZYME"?\s+([\w.-]+)\s*(.*)$"#),
@@ -385,6 +393,9 @@ mod tests {
             command(r#"node "$SPORE_FANOUT" summarize parts/"#, &[]).category,
             "delegate"
         );
+        let interact = command(r#"node "$SPORE_INTERACT" create data/review"#, &[]);
+        assert_eq!(interact.title, "asking a person");
+        assert_eq!(interact.detail, "interact create data/review");
         let plain = command("grep -n shutdown manual.md\nwc -l x", &[]);
         assert_eq!(plain.title, "running a command");
         assert_eq!(plain.detail, "running grep -n shutdown manual.md");

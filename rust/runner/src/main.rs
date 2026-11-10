@@ -23,7 +23,7 @@ use spore_runner::supervise::{
     confined, contain_refused, kept_refusal, owner_token, owners_with, supervise, uncontained,
     GRACE, OWNERS,
 };
-use spore_runner::{broker, job, model, source, store, trace, vectors};
+use spore_runner::{broker, interact, job, model, source, store, trace, vectors};
 use spore_workspace::{
     acquire_lock, agent_env, begin_turn, crash_at, end_channel, finalize_turn, free_bytes,
     hand_over, iso_now, leave_wal, limit_file_size, make_spore_socket_dir, provision_modules,
@@ -44,6 +44,7 @@ struct Args {
     host: HostArgs,
     sources: Option<PathBuf>,
     plugin_sources: serde_json::Map<String, serde_json::Value>,
+    interaction_handlers: Option<Vec<String>>,
     memory: Option<PathBuf>,
     env: Vec<(String, String)>,
     largest_file: u64,
@@ -68,6 +69,7 @@ fn parse_args() -> Args {
         host: HostArgs::default(),
         sources: None,
         plugin_sources: serde_json::Map::new(),
+        interaction_handlers: None,
         memory: None,
         env: Vec::new(),
         largest_file: DEFAULT_LARGEST_FILE,
@@ -101,6 +103,15 @@ fn parse_args() -> Args {
                     Ok(serde_json::Value::Object(described)) => described,
                     _ => fail(format!(
                         "--plugin-sources is a JSON object of named sources — got {given}"
+                    )),
+                }
+            }
+            "--interaction-handlers" => {
+                let given = value("--interaction-handlers");
+                args.interaction_handlers = match serde_json::from_str(&given) {
+                    Ok(names) => Some(names),
+                    _ => fail(format!(
+                        "--interaction-handlers is a JSON list of the handlers config.json describes — got {given}"
                     )),
                 }
             }
@@ -555,6 +566,25 @@ async fn main() {
         }
     };
 
+    if let Some(granted) = &def.interactions {
+        let problem = match &args.interaction_handlers {
+            None => Some(format!(
+                "{} grants interactions, and this runner was not told which handlers the host describes — start it through send()",
+                ws.display()
+            )),
+            Some(described) => granted
+                .handlers
+                .iter()
+                .find(|name| !described.contains(name))
+                .map(|name| format!(
+                    "the definition grants the handler {name} and config.json does not describe it — describe it under interactions in config.json, or take it out of interactions.handlers"
+                )),
+        };
+        if let Some(problem) = problem {
+            refuse(&ws, lock, &started_at, &problem);
+        }
+    }
+
     trace::init();
 
     // Once per runner: the session pool or the gate, the vector store, the sources. What a turn is
@@ -632,6 +662,18 @@ async fn main() {
             wall_ms: grant.wall,
             env: job::supervisor_env(std::env::vars(), &node),
             largest_file: args.largest_file,
+        })
+    });
+
+    let interactions = def.interactions.as_ref().map(|granted| {
+        Arc::new(interact::Interactions {
+            ws: ws.clone(),
+            node: PathBuf::from(&node),
+            helper: root().join("bin").join("spore-interaction.js"),
+            most: granted.most,
+            handlers: granted.handlers.clone(),
+            env: job::supervisor_env(std::env::vars(), &node),
+            turn: std::sync::RwLock::new(None),
         })
     });
 
@@ -717,6 +759,19 @@ async fn main() {
                     &path,
                 )?;
                 passed.insert("SPORE_JOB_SOCKET".into(), path);
+            }
+            if let Some(interactions) = &interactions {
+                let path = socket(&sockets, "interact")?;
+                let interactions = interactions.clone();
+                bind(
+                    "interact",
+                    &mut served,
+                    broker::serve(Path::new(&path), key.clone(), move |req| {
+                        interactions.clone().route(req)
+                    }),
+                    &path,
+                )?;
+                passed.insert("SPORE_INTERACT_SOCKET".into(), path);
             }
             Ok((passed, model, served))
         };
@@ -816,6 +871,9 @@ async fn main() {
         };
         if let Some(sources) = &sources {
             sources.begin_turn(&turn_id, &ws);
+        }
+        if let Some(interactions) = &interactions {
+            interactions.begin_turn(&turn_id);
         }
         let limits = &def.limits;
         let started_limits = [

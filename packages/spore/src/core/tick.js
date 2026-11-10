@@ -1,7 +1,8 @@
 /**
  * The pass that fires schedules and lets held deliveries go: every workspace `spore ls` finds,
  * every schedule in it, a `send` for each one that is due, a `release` of what its routers
- * held, a word for each job whose supervisor died, and a dream for a spore that is due one.
+ * held, a word for each job whose supervisor died, a handoff of each interaction the runner could
+ * not give its service, and a dream for a spore that is due one.
  * Contract: ARCHITECTURE.md, "Turns the clock starts", "Deliveries nobody typed", "Jobs" and
  * "Dreams".
  *
@@ -12,7 +13,10 @@
  * for as long as reading the directories takes.
  */
 
+import { spawn } from 'node:child_process'
 import { closeSync, existsSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { list } from '../library/verbs.js'
 import { native } from '../native.js'
@@ -20,13 +24,14 @@ import { survey, scheduleDir } from './schedule.js'
 import { paused } from './admission.js'
 import { dreamDue } from './dream.js'
 import { reportInterrupted } from './job.js'
-import { heldIn } from './spore-dir.js'
+import { heldIn, interactionsIn } from './spore-dir.js'
 import { release, send, startDream } from './send.js'
 import { stateOf } from './state.js'
 import { parsedDefinition } from '../delegation/definition.js'
 import { errorText } from '../observability/errors.js'
 
 export const TICK_LOCK = native.tickLockPath()
+const INTERACTION_HELPER = join(resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin'), 'spore-interaction.js')
 
 /**
  * One pass. `ran: false` when another pass holds the lock, which is not a failure: that pass
@@ -35,7 +40,8 @@ export const TICK_LOCK = native.tickLockPath()
  * Each line is one schedule: `fired`, `held` with why, `refused` with why, `stale`, `later`,
  * `spent`, or `failed` when `send` refused for a reason other than every slot taken — or one
  * spore's held deliveries: `released`, with how many and whether a turn started — or one job whose
- * supervisor is gone: `interrupted`, said to its spore — or one spore's dream: `dreaming` once
+ * supervisor is gone: `interrupted`, said to its spore — or one spore's interactions still to hand
+ * over: `handing`, with how many — or one spore's dream: `dreaming` once
  * started, `held` with why while every slot is taken.
  *
  * While spores are paused, a pass fires and releases nothing: `paused` carries the mark, and what was due
@@ -49,7 +55,7 @@ export function tick ({ now = Date.now(), configFile, lock = TICK_LOCK, env = pr
   try {
     const pause = paused()
     if (pause) return { ran: true, paused: pause, lines: [] }
-    const lines = list({ configFile }).workspaces.flatMap(spore => [...interruptedIn(spore, { env, configFile }), ...releaseIn(spore, { now, env, configFile }), ...fireIn(spore, { now, env, configFile }), ...dreamIn(spore, { now, env, configFile })])
+    const lines = list({ configFile }).workspaces.flatMap(spore => [...interruptedIn(spore, { env, configFile }), ...handingIn(spore, { env }), ...releaseIn(spore, { now, env, configFile }), ...fireIn(spore, { now, env, configFile }), ...dreamIn(spore, { now, env, configFile })])
     return { ran: true, lines }
   } finally {
     closeSync(fd)
@@ -62,6 +68,15 @@ function interruptedIn ({ ws }, { env, configFile }) {
   } catch (err) {
     return [{ ws, state: 'failed', why: errorText(err) }]
   }
+}
+
+// Handed over by the runner's own helper, detached: the pass never waits on the service, and two
+// passes handing one interaction make it once, since the service keys on its id.
+function handingIn ({ ws }, { env }) {
+  const asked = interactionsIn(ws, { state: 'asked' })
+  if (!asked.length) return []
+  spawn(process.execPath, [INTERACTION_HELPER, 'hand', `--ws=${ws}`], { detached: true, stdio: 'ignore', env }).unref()
+  return [{ ws, state: 'handing', interactions: asked.length }]
 }
 
 const HELD_BY = {

@@ -61,6 +61,7 @@ The file is written whole and renamed into place.
 | `plugins` | the plugins allowed on this machine; written by `spore plugin allow`, not by `config set` | none |
 | `replyTo` | per spore, where answers go when what a turn read asked from nowhere, as `{ "triage": "discord:ops/1234" }` | none |
 | `approvals` | the hooks an approval may tell how it ended, each by its URL and the variable holding its secret | none |
+| `interactions` | the handlers a spore may ask for something whose result comes back later, by name: a URL and the variable holding the secret spore signs with, or a program | none |
 
 A path starting with `~` is kept as written; a relative one is resolved when it is set.
 `spore setup` offers `~/.spore` as the home. `~/.config/spore` holds your configuration and keys;
@@ -238,6 +239,30 @@ spore approval ls <spore>                 # each one, and how it ended
 ```
 
 Telegram and Teams carry them; an approval asked in a Discord channel is refused for now.
+
+### `interactions`
+
+```json
+{
+  "interactions": {
+    "review": { "url": "https://ask.example/", "secret": "${REVIEW_SECRET}", "what": "a person keeps or drops each change" },
+    "to-file": { "program": "/home/op/bin/ask-to-file", "what": "written down, answered later" }
+  }
+}
+```
+
+Names each handler a spore granted it in `interactions.handlers` may ask
+([interactions.md](interactions.md)), by a name of letters, digits, `.`, `-` and `_`, starting with
+a letter or digit, at most 64. Each has `what`, one line the agent reads, and either an http or
+https `url`, the base of its API, with `secret`, the variable in `environment` holding the key spore
+signs every request to it with, or `program`, the absolute path of an executable spore starts once
+per request, as you, the verb as its argument and the request on stdin. No turn is given a URL, a
+path or a secret. A handler at a URL sends outcomes back through the
+[HTTP API service](#the-http-api-service), so it needs a caller in `api.json` reaching the spores it
+serves; one on this host may run `spore interaction outcome <spore> <id> [<file>|-]` instead. A spore
+asks only when it lives under `home`, since that is how an outcome finds it again, and a turn of a
+spore granted a handler not described here is refused. `spore tick` hands over any interaction its
+handler could not take. Edited by hand, as `approvals` is.
 
 ## `$XDG_STATE_HOME/spore/`
 

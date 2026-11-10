@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 
 pub const NAME_MOST: usize = 64;
 
-pub const NAME_KINDS: [&str; 10] = [
+pub const NAME_KINDS: [&str; 11] = [
     "spore",
     "schedule",
     "job",
@@ -16,6 +16,7 @@ pub const NAME_KINDS: [&str; 10] = [
     "bot",
     "sporangium",
     "approval",
+    "handler",
     "plugin",
     "precursor",
 ];

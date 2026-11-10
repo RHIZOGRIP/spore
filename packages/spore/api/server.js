@@ -1,8 +1,8 @@
 /**
  * The library's verbs over HTTP, for a caller that is not on this machine or not in this
  * container: send, watch, show, list, stop, wrap, extend, the running turn as a person is shown it and
- * a line of the caller's own in it, and
- * approvals asked and read, and a program's delivery, prepared and timed as its spore says. Every
+ * a line of the caller's own in it, approvals asked and read, a program's delivery, prepared and timed as its spore says, and the
+ * outcome of an interaction the spore asked for, from the handler that took it. Every
  * request names its caller by token and reaches only the spores that caller may; its
  * `traceparent` is the parent of the request's span, which a message carries on to its turn.
  * Contract: ARCHITECTURE.md, "The HTTP API".
@@ -27,10 +27,12 @@ import { SporeError } from '../src/observability/errors.js'
 import { readBody } from '../src/infra/http.js'
 import { endSpanError, endSpanOk, formatTraceparent, parseTraceparent, startSpan } from '../src/observability/tracing.js'
 import { deliver } from '../src/core/route.js'
+import { takeOutcome } from '../src/core/interactions.js'
 import { callerOf, reaches } from './config.js'
 
 const MAX_BODY = 32 * 1024 * 1024
 const ROUTE = /^\/v1\/spores(?:\/([^/]+)(?:\/(messages|deliveries|events|live|annotate|stop|wrap|extend|approvals)(?:\/([0-9a-f]{12}))?)?)?\/?$/
+const OUTCOME = /^\/v1\/spores\/([^/]+)\/interactions\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/outcome\/?$/
 const DELIVERY = /^[A-Za-z0-9._:-]{1,128}$/
 const LEVELS = ['brief', 'plain', 'details']
 const PAYLOAD = 'payload.json'
@@ -42,7 +44,10 @@ const STATUS = {
   API_METHOD: 405,
   API_TOO_LARGE: 413,
   ADMISSION_FULL: 503,
-  PAUSED: 503
+  PAUSED: 503,
+  INTERACTION_UNKNOWN: 404,
+  INTERACTION_ANSWERED: 409,
+  INTERACTION_CLOSED: 409
 }
 
 const failure = (type, message, detail) => new SporeError(message, { type, detail })
@@ -173,6 +178,7 @@ export function createApiServer ({ api, env, log = () => {} }) {
       if (problem) throw failure('API_BAD_REQUEST', 'replyTo is not a conversation', problem)
       return { status: 200, body: stop(ws, { replyTo }) }
     },
+    'POST outcome': async ({ request, response, ws, id }) => ({ status: 200, body: takeOutcome(ws, id, await jsonOf(request, response), { env, configFile: CONFIG_FILE }) }),
     'POST wrap': async ({ request, response, ws }) => ({ status: 200, body: wrapTurn(ws, (await jsonOf(request, response)).wait) }),
     'POST extend': async ({ request, response, ws }) => {
       const { dimension, amount } = await jsonOf(request, response)
@@ -202,9 +208,10 @@ export function createApiServer ({ api, env, log = () => {} }) {
 
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://spore')
+    const outcome = OUTCOME.exec(url.pathname)
     const found = ROUTE.exec(url.pathname)
-    const [, name, action, id] = found ?? []
-    const route = !found || (id && action !== 'approvals') ? null : !name ? 'spores' : id ? 'approval' : action ?? 'spore'
+    const [, name, action, id] = outcome ? [outcome[0], outcome[1], 'outcome', outcome[2]] : found ?? []
+    const route = outcome ? 'outcome' : !found || (id && action !== 'approvals') ? null : !name ? 'spores' : id ? 'approval' : action ?? 'spore'
     const span = startSpan(`spore.api.${route ?? 'unknown'}`, { 'http.method': request.method, ...(name ? { 'spore.name': name } : {}) }, parseTraceparent(request.headers.traceparent))
     const traceparent = formatTraceparent(span)
     let caller = null

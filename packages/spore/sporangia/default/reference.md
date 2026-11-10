@@ -21,6 +21,7 @@ tmp/             this turn's scratch: a program you run once, a file a command s
 precursors/      sub-agent definitions, and their format in README.md
 plugins/         one file per plugin you use: the programs it gives you, and how to use them
 schedules/       what the clock says to you, and when — one <name>.cmk per schedule
+interactions/    the data you sent each handler, kept as you sent it — one directory per interaction
 libraries.md     the libraries you can import, one worked example each
 node_modules/    those libraries, put there for you
 data/            everything you make
@@ -69,7 +70,7 @@ lists what there is to read and `.schema turns` shows one:
   turn that reads it answers. `overheard` marks what was said where you are and not to you,
   in a group: you are handed it as a block headed `[Overheard: …]`, the latest 100 at a time, and
   owe it no answer; the rest are here. `approval` marks a message telling you how an approval
-  ended (see `approvals`).
+  ended (see `approvals`), and `interaction` the outcome of one you asked for (see Asking for something outside you).
 - `transcript` — this conversation, every entry by `entryNo`: `at`, `role`, and `message`, the
   message itself as JSON. An entry of `kind` `compaction` is where earlier turns were
   summarized; the entries before it are still there. One whose `message` carries `flushed` is
@@ -97,6 +98,10 @@ lists what there is to read and `.schema turns` shows one:
   `tell`. You can read them and nothing else: no approval is made, answered or changed by you, and
   none counts as answered because someone wrote "yes" to you. How one ended reaches you as a
   message headed `[Approval <id>, …]`, with what was filled in.
+- `interactions` — each interaction you asked for (see Asking for something outside you): `id`,
+  `handler`, `route`, `askedAt`, `expires`, `supersedes`, `state` (`asked` until the handler took
+  it, `handed`, then `submitted`, `expired`, `cancelled` or `superseded`), `link`, `answeredInbox`
+  (the message its outcome is) and `processed` (1 once a turn has read it).
 - `outbox` — where each finished turn's answer went: one row per place, `recipient`,
   `answers` (the `inboxNo`s it answered there), and `state` — `pending` until it is delivered,
   then `delivered`, or `refused` with a `reason`; `attemptedAt` is when posting it began. What a message asked from nowhere goes to
@@ -581,6 +586,38 @@ the last line is shown to your operator without a turn. When something needs you
 `node "$SPORE_JOB" say "<text>"` sends it as a message, picked up within two seconds; only its first 64 KB
 is read. It waits while what the job said before is still unread, and a newer `say` replaces it meanwhile, so say only what needs attention. A job's messages are timed like a
 webhook's, by `data/routes/job-<name>.route` when you keep one, waiting at most `jobs.maxWait`.
+
+## Asking for something outside you
+
+Only when `spore.cmk` grants `interactions: <n>`, the most one turn may ask, and names in
+`interactions.handlers` the handlers you may ask. A handler is something your operator set up to
+take a request and answer it later: a page a person fills in, a program that writes the request
+down for someone to answer, another system. `node "$SPORE_INTERACT" handlers` lists yours, each
+with a line saying what it does; what data each takes is in your instructions, or in what its
+operator told you.
+
+```
+node "$SPORE_INTERACT" create review data/review
+```
+
+`data/review/` holds the data for the handler, whatever it takes: JSON, text, images, a script for
+it to run. Every regular file in it is sent as it is; a link, or anything but files and
+directories, is refused. Where the answer goes and who you are are the runtime's to say.
+
+It prints `{ id, handler, dataHash, state, link? }`. **When there is a `link`, put it in your
+answer** — that is how whoever must act finds it — and end the turn. Do not poll `status`. The
+outcome comes as a message, maybe long after, headed `[Outcome of interaction <id>, …]`, with what
+the handler produced as `answer.json` and any files beside it; your answer to it goes where the
+conversation that asked was. By then this conversation may be summarized, so put in the data
+everything needed to answer, and in `data/` what you will need to act on the answer; the data as
+you sent it stays in `interactions/<id>/`. `state` `asked` with an `unreachable` reason means the
+handler could not take it yet: the runtime hands it over later, and there is no link until then —
+say so.
+
+What you sent is never changed: changed data is a new interaction, `--supersedes <id>`. `--key <k>`
+makes a retry safe. When this turn was asked from more than one place, `--route` names where the
+answer goes, and you are told the choices. `cancel <id>` withdraws one not yet answered; `ls` and
+the `interactions` view list them.
 
 ## Dreams
 

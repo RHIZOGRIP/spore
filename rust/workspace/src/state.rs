@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 16;
+pub const SCHEMA_VERSION: i64 = 17;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -77,6 +77,7 @@ CREATE TABLE t_inbox (
   api          TEXT CHECK (api IS NULL OR (api <> '' AND schedule IS NULL AND hook IS NULL AND job IS NULL AND fromName IS NULL AND overheard = 0 AND approval IS NULL AND replyTo IS NULL)),
   startsTurn   INTEGER NOT NULL DEFAULT 1 CHECK (startsTurn IN (0, 1) AND (startsTurn = 1 OR hook IS NOT NULL OR job IS NOT NULL OR api IS NOT NULL)),
   hop          INTEGER CHECK (hop IS NULL OR (hop >= 0 AND api IS NOT NULL)),
+  interaction  TEXT CHECK (interaction IS NULL OR (interaction <> '' AND schedule IS NULL AND hook IS NULL AND job IS NULL AND api IS NULL AND approval IS NULL AND overheard = 0 AND replyTo IS NOT NULL)),
   UNIQUE (schedule, due),
   CHECK ((schedule IS NULL) = (due IS NULL)),
   CHECK ((hook IS NULL) = (hookDelivery IS NULL)),
@@ -207,6 +208,7 @@ CREATE VIEW inbox AS
          i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
          i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
          i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval, i.api, i.startsTurn, i.hop,
+         i.interaction,
          i.inboxNo <= w.inboxConsumed AS consumed,
          EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside,
          NOT i.overheard AND NOT EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS asks
@@ -346,11 +348,44 @@ CREATE VIEW approvals AS
          shown, note, postedAt, choice, inputs, answererId, answererName, answeredAt, outcome,
          replaced, tell, reason, settledAt, fields
     FROM t_approvals;
+
+CREATE TABLE t_interactions (
+  interactionNo  INTEGER PRIMARY KEY,
+  id             TEXT    NOT NULL UNIQUE,
+  key            TEXT    UNIQUE,
+  v              INTEGER NOT NULL,
+  handler        TEXT    NOT NULL,
+  dataHash       TEXT    NOT NULL,
+  route          TEXT    NOT NULL,
+  origin         TEXT    NOT NULL,
+  turnId         TEXT    NOT NULL REFERENCES t_turns (turnId),
+  askedAt        TEXT    NOT NULL,
+  expires        TEXT,
+  supersedes     TEXT,
+  state          TEXT    NOT NULL CHECK (state IN ('asked', 'handed', 'submitted', 'expired', 'cancelled', 'superseded')),
+  link           TEXT,
+  handedAt       TEXT,
+  receipt        TEXT,
+  answeredInbox  INTEGER,
+  endedAt        TEXT,
+  CHECK (state <> 'handed' OR handedAt IS NOT NULL),
+  CHECK ((state IN ('submitted', 'expired')) = (answeredInbox IS NOT NULL)),
+  CHECK ((state = 'submitted') = (receipt IS NOT NULL)),
+  CHECK ((state IN ('asked', 'handed')) = (endedAt IS NULL))
+);
+CREATE INDEX t_interactions_turn ON t_interactions (turnId);
+
+CREATE VIEW interactions AS
+  SELECT i.interactionNo, i.id, i.key, i.v, i.handler, i.dataHash, i.route, i.origin, i.turnId,
+         i.askedAt, i.expires, i.supersedes, i.state, i.link, i.handedAt, i.receipt,
+         i.answeredInbox, i.endedAt,
+         i.answeredInbox IS NOT NULL AND i.answeredInbox <= w.inboxConsumed AS processed
+    FROM t_interactions i, t_workspace w;
 "#;
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 15] = [
+const MIGRATIONS: [(i64, &str); 16] = [
     (
         1,
         r#"
@@ -669,6 +704,57 @@ CREATE TABLE t_stops (
 );
 "#,
     ),
+    (
+        16,
+        r#"
+ALTER TABLE t_inbox ADD COLUMN interaction TEXT CHECK (interaction IS NULL OR (interaction <> '' AND schedule IS NULL AND hook IS NULL AND job IS NULL AND api IS NULL AND approval IS NULL AND overheard = 0 AND replyTo IS NOT NULL));
+
+DROP VIEW inbox;
+CREATE VIEW inbox AS
+  SELECT i.inboxNo, i.at, i.text, i.bodyPath, i.bodyBytes, i.bodyHead, i.bodyTail,
+         i.files, i.schedule, i.due, i.hook, i.hookEvent, i.hookDelivery,
+         i.job, i.jobEvent, i.jobRun, i.traceparent, i.requestId, i.replyTo,
+         i.fromName, i.fromId, i.fromWhere, i.fromZone, i.overheard, i.approval, i.api, i.startsTurn, i.hop,
+         i.interaction,
+         i.inboxNo <= w.inboxConsumed AS consumed,
+         EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS setAside,
+         NOT i.overheard AND NOT EXISTS (SELECT 1 FROM t_set_aside s WHERE s.inboxNo = i.inboxNo) AS asks
+    FROM t_inbox i, t_workspace w;
+
+CREATE TABLE t_interactions (
+  interactionNo  INTEGER PRIMARY KEY,
+  id             TEXT    NOT NULL UNIQUE,
+  key            TEXT    UNIQUE,
+  v              INTEGER NOT NULL,
+  handler        TEXT    NOT NULL,
+  dataHash       TEXT    NOT NULL,
+  route          TEXT    NOT NULL,
+  origin         TEXT    NOT NULL,
+  turnId         TEXT    NOT NULL REFERENCES t_turns (turnId),
+  askedAt        TEXT    NOT NULL,
+  expires        TEXT,
+  supersedes     TEXT,
+  state          TEXT    NOT NULL CHECK (state IN ('asked', 'handed', 'submitted', 'expired', 'cancelled', 'superseded')),
+  link           TEXT,
+  handedAt       TEXT,
+  receipt        TEXT,
+  answeredInbox  INTEGER,
+  endedAt        TEXT,
+  CHECK (state <> 'handed' OR handedAt IS NOT NULL),
+  CHECK ((state IN ('submitted', 'expired')) = (answeredInbox IS NOT NULL)),
+  CHECK ((state = 'submitted') = (receipt IS NOT NULL)),
+  CHECK ((state IN ('asked', 'handed')) = (endedAt IS NULL))
+);
+CREATE INDEX t_interactions_turn ON t_interactions (turnId);
+
+CREATE VIEW interactions AS
+  SELECT i.interactionNo, i.id, i.key, i.v, i.handler, i.dataHash, i.route, i.origin, i.turnId,
+         i.askedAt, i.expires, i.supersedes, i.state, i.link, i.handedAt, i.receipt,
+         i.answeredInbox, i.endedAt,
+         i.answeredInbox IS NOT NULL AND i.answeredInbox <= w.inboxConsumed AS processed
+    FROM t_interactions i, t_workspace w;
+"#,
+    ),
 ];
 
 /// Opens the workspace's database for writing — creating it and its schema the first time —
@@ -915,7 +1001,7 @@ enum Kind {
 }
 
 /// What an inbox entry may say, by column. `inboxNo` is the database's to give.
-const INBOX_COLUMNS: [(&str, Kind); 27] = [
+const INBOX_COLUMNS: [(&str, Kind); 28] = [
     ("at", Kind::Text),
     ("text", Kind::Text),
     ("bodyPath", Kind::Text),
@@ -943,6 +1029,7 @@ const INBOX_COLUMNS: [(&str, Kind); 27] = [
     ("api", Kind::Text),
     ("startsTurn", Kind::Flag),
     ("hop", Kind::Integer),
+    ("interaction", Kind::Text),
 ];
 
 /// What a turn record carries into its row. `turnNo` and `inboxFrom` are finalization's to
@@ -2965,6 +3052,247 @@ pub fn prune_trail(ws: &Path, keep: u32) -> Result<Vec<String>, String> {
     Ok(dropped)
 }
 
+/// What an interaction's record carries into its row when it is asked. `state` is the
+/// workspace's to set, and the rest comes as the interaction moves.
+const INTERACTION_COLUMNS: [(&str, Kind); 11] = [
+    ("id", Kind::Text),
+    ("key", Kind::Text),
+    ("v", Kind::Integer),
+    ("handler", Kind::Text),
+    ("dataHash", Kind::Text),
+    ("route", Kind::Text),
+    ("origin", Kind::Json),
+    ("turnId", Kind::Text),
+    ("askedAt", Kind::Text),
+    ("expires", Kind::Text),
+    ("supersedes", Kind::Text),
+];
+
+/// An interaction recorded `asked` — before the runner hands it to its handler, so one the
+/// handler never confirmed is still known, and handed again. `most` bounds what one turn asks,
+/// supersessions included. Answers `{ interactionNo }`; `{ repeated, id, state, link }` when
+/// its `key` was used for the same data; or `{ refused }`: `key` (used for other data),
+/// `full` (with `made`), `supersedes` (that one is not this spore's or is no longer open, with its
+/// `state` when it is this spore's).
+pub fn ask_interaction(ws: &Path, record: &str, most: i64) -> Result<Value, String> {
+    let record =
+        Record::parse(record).map_err(|e| format!("an interaction is a JSON object — {e}"))?;
+    let text = |field: &str| record.get::<String>(field);
+    let (Some(_), Some(_), Some(route), Some(turn), Some(hash)) = (
+        text("id"),
+        text("handler"),
+        text("route"),
+        text("turnId"),
+        text("dataHash"),
+    ) else {
+        return Err("an interaction names its id, handler, route, turn and data hash".into());
+    };
+    check_reply_to(&route)?;
+    let mut row = columns(&record, &INTERACTION_COLUMNS, &[])?;
+    row.push(("state", SqlValue::Text("asked".into())));
+    writing(ws, |conn| {
+        let tx = immediate(conn)?;
+        if let Some(key) = text("key") {
+            let known: Option<(String, String, String, Option<String>)> = tx
+                .query_row(
+                    "SELECT id, dataHash, state, link FROM t_interactions WHERE key = ?1",
+                    [&key],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .optional()
+                .map_err(failed_to("look the interaction's key up"))?;
+            if let Some((id, known_hash, state, link)) = known {
+                return Ok(if known_hash == hash {
+                    json!({ "repeated": true, "id": id, "state": state, "link": link })
+                } else {
+                    json!({ "refused": "key" })
+                });
+            }
+        }
+        if let Some(old) = text("supersedes") {
+            let state: Option<String> = tx
+                .query_row(
+                    "SELECT state FROM t_interactions WHERE id = ?1",
+                    [&old],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(failed_to("look the superseded interaction up"))?;
+            match state.as_deref() {
+                Some("asked" | "handed") => {}
+                other => return Ok(json!({ "refused": "supersedes", "state": other })),
+            }
+        }
+        let made: i64 = tx
+            .query_row(
+                "SELECT count(*) FROM t_interactions WHERE turnId = ?1",
+                [&turn],
+                |row| row.get(0),
+            )
+            .map_err(failed_to("count the turn's interactions"))?;
+        if made >= most {
+            return Ok(json!({ "refused": "full", "made": made }));
+        }
+        insert(&tx, "t_interactions", &row)
+            .map_err(|e| format!("cannot ask the interaction — {e}"))?;
+        let number = tx.last_insert_rowid();
+        tx.commit().map_err(failed_to("ask the interaction"))?;
+        Ok(json!({ "interactionNo": number }))
+    })
+}
+
+/// An asked interaction its handler confirmed, with the link it answered, if any; the one it
+/// supersedes, if still open, superseded in the same transaction, as the handler did. False when
+/// it was no longer asked.
+pub fn hand_interaction(ws: &Path, id: &str, link: Option<&str>) -> Result<bool, String> {
+    let now = crate::iso_now();
+    writing(ws, |conn| {
+        let tx = immediate(conn)?;
+        let changed = tx
+            .execute(
+                "UPDATE t_interactions SET state = 'handed', handedAt = ?2, link = ?3
+                  WHERE id = ?1 AND state = 'asked'",
+                (id, &now, link),
+            )
+            .map_err(failed_to("hand the interaction over"))?;
+        if changed == 1 {
+            tx.execute(
+                "UPDATE t_interactions SET state = 'superseded', endedAt = ?2
+                  WHERE id = (SELECT supersedes FROM t_interactions WHERE id = ?1)
+                    AND state IN ('asked', 'handed')",
+                (id, &now),
+            )
+            .map_err(failed_to("supersede the interaction"))?;
+        }
+        tx.commit()
+            .map_err(failed_to("hand the interaction over"))?;
+        Ok(changed == 1)
+    })
+}
+
+/// An open interaction cancelled. False when it was not open.
+pub fn cancel_interaction(ws: &Path, id: &str) -> Result<bool, String> {
+    writing(ws, |conn| {
+        let changed = conn
+            .execute(
+                "UPDATE t_interactions SET state = 'cancelled', endedAt = ?2
+                  WHERE id = ?1 AND state IN ('asked', 'handed')",
+                (id, crate::iso_now()),
+            )
+            .map_err(failed_to("cancel the interaction"))?;
+        Ok(changed == 1)
+    })
+}
+
+/// The handler's outcome for interaction `id` — `submitted` with its `receipt`, or `expired` —
+/// said to the spore as `entry`, an inbox entry, in the same transaction that ends the
+/// interaction. Its request id, its `interaction` and its reply-to are the interaction's own,
+/// whatever `entry` says, so an outcome cannot be sent elsewhere. An asked one is taken too: the
+/// handler may hold it though its confirmation was lost. Answers `{ inbox, repeated }`, the same
+/// entry for the same outcome again; or `{ refused }`: `unknown`, `answered` (another outcome
+/// came first, with `state`), `ended` (cancelled or superseded, with `state`).
+pub fn answer_interaction(
+    ws: &Path,
+    id: &str,
+    outcome: &str,
+    receipt: Option<&str>,
+    entry: &str,
+) -> Result<Value, String> {
+    match (outcome, receipt) {
+        ("submitted", Some(_)) | ("expired", None) => {}
+        _ => {
+            return Err(
+                "an interaction's outcome is submitted with its receipt, or expired without one"
+                    .into(),
+            )
+        }
+    }
+    let record =
+        Record::parse(entry).map_err(|e| format!("an inbox entry is a JSON object — {e}"))?;
+    let mut row = columns(
+        &record,
+        &INBOX_COLUMNS,
+        &["requestId", "interaction", "replyTo"],
+    )?;
+    let now = crate::iso_now();
+    writing(ws, |conn| {
+        let tx = immediate(conn)?;
+        let known: Option<(String, String, Option<String>, Option<i64>)> = tx
+            .query_row(
+                "SELECT state, route, receipt, answeredInbox FROM t_interactions WHERE id = ?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(failed_to("look the interaction up"))?;
+        let Some((state, route, known_receipt, answered)) = known else {
+            return Ok(json!({ "refused": "unknown" }));
+        };
+        match state.as_str() {
+            "submitted" | "expired" => {
+                return Ok(if state == outcome && known_receipt.as_deref() == receipt {
+                    json!({ "inbox": answered, "repeated": true })
+                } else {
+                    json!({ "refused": "answered", "state": state })
+                });
+            }
+            "cancelled" | "superseded" => {
+                return Ok(json!({ "refused": "ended", "state": state }));
+            }
+            _ => {}
+        }
+        row.push(("requestId", SqlValue::Text(format!("interaction:{id}"))));
+        row.push(("interaction", SqlValue::Text(id.into())));
+        row.push(("replyTo", SqlValue::Text(route)));
+        insert(&tx, "t_inbox", &row)
+            .map_err(|e| format!("cannot say the interaction's outcome — {e}"))?;
+        let inbox_no = tx.last_insert_rowid();
+        tx.execute(
+            "UPDATE t_interactions SET state = ?2, receipt = ?3, answeredInbox = ?4, endedAt = ?5
+              WHERE id = ?1",
+            (id, outcome, receipt, inbox_no, &now),
+        )
+        .map_err(failed_to("end the interaction"))?;
+        tx.commit()
+            .map_err(failed_to("say the interaction's outcome"))?;
+        Ok(json!({ "inbox": inbox_no, "repeated": false }))
+    })
+}
+
+/// Where an interaction asked now comes from: the inbox entries said since the turn began that
+/// ask something, and where it may be answered — the reply-to of each of them, in the order they
+/// came, then the running turn's default, each once.
+pub fn interaction_origin(ws: &Path, turn_id: &str) -> Result<(Vec<i64>, Vec<String>), String> {
+    reading(ws, (Vec::new(), Vec::new()), |conn| {
+        let mut statement = conn.prepare(
+            "SELECT i.inboxNo, i.replyTo FROM inbox i, t_workspace w
+              WHERE i.inboxNo > w.inboxConsumed AND i.asks
+              ORDER BY i.inboxNo",
+        )?;
+        let unread = statement.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?))
+        })?;
+        let (mut inbox, mut routes) = (Vec::new(), Vec::new());
+        for entry in unread {
+            let (inbox_no, reply_to) = entry?;
+            inbox.push(inbox_no);
+            routes.extend(reply_to);
+        }
+        let default: Option<String> = conn
+            .query_row(
+                "SELECT replyDefault FROM t_turns WHERE turnId = ?1",
+                [turn_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        routes.extend(default);
+        let mut seen = std::collections::HashSet::new();
+        routes.retain(|route| seen.insert(route.clone()));
+        Ok((inbox, routes))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3002,6 +3330,7 @@ mod tests {
                 "events",
                 "held",
                 "inbox",
+                "interactions",
                 "jobs",
                 "limits",
                 "outbox",
@@ -3018,6 +3347,7 @@ mod tests {
                 "t_events",
                 "t_held",
                 "t_inbox",
+                "t_interactions",
                 "t_jobs",
                 "t_limits",
                 "t_outbox",
@@ -5263,5 +5593,200 @@ mod tests {
         said_with(&ws, json!({}));
         assert!(unread_past(&ws, 0).unwrap());
         assert!(!unread_past(&ws, 1).unwrap());
+    }
+
+    fn interaction(id: &str, turn: &str, extra: Value) -> String {
+        let mut record = json!({
+            "id": id, "v": 1, "handler": "review", "dataHash": format!("h-{id}"),
+            "route": "telegram:main/42", "origin": { "turnId": turn }, "turnId": turn,
+            "askedAt": "2026-11-09T00:00:00.000Z"
+        });
+        for (key, value) in extra.as_object().unwrap() {
+            record[key] = value.clone();
+        }
+        record.to_string()
+    }
+
+    #[test]
+    fn asks_an_interaction_once_per_key_and_no_more_than_a_turn_may() {
+        let ws = scratch("interaction-ask");
+        let turn = begin_turn(&ws, &crate::iso_now(), None).unwrap();
+        let asked =
+            ask_interaction(&ws, &interaction("a", &turn, json!({ "key": "k" })), 2).unwrap();
+        assert!(asked["interactionNo"].is_i64());
+        let again = ask_interaction(
+            &ws,
+            &interaction("b", &turn, json!({ "key": "k", "dataHash": "h-a" })),
+            2,
+        )
+        .unwrap();
+        assert_eq!(
+            again,
+            json!({ "repeated": true, "id": "a", "state": "asked", "link": null })
+        );
+        let other =
+            ask_interaction(&ws, &interaction("b", &turn, json!({ "key": "k" })), 2).unwrap();
+        assert_eq!(other, json!({ "refused": "key" }));
+        ask_interaction(&ws, &interaction("b", &turn, json!({})), 2).unwrap();
+        let full = ask_interaction(&ws, &interaction("c", &turn, json!({})), 2).unwrap();
+        assert_eq!(full, json!({ "refused": "full", "made": 2 }));
+        let next = begin_turn(&ws, &crate::iso_now(), None).unwrap();
+        assert!(
+            ask_interaction(&ws, &interaction("c", &next, json!({})), 2).unwrap()["interactionNo"]
+                .is_i64()
+        );
+        assert!(ask_interaction(
+            &ws,
+            &interaction("d", &next, json!({ "route": "nowhere" })),
+            2
+        )
+        .unwrap_err()
+        .contains("reply-to"));
+    }
+
+    #[test]
+    fn supersedes_only_an_open_interaction_and_only_once_the_handler_took_the_new_one() {
+        let ws = scratch("interaction-supersede");
+        let turn = begin_turn(&ws, &crate::iso_now(), None).unwrap();
+        ask_interaction(&ws, &interaction("a", &turn, json!({})), 5).unwrap();
+        assert!(hand_interaction(&ws, "a", Some("https://ask.example/a")).unwrap());
+        assert!(!hand_interaction(&ws, "a", Some("https://ask.example/a")).unwrap());
+        ask_interaction(
+            &ws,
+            &interaction("b", &turn, json!({ "supersedes": "a" })),
+            5,
+        )
+        .unwrap();
+        let state = |id: &str| -> String {
+            let conn = open_state(&ws).unwrap();
+            let state = conn
+                .query_row(
+                    "SELECT state FROM interactions WHERE id = ?1",
+                    [id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            close_state(conn).unwrap();
+            state
+        };
+        assert_eq!(state("a"), "handed");
+        assert!(hand_interaction(&ws, "b", None).unwrap());
+        assert_eq!(state("a"), "superseded");
+        assert_eq!(
+            ask_interaction(
+                &ws,
+                &interaction("c", &turn, json!({ "supersedes": "a" })),
+                5
+            )
+            .unwrap(),
+            json!({ "refused": "supersedes", "state": "superseded" })
+        );
+        assert_eq!(
+            ask_interaction(
+                &ws,
+                &interaction("c", &turn, json!({ "supersedes": "elsewhere" })),
+                5
+            )
+            .unwrap(),
+            json!({ "refused": "supersedes", "state": null })
+        );
+        assert!(cancel_interaction(&ws, "b").unwrap());
+        assert!(!cancel_interaction(&ws, "b").unwrap());
+        assert_eq!(state("b"), "cancelled");
+    }
+
+    #[test]
+    fn says_an_outcome_once_to_the_route_it_recorded_whatever_the_entry_names() {
+        let ws = scratch("interaction-answer");
+        let turn = begin_turn(&ws, &crate::iso_now(), None).unwrap();
+        ask_interaction(&ws, &interaction("a", &turn, json!({})), 5).unwrap();
+        let entry = json!({
+            "at": "2028-03-02T09:14:40.000Z", "text": "answered",
+            "replyTo": "discord:elsewhere/1", "requestId": "mine", "interaction": "b",
+            "fromName": "Ada", "fromId": "p1", "fromWhere": "interactions"
+        })
+        .to_string();
+        let said = answer_interaction(&ws, "a", "submitted", Some("r1"), &entry).unwrap();
+        assert_eq!(said["repeated"], json!(false));
+        let inbox = said["inbox"].as_i64().unwrap();
+        assert_eq!(
+            answer_interaction(&ws, "a", "submitted", Some("r1"), &entry).unwrap(),
+            json!({ "inbox": inbox, "repeated": true })
+        );
+        assert_eq!(
+            answer_interaction(&ws, "a", "submitted", Some("r2"), &entry).unwrap(),
+            json!({ "refused": "answered", "state": "submitted" })
+        );
+        assert_eq!(
+            answer_interaction(&ws, "nope", "expired", None, &entry).unwrap(),
+            json!({ "refused": "unknown" })
+        );
+        assert!(answer_interaction(&ws, "a", "submitted", None, &entry).is_err());
+        let conn = open_state(&ws).unwrap();
+        let said: (String, String, String, String) = conn
+            .query_row(
+                "SELECT replyTo, requestId, interaction, fromName FROM inbox WHERE inboxNo = ?1",
+                [inbox],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            said,
+            (
+                "telegram:main/42".into(),
+                "interaction:a".into(),
+                "a".into(),
+                "Ada".into()
+            )
+        );
+        let ended: (String, String, i64, i64) = conn
+            .query_row(
+                "SELECT state, receipt, answeredInbox, processed FROM interactions WHERE id = 'a'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(ended, ("submitted".into(), "r1".into(), inbox, 0));
+        close_state(conn).unwrap();
+
+        ask_interaction(&ws, &interaction("c", &turn, json!({})), 5).unwrap();
+        cancel_interaction(&ws, "c").unwrap();
+        assert_eq!(
+            answer_interaction(&ws, "c", "expired", None, &entry).unwrap(),
+            json!({ "refused": "ended", "state": "cancelled" })
+        );
+    }
+
+    #[test]
+    fn offers_as_routes_the_unread_reply_tos_then_the_turn_default() {
+        let ws = scratch("interaction-routes");
+        let turn = begin_turn(&ws, &crate::iso_now(), Some("discord:ops/7")).unwrap();
+        assert_eq!(
+            interaction_origin(&ws, &turn).unwrap(),
+            (vec![], vec!["discord:ops/7".to_string()])
+        );
+        for reply_to in ["telegram:main/42", "terminal", "telegram:main/42"] {
+            append_inbox(
+                &ws,
+                &json!({ "at": "a", "text": "hi", "replyTo": reply_to }).to_string(),
+            )
+            .unwrap();
+        }
+        append_inbox(
+            &ws,
+            &json!({ "at": "b", "text": "x", "overheard": true, "fromName": "Bob", "fromId": "telegram:2", "fromWhere": "a group" }).to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            interaction_origin(&ws, &turn).unwrap(),
+            (
+                vec![1, 2, 3],
+                vec![
+                    "telegram:main/42".to_string(),
+                    "terminal".into(),
+                    "discord:ops/7".into()
+                ]
+            )
+        );
     }
 }

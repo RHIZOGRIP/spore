@@ -903,7 +903,7 @@ describe('the read verbs', () => {
     enqueue(ws, 'hello')
     enqueue(ws, 'again')
 
-    expect(sql({ ws: 'test', configFile: CONFIG }).lines).toEqual(['approvals', 'calls', 'cells', 'events', 'held', 'inbox', 'jobs', 'limits', 'outbox', 'transcript', 'turns'])
+    expect(sql({ ws: 'test', configFile: CONFIG }).lines).toEqual(['approvals', 'calls', 'cells', 'events', 'held', 'inbox', 'interactions', 'jobs', 'limits', 'outbox', 'transcript', 'turns'])
     expect(sql({ ws: 'test', query: 'SELECT inboxNo, text FROM inbox ORDER BY inboxNo', configFile: CONFIG }).lines)
       .toEqual(['inboxNo  text', '1        hello', '2        again'])
     expect(sql({ ws: 'test', query: 'SELECT inboxNo FROM inbox', json: true, configFile: CONFIG }).lines).toEqual(['{"inboxNo":1}', '{"inboxNo":2}'])

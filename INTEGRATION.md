@@ -522,6 +522,7 @@ All under `/v1`, JSON in and out.
 | `GET /v1/spores/<name>/approvals` | — | `200 { "approvals": [record] }`, oldest first |
 | `GET /v1/spores/<name>/approvals/<id>` | — | `200`, the approval's record, as `approvalsIn` has it |
 | `POST /v1/spores/<name>/deliveries` | `{ "delivery", "text"?, "payload"?, "attach"?, "hop"? }` ([below](#delivering-from-a-program)) | `202 { "delivery", "outcome", "started" }` |
+| `POST /v1/spores/<name>/interactions/<id>/outcome` | the outcome of an interaction the spore asked for, sent by its handler ([docs/interactions.md](docs/interactions.md#service--spore-the-outcome)) | `200 { "inbox", "repeated" }` |
 
 `text` is required and must not be blank. `after` is a whole number; `0` replays what retention
 kept. A request body is at most 32 MiB.
@@ -599,7 +600,8 @@ An error is `{ "error": { "type", "message", "detail"? } }`.
 |---|---|
 | 400 | `API_BAD_REQUEST` (a body that is not a JSON object, a message without text, a malformed `attach` or `after`), and any other refusal from a verb, such as `LIMIT_UNKNOWN`, `LIMIT_AMOUNT`, `PLUGIN_NOT_ALLOWED`, `REQUEST_ID_INVALID` |
 | 401 | `API_UNAUTHORIZED` |
-| 404 | `NOT_A_WORKSPACE`, `API_NOT_FOUND` |
+| 404 | `NOT_A_WORKSPACE`, `API_NOT_FOUND`, `INTERACTION_UNKNOWN` |
+| 409 | `INTERACTION_ANSWERED`, `INTERACTION_CLOSED` |
 | 405 | `API_METHOD` |
 | 413 | `API_TOO_LARGE` |
 | 503 | `ADMISSION_FULL`, `PAUSED` |

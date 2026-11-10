@@ -663,6 +663,38 @@ pub fn refuse_approval(ws: String, id: String, reason: String) -> napi::Result<b
     workspace::refuse_approval(Path::new(&ws), &id, &reason).map_err(failed)
 }
 
+/// `{ interactionNo }`, `{ repeated, id, state, link }` or `{ refused }`, as JSON.
+#[napi]
+pub fn ask_interaction(ws: String, record: String, most: i64) -> napi::Result<String> {
+    workspace::ask_interaction(Path::new(&ws), &record, most)
+        .map(|answer| answer.to_string())
+        .map_err(failed)
+}
+
+#[napi]
+pub fn hand_interaction(ws: String, id: String, link: Option<String>) -> napi::Result<bool> {
+    workspace::hand_interaction(Path::new(&ws), &id, link.as_deref()).map_err(failed)
+}
+
+#[napi]
+pub fn cancel_interaction(ws: String, id: String) -> napi::Result<bool> {
+    workspace::cancel_interaction(Path::new(&ws), &id).map_err(failed)
+}
+
+/// `{ inbox, repeated }` or `{ refused }`, as JSON.
+#[napi]
+pub fn answer_interaction(
+    ws: String,
+    id: String,
+    outcome: String,
+    receipt: Option<String>,
+    entry: String,
+) -> napi::Result<String> {
+    workspace::answer_interaction(Path::new(&ws), &id, &outcome, receipt.as_deref(), &entry)
+        .map(|answer| answer.to_string())
+        .map_err(failed)
+}
+
 #[napi]
 pub fn settle_approval(
     ws: String,

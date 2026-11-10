@@ -476,6 +476,32 @@ or null.
 
 ---
 
+## Interactions
+
+The protocol: [docs/interactions.md](interactions.md); the design:
+[ARCHITECTURE §Interactions](../ARCHITECTURE.md#interactions). The spore asks a handler the
+operator describes in `config.json`'s `interactions`; the handler's outcome comes back through
+the writer below.
+
+### `interactionOutcome`
+
+```
+interactionOutcome({ ws, id, outcome, env = process.env, configFile }) → { inbox, repeated }
+```
+
+Takes the outcome of the interaction `id`, as its handler sends it ([docs/interactions.md
+§Service → spore: the outcome](interactions.md#service--spore-the-outcome)), with the checks
+spore-api applies: records it, says it to the spore with what it carries beside it, and starts a
+turn to read it. `inbox` is the entry it landed at; `repeated` is true when the same outcome was
+taken already, and then it is that entry. Throws `INTERACTION_UNKNOWN` for an interaction the
+spore never asked, `INTERACTION_OUTCOME` for an outcome that does not match what was asked (its
+version, its `dataHash`, its shape, a receipt that does not recompute), `INTERACTION_ANSWERED` or
+`INTERACTION_CLOSED` when another outcome, a cancel or a newer interaction got there first, and
+`ADMISSION_FULL` or `PAUSED` when the turn cannot start yet — the outcome kept, so sending it
+again starts it.
+
+---
+
 ## Reading a spore
 
 Nothing here starts anything. The verbs taking `{ ws }` are what `spore ls`, `show`, `log` and

@@ -107,6 +107,19 @@ export function send (ws, message, { attach = [], schedule, hook, from, tracepar
   }
 }
 
+/**
+ * A turn started for what is already in the inbox, unless one is running — which reads it at its
+ * next round, or starts another after it lets go, as for a `send`.
+ *
+ * @returns {{ ws: string, started: boolean, pid: number|null }}
+ */
+export function wake (ws, { env = process.env, configFile = CONFIG_FILE } = {}) {
+  const workspace = resolve(ws)
+  if (stateOf(workspace).state === RUNNING) return { ws: workspace, started: false, pid: null }
+  const plugins = preparePlugins(workspace, { config: readConfig(configFile) })
+  return withSlot(configFile, slot => ({ ws: workspace, started: true, pid: startRunner(workspace, { slot, plugins, env, configFile }) }))
+}
+
 const startsNone = (row) => JSON.parse(row.entry).startsTurn === false
 
 /**
@@ -169,6 +182,7 @@ export function startRunner (workspace, { slot, plugins, debug = false, continui
       '--sources', resolve(dirname(config.file), SOURCES_FILE),
       '--memory', resolve(dirname(config.file), MEMORY_FILE),
       ...(Object.keys(plugins.sources).length ? ['--plugin-sources', JSON.stringify(plugins.sources)] : []),
+      '--interaction-handlers', JSON.stringify(Object.keys(config.interactions ?? {})),
       ...(largestFile === null ? [] : ['--largest-file', String(largestFile)]),
       ...(freeFloor === null ? [] : ['--free-floor', String(freeFloor)]),
       ...(modelSessions === null ? [] : ['--model-sessions', String(modelSessions)]),
