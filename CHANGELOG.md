@@ -4,6 +4,31 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.62.2] — Fixed: a short output holding a form feed or colour codes comes back in its record
+
+### Fixed
+
+- A short output was left out of its call record whenever it held a control character other than
+  tab, line feed or carriage return, and the record gave no reason, so it read as a command that
+  found nothing. A `grep` across text extracted from a PDF hit this at every page break, and a
+  program that colours its output hit it on every line. An output is now text when it is valid
+  UTF-8 with no NUL byte, and comes back whole.
+
+### Added
+
+- A call record shown to the agent names the control characters its inlined content holds, in
+  `controlCharacters`, when there are any beyond tab, line feed, form feed and carriage return.
+- A call record shown to the agent says why a file that is not empty came back without its
+  content, in `withheld`: `over 4096 bytes` or `not text`. A `write` reports neither.
+
+### Changed
+
+- `spore send`, `spore attach`, `spore log` and `spore sql` drop what a terminal would act on from
+  what they print to one: escape and control characters, and bidirectional overrides, the same
+  rule the terminal app already applied. Printed to a file or a pipe, the text is byte for byte
+  what it was.
+- The library exports `printable`, that rule.
+
 ## [1.62.1] — Fixed: an interaction's handler program starts a user service and opens a page from a turn
 
 ### Fixed

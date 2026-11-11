@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { printable } from '../tui/printable.js'
+import { printable } from '../src/library/printable.js'
 
 describe('text put on the terminal', () => {
   it('keeps prose, its newlines, and what is not ASCII', () => {

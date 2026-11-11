@@ -19,7 +19,7 @@ import { host } from '../src/vm.js'
 
 await host(process.argv.slice(2))
 
-const { differingDocs, fork, follow, followingDocs, grantOf, isWorkspace, lastEventSeq, loadEnvironment, mimeOf, readConfig, readInbox, RUNNING, send, stateOf, stop, turnOfMessage, turnSummary, watch, workspaceFor, errorText } = await import('@rhizogrip/spore')
+const { differingDocs, fork, follow, followingDocs, grantOf, isWorkspace, lastEventSeq, loadEnvironment, mimeOf, printable, readConfig, readInbox, RUNNING, send, stateOf, stop, turnOfMessage, turnSummary, watch, workspaceFor, errorText } = await import('@rhizogrip/spore')
 const { renderHeader } = await import('../src/dispatch.js')
 const { SERVICES } = await import('../src/services.js')
 
@@ -462,7 +462,7 @@ if (argv.json) {
 
 if (settled) {
   const found = answeredBy(ws, sent.inbox)
-  if (found?.read && found.turn.output != null) process.stdout.write(found.turn.output + '\n')
+  if (found?.read && found.turn.output != null) process.stdout.write((process.stdout.isTTY ? printable(found.turn.output) : found.turn.output) + '\n')
   process.stderr.write(`spore: already sent under ${requestId} — ${found?.read ? `turn ${found.turn.turnNo} answered it` : 'no turn read it'}\n`)
   process.exit(exitOf(found?.read ? found.turn : null))
 }

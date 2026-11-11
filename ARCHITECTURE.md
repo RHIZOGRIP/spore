@@ -209,16 +209,24 @@ file the moment the tool exits, with no agent turn in between.
 
 ### Inline rule
 
-A file record may carry its **content** when it is at most 4096 bytes and valid UTF-8 text
-without control characters beyond tab, line feed and carriage return.
+A file record may carry its **content** when it is at most 4096 bytes and text: valid UTF-8 with
+no NUL byte.
 
 - **whole or not at all** ([principle 20](PRINCIPLES.md#20-complete-or-not-at-all)).
 - one rule, applied to a *file record* rather than to a stream, so `out`, `err` and any
   artifact are covered by the same mechanism with no per-stream policy.
-- conservative text detection — UTF-16 and embedded NULs are reported as mime and size, never
-  inlined.
+- text detection is the NUL test `git` and `grep` use — UTF-16 and embedded NULs are reported as
+  size, never inlined. A control character does not make a file binary: a program's colour codes
+  and pdftotext's page breaks are text, and `read` returns them anyway, a round later.
+- **names the control characters it carries.** The caller's view of inlined content holding any
+  beyond tab, line feed, form feed and carriage return lists them in `controlCharacters`
+  (`ESC`, `BS`, `0x01`), since a pattern written from what was shown has to account for them. The
+  content is the file's, never stripped; the view is JSON, so each arrives escaped.
+- **says why when it does not.** The caller's view of a non-empty file without content carries
+  `withheld`: `over 4096 bytes` or `not text`, so the record never reads as a file with nothing
+  in it.
 - **not back to the caller that supplied it.** `write` records the content and does not
-  return it. `edit` is not the same case, because what the file became is not what the caller
+  return it, nor either note about it. `edit` is not the same case, because what the file became is not what the caller
   passed.
 
 ### What a turn hands back

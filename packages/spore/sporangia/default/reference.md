@@ -137,6 +137,11 @@ Every tool call names the file it is about.
   and exited 1 failed.
 - No stream enters this conversation. A short file comes back inline in the record; a
   long one stays on disk for the next program to read.
+- A file that is not empty and comes back without `content` says why in `withheld`:
+  `over 4096 bytes`, or `not text`. It is never an empty result; read it or run a program over it.
+- `controlCharacters` beside `content` names control characters the file holds, such as `ESC`
+  for a program's colour codes. They are in the file, so a pattern you match against it has to
+  allow for them.
 
 `read` is the exception: its record carries the file's text, in `content`, because context is
 what you asked for. Set `numbered` when you will point at, cite or count lines: each line then

@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
-import { addTo, allowPlugin, annotate, billingFor, bytesText, changeText, define, defaultModel, disallowPlugin, durationText, edit, extend, flush, getKey, interactionOutcome, jobs, list, listApprovals, listPlugins, log, pause, remake, remove, removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings, show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM, errorText } from '@rhizogrip/spore'
+import { addTo, allowPlugin, annotate, billingFor, bytesText, changeText, define, defaultModel, disallowPlugin, durationText, edit, extend, flush, getKey, interactionOutcome, jobs, list, listApprovals, listPlugins, log, pause, printable, remake, remove, removeFrom, removeSchedule, requestApproval, runningLines, schedules, setDefaultModel, setKey, setSchedule, settings, show, showPlugin, sql, stateWord, stopJob, switchModel, tick, tickReport, unmetered, unpause, upgrade, usage, wrap, CONFIG_FILE, DEFAULT_SPORANGIUM, errorText } from '@rhizogrip/spore'
 import { diagnose, hostReport, renderDoctor, renderReport } from './doctor.js'
 import { hook } from './hooks.js'
 import { withMoHint } from './mo.js'
@@ -21,6 +21,8 @@ import { createServices } from './services.js'
 import { saidBy, saidText } from '../tui/conversation.js'
 
 const STATE_WIDTH = 9
+
+const say = (line) => console.log(process.stdout.isTTY ? printable(line) : line)
 
 const tilde = (path) => (path === homedir() || path.startsWith(homedir() + '/') ? `~${path.slice(homedir().length)}` : path)
 
@@ -334,14 +336,14 @@ function renderLog (result) {
   ]
   const order = (at) => at ?? '\uffff'
   timeline.sort((a, b) => order(a.at) < order(b.at) ? -1 : order(a.at) > order(b.at) ? 1 : 0)
-  for (const { line } of timeline) console.log(line)
+  for (const { line } of timeline) say(line)
   // The time column is when a turn ended, and a waiting message has not been answered by
   // one. Blank says that; when it was said is in the record for anyone who needs it.
   for (const entry of result.setAside) {
-    console.log(`  ${' '.repeat(19)}  ${'set aside'.padEnd(12)} ${' '.repeat(19)}  ${quoted([entry])}`)
+    say(`  ${' '.repeat(19)}  ${'set aside'.padEnd(12)} ${' '.repeat(19)}  ${quoted([entry])}`)
   }
   for (const entry of result.waiting) {
-    console.log(`  ${' '.repeat(19)}  ${'waiting'.padEnd(12)} ${' '.repeat(19)}  ${quoted([entry])}`)
+    say(`  ${' '.repeat(19)}  ${'waiting'.padEnd(12)} ${' '.repeat(19)}  ${quoted([entry])}`)
   }
   for (const one of result.held) {
     console.log(`  ${' '.repeat(19)}  ${one.state.padEnd(12)} ${' '.repeat(19)}  schedule ${one.name} — ${one.why}`)
@@ -668,7 +670,7 @@ export async function manage (verb, argv) {
         return 2
       }
       const { lines } = sql({ ws: name, query: query || undefined, json: Boolean(argv.json) })
-      for (const line of lines) console.log(line)
+      for (const line of lines) say(line)
       return 0
     }
     if (verb === 'tick') return emit(tick(), renderTick, (result) => tickReport(result).exit)

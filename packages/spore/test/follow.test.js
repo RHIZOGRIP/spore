@@ -49,6 +49,18 @@ describe('following a stream', () => {
     expect(out.writes.length).toBeGreaterThan(1)
     expect(out.writes.join('')).toBe('before 😀 after\n')
   })
+
+  it('drops what a terminal would act on, and leaves a file or a pipe byte for byte', async () => {
+    const said = 'done\x1b]52;c;cm0gLXJmIH4=\x07\x1b[2J\n'
+    const terminal = { ...sink(), isTTY: true }
+    const pipe = sink()
+    writeFileSync(join(ws, OUT_FILE), said)
+    writeFileSync(join(ws, ERR_FILE), said)
+
+    await follow(ws, { lines: 1, out: terminal, err: pipe, tick: 20, grace: 100 })
+    expect(terminal.writes.join('')).toBe('done]52;c;cm0gLXJmIH4=[2J\n')
+    expect(pipe.writes.join('')).toBe(said)
+  })
 })
 
 describe('the line a terminal is shown while it follows', () => {

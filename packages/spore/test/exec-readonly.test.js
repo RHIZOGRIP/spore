@@ -97,6 +97,32 @@ describe('exec is read-only', () => {
     expect(named.files.out.path).toBe('data/kept.txt')
     expect(readFileSync(resolve(WS, 'data/kept.txt'), 'utf8')).toBe('hi\n')
   })
+
+  it('inlines text holding a form feed, the page break pdftotext writes, as ordinary text', async () => {
+    const meta = JSON.parse(await exec({ command: "printf 'p1:end\\fp2:start\\n'" }))
+    expect(meta.files.out.content).toBe('p1:end\fp2:start\n')
+    expect(meta.files.out.controlCharacters).toBeUndefined()
+  })
+
+  it('inlines text holding other control characters whole, and names them', async () => {
+    const meta = JSON.parse(await exec({ command: "printf '\\033[1;93mwarn\\033[0m \\001\\n'" }))
+    expect(meta.files.out.content).toBe('\u001b[1;93mwarn\u001b[0m \u0001\n')
+    expect(meta.files.out.controlCharacters).toEqual(['0x01', 'ESC'])
+    expect(meta.files.out.withheld).toBeUndefined()
+  })
+
+  it('says why it left out a file\'s content', async () => {
+    const long = JSON.parse(await exec({ command: 'head -c 5000 /dev/zero | tr "\\0" x' }))
+    expect(long.files.out.bytes).toBe(5000)
+    expect(long.files.out.content).toBeUndefined()
+    expect(long.files.out.withheld).toBe('over 4096 bytes')
+    const binary = JSON.parse(await exec({ command: "printf 'a\\000b'" }))
+    expect(binary.files.out.bytes).toBe(3)
+    expect(binary.files.out.content).toBeUndefined()
+    expect(binary.files.out.withheld).toBe('not text')
+    const latin = JSON.parse(await exec({ command: "printf 'caf\\351'" }))
+    expect(latin.files.out.withheld).toBe('not text')
+  })
 })
 
 describe('wsexec may write', () => {

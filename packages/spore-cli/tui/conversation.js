@@ -6,9 +6,7 @@
 
 import { join } from 'node:path'
 
-import { asked, originLabel } from '@rhizogrip/spore'
-
-import { printable } from './printable.js'
+import { asked, originLabel, printable } from '@rhizogrip/spore'
 
 const MOST_FILES_SHOWN = 5
 

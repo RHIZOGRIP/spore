@@ -7,7 +7,8 @@
  * They stay two files because the answer is stdout and mixing them would make it
  * unparseable — `spore send … > answer.txt` has to keep working. While stderr is a terminal, one
  * line on it shows the running turn — `live`'s default rendering, cleared before anything else
- * is written and drawn again after.
+ * is written and drawn again after. What a model or a tool wrote is made printable on its way to
+ * a terminal and left byte for byte on its way to a file or a pipe.
  */
 
 import { existsSync, openSync, readSync, closeSync, statSync } from 'node:fs'
@@ -15,6 +16,7 @@ import { existsSync, openSync, readSync, closeSync, statSync } from 'node:fs'
 import { ERR_FILE, OUT_FILE, readEvents } from '../core/spore-dir.js'
 import { stateOf, RUNNING } from '../core/state.js'
 import { applyEvent, liveIn, renderLive } from './live.js'
+import { printable } from './printable.js'
 
 const TICK_MS = 150
 const STATUS_EVERY_MS = 500
@@ -89,6 +91,7 @@ export async function follow (ws, { lines = 0, out = process.stdout, err = proce
   const detach = () => { quit.detached = true }
   process.on('SIGINT', detach)
 
+  const shownOn = (to, text) => (to.isTTY === true ? printable(text) : text)
   const showing = status && err.isTTY === true
   let shown = null
   let drawn = ''
@@ -128,7 +131,7 @@ export async function follow (ws, { lines = 0, out = process.stdout, err = proce
       if (!text) continue
       clear()
       drawnAt = 0
-      stream.to.write(text)
+      stream.to.write(shownOn(stream.to, text))
     }
   }
 
@@ -152,7 +155,7 @@ export async function follow (ws, { lines = 0, out = process.stdout, err = proce
     drain()
     for (const stream of streams) {
       const rest = stream.decoder.decode()
-      if (rest) stream.to.write(rest)
+      if (rest) stream.to.write(shownOn(stream.to, rest))
     }
     return quit.detached ? 'detached' : 'ended'
   } finally {

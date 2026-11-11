@@ -23,6 +23,7 @@ export { release, send } from './core/send.js'
 export { fork, forkWorkspace, readFork } from './core/fork.js'
 export { watch, watchAll, turnsSince, outcome } from './library/watch.js'
 export { follow } from './library/follow.js'
+export { printable } from './library/printable.js'
 export { annotateTurn, applyEvent, createLive, liveIn, liveOf, liveView, renderLive } from './library/live.js'
 export { describeCall } from './core/call-table.js'
 

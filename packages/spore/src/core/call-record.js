@@ -21,11 +21,11 @@ export const CALLS_ROOT = CALLS_DIR
 const INLINE_BUDGET = 4096
 
 const HASH_LEN = 16
-const TAB = 9
-const LINE_FEED = 10
-const CARRIAGE_RETURN = 13
 const SPACE = 32
 const DEL = 127
+const C1_END = 159
+const ORDINARY = new Set([9, 10, 12, 13])
+const NAMED = { 7: 'BEL', 8: 'BS', 11: 'VT', 27: 'ESC', 127: 'DEL' }
 
 // Source files mime-db does not know, or names as something else: `.ts` as an MPEG transport
 // stream, `.rs` as an XML format.
@@ -61,13 +61,14 @@ function imageIn (absPath) {
   }
 }
 
-function hasControlChars (text) {
+function controlCharacters (text) {
+  const found = new Set()
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i)
-    if (code === TAB || code === LINE_FEED || code === CARRIAGE_RETURN) continue
-    if (code < SPACE || code === DEL) return true
+    if (ORDINARY.has(code)) continue
+    if (code < SPACE || (code >= DEL && code <= C1_END)) found.add(code)
   }
-  return false
+  return [...found].sort((a, b) => a - b).map(code => NAMED[code] ?? `0x${code.toString(16).padStart(2, '0')}`)
 }
 
 function decodeText (buf) {
@@ -77,7 +78,7 @@ function decodeText (buf) {
   } catch {
     return null
   }
-  return hasControlChars(text) ? null : text
+  return text.includes('\u0000') ? null : text
 }
 
 // Streamed so a multi-gigabyte artifact costs constant memory.
@@ -132,7 +133,13 @@ export function contextView (meta) {
         continue
       }
       view.files[slot] = { path: record.path, bytes: record.bytes }
-      if (record.content !== undefined) view.files[slot].content = record.content
+      if (record.content !== undefined) {
+        view.files[slot].content = record.content
+        const controls = controlCharacters(record.content)
+        if (controls.length) view.files[slot].controlCharacters = controls
+      } else if (record.bytes > 0) {
+        view.files[slot].withheld = record.bytes > INLINE_BUDGET ? `over ${INLINE_BUDGET} bytes` : 'not text'
+      }
     }
   }
   return view

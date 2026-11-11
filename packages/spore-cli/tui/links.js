@@ -7,10 +7,8 @@
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { getCapabilities, hyperlink } from '@earendil-works/pi-tui'
-import { bytesText } from '@rhizogrip/spore'
+import { bytesText, printable } from '@rhizogrip/spore'
 import chalk from 'chalk'
-
-import { printable } from './printable.js'
 
 const LABEL = /^(.*) · \/copy (\d+)$/
 const SCHEME = 'spore-copy:'

@@ -178,7 +178,18 @@ follow(ws, { lines = 0, out = process.stdout, err = process.stderr, tick = 150, 
 
 Writes the running turn's text output (`spore.out`, `spore.err`) to two streams until the turn
 ends, as `spore send` does in a terminal. `lines` shows that many of the last lines already
-written first. It resolves `'detached'` when SIGINT arrives; the turn goes on.
+written first. It resolves `'detached'` when SIGINT arrives; the turn goes on. A stream that is a
+terminal (`isTTY`) gets the text made [`printable`](#printable); any other gets it byte for byte.
+
+### `printable`
+
+```
+printable(text) → string
+```
+
+Text from a model or a tool, made safe to put on a terminal: escape and control characters and
+bidirectional overrides are dropped, a tab becomes two spaces, newlines stay. Apply it to
+anything a spore produced before writing it to a terminal yourself.
 
 ### `watchAll`
 

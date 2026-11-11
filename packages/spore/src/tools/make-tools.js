@@ -410,7 +410,11 @@ export function makeTools (WS, maxOutput, trail, {
       // said, and the transcript then carries the file twice — once in the call it
       // made, once in the answer — for the rest of the run and every replay after.
       // The record on disk keeps the content; only the view drops it.
-      if (view.files?.out) delete view.files.out.content
+      if (view.files?.out) {
+        delete view.files.out.content
+        delete view.files.out.controlCharacters
+        delete view.files.out.withheld
+      }
       return recorded(view)
     },
 
