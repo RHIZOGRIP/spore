@@ -51,6 +51,7 @@ export { CLI as MO } from 'mohdel/cli'
 export { curate, tagModel, upstream } from 'mohdel/curate'
 export { addFromMohdex, mohdexEntries, mohdexRecommended } from 'mohdel/mohdex'
 export { default as PROVIDER_INFO } from 'mohdel/provider-info'
+export { SIGN_IN_AGAIN as CHATGPT_SIGN_IN_AGAIN } from 'mohdel/chatgpt'
 
 // What one is doing now, stopping it, and running many at once.
 export { stateOf, stateWord, stop, RUNNING } from './core/state.js'

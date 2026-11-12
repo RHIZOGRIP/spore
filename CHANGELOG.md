@@ -4,6 +4,31 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.63.0] — Changed: a reply a provider cut short stops the turn on every provider, through mohdel 4.11.0
+
+### Changed
+
+- mohdel 4.11.0, on both the npm and the Cargo side. A reply the provider cut is now reported the
+  same way by every provider, so some turns that went on with a partial reply now stop with
+  `MODEL_REPLY_INCOMPLETE`:
+  - Gemini: every finish but `STOP` is a cut, a malformed function call among them, and so is a
+    prompt Gemini blocks. These were taken as complete replies.
+  - Anthropic and Gemini: a stream that ends without the provider's finish is an error. It was
+    taken as a complete reply holding the partial output.
+  - OpenAI Responses (openai, chatgpt, meta, xai) and Anthropic: a cut for a reason mohdel does not
+    name is reported as `unmappedReason`.
+- The error of a cut reply carries the provider's own reason in its detail on every cut. It was
+  there only for Gemini blocks and some Anthropic refusals.
+- A ChatGPT error that signing in again fixes ends with "sign in to ChatGPT again" and names no
+  command. The `spore` command adds `mo chatgpt login` where it shows one; a program built on the
+  library adds its own, finding the phrase with `CHATGPT_SIGN_IN_AGAIN`.
+
+### Added
+
+- mohdel's credential step is available as library functions (`mohdel/credentials`, and
+  `startLogin` and `finishLogin` for ChatGPT), for a program that sets up model access without a
+  terminal. `spore setup` still runs `mo onboard`.
+
 ## [1.62.2] — Fixed: a short output holding a form feed or colour codes comes back in its record
 
 ### Fixed

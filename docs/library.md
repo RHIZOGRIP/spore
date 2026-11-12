@@ -1563,6 +1563,16 @@ PROVIDER_INFO → { [provider]: { label, description, url, hint, free } }
 
 What a first-run setup shows about each provider mohdel knows. From mohdel (`mohdel/provider-info`).
 
+### `CHATGPT_SIGN_IN_AGAIN`
+
+```
+CHATGPT_SIGN_IN_AGAIN → 'sign in to ChatGPT again'
+```
+
+The phrase ending every ChatGPT error that signing in again fixes. mohdel names no command in
+those errors, so a program that shows one adds its own way to sign in: the `spore` command adds
+`mo chatgpt login`. From mohdel (`mohdel/chatgpt`).
+
 ### `billingFor`
 
 ```

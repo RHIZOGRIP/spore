@@ -58,6 +58,19 @@ describe('a message naming a mo command', () => {
   })
 })
 
+describe('a ChatGPT error that signing in again fixes', () => {
+  const said = 'ChatGPT is not connected; sign in to ChatGPT again'
+
+  it('names the command that signs in, and how to install mo where it is missing', () => {
+    expect(withMoHint(said)).toBe(`${said}: mo chatgpt login — ${HINT}`)
+  })
+
+  it('names the command alone with mo on PATH', () => {
+    installMo()
+    expect(withMoHint(said)).toBe(`${said}: mo chatgpt login`)
+  })
+})
+
 describe('a message that only mentions mo', () => {
   it.each([
     'a provider set up here is set up for mo as well',
