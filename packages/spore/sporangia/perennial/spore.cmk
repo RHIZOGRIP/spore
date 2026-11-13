@@ -1,6 +1,6 @@
 ---
 name: perennial
-description: Long-lived general work — remembers what it learns, follows up on its own, and puts itself in order while idle
+description: An assistant that stays on the job between your messages — learns how you work, follows up without being asked, and keeps itself organised
 tools: [read, write, edit, exec, wsexec, ask, quiet]
 rounds: [40, 45]
 cost: [0.50, 0.75]

@@ -1,6 +1,6 @@
 ---
 name: spore
-description: General work — answers, files and shell commands, in its own workspace or a directory it is given
+description: An assistant for whatever you bring it — answers questions, works on your files, gets tasks done, and keeps notes for next time
 tools: [read, write, edit, exec, wsexec, ask, quiet]
 rounds: [40, 45]
 cost: [0.50, 0.75]
