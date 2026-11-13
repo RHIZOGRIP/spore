@@ -7,16 +7,16 @@ const refused = (problem, detail) => Object.assign(new Error(problem), { detail 
 
 describe('where a service listens', () => {
   it('is loopback on its own port when unsaid, and any address it is told', () => {
-    expect(listenOf(undefined, { port: 8742, refused })).toEqual({ host: '127.0.0.1', port: 8742, text: '127.0.0.1:8742', shown: '127.0.0.1:8742' })
-    expect(listenOf('[::1]:9000', { port: 8742, refused })).toEqual({ host: '::1', port: 9000, text: '[::1]:9000', shown: '[::1]:9000' })
-    expect(listenOf('localhost:9000', { port: 8742, refused }).shown).toBe('localhost:9000')
-    expect(listenOf('0.0.0.0:9000', { port: 8742, refused }).shown).toBe('0.0.0.0:9000 (plain HTTP, reachable beyond this machine)')
-    expect(listenOf('[::]:9000', { port: 8742, refused }).shown).toBe('[::]:9000 (plain HTTP, reachable beyond this machine)')
+    expect(listenOf(undefined, { port: 7763, refused })).toEqual({ host: '127.0.0.1', port: 7763, text: '127.0.0.1:7763', shown: '127.0.0.1:7763' })
+    expect(listenOf('[::1]:9000', { port: 7763, refused })).toEqual({ host: '::1', port: 9000, text: '[::1]:9000', shown: '[::1]:9000' })
+    expect(listenOf('localhost:9000', { port: 7763, refused }).shown).toBe('localhost:9000')
+    expect(listenOf('0.0.0.0:9000', { port: 7763, refused }).shown).toBe('0.0.0.0:9000 (plain HTTP, reachable beyond this machine)')
+    expect(listenOf('[::]:9000', { port: 7763, refused }).shown).toBe('[::]:9000 (plain HTTP, reachable beyond this machine)')
   })
 
   it('refuses one it cannot read, saying what it takes', () => {
     for (const given of ['9000', ':9000', '127.0.0.1:0', '127.0.0.1:65536', 9000, '']) {
-      expect(() => listenOf(given, { port: 8742, refused }), String(given)).toThrow(expect.objectContaining({ message: `listens on ${JSON.stringify(given)}`, detail: expect.stringMatching(/127\.0\.0\.1:8742 when unsaid/) }))
+      expect(() => listenOf(given, { port: 7763, refused }), String(given)).toThrow(expect.objectContaining({ message: `listens on ${JSON.stringify(given)}`, detail: expect.stringMatching(/127\.0\.0\.1:7763 when unsaid/) }))
     }
   })
 })

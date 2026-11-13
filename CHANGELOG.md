@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.65.0] — Changed: a console listens on 7762 and the webhook on 7763 when their files name no address
+
+### Changed
+
+- The default ports moved into one block, 7760 to 7769, which holds no registered service and
+  sits away from the ports development tools contend for. A console listens on `127.0.0.1:7762`
+  (it was 8790) and the webhook service on `127.0.0.1:7763` (it was 8742). A file that names its
+  `listen` is unaffected. One that relies on the default moves, so a program or a proxy pointed at
+  the old port has to follow, or the file has to name the old address.
+- `docs/operating.md` states the block: 7760 is left for a program that puts its own address in
+  front of spores, 7761 is the web connector's, 7762 a console's, 7763 the webhook's. Teams and
+  WhatsApp bots keep 3978 and 3979.
+
 ## [1.64.0] — Added: a command is told how many bytes come back inline, in `SPORE_INLINE_BYTES`
 
 ### Added

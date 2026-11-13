@@ -9,7 +9,7 @@ const { log, refuse, launched } = serviceProcess('spore-webhook')
 
 let address
 try {
-  address = listenOf(process.env.SPORE_WEBHOOK_LISTEN || undefined, { port: 8742, refused: (problem, detail) => Object.assign(new Error(`SPORE_WEBHOOK_LISTEN ${problem}`), { detail }) })
+  address = listenOf(process.env.SPORE_WEBHOOK_LISTEN || undefined, { port: 7763, refused: (problem, detail) => Object.assign(new Error(`SPORE_WEBHOOK_LISTEN ${problem}`), { detail }) })
 } catch (err) {
   refuse(err)
 }

@@ -17,8 +17,8 @@ const invalid = (path, problem, detail = `a console is ${SHAPE}`) => new SporeEr
 
 export const isPerson = (id) => typeof id === 'string' && PERSON.test(id)
 
-/** Where the service listens, 127.0.0.1:8790 unless the console file says. */
-export const listenOf = (raw, path) => listening(raw.listen, { port: 8790, refused: (problem, detail) => invalid(path, problem, detail) })
+/** Where the service listens, 127.0.0.1:7762 unless the console file says. */
+export const listenOf = (raw, path) => listening(raw.listen, { port: 7762, refused: (problem, detail) => invalid(path, problem, detail) })
 
 /**
  * The console's people, each by the id the host chose for them against the spore they reach —

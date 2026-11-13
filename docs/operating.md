@@ -449,7 +449,7 @@ one collection per embedding model, so changing `embedding` starts a new collect
 spore service define webhook && spore service enable webhook && spore service start webhook
 ```
 
-The webhook service (`bin/spore-webhook.js`) listens on `127.0.0.1:8742`, or on the
+The webhook service (`bin/spore-webhook.js`) listens on `127.0.0.1:7763`, or on the
 `<host>:<port>` that `SPORE_WEBHOOK_LISTEN` names in `~/.config/spore/environment`
 ([§Where a service listens](#where-a-service-listens)). Exposing it is a reverse proxy's job. Each hook is one URL, `POST /hook/<name>`, configured in
 `~/.config/spore/hooks.json`. The service reads that file and `environment` again for every
@@ -554,7 +554,7 @@ The routes, the token a request carries, the errors and `traceparent` are in
 
 Every service that listens — the webhook, the API, each Teams bot, each console — takes its address
 the same way: `<host>:<port>`, or `[<v6>]:<port>`, and `127.0.0.1` on its own port when it says
-none (the webhook 8742, a Teams bot 3978, a console 8790). Any host is taken. None of them speaks
+none (the webhook 7763, a Teams bot 3978, a console 7762). The defaults of spore's own services are in one block, 7760 to 7769, which reads S-P-O on a phone keypad and holds no registered service: 7760 is left for a program that puts its own address in front of spores, such as the management page of an appliance, 7761 is the web connector's, 7762 a console's, 7763 the webhook's, and the rest are kept for what comes next. A Teams bot and a WhatsApp bot keep 3978 and 3979, the port their platform's tooling expects and the one after it. Any host is taken. None of them speaks
 TLS, so `--check` and the line a service logs at start add `(plain HTTP, reachable beyond this
 machine)` to an address beyond loopback: putting one there is for a network you trust, and a
 reverse proxy holding the certificate is the usual way to reach one from elsewhere.

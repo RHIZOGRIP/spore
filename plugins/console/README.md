@@ -16,7 +16,7 @@ npm i -g @rhizogrip/spore-plugin-console
 echo "LAB_CONSOLE_TOKEN=$(openssl rand -hex 32)" >> ~/.config/spore/environment
 mkdir -p ~/.config/spore/console
 cat > ~/.config/spore/console/lab.json <<'JSON'
-{ "listen": "127.0.0.1:8790", "token": "${LAB_CONSOLE_TOKEN}", "people": { "tester-1": "scratch" } }
+{ "listen": "127.0.0.1:7762", "token": "${LAB_CONSOLE_TOKEN}", "people": { "tester-1": "scratch" } }
 JSON
 spore service define console@lab && spore service start console@lab
 ```
@@ -26,7 +26,7 @@ the file maps — that is what the console is for — so a real person's spore n
 
 ## The console file
 
-`console/<name>.json` beside `config.json`: `listen`, where it listens — `127.0.0.1:8790` when
+`console/<name>.json` beside `config.json`: `listen`, where it listens — `127.0.0.1:7762` when
 unsaid, and an address beyond loopback is plain HTTP; the variable holding its token, set in
 `environment` beside `config.json`; and its `people`, each person by an id you choose — letters, digits, `.`, `_`, `@` and `-` — against the spore they
 reach: `"<spore>"`, or `{ "spore": "<name>", "details": true, "brief": true }`. `details` shows a
@@ -40,7 +40,7 @@ its approvals go.
 ```bash
 curl -s -H "authorization: Bearer $LAB_CONSOLE_TOKEN" -H 'content-type: application/json' \
   -d '{ "person": "tester-1", "text": "what changed since Monday?", "id": "run-7-step-1" }' \
-  'http://127.0.0.1:8790/messages?wait=120'
+  'http://127.0.0.1:7762/messages?wait=120'
 ```
 
 `POST /messages` takes `{ person, text, id, files }`: `id` is yours, and a message sent twice

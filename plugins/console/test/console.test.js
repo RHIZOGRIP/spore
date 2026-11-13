@@ -13,7 +13,7 @@ const TOKEN = 'the-token'
 
 let DIR
 let path
-const consoleFile = (fields) => writeFileSync(path, JSON.stringify({ listen: '127.0.0.1:8790', token: '${LAB_CONSOLE_TOKEN}', ...fields })) // eslint-disable-line no-template-curly-in-string
+const consoleFile = (fields) => writeFileSync(path, JSON.stringify({ listen: '127.0.0.1:7762', token: '${LAB_CONSOLE_TOKEN}', ...fields })) // eslint-disable-line no-template-curly-in-string
 
 beforeEach(() => {
   DIR = mkdtempSync(resolve(tmpdir(), 'spore-console-test-'))
@@ -37,10 +37,10 @@ describe('a console\'s people', () => {
     expect(() => routesOf(CONSOLE, path)).toThrow(/maps person u1 to something that is not a spore/)
     consoleFile({})
     expect(() => routesOf(CONSOLE, path)).toThrow(/has no people/)
-    consoleFile({ listen: '8790', people: {} })
-    expect(() => routesOf(CONSOLE, path)).toThrow(/listens on "8790"/)
-    expect(listenOf({}, path).text).toBe('127.0.0.1:8790')
-    expect(listenOf({ listen: '0.0.0.0:8790' }, path).shown).toBe('0.0.0.0:8790 (plain HTTP, reachable beyond this machine)')
+    consoleFile({ listen: '7762', people: {} })
+    expect(() => routesOf(CONSOLE, path)).toThrow(/listens on "7762"/)
+    expect(listenOf({}, path).text).toBe('127.0.0.1:7762')
+    expect(listenOf({ listen: '0.0.0.0:7762' }, path).shown).toBe('0.0.0.0:7762 (plain HTTP, reachable beyond this machine)')
   })
 })
 

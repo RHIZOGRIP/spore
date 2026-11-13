@@ -97,7 +97,7 @@ const harness = {
   botFile: (bot, table, fields = {}) => {
     const people = Object.entries(table).map(([who, { spore, details, brief }]) =>
       [who, details || brief !== undefined ? { spore, ...(details ? { details } : {}), ...(brief !== undefined ? { brief } : {}) } : spore])
-    return { listen: '127.0.0.1:8790', token: `\${${bot.toUpperCase()}_CONSOLE_TOKEN}`, people: Object.fromEntries(people), ...fields }
+    return { listen: '127.0.0.1:7762', token: `\${${bot.toUpperCase()}_CONSOLE_TOKEN}`, people: Object.fromEntries(people), ...fields }
   },
   platform: standIn,
   adapter (stand, bot) {

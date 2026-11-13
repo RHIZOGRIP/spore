@@ -99,7 +99,7 @@ export const SERVICES = Object.freeze({
     primary: 'spore-webhook.service',
     runs: 'spore-webhook.service',
     check: ({ node, root }) => [node, [join(root, 'bin', 'spore-webhook.js'), '--check']],
-    next: () => 'give each sender http://<host>/hook/<name> through your reverse proxy — it listens on 127.0.0.1:8742, or SPORE_WEBHOOK_LISTEN in environment',
+    next: () => 'give each sender http://<host>/hook/<name> through your reverse proxy — it listens on 127.0.0.1:7763, or SPORE_WEBHOOK_LISTEN in environment',
     units: ({ node, root }) => ({
       'spore-webhook.service': nodeUnit({ description: 'spore-webhook: webhooks as messages to spores', marker: 'webhook', node, program: join(root, 'bin', 'spore-webhook.js') })
     })
