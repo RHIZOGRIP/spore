@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.64.0] — Added: a command is told how many bytes come back inline, in `SPORE_INLINE_BYTES`
+
+### Added
+
+- Every command `exec` and `wsexec` run finds the inline limit in `SPORE_INLINE_BYTES`, in bytes
+  (4096). An output at or under it comes back in the call record; a longer one is withheld and has
+  to be read back from its file. The limit bounds `out` and `err` each on its own. A program can
+  now cut what it prints into parts that each come back inline. An enzyme sees the same value,
+  from the command that started its cell.
+- `SPORE_INLINE_BYTES` is a name the runtime sets, so a plugin that declares a variable of that
+  name is refused.
+
+### Changed
+
+- The `default` and `perennial` sporangia describe themselves by what the spore does for the
+  person: an assistant for whatever you bring it, and one that stays on the job between your
+  messages.
+
 ## [1.63.0] — Changed: a reply a provider cut short stops the turn on every provider, through mohdel 4.11.0
 
 ### Changed
