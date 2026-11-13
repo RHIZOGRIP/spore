@@ -5,7 +5,7 @@ import { safePath, hasDotSegment } from '../isolation/safe-path.js'
 import { CALLS_DIR, DATA_DIR, PRECURSOR_DIR, TMP_DIR, turnTmpOf, writableDirs } from '../core/spore-dir.js'
 import { SCHEDULE_DIR, refuseScheduleWrite, scheduleDir } from '../core/schedule.js'
 import { CONFINE_BIN, runShell } from '../core/command.js'
-import { contextView, dropIfEmpty, fileRecord, hashFile, recorded } from '../core/call-record.js'
+import { contextView, dropIfEmpty, fileRecord, hashFile, INLINE_BUDGET, recorded } from '../core/call-record.js'
 import { isRefusal, refuse } from '../core/refusal.js'
 import { SNIFF_BYTES, sniffImage } from '../core/media.js'
 import { NATIVE_DIR } from '../native.js'
@@ -246,7 +246,7 @@ export function makeTools (WS, maxOutput, trail, {
       // subprocess shares with us. A spawned cell picks it up and makes its own
       // dispatch span a child of this one, which is what joins a fan-out into one
       // trace instead of fifty roots.
-      env: { ...process.env, TMPDIR: tmp, SPORE_SPAWN: SPAWN_BIN, SPORE_FANOUT: FANOUT_BIN, SPORE_RECALL: RECALL_BIN, SPORE_SOURCE: SOURCE_BIN, SPORE_SQL: SQL_BIN, SPORE_JOB: JOB_BIN, SPORE_INTERACT: INTERACT_BIN, ...(traceparent ? { TRACEPARENT: traceparent } : {}), ...(modelSocket ? { SPORE_MODEL_SOCKET: modelSocket } : {}), ...(storeSocket ? { SPORE_STORE_SOCKET: storeSocket } : {}), ...(sourceSocket ? { SPORE_SOURCE_SOCKET: sourceSocket } : {}) },
+      env: { ...process.env, TMPDIR: tmp, SPORE_SPAWN: SPAWN_BIN, SPORE_FANOUT: FANOUT_BIN, SPORE_RECALL: RECALL_BIN, SPORE_SOURCE: SOURCE_BIN, SPORE_SQL: SQL_BIN, SPORE_JOB: JOB_BIN, SPORE_INTERACT: INTERACT_BIN, SPORE_INLINE_BYTES: String(INLINE_BUDGET), ...(traceparent ? { TRACEPARENT: traceparent } : {}), ...(modelSocket ? { SPORE_MODEL_SOCKET: modelSocket } : {}), ...(storeSocket ? { SPORE_STORE_SOCKET: storeSocket } : {}), ...(sourceSocket ? { SPORE_SOURCE_SOCKET: sourceSocket } : {}) },
       timeoutMs,
       idleMs,
       signal: sig

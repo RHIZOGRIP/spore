@@ -459,7 +459,8 @@ environment, and, for a store whose API differs from the protocol's defaults, `p
 
 `TRACEPARENT`, `SPORE_WS`, `SPORE_CELL`, `SPORE_PLAN`, `SPORE_ENZYMES` and every `SPORE_*_SOCKET`
 are internal: the runtime sets them for the processes it starts. So are `SPORE_SPAWN`,
-`SPORE_FANOUT`, `SPORE_RECALL`, `SPORE_SOURCE` and `SPORE_ENZYME`, which name the programs an agent runs.
+`SPORE_FANOUT`, `SPORE_RECALL`, `SPORE_SOURCE` and `SPORE_ENZYME`, which name the programs an agent runs,
+and `SPORE_INLINE_BYTES`, the most bytes a command's `out` or `err` may hold and still come back inline.
 
 A call to OpenRouter names spore as the app that made it: the runner sets `OPENROUTER_REFERER`
 (`https://rhizogrip.com/spore`), `OPENROUTER_TITLE` (`spore`) and `OPENROUTER_CATEGORIES`

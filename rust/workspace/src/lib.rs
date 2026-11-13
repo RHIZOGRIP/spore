@@ -258,7 +258,7 @@ pub const PASSED_THROUGH: [&str; 10] = [
 
 /// What the runtime itself sets in the environment of what it starts — the agent, a cell, a job,
 /// a command — which no variable a plugin declares may set.
-pub const RUNTIME_ENV: [&str; 31] = [
+pub const RUNTIME_ENV: [&str; 32] = [
     "PATH",
     "HOME",
     "TMPDIR",
@@ -270,6 +270,7 @@ pub const RUNTIME_ENV: [&str; 31] = [
     "SPORE_ENZYME",
     "SPORE_ENZYMES",
     "SPORE_FANOUT",
+    "SPORE_INLINE_BYTES",
     "SPORE_INTERACT",
     "SPORE_INTERACT_SOCKET",
     "SPORE_JOB",

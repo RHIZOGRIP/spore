@@ -120,6 +120,19 @@ describe('a cell that runs an enzyme', () => {
     expect(existsSync(resolve(root, 'data/one/lock'))).toBe(true)
     expect(readFileSync(resolve(root, 'data/one/lock'), 'utf8')).toBe('')
   })
+
+  it('runs it with the inline budget the command that started the cell was told', async () => {
+    writeFileSync(resolve(root, 'tools/budget.mjs'), '#!/usr/bin/env node\nprocess.stdout.write(process.env.SPORE_INLINE_BYTES + "\\n")\n')
+    chmodSync(resolve(root, 'tools/budget.mjs'), 0o755)
+    precursor('sized', '---\nname: sized\ntools: [read, write, wsexec]\nenzymes: [budget=tools/budget.mjs]\nrounds: [6, 8]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\non-wrap: discard\n---\n\nYou do what in.md asks.\n\n:::enzyme budget\nbudget — writes the inline budget it was told on stdout.\n:::\n')
+    await start(async (input, round) => round === 0
+      ? calls('wsexec', { command: 'node "$SPORE_ENZYME" budget', out: 'data/budget.txt' })
+      : answers('done'))
+
+    const r = await spawnCell(['--precursor', 'sized', '--ws', 'data/one', '--prompt', 'in.md', '--answer', 'data/out.txt'], { SPORE_INLINE_BYTES: '4096' })
+    expect(r.code, r.stderr).toBe(0)
+    expect(readFileSync(resolve(root, 'data/one/data/budget.txt'), 'utf8')).toBe('4096\n')
+  })
 })
 
 describe('a cell that is confined', () => {

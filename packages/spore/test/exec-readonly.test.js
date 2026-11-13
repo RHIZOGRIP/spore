@@ -123,6 +123,19 @@ describe('exec is read-only', () => {
     const latin = JSON.parse(await exec({ command: "printf 'caf\\351'" }))
     expect(latin.files.out.withheld).toBe('not text')
   })
+
+  it('tells a command how many bytes come back inline, in SPORE_INLINE_BYTES', async () => {
+    for (const run of [exec, wsexec]) {
+      const fits = JSON.parse(await run({ command: 'head -c "$SPORE_INLINE_BYTES" /dev/zero | tr "\\0" x' }))
+      expect(fits.files.out.bytes).toBe(4096)
+      expect(fits.files.out.content).toHaveLength(4096)
+      expect(fits.files.out.withheld).toBeUndefined()
+      const over = JSON.parse(await run({ command: 'head -c "$((SPORE_INLINE_BYTES + 1))" /dev/zero | tr "\\0" x' }))
+      expect(over.files.out.bytes).toBe(4097)
+      expect(over.files.out.content).toBeUndefined()
+      expect(over.files.out.withheld).toBe('over 4096 bytes')
+    }
+  })
 })
 
 describe('wsexec may write', () => {

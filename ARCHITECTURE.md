@@ -225,6 +225,10 @@ no NUL byte.
 - **says why when it does not.** The caller's view of a non-empty file without content carries
   `withheld`: `over 4096 bytes` or `not text`, so the record never reads as a file with nothing
   in it.
+- **told to what a call runs.** Every command `exec` and `wsexec` run finds the limit in
+  `SPORE_INLINE_BYTES`, in bytes, and an enzyme inherits it from the command that started its
+  cell. It bounds each stream on its own, `out` and `err` alike, so a program can cut its output
+  into parts that each come back inline.
 - **not back to the caller that supplied it.** `write` records the content and does not
   return it, nor either note about it. `edit` is not the same case, because what the file became is not what the caller
   passed.

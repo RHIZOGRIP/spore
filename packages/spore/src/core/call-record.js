@@ -18,7 +18,7 @@ import { CALLS_DIR, readState, recordCall, storable } from './spore-dir.js'
 import { SporeError } from '../observability/errors.js'
 
 export const CALLS_ROOT = CALLS_DIR
-const INLINE_BUDGET = 4096
+export const INLINE_BUDGET = 4096
 
 const HASH_LEN = 16
 const SPACE = 32
