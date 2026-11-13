@@ -105,9 +105,15 @@ static int add_path_rule (int ruleset_fd, const char *path, uint64_t access) {
       ret = ll_add_rule(ruleset_fd, LL_RULE_PATH_BENEATH, &attr, 0);
     }
   }
-  int err = errno;
-  close(fd);
-  return ret < 0 ? -err : 0;
+  if (ret < 0) {
+    int err = errno;
+    close(fd);
+    return -err;
+  }
+  /* Kept open for the life of the process, close-on-exec. A rule is tied to the inode this
+     descriptor names. 9p as WSL and Lima mount a host folder makes a new inode at each lookup
+     of a name nobody holds open, which the rule does not cover: the grant would be refused. */
+  return 0;
 }
 
 /* Add rules for each path in a JS string array. A missing path is skipped when `missing_ok`,

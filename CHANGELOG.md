@@ -4,6 +4,20 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.66.0] — Fixed: a spore is no longer refused a folder it was granted on a WSL or Lima host share
+
+### Fixed
+
+- A spore granted a directory on a 9p mount, such as `writes: [folder=/mnt/c/…]` under WSL or a
+  host folder Lima shares over 9p, was refused it with "permission denied", for listing as for
+  writing, though its user could write there. A Landlock rule is tied to the inode the path named
+  when the rule was added, and on such a mount the kernel makes a new inode at each lookup of a
+  name nobody holds open. The agent now keeps each granted path open for the turn, so the rule and
+  every later lookup meet on the same inode. The descriptors are `O_PATH` and close-on-exec: they
+  give the agent nothing beyond its grants, and no command inherits them.
+- Not covered: a command that outlives the agent on such a mount, as a job writing to a `writes`
+  directory or a standalone cell.
+
 ## [1.65.0] — Changed: a console listens on 7762 and the webhook on 7763 when their files name no address
 
 ### Changed

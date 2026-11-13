@@ -377,6 +377,18 @@ writes to an open descriptor.** The runtime opens `out` and `err` before spawnin
 child with no writable path still delivers its output: `find` and `grep -r` run normally while
 every attempt to create a file fails with EACCES.
 
+**The agent keeps every path it was granted open.** A Landlock rule is tied to an inode, the one
+the path named when the rule was added. On 9p as WSL mounts a Windows folder and Lima a host
+folder (seen with `cache=0x5`), the kernel makes a new inode at each lookup of a name nobody holds open, so
+a rule on `writes: [folder=/mnt/c/…]` covered an inode no later lookup returned, and the spore was
+refused its own grant with EACCES on a folder its user could write. So `sandbox.c` leaves the
+descriptor of each grant open for the life of the agent, close-on-exec: the name stays held, every
+lookup during the turn returns the inode the rule covers, and `confine` adding the same grant for a
+command finds the same one. The descriptor is `O_PATH`, gives the agent nothing its ruleset does
+not, and no command inherits it. What it does not cover is a command that outlives the agent on
+such a mount — a job's `writes`, a standalone cell — since `confine` closes its own before it
+execs.
+
 **cwd is the workspace.** A call that wants to work somewhere else says `cd` — or uses the flag the
 command already has (`git -C`, `make -C`, `tar -C`)
 ([principle 4](PRINCIPLES.md#4-only-seven-built-in-tools)).
