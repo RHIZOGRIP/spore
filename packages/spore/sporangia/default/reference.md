@@ -72,7 +72,8 @@ lists what there is to read and `.schema turns` shows one:
   owe it no answer; the rest are here. `approval` marks a message telling you how an approval
   ended (see `approvals`), and `interaction` the outcome of one you asked for (see Asking for something outside you).
 - `transcript` — this conversation, every entry by `entryNo`: `at`, `role`, and `message`, the
-  message itself as JSON. An entry of `kind` `compaction` is where earlier turns were
+  message itself as JSON. `ahead` is what a message reached you with in front of what was
+  said: its `Now:` line and what was recalled. An entry of `kind` `compaction` is where earlier turns were
   summarized; the entries before it are still there. One whose `message` carries `flushed` is
   where someone started the conversation over: what came before reaches you through recall, your
   notes and this view, not as history. How much of the past you are shown word

@@ -9,7 +9,7 @@ import { basename, relative, resolve } from 'node:path'
 
 import { headAndTail } from './preview.js'
 import { compactionSummaryMessage, flushedMessage } from '../resilience/compaction.js'
-import { mark, marksOf } from './marks.js'
+import { aheadOf, mark, marksOf, sentWith } from './marks.js'
 import { native } from '../native.js'
 import { parseTraceparent } from '../observability/tracing.js'
 import { SporeError } from '../observability/errors.js'
@@ -158,7 +158,7 @@ const decoder = ({ json = [], flags = [] }) => (row) => {
 const turnRecord = decoder({ json: ['deliverables', 'recall', 'byPrecursor'], flags: ['concluded', 'settled'] })
 const inboxEntry = decoder({ json: ['files'], flags: ['consumed', 'setAside', 'overheard', 'asks', 'startsTurn'] })
 const approvalRecord = decoder({ json: ['approvers', 'options', 'body', 'calendar', 'shown', 'inputs', 'replaced', 'fields'], flags: ['told'] })
-const transcriptEntry = decoder({ json: ['message', 'marks'] })
+const transcriptEntry = decoder({ json: ['message', 'marks', 'ahead'] })
 const eventRecord = ({ payload, ...envelope }) => ({ ...envelope, ...JSON.parse(payload) })
 
 /**
@@ -1095,7 +1095,10 @@ export function readTranscript (ws) {
     const entries = new Map(db.prepare('SELECT * FROM transcript WHERE entryNo IN (SELECT value FROM json_each(?))').all(JSON.stringify(live)).map(row => [row.entryNo, transcriptEntry(row)]))
     return live.map(entryNo => {
       const entry = entries.get(entryNo)
-      if (entry.kind === 'message') return mark(entry.message, ...(entry.marks || []))
+      if (entry.kind === 'message') {
+        const message = mark(entry.message, ...(entry.marks || []))
+        return entry.ahead === null ? message : sentWith(message, entry.ahead)
+      }
       return entry.message.flushed ? flushedMessage(entry.message.summary) : compactionSummaryMessage(entry.message.summary)
     })
   })
@@ -1103,12 +1106,13 @@ export function readTranscript (ws) {
 
 /**
  * A message said this turn: `message` exactly mohdel's wire `Message`, and spore's own facts
- * beside it as `marks`.
+ * beside it as `marks`, with what it was sent with ahead of its `content` as `ahead`.
  */
 export function appendTranscript (target, message) {
   const marks = marksOf(message)
+  const ahead = aheadOf(message)
   writerOf(target).request('transcript.append', {
-    entries: [{ at: new Date().toISOString(), kind: 'message', role: message.role, message, ...(marks.length ? { marks } : {}) }]
+    entries: [{ at: new Date().toISOString(), kind: 'message', role: message.role, message, ...(marks.length ? { marks } : {}), ...(ahead === null ? {} : { ahead }) }]
   })
 }
 

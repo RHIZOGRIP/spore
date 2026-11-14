@@ -2,7 +2,7 @@ import { sanitizeTranscript, computeBudget } from '../resilience/transcript.js'
 import { createLoopGuard } from '../resilience/loop-guard.js'
 import { compactIfNeeded, estimateTokens } from '../resilience/context-guard.js'
 import { markConversationForCaching } from './prompt-cache.js'
-import { REFUSED, SCHEDULE_NOTICE, WRAP, mark, marked } from './marks.js'
+import { REFUSED, SCHEDULE_NOTICE, WRAP, asSent, mark, marked, sentWith } from './marks.js'
 import { refusedResult } from './refusal.js'
 import { withRecovery } from '../resilience/recovery.js'
 import { executeTools } from './tool-kernel.js'
@@ -69,21 +69,22 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
   // `from` continues a turn that stopped between rounds: its history already ends on the
   // round's tool results, nothing new was said, and the rounds it took still count.
   const continuing = from !== undefined
-  const messages = continuing ? [...initialMessages] : [...initialMessages, userMsg]
+  // Recall is shown to the model in front of the message that triggered it, but nobody said
+  // it — and what was said is what long-term memory indexes, so a recalled line persisted as
+  // user speech comes back as evidence of itself. Measured before this: a note recalled, then
+  // deleted, then recalled again from the record it had written itself into, twice over, with
+  // no source left alive.
+  //
+  // So the message's `content` is what the caller passed, and what goes ahead of it is written
+  // beside it. `now`, the time the turn started, travels the same way: it changes every turn,
+  // so it stays out of the system prompt, and nobody said it either. Both stay in front of
+  // their message on every later turn, because a provider caches a conversation only up to
+  // where it stops matching the one it was sent before.
+  const ahead = `${now ? `${now}\n\n` : ''}${recall ? `${recall}\n` : ''}`
+  if (ahead) sentWith(userMsg, ahead)
+  const messages = (continuing ? initialMessages : [...initialMessages, userMsg]).map(asSent)
   for (const m of initialMessages) onMessage(m)
   if (!continuing) onMessage(userMsg)
-  // Recall is shown to the model and never written down. It reaches the model attached to
-  // the turn that triggered it, but nobody said it — and the transcript is what long-term
-  // memory indexes, so a recalled line persisted as user speech comes back as evidence of
-  // itself. Measured before this: a note recalled, then deleted, then recalled again from
-  // the record it had written itself into, twice over, with no source left alive.
-  //
-  // So the message on disk is the one the caller passed, and the copy in the array — the
-  // one that is sent, every round — carries the recall in front of it. `now`, the time the turn
-  // started, travels the same way: it changes every turn, so it goes behind everything a
-  // provider caches, and nobody said it either.
-  const shown = [now, recall ? `${recall}\n${prompt}` : prompt].filter(Boolean).join('\n\n')
-  if ((recall || now) && !continuing) messages[messages.length - 1] = { ...userMsg, content: shown }
   const usage = { input: 0, output: 0, thinking: 0, cacheWrite: 0, cacheRead: 0, cost: 0 }
   const guard = createLoopGuard({ logger })
   const resilientModel = withRecovery(model, { messages, sessionMemory, logger, emitter, signal, deadline })

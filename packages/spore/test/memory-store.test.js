@@ -280,10 +280,12 @@ describe('the store holds what has left the context', () => {
 // said, and a turn without it is untouched.
 describe('recall reaching a turn', () => {
   const seen = []
+  const inputs = []
   const answering = {
     use: () => ({
       info: () => null,
       answer: async (input) => {
+        inputs.push(input)
         seen.push(input.at(-1).content)
         return { status: 'completed', output: 'done' }
       }
@@ -314,6 +316,7 @@ describe('recall reaching a turn', () => {
 
   beforeEach(() => {
     seen.length = 0
+    inputs.length = 0
     note('data/memory/person.md', '# Gear\nInterested in camera accessories and protecting photography gear.\nOwns a Sony A7R IV.\n')
   })
 
@@ -430,6 +433,17 @@ describe('recall reaching a turn', () => {
     expect(persisted.join('')).not.toMatch(/Recalled/)
     // …while the model did see it.
     expect(seen.at(-1)).toMatch(/Recalled/)
+  })
+
+  // A provider reads a conversation back from its cache only up to where it stops matching
+  // what it was sent before, so the message goes out again as it went out the first time.
+  it('replays the message on the next turn with what it recalled', async () => {
+    await run({ memory: { backend: 'bm25', push: 3, pull: 20 } })
+    const first = seen.at(-1)
+    expect(first).toMatch(/Recalled/)
+    await run({ memory: { backend: 'bm25', push: 3, pull: 20 }, prompt: 'And for travel?', initialMessages: readTranscript(WS) })
+    expect(inputs.at(-1).find(m => m.role === 'user').content).toBe(first)
+    expect(readTranscript(WS).filter(m => m.role === 'user').map(m => m.content)).toEqual(['What camera accessories would suit me?', 'And for travel?'])
   })
 
   it('cannot resurrect a note that has been deleted', async () => {

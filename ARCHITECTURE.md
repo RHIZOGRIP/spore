@@ -1543,10 +1543,13 @@ the precursor catalog, and returns the identity, grants and rules. What differs 
 entry points is presentation, not state, so a conversation started in the TUI continues
 under `spore` and back again.
 
-**An entry is `{ at, kind, role, message, marks }`, `kind` a message or a compaction.**
+**An entry is `{ at, kind, role, message, marks, ahead }`, `kind` a message or a compaction.**
 `message` is exactly mohdel's wire `Message` — what is replayed is what a model can be sent,
 and the gate refuses a field its `Message` does not define. Spore's own facts sit beside it:
-`at`, and `marks` for what the message is to spore. In memory the marks live in a side table
+`at`, `marks` for what the message is to spore, and `ahead` for what a turn's message went out
+with in front of what was said — its `Now:` line and its recall. `content` stays what was said,
+which is what memory indexes and `spore log` shows; every request carries the message with
+`ahead` in front (§The clock line stays out of the prefix). In memory the marks live in a side table
 keyed by the message object (`src/core/marks.js`): `wrap` for the notice a soft limit adds,
 `compacted` for the summary that replaces a compacted head, `schedule-notice` for the note that a
 schedule the turn wrote will not fire, `context-notice` for recovery's note
@@ -3001,8 +3004,22 @@ under Haiku's floor, and its system prompt then stops caching without a sign.
 ### The clock line stays out of the prefix
 
 The `Now:` line, the minute a turn started, is shown in front of the turn's message the way
-recall is, and not written to the transcript: the system prompt stays byte for byte the same from
-turn to turn, and `test/transcript-persistence.test.js` fails the day it does not.
+recall is: the system prompt stays byte for byte the same from turn to turn, and
+`test/transcript-persistence.test.js` fails the day it does not.
+
+It stays in front of that message for good, and so does the recall. A provider reads a
+conversation back from its cache only up to where it stops matching what it was sent before, so a
+message replayed without the line it first went out with makes every later turn pay for the
+history behind it again. Measured on OpenAI over three turns with tool rounds: replayed bare, each
+follow-up read back the instructions and tools alone; replayed as sent, the whole request before
+it. So the transcript keeps both — what was said as the message's `content`, what went ahead of it
+beside it as `ahead` — and a request carries the two joined. Compaction summarizes what was said.
+
+The history is then what the model saw. An answer that leaned on a recalled line keeps that
+line in front of the message it answered, labelled as recalled. A note deleted since still shows
+where it was recalled, because it was known then, and a note recalled on several turns shows on
+each, because it came to mind each time. What this takes is room: at most `RECALL_BUDGET_TOKENS`
+a turn, until compaction takes the message.
 
 ## Memory
 
@@ -3054,7 +3071,9 @@ and at most a thousand tokens of them (`RECALL_BUDGET_TOKENS`), anything longer 
 anchor left to lead back. A hit qualifies by scoring above the definition's `floor` — zero when
 it declares none — so without one, a single shared uncommon word admits a line. It goes beside
 the turn that triggered it, which is both the most attended part of the prompt and behind every
-cache breakpoint. It is shown to the model and never written to the transcript.
+cache breakpoint. It is not written as something the person said: the entry keeps it in `ahead`,
+beside the message, and it is replayed in front of that message on later turns (§The clock line
+stays out of the prefix).
 
 What it says is `[Recalled — from earlier, not said now.]` and nothing else
 (`src/memory/recall.js`): recall sits exactly where the user's own words sit, and without the

@@ -21,7 +21,7 @@
   "dependencies": {
     "exceljs": "^4.4.0",
     "mammoth": "^1.13.0",
-    "officeparser": "^8.1.0",
+    "officeparser": "^8.4.1",
     "pdf-parse": "^2.4.5",
     "pptxgenjs": "^4.0.1"
   },

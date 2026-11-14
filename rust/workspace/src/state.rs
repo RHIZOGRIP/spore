@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::{Record, Settled, TURN_ID};
 
 pub const STATE_FILE: &str = "state.sqlite";
-pub const SCHEMA_VERSION: i64 = 17;
+pub const SCHEMA_VERSION: i64 = 18;
 /// The event log's schema, `v` on every event: the agent's and the supervisor's alike.
 pub const EVENT_SCHEMA: i64 = 1;
 
@@ -135,7 +135,8 @@ CREATE TABLE t_transcript (
   kind     TEXT    NOT NULL CHECK (kind IN ('message', 'compaction')),
   role     TEXT,
   message  TEXT    NOT NULL,
-  marks    TEXT
+  marks    TEXT,
+  ahead    TEXT
 );
 CREATE INDEX t_transcript_turn ON t_transcript (turnId);
 
@@ -215,7 +216,7 @@ CREATE VIEW inbox AS
     FROM t_inbox i, t_workspace w;
 
 CREATE VIEW transcript AS
-  SELECT entryNo, turnId, round, at, kind, role, message, marks FROM t_transcript;
+  SELECT entryNo, turnId, round, at, kind, role, message, marks, ahead FROM t_transcript;
 
 CREATE VIEW events AS
   SELECT seq, v, at, runId, turnId, event, payload FROM t_events;
@@ -385,7 +386,7 @@ CREATE VIEW interactions AS
 
 /// What moves a database at `from` to the next version, in order. Each leaves it as a fresh one
 /// at that version would be.
-const MIGRATIONS: [(i64, &str); 16] = [
+const MIGRATIONS: [(i64, &str); 17] = [
     (
         1,
         r#"
@@ -753,6 +754,15 @@ CREATE VIEW interactions AS
          i.answeredInbox, i.endedAt,
          i.answeredInbox IS NOT NULL AND i.answeredInbox <= w.inboxConsumed AS processed
     FROM t_interactions i, t_workspace w;
+"#,
+    ),
+    (
+        17,
+        r#"
+ALTER TABLE t_transcript ADD COLUMN ahead TEXT;
+DROP VIEW transcript;
+CREATE VIEW transcript AS
+  SELECT entryNo, turnId, round, at, kind, role, message, marks, ahead FROM t_transcript;
 "#,
     ),
 ];
@@ -1651,12 +1661,13 @@ pub fn unanswered_traceparents(ws: &Path) -> Result<Vec<String>, String> {
 /// sent, and a tool result reaching the transcript is bounded by the context it has to fit.
 pub const MAX_FRAME: usize = 32 << 20;
 
-const TRANSCRIPT_COLUMNS: [(&str, Kind); 6] = [
+const TRANSCRIPT_COLUMNS: [(&str, Kind); 7] = [
     ("at", Kind::Text),
     ("kind", Kind::Text),
     ("role", Kind::Text),
     ("message", Kind::Json),
     ("marks", Kind::Json),
+    ("ahead", Kind::Json),
     ("round", Kind::Integer),
 ];
 

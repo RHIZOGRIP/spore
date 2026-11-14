@@ -4,6 +4,49 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.67.0] — Fixed: a follow-up turn reads the earlier conversation from the provider's cache
+
+### Fixed
+
+- A turn's message is replayed on later turns as it was first sent, with its `Now:` line and with
+  what was recalled in front of it. It was replayed bare. A provider reads a conversation back
+  from its cache only up to where it stops matching what it was sent before, so every follow-up
+  turn paid for the history behind that message again as uncached input. Measured on OpenAI over
+  three turns with tool rounds: each follow-up read back the instructions and tools alone, and now
+  reads back the whole request before it.
+- What was said and what went ahead of it are kept apart. The message's `content` is still what
+  the person said, which is what memory indexes and `spore log` shows. The `Now:` line and the
+  recall are in a new `ahead` column of the `transcript` view. Compaction summarizes what was
+  said.
+
+### Changed
+
+- The history shows what the model saw. A recalled line stays in front of the message it was
+  recalled for, labelled as recalled, until compaction takes that message: at most a thousand
+  tokens a turn. A note deleted since still shows where it was recalled, and a note recalled on
+  several turns shows on each.
+- A message written before this release has nothing ahead of it and is replayed bare, as before.
+  An existing conversation reads from the cache one turn after the upgrade.
+- The workspace schema is 18. A spore migrates on the first open; an older spore then refuses
+  the workspace.
+- `reference.md` describes the `ahead` column. `spore upgrade` brings it to an existing spore.
+- `spore tui` is on pi-tui 1.5.2: pasted text is no longer corrupted, and cursor markers no longer
+  leak into the screen.
+
+### Dependencies
+
+- ws 8.23.0, in the browser and Slack plugins, which now require it. It fixes a ping flood that
+  could exhaust the memory of a WebSocket server (GHSA-37g9-w4hg-h9qr); the browser plugin's
+  endpoint is one.
+- officeparser 8.4.1, in the documents plugin. A date or time cell of a spreadsheet is read as ISO
+  text, no longer as a serial number, and a document's headers and footers are nodes of their own.
+- marked 18.2.0, in the Telegram and WhatsApp plugins. It follows CommonMark more closely, so the
+  formatting of a list, a quote or emphasis can differ in an edge case.
+- `@opentelemetry/api` 1.10.0, and `@opentelemetry/sdk-node` and
+  `@opentelemetry/exporter-trace-otlp-grpc` 0.223.2.
+- fast-xml-parser 5.12.1 and semver 7.8.6.
+- vitest 4.1.12, for the tests.
+
 ## [1.66.0] — Fixed: a spore is no longer refused a folder it was granted on a WSL or Lima host share
 
 ### Fixed

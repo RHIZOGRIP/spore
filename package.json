@@ -53,6 +53,6 @@
     "lint-staged": "^17.6.0",
     "release-it": "^21.0.3",
     "standard": "^17.1.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   }
 }

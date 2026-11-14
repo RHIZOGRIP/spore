@@ -323,7 +323,7 @@ describe('what goes ahead of the conversation', () => {
     vi.setSystemTime(new Date('2026-10-02T09:15:00Z'))
     await run({ mo: recording, dated: true })
     vi.setSystemTime(new Date('2026-10-03T17:42:00Z'))
-    await run({ mo: recording, dated: true, prompt: 'and now' })
+    await run({ mo: recording, dated: true, prompt: 'and now', initialMessages: readTranscript(WS) })
 
     const systemOf = (messages) => JSON.stringify(messages.find(m => m.role === 'system'))
     expect(systemOf(sent[1])).toBe(systemOf(sent[0]))
@@ -331,5 +331,15 @@ describe('what goes ahead of the conversation', () => {
     expect(JSON.stringify(sent[0].at(-1))).toMatch(/Now: 2026-10-02T09:15Z \(Friday\)/)
     expect(JSON.stringify(sent[1].at(-1))).toMatch(/Now: 2026-10-03T17:42Z \(Saturday\)/)
     expect(readTranscript(WS).filter(m => m.role === 'user').map(m => m.content)).toEqual(['what next', 'and now'])
+
+    // A provider reads a conversation back from its cache only up to where it stops matching
+    // what it was sent before, so a turn's message is replayed with its own `Now:` line. The
+    // `cache` marker is on the last message of each request and moves with it.
+    const unmarked = (m) => ({ ...m, content: typeof m.content === 'string' ? m.content : m.content.map(part => part.text).join('') })
+    expect(sent[1].slice(0, sent[0].length).map(unmarked)).toEqual(sent[0].map(unmarked))
+    expect(sent[1].map(unmarked).filter(m => m.role === 'user').map(m => m.content)).toEqual([
+      expect.stringMatching(/^\[Now: 2026-10-02T09:15Z \(Friday\)[^\n]*\n\nwhat next$/),
+      expect.stringMatching(/^\[Now: 2026-10-03T17:42Z \(Saturday\)[^\n]*\n\nand now$/)
+    ])
   })
 })

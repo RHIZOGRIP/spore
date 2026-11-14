@@ -4,6 +4,9 @@
  * A message is mohdel's wire `Message`, which refuses fields it does not define, so a note
  * of spore's own — this is the wrap notice, this summary stands in for a compacted head — is
  * held here, keyed by the message object, and written beside it in the transcript.
+ *
+ * So is what a user message was sent with ahead of what was said: `content` stays what the
+ * person said, and every request carries the message as it was first sent.
  */
 
 export const WRAP = 'wrap'
@@ -30,4 +33,19 @@ export function marked (message, name) {
 
 export function marksOf (message) {
   return [...(held.get(message) ?? [])]
+}
+
+const ahead = new WeakMap()
+
+export function sentWith (message, text) {
+  ahead.set(message, text)
+  return message
+}
+
+export function aheadOf (message) {
+  return ahead.get(message) ?? null
+}
+
+export function asSent (message) {
+  return ahead.has(message) ? { ...message, content: ahead.get(message) + message.content } : message
 }
