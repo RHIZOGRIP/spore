@@ -443,7 +443,7 @@ credential can serve many spores (docs/operating.md §Sources).
 `~/.config/spore/memory.json` — the store's `url`, `headers` with `${VAR}` filled from its own
 environment, and, for a store whose API differs from the protocol's defaults, `paths` and
 `collectionField` — and the agent reaches it only through the store socket
-(ARCHITECTURE §The vector store protocol).
+(docs/operating.md §Vector store).
 
 ## Environment
 

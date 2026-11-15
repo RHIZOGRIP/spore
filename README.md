@@ -162,8 +162,9 @@ The details are in [SECURITY.md](SECURITY.md).
 
 | | |
 |---|---|
-| [packages/spore/README.md](packages/spore/README.md) | the `spore` command, every verb |
+| [packages/spore/README.md](packages/spore/README.md) | getting started: install, a first spore, the workspace |
 | [PRINCIPLES.md](PRINCIPLES.md) | what spore promises, in plain words |
+| [docs/commands.md](docs/commands.md) | every verb of the `spore` command |
 | [docs/definition.md](docs/definition.md) | the `.cmk` file that describes a spore or a helper |
 | [INTEGRATION.md](INTEGRATION.md) | driving spores from a program: the command, the library, the HTTP API |
 | [docs/library.md](docs/library.md) | every function of the library |

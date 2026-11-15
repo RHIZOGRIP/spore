@@ -3,7 +3,7 @@
 What a host's operator configures and runs: the files under `~/.config/spore/`, the host-wide
 settings, plugins and their services, and the commands that look after spores. How it works is
 [ARCHITECTURE.md](../ARCHITECTURE.md); what it commits to is [PRINCIPLES.md](../PRINCIPLES.md);
-the commands a user types every day are in the [README](../packages/spore/README.md).
+every verb of the command is in [commands.md](commands.md).
 The fields of a `.cmk` — a spore's, a precursor's, a schedule's — are in [definition.md](definition.md).
 
 ## `~/.config/spore/` and its `environment`
@@ -436,12 +436,29 @@ turn; the agent never sees it, its URL or its credential.
 
 Any other key is refused. Put the token in `~/.config/spore/environment`, never in the file. A
 store that differs from the protocol only in its paths or in the name of the create's id field is
-set up with `paths` and `collectionField`; the protocol itself is ARCHITECTURE
-§The vector store protocol.
+set up with `paths` and `collectionField`.
 
 A turn of a spore declaring `memory: vectors` is refused at its start (`START_FAILED`) when the
 file is missing or unreadable, or when the store does not answer `ready`. Each workspace gets
 one collection per embedding model, so changing `embedding` starts a new collection.
+
+### The protocol a store speaks
+
+What the runner asks of a store, over http or https:
+
+| operation | default path | body | answer |
+|---|---|---|---|
+| ready | `GET /health/ready` | — | any 2xx |
+| create | `POST /v1/collections` | `{ <collectionField>: id, vector_schema: { dimensions, metric: "cosine", embedding_space }, metadata_schema: { unit: { type: "string", filterable: true } } }` | 2xx, or `ALREADY_EXISTS`, which counts as created |
+| fetch | `POST /v1/collections/{collection}/records:fetch` | `{ ids: [...] }`, at most 256 | `{ records: [{ id }] }`: those it holds |
+| upsert | `POST /v1/collections/{collection}/records:upsert` | `{ records: [{ id, vector, metadata: { unit } }] }`, at most 256 and 8 MiB | 2xx |
+| query | `POST /v1/collections/{collection}/query` | `{ vector, top_k, mode: "exact", filter: { eq: { field: "unit", value } } }`, `top_k` at most 50,000 | `{ matches: [{ id, distance }] }` |
+
+A create and an upsert carry an `idempotency-key` header, the same for the same write. A refusal
+is `{ "error": { "code", "message" } }`; 503 and 504 are retried, six attempts in all, and
+`CAPACITY_EXCEEDED` waits eight times longer between them than any other code. A store that does
+not answer within 30 s is not asked again. The runner checks `ready` before a turn and refuses to
+start one whose store is not ready.
 
 ## Webhooks: `hooks.json`
 
@@ -685,76 +702,12 @@ stops a turn. Each dream is a row in the `cells` view with origin `dream`, what 
 it changed; its workspace is under `$XDG_STATE_HOME/spore/cells/<spore>/dream/`, and the runner's
 `spore.err` says how it ended.
 
-## Driving `spore` from a program
+## The commands
 
-`spore send --json`, its exit codes, `--request-id` and `spore attach --json --after` are in
+Every verb of `spore` is in [commands.md](commands.md): making, talking to, reading, forking and
+cloning a spore, and `spore here`. Driving the command from a program — `spore send --json`, its
+exit codes, `--request-id` and `spore attach --json --after` — is in
 [INTEGRATION.md §The command](../INTEGRATION.md#the-command).
-
-## Cloning a spore: `spore define --from`
-
-```bash
-spore define <new> --from <old>
-```
-
-Makes `<new>` with `<old>`'s `spore.cmk`, its `precursors/` and every program a precursor grants
-in `enzymes`, each with the paths its `<enzyme>.with` declares, links carried as links. It leaves
-behind the database, `calls/`, `inbox.d/`, `schedules/`, `home/` and the rest of `data/`,
-`data/memory/` included. `<old>` may be running. `--from` refuses `--definition` and
-`--sporangium` (`DEFINE_AMBIGUOUS`). The clone is refused (`CLONE_INCOMPLETE`) when a granted
-program or a declared path is missing, lies outside the workspace, or is a link out of it, to the
-whole workspace or to nothing.
-
-## Forking a spore: `spore fork`
-
-```bash
-spore fork <name> <new> [--definition <file>]
-spore fork <name> --at turn:<n> <new> [--definition <file>]
-spore fork <name> --at <call> <new> [--definition <file>] [--replay]
-```
-
-Without `--at`, makes `<new>`, a name or a path, as `<name>` stands after its last turn: the
-conversation and the turn records, the calls they made, the messages they read, and `data/` —
-`data/memory/` included — `precursors/` and `home/` as they are. `--at turn:<n>` makes it as it
-stood when turn n ended, its files as they were then. Nothing starts, and the command exits 0: the
-copy's next message starts its first turn, which carries the conversation on as `<name>`'s next
-turn would have. Its `schedules/` stay behind, so the clock does not wake two spores for one
-schedule; write the copy its own. Messages not yet read, running jobs and answers waiting to be
-posted stay behind too, and a connector reaches the copy only once its bot file names it. Its
-`spore.cmk` is `<name>`'s, so it reads and writes the same directories `reads:` and `writes:` name.
-
-With `--at <call>`, makes `<new>` as `<name>` stood when the round of `<call>` came back, and
-carries the turn on from there; the command follows it like `send`, with the same exit codes.
-`<call>` is a call of the run's last turn, as `--at 0003`, or of another turn, as
-`--at <runId>/0003`. `--replay` cuts before the round's results, so its calls run again under the
-runtime as it is now.
-
-`--definition` runs the fork under another `spore.cmk`.
-
-Refused (`FORK_REFUSED`): a spore running — between turns, one whose last turn is still being
-written down too — a `<new>` that exists, a definition that does not parse, a spore that has
-finished no turn (`spore define <new> --from <name>` copies what it can do), a turn or a call that
-is not there, a file in `data/`, `calls/`, `precursors/` or `home/` changed after an earlier cut —
-cut later — `--replay` without a call, and a `--replay` of a round that called `ask`. A fork at a
-call spends like any turn; one between turns spends nothing until its next message.
-
-`scripts/try-definitions.js` in the package forks one cut many times under each definition and
-says how often each delivered a file under `data/out/`, and how its turns ended:
-
-```bash
-node scripts/try-definitions.js --run <workspace> --at <call> --into <dir> [--times 20] [--at-once 4] [--replay] [other.cmk …]
-```
-
-## `spore here`
-
-```bash
-spore here [<dir>] [--sporangium <s>] [--model <m>] [--no-git]
-```
-
-Opens the spore that works in `<dir>` (the current directory by default), made the first time as
-`<directory>-<6 hex>` in `home`, granted `writes: [here=<dir>]`. On a terminal a picker offers the
-sporangia; without one `--sporangium` is required. Outside a git work tree it is refused unless
-`--no-git`, and then nothing can be undone. Each session's snapshot is a ref under
-`refs/spore/<spore>/` in that repository; the newest three are kept.
 
 ## Root documents and `spore upgrade`
 

@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.68.0] — Changed: an output left out of a call's record says nothing of it was shown
+
+### Changed
+
+- `withheld`, in the record of a call whose output is not shown, is now a sentence. It was
+  `over 4096 bytes` or `not text`, which reads as a note on size. It now says the file was not
+  shown, why, that nothing of it is in the conversation, and how to get at it:
+  - `not shown, over 4096 bytes: nothing of this file is in the conversation. Read it in parts,
+    or run a program over it that prints less.`
+  - `not shown, not text: nothing of this file is in the conversation. Run a program that can
+    read it.`
+- This is a change for clarity, with no measured effect. On one recorded turn, forked twenty times
+  under each text, the agent went back to the output it was not shown as rarely with the new
+  sentence as with the old.
+- A program that compares `withheld` with the old values has to follow. The limit is still in
+  `SPORE_INLINE_BYTES`, and an output at or under it still comes back with no `withheld`.
+- `reference.md` says the same in its own words. `spore upgrade` brings it to an existing spore.
+
 ## [1.67.0] — Fixed: a follow-up turn reads the earlier conversation from the provider's cache
 
 ### Fixed

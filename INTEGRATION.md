@@ -410,7 +410,7 @@ and files, not its schedules — and starts nothing; `at: 'turn:3'` cuts after t
 call `at` came back, and carries the turn on from there, returning once the runner has started,
 like `send`. `forkWorkspace` makes either copy without starting it, and `readFork(ws)` reads what
 a fork was cut from. It refuses with `FORK_REFUSED`
-([docs/operating.md](docs/operating.md#forking-a-spore-spore-fork)).
+([docs/commands.md](docs/commands.md#forking-a-spore-spore-fork)).
 
 ### Many spores at once
 
@@ -859,7 +859,7 @@ program driving spores meets most; every function's own list is in [docs/library
 | `LIMIT_UNKNOWN`, `LIMIT_AMOUNT` | `extend`, `wrap` | not `rounds`, `cost` or `wall`; an amount or wait that does not read |
 | `ANNOTATION_INVALID` | `annotate` | not a line of 1 to 200 characters, and not `null` |
 | `MODEL_NOT_OFFERED` | `switchModel` | the definition does not offer that model |
-| `FORK_REFUSED` | `fork` | the cut cannot be made ([docs/operating.md](docs/operating.md#forking-a-spore-spore-fork)) |
+| `FORK_REFUSED` | `fork` | the cut cannot be made ([docs/commands.md](docs/commands.md#forking-a-spore-spore-fork)) |
 | `BATCH_USAGE` | `runBatch` | an errand without an `id` or messages, or a bad `atOnce` |
 | `SQLITE_TOO_OLD` | `checkSqlite` | Node's SQLite is older than spore needs |
 

@@ -1,5 +1,5 @@
 //! The vector store a spore's `memory: vectors` keeps its index in, reached over http or https
-//! with the protocol ARCHITECTURE §The vector store protocol documents: create a collection,
+//! with the protocol docs/operating.md §The protocol a store speaks documents: create a collection,
 //! fetch which ids it holds, upsert records, query by vector. Where the store is, the headers that carry its
 //! credential, and its paths come from the host's `memory.json`; the credential never leaves
 //! this process.

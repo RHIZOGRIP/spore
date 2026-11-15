@@ -931,7 +931,7 @@ With `at` a call — `'0003'` for a call of the last turn, `'<runId>/0003'` for 
 started, like `send`, and throws `ADMISSION_FULL` and `PAUSED` as it does.
 
 Either way `into` runs under `definition` when given. Throws `FORK_REFUSED`
-([docs/operating.md §Forking a spore](operating.md#forking-a-spore-spore-fork)).
+([docs/commands.md §Forking a spore](commands.md#forking-a-spore-spore-fork)).
 
 ### `forkWorkspace`
 

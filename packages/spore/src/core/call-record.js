@@ -138,7 +138,9 @@ export function contextView (meta) {
         const controls = controlCharacters(record.content)
         if (controls.length) view.files[slot].controlCharacters = controls
       } else if (record.bytes > 0) {
-        view.files[slot].withheld = record.bytes > INLINE_BUDGET ? `over ${INLINE_BUDGET} bytes` : 'not text'
+        view.files[slot].withheld = record.bytes > INLINE_BUDGET
+          ? `not shown, over ${INLINE_BUDGET} bytes: nothing of this file is in the conversation. Read it in parts, or run a program over it that prints less.`
+          : 'not shown, not text: nothing of this file is in the conversation. Run a program that can read it.'
       }
     }
   }

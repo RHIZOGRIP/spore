@@ -115,13 +115,13 @@ describe('exec is read-only', () => {
     const long = JSON.parse(await exec({ command: 'head -c 5000 /dev/zero | tr "\\0" x' }))
     expect(long.files.out.bytes).toBe(5000)
     expect(long.files.out.content).toBeUndefined()
-    expect(long.files.out.withheld).toBe('over 4096 bytes')
+    expect(long.files.out.withheld).toBe('not shown, over 4096 bytes: nothing of this file is in the conversation. Read it in parts, or run a program over it that prints less.')
     const binary = JSON.parse(await exec({ command: "printf 'a\\000b'" }))
     expect(binary.files.out.bytes).toBe(3)
     expect(binary.files.out.content).toBeUndefined()
-    expect(binary.files.out.withheld).toBe('not text')
+    expect(binary.files.out.withheld).toBe('not shown, not text: nothing of this file is in the conversation. Run a program that can read it.')
     const latin = JSON.parse(await exec({ command: "printf 'caf\\351'" }))
-    expect(latin.files.out.withheld).toBe('not text')
+    expect(latin.files.out.withheld).toBe('not shown, not text: nothing of this file is in the conversation. Run a program that can read it.')
   })
 
   it('tells a command how many bytes come back inline, in SPORE_INLINE_BYTES', async () => {
@@ -133,7 +133,7 @@ describe('exec is read-only', () => {
       const over = JSON.parse(await run({ command: 'head -c "$((SPORE_INLINE_BYTES + 1))" /dev/zero | tr "\\0" x' }))
       expect(over.files.out.bytes).toBe(4097)
       expect(over.files.out.content).toBeUndefined()
-      expect(over.files.out.withheld).toBe('over 4096 bytes')
+      expect(over.files.out.withheld).toBe('not shown, over 4096 bytes: nothing of this file is in the conversation. Read it in parts, or run a program over it that prints less.')
     }
   })
 })

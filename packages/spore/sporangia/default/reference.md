@@ -138,8 +138,9 @@ Every tool call names the file it is about.
   and exited 1 failed.
 - No stream enters this conversation. A short file comes back inline in the record; a
   long one stays on disk for the next program to read.
-- A file that is not empty and comes back without `content` says why in `withheld`:
-  `over 4096 bytes`, or `not text`. It is never an empty result; read it or run a program over it.
+- A file that is not empty and comes back without `content` says so in `withheld`: it was not
+  shown, because it is over 4096 bytes or not text. It is never an empty result, and nothing of
+  it is in this conversation until you read it in parts or run a program over it.
 - A command finds that limit in `$SPORE_INLINE_BYTES`. It bounds `out` and `err` each on its own,
   so a program you write can print in parts that each come back inline.
 - `controlCharacters` beside `content` names control characters the file holds, such as `ESC`

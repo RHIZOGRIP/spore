@@ -222,9 +222,11 @@ no NUL byte.
   beyond tab, line feed, form feed and carriage return lists them in `controlCharacters`
   (`ESC`, `BS`, `0x01`), since a pattern written from what was shown has to account for them. The
   content is the file's, never stripped; the view is JSON, so each arrives escaped.
-- **says why when it does not.** The caller's view of a non-empty file without content carries
-  `withheld`: `over 4096 bytes` or `not text`, so the record never reads as a file with nothing
-  in it.
+- **says so when it does not.** The caller's view of a non-empty file without content carries
+  `withheld`, a sentence at the call itself: the file was not shown, because it is over 4096
+  bytes or not text; nothing of it is in the conversation; and how to get at it, in parts or
+  through a program. So the record never reads as a file with nothing in it, nor as a result
+  that was seen. It names no tool, since a cell may be granted none.
 - **told to what a call runs.** Every command `exec` and `wsexec` run finds the limit in
   `SPORE_INLINE_BYTES`, in bytes, and an enzyme inherits it from the command that started its
   cell. It bounds each stream on its own, `out` and `err` alike, so a program can cut its output
@@ -322,6 +324,44 @@ The trail never holds a copy of a workspace file beyond the short text the inlin
 only paths and hashes. Work product lives in the workspace, the record in `calls`, and they have
 different lifetimes, so pruning can never destroy anything but the record.
 
+### One reading of what a call did
+
+**`readOutcome()` (`src/core/call-record.js`) is the single reading of a tool result**, used by
+the loop guard, the `tool_end` event and session memory, so none of them can disagree about
+whether a call worked. It reads marks, never text. `tool_end` also carries how a call that did
+not work ended — `exit`, a command that ran to its end and exited non-zero, which may be its "no"
+(`grep` finding nothing), apart from `killed`, `signal`, `spawn` and `refused`, calls that did not
+finish or never ran — so a console marks the first with its exit code and only the others as
+failures.
+
+**A refusal is a value** (`src/core/refusal.js`). A tool that will not run returns
+`refuse(reason)`; the kernel shows the model `error: <reason>` and marks the tool message
+`refused`.
+
+**A call record is a value too** (`recorded`, `src/core/call-record.js`). The five tools that
+produce one — `read`, `write`, `edit`, `exec`, `wsexec` — return the record; the kernel shows
+the model its JSON and marks the message `record`, and `readOutcome` reads an exit code only
+from a message so marked, where the text is known to be the runtime's own. Anything else a tool
+returns is text and worked by getting that far — `ask` and `quiet` return what the model wrote,
+which may begin with `error:` or be JSON with an `exit` in it. Both marks are persisted beside
+the message in the transcript, so a replay reads them the same way.
+
+**Every call leaves a record, refusals included.** `recordRefusals()`
+(`src/tools/make-tools.js`) wraps every tool: a refusal, returned or thrown by `safePath`,
+becomes a refusal record in the trail, and the model is told the refusal's detail — what to do —
+rather than the rule it broke
+([principle 21](PRINCIPLES.md#21-when-something-fails-it-says-so)). Every tool validates before
+`trail.begin`, and the budget paths `abandon` the call before returning, so a refusal always
+means nothing was written down.
+
+### One budget, on what the model actually receives
+
+`read` measures what it will return — the whole serialized record, not the bytes it sliced —
+before the call is written down (`trail.preview`), and refuses with the real figures when it
+will not fit. The transcript sanitiser (`src/resilience/transcript.js`) is the backstop for
+anything that did not budget itself: when it has to cut a record it keeps the shape and drops
+the largest field rather than slicing the JSON, so the agent still sees which file and how big.
+
 ## Sandbox
 
 Every turn's agent starts through `confine --no-landlock`, with `--contain` unless the host has
@@ -404,6 +444,22 @@ Exit codes are `126` for a confinement failure and `127` for a failed exec; othe
 command's own.
 
 The syscall boilerplate duplicates `sandbox.c`.
+
+### Nothing in the runtime refuses a command
+
+No pattern gates `exec` or `wsexec`, and no call is refused for repeating another
+([principle 9](PRINCIPLES.md#9-spore-only-blocks-what-it-can-truly-stop)). What a
+command can do is bounded where it is enforced: `exec` runs read-only under `confine`, `wsexec`
+under the agent's own ruleset, both with `NO_NEW_PRIVS` set. A command the system will not carry
+out is refused by the command — `rm -rf /` reaches GNU `rm`, which refuses and says why — and
+recorded with its exit code.
+
+The loop guard (`src/resilience/loop-guard.js`) observes and never refuses. It has two signals:
+one tool failing five times running, and the same tool returning the same result to the same
+arguments five times running. It compares the result as well as the arguments because a
+workspace is mutable — cells write into it while the agent watches, so the same `wc -l` twice
+is how an arrival is seen, and it is the wait-loop `reference.md` teaches for a detached
+fan-out. Either signal wraps the turn as `soft:progress`.
 
 ## Precursors
 
@@ -524,28 +580,20 @@ is left out, since its grant would add nothing: a plugin installed beside spore,
 hoisted with spore's, adds no path at all. A program outside that set is refused when the plugin
 is checked, not at the agent's first call.
 
-**A plugin is a manifest.** The `spore` field of its `package.json` says what it gives:
-`works`, the `@rhizogrip/spore` versions it works with, which is required; and, each optional,
-`settings` the host must supply, each a `port` or `text`; `options`, what each spore using it
-chooses in its own `spore.cmk` as `<plugin>.<option>: <value>`, from the values the manifest
-offers, the manifest's default where it chooses none — a setting is the machine's, an option the
-spore's; `programs`, a variable naming an
-executable in the plugin or in a package it depends on, `{arch}` in its path standing for this
-machine's architecture, which the agent runs, and which a spore's
-definition may also bind for the runtime to run on the deliveries of an origin (`prepare:`,
-§Deliveries nobody typed); `describe`, how a call of each of its
-programs is shown ([§Describing a call](#describing-a-call)); `env`, more variables from `{name}`,
-`{ws}`, `{data}`, `{sockets}`, `{settings.<key>}` and `{options.<name>}`; `modules`, dependencies of the plugin an agent's own
-programs may import, none of them a provisioned one; `sources`, endpoints described as the
-host's `sources.json` describes them, held by the runner and granted with the plugin; a
-`reference`, one markdown file; a directory of `precursors`; and `services`, below. The core reads
-the manifest and runs none of the plugin's code of its own accord — there is no hook in `send`, the
-runner or the agent, and no tool a plugin adds. What runs is what the agent calls, the program a
-definition binds with `prepare:`, and the services the operator defines. Who runs a program is
-the spore's choice, not the plugin's: `plugins:` gives a plugin's programs to the spore's turns,
-`prepare:` one of them to a step on its deliveries, either without the other. A plugin is the unit
-of that choice, so what a spore must be able to take apart ships as separate plugins. Every key, its shape and its refusals are in
+**A plugin is a manifest.** The `spore` field of its `package.json` says what it gives: the
+spore versions it works with; settings the host supplies and options each spore chooses — a
+setting is the machine's, an option the spore's; programs the agent runs, and how a call of each
+is shown ([§Describing a call](#describing-a-call)); variables, importable modules, sources, a
+reference, precursors and services. Every key, its shape and its refusals are in
 [docs/plugins.md](docs/plugins.md), the guide for a plugin's author.
+
+The core reads the manifest and runs none of the plugin's code of its own accord — there is no
+hook in `send`, the runner or the agent, and no tool a plugin adds. What runs is what the agent
+calls, the program a definition binds with `prepare:` (§Deliveries nobody typed), and the services
+the operator defines. Who runs a program is the spore's choice, not the plugin's: `plugins:` gives
+a plugin's programs to the spore's turns, `prepare:` one of them to a step on its deliveries,
+either without the other. A plugin is the unit of that choice, so what a spore must be able to
+take apart ships as separate plugins.
 
 **Allowed on the machine, used by a spore.** Allowing a plugin checks it — the manifest, the
 `works` range, every program executable and inside the grant, every setting declared and of its
@@ -608,9 +656,7 @@ touches it.
 
 **A root document missing at turn start is laid again** from what is installed: `reference.md`
 and `libraries.md` from the package's own sporangium tree, and each used plugin's
-`plugins/<name>.md` and precursors from that plugin. A
-program that manages workspaces without `spore upgrade` upgrades one by deleting those files
-while it holds the workspace lock, and the next turn lays the installed copies.
+`plugins/<name>.md` and precursors from that plugin.
 
 **A host may let them follow the package.** The host setting `docs: follow` makes a runner's start
 (`startRunner`, whatever started it) upgrade that spore before the runner does anything:
@@ -622,7 +668,9 @@ file is replaced by a rename, so a reader sees the old copy or the new one.
 ## The spore command
 
 `spawn` is internal — the agent's own programs call it to start a cell. The user's entry is
-`spore`: a message in, the answer on stdout, and everything else carried by the directory.
+`spore`: a message in, the answer on stdout, and everything else carried by the directory. What
+each verb takes and refuses is in [docs/commands.md](docs/commands.md); this section says how
+they hold.
 
 It is **three processes**, and only the middle one is the turn. `packages/spore-cli/bin/spore.js`
 says what is wanted and then follows, holding nothing. The runner — `rust/runner`, built to
@@ -658,7 +706,292 @@ arguments, terminal and exit status unchanged. Nothing else starts the VM — a 
 it is stopped is told `spore vm start`. Where no VM is named, `vm` says spore runs on this machine
 and succeeds, so one script works everywhere.
 
-### The inbox
+### Defining a spore
+
+**Defining a spore and sending to it are separate acts.** `spore define` says what a spore is;
+`spore send` only reaches one that exists, so a mistyped name is an error rather than a second
+spore beside an abandoned conversation. What a message means — the job, a continuation, the
+answer to a question the spore asked — is the spore's to decide.
+
+**Defining is also revising.** `--definition` given for a workspace that already has a
+definition replaces `spore.cmk` and leaves `state.sqlite` and `data/` alone: the agent keeps what
+it has done. `openWorkspace` re-parses the definition on every open, so the revision takes effect
+at the next turn, as a hand edit does. The definition is parsed before it is written and
+installed by rename, so one that does not parse, or a process killed mid-write, leaves the one in
+place untouched. `spore edit` is the same install, reached from an editor: the editor gets a
+copy, and the copy replaces `spore.cmk` only once it parses, so a broken definition is caught when
+it is written.
+
+**The model is part of the definition**
+([principle 7](PRINCIPLES.md#7-a-spore-is-described-in-a-file-not-built-in-code)): `model: <provider>/<name>` sits
+beside the tools and the limits, and a root definition naming none is refused the way one missing
+a limit is. A precursor may leave it out and run on its spore's: the spawn plan reads the spore's
+`spore.cmk` for it (`rust/runner/src/plan.rs`), and no environment variable carries a model.
+`$MODEL` is how the conformance suite, on the host, picks what to write into the definitions it
+stages.
+
+**A spore is made from a sporangium.** A sporangium is laid out as a spore is, with nothing run
+yet: its `spore.cmk`, and any `precursors/`, `schedules/`, `data/`, `home/` and root documents.
+Every spore is made the same way, whatever its sporangium: the default sporangium, then the one
+named with `--sporangium` over it, file by file (`src/core/sporangia.js`). So a sporangium
+carries only what it changes or adds, and the default sporangium holds what every spore starts
+with: the general identity, `reference.md`, `libraries.md` and `precursors/README.md`. A
+sporangium may still carry its own `reference.md`, and the repository's tests hold any shipped one
+to every section and tool of the default's. A sporangium other than the default must carry a
+`spore.cmk`.
+
+Each sporangium is the package's (`sporangia/<name>/`), then the operator's (`sporangia/<name>/`
+beside `config.json`), the later winning file by file. The operator's default sporangium is copied
+from the package's once and is authoritative afterwards, so upgrading spore cannot quietly change
+what your spores are. A workspace records the sporangium it was made from in `sporangium.json` — a
+clone records its origin's — and that is what `spore upgrade` and the "differs from what is
+installed" warning compare its root documents against. A workspace with no record, a cell's, is of
+the default sporangium. A spore is named by its directory, so the `name:` of its `spore.cmk` is
+written as that name whenever spore lays the file — `define` from a sporangium, a file or another
+spore, a redefinition and `fork` — and never the name of what it was cut from. `openWorkspace`, which runs confined, restores a missing root document from
+the package's sporangia alone.
+
+**No shipped sporangium names a model, and the first `define` copies the default sporangium and
+then refuses**, saying to set one. A sporangium that names no model runs on the operator's default
+sporangium's. What a spore runs on, what it may
+call and what it may spend are all `.cmk` fields, changed by editing one: the options of `define`
+fill in the file it writes for a new spore, and are refused for one that exists.
+
+**`spore remake <spore>` makes a spore again, in place,** from the sporangium it was made from
+(`remake` in `src/library/verbs.js`). It keeps what the spore can do and what it has made, moved
+rather than copied, and sets what it did — the database, the trail and the inbox — aside beside
+it. With no definition left, that directory is not a spore. It is how a
+spore whose database another development version made is brought back, since that database
+cannot be opened (§The workspace database). A watcher's
+position is tied to the database it was read from (`databaseOf`, its `createdAt`), so a service
+following a remade spore starts the new database from its beginning.
+
+**`openWorkspace` opens; it does not make.** A directory with no definition is refused rather
+than seeded.
+
+### Reading a spore
+
+`spore log` is the turn-by-turn view: when each turn ended, how, what it cost, what it drew in
+work units, and **what was said to start it** — which the turn records carry without storing it.
+Each says which stretch of the inbox it read, `(inboxFrom, inboxTo]`, and those are exactly the
+messages that turn answered; anything no turn has read is waiting. A running turn's record is
+written when it ends, so how far it has read so far is its latest `inbox_read` event, logged as it
+reads at its start and between rounds. That is also what `spore show` counts as `waiting`, and it
+is the difference between a spore that is idle and one that has not started yet. The answers are not there: they are in the transcript.
+
+Every verb names a spore the same way, so `spore show test` and `spore send test "…"` mean the
+same one. `show` answers from the files alone — `stateOf()` for what it is doing, the parsed
+definition for what it is, the transcript and the `turns` view for what it has done — and never
+calls `openWorkspace`, which seeds files and links modules.
+
+The management verbs — `ls`, `show`, `log`, `config` and the rest — run in the
+command (`packages/spore-cli/src/dispatch.js`), on the host, and start nothing. They answer from
+`src/library/verbs.js`, which is a library: an embedder asking the same questions needs no
+command and gets no less.
+
+### Stopping
+
+Nothing reads a message for a keyword: what it means is the spore's to decide. That gives
+stopping two forms, mirroring the limits: `spore send <name> stop` asks the agent to wrap up and
+answer with what it has, as a soft limit does, while `spore stop <name>` sends SIGTERM to the
+lock's holder and aborts mid-round, as a hard limit does, and the turn ends `cancelled`. Neither
+cuts a model call: one in flight runs to its end in the runner and is billed to the turn, which is
+written down once it has
+([principle 12](PRINCIPLES.md#12-a-soft-limit-asks-to-wrap-up-a-hard-limit-stops), §The model broker).
+
+**The supervisor bounds the stop.** The runner passes SIGTERM to the agent and waits a grace of
+5 s (`GRACE`, `rust/runner/src/supervise.rs`) for it to abort the turn, kill its tools' process
+groups and leave its turn record; past that it kills the agent **with every process it started**
+and releases the lock and the slot, because a turn that cannot stop must not hold them. The tools
+sit in process groups of their own, and only an agent that can still run its abort handler stops
+those, so the supervisor does not signal the agent's pid alone: it freezes the agent, then each
+descendant as it walks the parent links in `/proc/*/stat` — a stopped process cannot fork, so the
+walk ends with the whole tree — and kills them all.
+
+**Nothing a turn started outlives its lock.** Every supervisor — the runner for a turn,
+`spore-spawn` for a cell — adds a token of its own to `SPORE_OWNERS` in its child's environment,
+which every process of the turn inherits: tools, their children, cells, and whatever was
+re-parented to init when its parent went. When the child ends, however it ends, the supervisor
+kills every process of its user still carrying the token, frozen first as it is found, and only
+then lets go of the lock (`rust/workspace/src/owners.rs`). A cell's worker stops like the root's
+agent — a signal is its turn's abort, so it stops its tools, writes its record and frame, and
+exits — and the sweep covers a worker that could not. The runner lets go only once the turn's
+model calls have finished as well: a call is not a process of the turn but the runner's. A job is
+the one thing a turn starts that is meant to outlive it, and it runs outside the turn's token
+(§Jobs). Out of reach is only a process that cleared its environment and left the tree as well.
+
+**The hard wall is held from outside too.** At the definition's `wall` plus the grace, the runner
+asks the agent to stop, then kills it; `spore-spawn` does the same for a cell with its
+precursor's `wall`. The agent's own timer covers every `await` the turn's abort signal reaches,
+recall's embeddings and store requests included, and the supervisor's covers the rest. A killed
+agent leaves no turn record, so the runner writes it (§A turn that died still happened). The
+vector store gives up on an attempt after 30 s (`rust/runner/src/vectors.rs`) rather than asking
+a store that stopped answering again.
+
+### Changing a running turn's limits
+
+`spore extend` raises the running turn's soft and hard limit of one dimension together;
+`spore wrap` brings its soft wall forward. The Telegram plugin and the HTTP API offer both. Only
+the turn's owner can change its limits while it runs.
+
+**Raising is a grant.** The definition names a ceiling per limit — `extend.wall: 3h` — and no
+ceiling means no extension. Wrapping needs no grant.
+
+**A change is a row.** The runner writes the turn's limits as it starts them, one `start` row per
+dimension in `t_limits`; `extend` and `wrap` add rows, in one transaction that finds the running
+turn and checks against its latest row, so two changes never race (`change_limits`,
+`rust/workspace/src/state.rs`). The latest row of a dimension is the limit. Nothing running, or a
+running turn that recorded no limits, refuses the change. Wall values are milliseconds from the
+turn's start; a wrap, a moment on the clock, is written that way and read back against the loop's
+own start.
+
+**Three enforcers, one source.** The hard wall is held three times — by the loop between rounds,
+by the agent's timer through a tool that hangs, and by the runner past its grace — and hard cost
+twice, by the loop and by the broker. The agent and the runner each read the rows every two
+seconds and move their own bound, so a raised wall is in force before the old one would have
+fired. When a limit the turn already wrapped on is raised, the model is told it may carry on; a
+wrap its owner asked for is announced as that, not as a limit reached.
+
+### Copying a spore between its turns
+
+`spore fork <name> <new>` (`src/core/fork.js`) makes a new workspace that is the spore as it
+stands after its last turn, and `--at turn:<n>` as it stood after turn n. It is the same spore
+going on in two places, not a new spore cut from it — that is `define --from`, which takes what a
+spore can do and none of what it did
+([principle 6](PRINCIPLES.md#6-a-copy-of-a-spore-takes-its-skills-not-its-memories)).
+
+**Between turns nothing is in flight**, so the cut needs no runner and the copy starts none: its
+next message starts its first turn, replaying the conversation as the spore's own next turn would.
+A spore running is refused, draining included, since its last turn is not written down yet. The
+turn records go in through the writer that finalizes a turn, which moves `inboxConsumed` and
+`lastTurnNo` with them, so the copy reads none of what they answered twice. The transcript is cut
+by turn, not by time: it ends before the first entry of a turn not kept, since every entry a turn
+writes carries its `turnId` — its answer, written after the `endedAt` its record holds, included —
+and only a flush, written between turns, carries none and comes with the turn before it. After the
+last turn the islands are copied as they are, nothing changing them; after an earlier turn they
+are restored by birth time, as for a cut at a call, and a later change refuses.
+
+**Schedules stay behind.** A schedule is a message the clock says to one spore; copied, the clock
+would say it to two, and both would answer wherever their reply-to points. So would anything
+waiting to go out, which is why the outbox, running jobs and unread messages stay behind as well.
+`sporangium.json` comes, so `spore upgrade` reads the copy against the sporangium it was made from.
+
+### Carrying a turn on from one of its rounds
+
+`spore fork --at <call>` makes a new workspace that is a run as it stood when one call's
+round came back, and carries the turn on from the next model call. It exists to take one decision
+again, many times, under a changed definition: a failure seen once in twenty full runs is reached
+every time from a fork, so a rate needs forks, not reruns. `scripts/try-definitions.js` is the
+loop around it — one cut, N forks per definition, and how often each delivered.
+
+**The cut is a round boundary**, found through the turn record's times against each message's
+`at`, and it takes every result of the round, since a model that asked for two calls has to be
+shown both. A round boundary is quiescent — every tool has returned — which is what makes it a
+place a turn can stop and start. A spore still running is refused.
+
+**The islands are restored by birth time.** The trail records what a call redirected, not what a
+program wrote, so `data/`, `calls/`, `precursors/` and `home/` are copied file by file: a file
+born after the cut is left out, and one born before it and changed after **refuses the fork**,
+because its content at the cut is gone ([principle 20](PRINCIPLES.md#20-complete-or-not-at-all)).
+The run's `reference.md`, `libraries.md`, `sporangium.json` and `plugins/` documents are copied
+too — they are part of what that spore was told — and so is `inbox.d/`. The records go the same way: the finished
+turns before the cut, the transcript to it, the inbox the turn had read, and every call record
+that started before it, so the run numbers on from them and the streams restored beside them keep
+the names the transcript gives them. A different definition given to the fork replaces the run's
+`spore.cmk`, which is the point of most forks.
+
+**The turn goes on in the same run.** `fork.json` carries the `runId`, the rounds taken and how
+far the inbox was read (`inboxTo`). The runner's `--continue` has the agent pass that record to
+`runSpore` as `resume`, which reads no new inbox, numbers calls on from the run's last
+(`createCallTrail`'s `seq`), and runs `loop` `from` the round where the run left it, with no user
+message appended, so the limits still count what was done. Spend is counted from the fork — the
+runtime records cost when a turn completes, not per round.
+
+**File times are compared with a margin.** They come from the kernel's coarse clock, which
+advances a tick at a time, so a file can read a few milliseconds off the moment that made it — a
+call's named output has been measured born 5 ms before the call's own `startedAt`. Each cut is
+moved 20 ms (`CLOCK_SLACK_MS`) into the quiet between two rounds, where a model call sits for
+seconds, so a file lands on the side of the round that made it.
+
+**`--replay` cuts one step earlier**, before the round's results: the fork keeps the assistant
+message that asked for the calls, and `loop` runs them again before its first model call, under
+the runtime as it is then. That is how a change to what a tool returns is measured — the history
+is the run's, only the result differs. The boundary is the round's first call's `startedAt`, not
+the message's `at`, because a call can open its output before the transcript writes the message
+down. A round that called `ask` cannot be replayed.
+
+### Cutting a spore from another
+
+**A clone inherits what a spore can do, not what it did**
+([principle 6](PRINCIPLES.md#6-a-copy-of-a-spore-takes-its-skills-not-its-memories)).
+`spore define <new> --from <old>` (`src/core/clone.js`) carries the definition, the precursors and
+the programs they grant, and leaves the conversation, the records and `data/` behind
+([docs/commands.md](docs/commands.md#cloning-a-spore-spore-define---from)). `model.key`, `lock` and
+`node_modules/` are not copied — minted per turn, liveness, and linked by `openWorkspace` for
+itself. The clone records its origin's sporangium.
+
+**The unit is the precursors and the closure of what they grant.** What a program needs beside
+itself is declared, not detected (§Precursors, `<enzyme>.with`), and a declared path that is missing
+refuses the clone (`CLONE_INCOMPLETE`). There is no other channel: a program nothing grants is
+working space. `data/bin/` is the conventional place for enzymes, taught in `reference.md` and read
+by no code.
+
+`define` says what a spore is with a file, with a sporangium or by reference to a sibling, and the
+three refuse each other. All make the workspace through `openWorkspace`. Cloning a running spore is
+fine — it reads the definition, the precursors and
+their programs and takes no lock — and the worst case, a program copied mid-write, surfaces as a
+broken enzyme at its first spawn.
+
+**A clone is not told it is one.** Nothing in its prompt or its reference says it inherited
+anything, so whether it finds and uses its precursors is a property of how its origin left them. The
+command reports the cut to whoever ran it, not to the agent.
+
+### Removing a spore
+
+`spore rm` (`remove` in `src/library/verbs.js`) deletes the workspace, and refuses where a bare
+`rm -rf` would break something without a word. A spore holding a finished turn needs a second
+word, because a turn is history: its conversation, its records and what it made, whatever it
+cost. It knows nothing of what an application built on spore made of a workspace: keeping an
+experiment whole is that application's business.
+
+It deletes under the workspace's own lock, so a turn cannot start inside a directory that is
+going. A spore that holds the lock is running, and the refusal says to stop it first. Recorded
+turns are checked before the lock is taken, because taking it writes over the pid a crashed
+runner left, and that pid is how `stateOf` tells a crash; once the lock is held, the check is made
+again, in case a turn finished in between.
+
+### A spore for the directory you are in
+
+`spore here [dir]` opens the spore that works in a directory, in place, and makes it the first
+time (`packages/spore-cli/tui/here.js`, `packages/spore-cli/src/here.js`). It is named
+`<directory>-<6 hex of a hash of its real path>` in the spore home, so the same directory always
+finds the same spore and nothing else keys it, and it is granted `writes: [here=<dir>]` — the
+directory given, not its repository's root. `define` refuses a grant the runner would refuse at
+every turn. Made, it does nothing on its own, and changing it later is `spore edit`, as for any.
+
+**Git is the undo**, so outside a work tree it is refused unless told to work without git. Each
+session starts with a commit of the directory as it stands — tracked and untracked, `.gitignore`
+respected — under `refs/spore/<spore>/<session>`, written through an index of its own, so neither
+the work tree nor the person's index moves. Only the newest three are kept per spore, the older
+refs dropped as a session opens: a snapshot holds untracked files, so one kept forever would keep a
+deleted file — or a `.env` nobody ignored — in `.git`, where a mirror push or a backup of every ref
+would carry it. A session reads only its own; three leave room for another session of the spore
+still open. `/diff` and `/undo` read and restore that snapshot, and cannot tell the spore's
+changes from the person's; both are commands `spore here` adds to the terminal (`runTui`'s
+`commands`).
+
+### The first run
+
+`spore setup` (`packages/spore-cli/src/setup.js`) is a path through what other commands do,
+keeping no state of its own: each step reads what is there first and says so, so a second run
+asks nothing already answered and is a check. The models step offers what mohdex.dev recommends and
+gets a credential from the `mo` installed with spore (`MO`), stopping on its exit code. `expert`,
+the way to any model, reads readiness again after `mo onboard` rather than take the exit code, since
+a user can finish the catalog after it exits. `spore doctor`'s models area is the same reading for
+every model the spores name. The catalog is mohdel's alone: adding a model
+to it offers it to no spore, which stays `models:` in that spore's `spore.cmk`.
+
+## The inbox
 
 **Everything said to a spore goes to its inbox first, and starting a runner is a separate act**
 ([principle 16](PRINCIPLES.md#16-every-message-lands-in-the-same-inbox)). One
@@ -760,44 +1093,7 @@ and tail, not head**: the two shapes a long message takes put the instruction at
 file is measured in, and does not cut between the halves of a surrogate pair: an orphan half is not
 text the inbox can hold, and anything taking the text through a Buffer renders U+FFFD.
 
-### Stopping
-
-Nothing reads a message for a keyword: what it means is the spore's to decide. That gives
-stopping two forms, mirroring the limits: `spore send <name> stop` asks the agent to wrap up and
-answer with what it has, as a soft limit does, while `spore stop <name>` sends SIGTERM to the
-lock's holder and aborts mid-round, as a hard limit does, and the turn ends `cancelled`. Neither
-cuts a model call: one in flight runs to its end in the runner and is billed to the turn, which is
-written down once it has
-([principle 12](PRINCIPLES.md#12-a-soft-limit-asks-to-wrap-up-a-hard-limit-stops), §The model broker).
-
-**The supervisor bounds the stop.** The runner passes SIGTERM to the agent and waits a grace of
-5 s (`GRACE`, `rust/runner/src/supervise.rs`) for it to abort the turn, kill its tools' process
-groups and leave its turn record; past that it kills the agent **with every process it started**
-and releases the lock and the slot, because a turn that cannot stop must not hold them. The tools
-sit in process groups of their own, and only an agent that can still run its abort handler stops
-those, so the supervisor does not signal the agent's pid alone: it freezes the agent, then each
-descendant as it walks the parent links in `/proc/*/stat` — a stopped process cannot fork, so the
-walk ends with the whole tree — and kills them all.
-
-**Nothing a turn started outlives its lock.** Every supervisor — the runner for a turn,
-`spore-spawn` for a cell — adds a token of its own to `SPORE_OWNERS` in its child's environment,
-which every process of the turn inherits: tools, their children, cells, and whatever was
-re-parented to init when its parent went. When the child ends, however it ends, the supervisor
-kills every process of its user still carrying the token, frozen first as it is found, and only
-then lets go of the lock (`rust/workspace/src/owners.rs`). A cell's worker stops like the root's
-agent — a signal is its turn's abort, so it stops its tools, writes its record and frame, and
-exits — and the sweep covers a worker that could not. The runner lets go only once the turn's
-model calls have finished as well: a call is not a process of the turn but the runner's. A job is
-the one thing a turn starts that is meant to outlive it, and it runs outside the turn's token
-(§Jobs). Out of reach is only a process that cleared its environment and left the tree as well.
-
-**The hard wall is held from outside too.** At the definition's `wall` plus the grace, the runner
-asks the agent to stop, then kills it; `spore-spawn` does the same for a cell with its
-precursor's `wall`. The agent's own timer covers every `await` the turn's abort signal reaches,
-recall's embeddings and store requests included, and the supervisor's covers the rest. A killed
-agent leaves no turn record, so the runner writes it (§A turn that died still happened). The
-vector store gives up on an attempt after 30 s (`rust/runner/src/vectors.rs`) rather than asking
-a store that stopped answering again.
+## The workspace
 
 ### What a workspace holds
 
@@ -890,275 +1186,6 @@ that is read back from the directories
 or that holds no `spore.cmk`, is reported and skipped rather than being an error. **It is host
 side only**: `sandbox()` does not grant `~/.config`, so a spore cannot discover the workspaces
 beside it.
-
-### Defining a spore
-
-**Defining a spore and sending to it are separate acts.** `spore define` says what a spore is;
-`spore send` only reaches one that exists, so a mistyped name is an error rather than a second
-spore beside an abandoned conversation. What a message means — the job, a continuation, the
-answer to a question the spore asked — is the spore's to decide.
-
-**Defining is also revising.** `--definition` given for a workspace that already has a
-definition replaces `spore.cmk` and leaves `state.sqlite` and `data/` alone: the agent keeps what
-it has done. `openWorkspace` re-parses the definition on every open, so the revision takes effect
-at the next turn, as a hand edit does. The definition is parsed before it is written and
-installed by rename, so one that does not parse, or a process killed mid-write, leaves the one in
-place untouched. Without `--definition` the command is idempotent and says so rather than making
-the spore again from its sporangium.
-
-`spore edit <name>` is the same install, reached from `$VISUAL` or `$EDITOR`: the editor gets a
-copy, and the copy replaces `spore.cmk` only once it parses, so a broken definition is caught when
-it is written. One that does not parse is offered back with the parser's error; one that is
-unchanged replaces nothing; a `spore.cmk` changed by someone else meanwhile is left alone and the
-copy kept (`EDIT_CONFLICT`). It says what changed, and that a running turn takes it from the next
-one.
-
-**The model is part of the definition**
-([principle 7](PRINCIPLES.md#7-a-spore-is-described-in-a-file-not-built-in-code)): `model: <provider>/<name>` sits
-beside the tools and the limits, and a root definition naming none is refused the way one missing
-a limit is. A precursor may leave it out and run on its spore's: the spawn plan reads the spore's
-`spore.cmk` for it (`rust/runner/src/plan.rs`), and no environment variable carries a model.
-`$MODEL` is how the conformance suite, on the host, picks what to write into the definitions it
-stages.
-
-**A spore is made from a sporangium.** A sporangium is laid out as a spore is, with nothing run
-yet: its `spore.cmk`, and any `precursors/`, `schedules/`, `data/`, `home/` and root documents.
-Every spore is made the same way, whatever its sporangium: the default sporangium, then the one
-named with `--sporangium` over it, file by file (`src/core/sporangia.js`). So a sporangium
-carries only what it changes or adds, and the default sporangium holds what every spore starts
-with: the general identity, `reference.md`, `libraries.md` and `precursors/README.md`. A
-sporangium may still carry its own `reference.md`, and the repository's tests hold any shipped one
-to every section and tool of the default's. A sporangium other than the default must carry a
-`spore.cmk`.
-
-Each sporangium is the package's (`sporangia/<name>/`), then the operator's (`sporangia/<name>/`
-beside `config.json`), the later winning file by file. The operator's default sporangium is copied
-from the package's once and is authoritative afterwards, so upgrading spore cannot quietly change
-what your spores are. A workspace records the sporangium it was made from in `sporangium.json` — a
-clone records its origin's — and that is what `spore upgrade` and the "differs from what is
-installed" warning compare its root documents against. A workspace with no record, a cell's, is of
-the default sporangium. A spore is named by its directory, so the `name:` of its `spore.cmk` is
-written as that name whenever spore lays the file — `define` from a sporangium, a file or another
-spore, a redefinition and `fork` — and never the name of what it was cut from. `openWorkspace`, which runs confined, restores a missing root document from
-the package's sporangia alone.
-
-**No shipped sporangium names a model, and the first `define` copies the default sporangium and
-then refuses**, saying to set one. A sporangium that names no model runs on the operator's default
-sporangium's. What a spore runs on, what it may
-call and what it may spend are all `.cmk` fields, changed by editing one. `--model` and `--plugin`
-fill in the `spore.cmk` that `define` writes, a new file, and they, `--sporangium` and a `writes`
-grant are refused for a spore that exists (`DEFINE_FILLS_ONLY_NEW`).
-
-**`spore remake <spore>` makes a spore again, in place,** from the sporangium it was made from
-(`remake` in `src/library/verbs.js`). It keeps what the spore can do and what it has made —
-`spore.cmk` as edited, `data/`, `home/`, `precursors/` and `schedules/`, moved rather than copied
-— and leaves what it did, the database, the trail and the inbox, in `<ws>.before-remake` beside it
-until the owner removes that. With no definition left, that directory is not a spore. It is how a
-spore whose database another development version made is brought back, since that database
-cannot be opened (§The workspace database), and it is refused while the spore runs. A watcher's
-position is tied to the database it was read from (`databaseOf`, its `createdAt`), so a service
-following a remade spore starts the new database from its beginning.
-
-**`openWorkspace` opens; it does not make.** A directory with no definition is refused rather
-than seeded.
-
-### Reading a spore
-
-`spore log` is the turn-by-turn view: when each turn ended, how, what it cost, what it drew in
-work units, and **what was said to start it** — which the turn records carry without storing it.
-Each says which stretch of the inbox it read, `(inboxFrom, inboxTo]`, and those are exactly the
-messages that turn answered; anything no turn has read is waiting. A running turn's record is
-written when it ends, so how far it has read so far is its latest `inbox_read` event, logged as it
-reads at its start and between rounds. That is also what `spore show` counts as `waiting`, and it
-is the difference between a spore that is idle and one that has not started yet. The answers are not there: they are in the transcript.
-
-Every verb names a spore the same way, so `spore show test` and `spore send test "…"` mean the
-same one. `show` answers from the files alone — `stateOf()` for what it is doing, the parsed
-definition for what it is, the transcript and the `turns` view for what it has done — and never
-calls `openWorkspace`, which seeds files and links modules.
-
-The management verbs — `ls`, `show`, `log`, `config` and the rest — run in the
-command (`packages/spore-cli/src/dispatch.js`), on the host, and start nothing. They answer from
-`src/library/verbs.js`, which is a library: an embedder asking the same questions needs no
-command and gets no less.
-
-### Changing a running turn's limits
-
-`spore extend` raises the running turn's soft and hard limit of one dimension together;
-`spore wrap` brings its soft wall to now, or to a while from now. The Telegram plugin and the HTTP
-API offer both. Only the turn's owner can change its limits while it runs.
-
-**Raising is a grant.** The definition names a ceiling per limit — `extend.wall: 3h` — and an
-extension that would take the hard limit past it is refused, saying how much room is left. No
-ceiling, no extension. Wrapping needs no grant; a wrap later than the turn already wraps is refused.
-
-**A change is a row.** The runner writes the turn's limits as it starts them, one `start` row per
-dimension in `t_limits`; `extend` and `wrap` add rows, in one transaction that finds the running
-turn and checks against its latest row, so two changes never race (`change_limits`,
-`rust/workspace/src/state.rs`). The latest row of a dimension is the limit. Nothing running, or a
-running turn that recorded no limits, refuses the change. Wall values are milliseconds from the
-turn's start; a wrap, a moment on the clock, is written that way and read back against the loop's
-own start.
-
-**Three enforcers, one source.** The hard wall is held three times — by the loop between rounds,
-by the agent's timer through a tool that hangs, and by the runner past its grace — and hard cost
-twice, by the loop and by the broker. The agent and the runner each read the rows every two
-seconds and move their own bound, so a raised wall is in force before the old one would have
-fired. When a limit the turn already wrapped on is raised, the model is told it may carry on; a
-wrap its owner asked for is announced as that, not as a limit reached.
-
-### Copying a spore between its turns
-
-`spore fork <name> <new>` (`src/core/fork.js`) makes a new workspace that is the spore as it
-stands after its last turn, and `--at turn:<n>` as it stood after turn n. It is the same spore
-going on in two places, not a new spore cut from it — that is `define --from`, which takes what a
-spore can do and none of what it did
-([principle 6](PRINCIPLES.md#6-a-copy-of-a-spore-takes-its-skills-not-its-memories)).
-
-**Between turns nothing is in flight**, so the cut needs no runner and the copy starts none: its
-next message starts its first turn, replaying the conversation as the spore's own next turn would.
-A spore running is refused, draining included, since its last turn is not written down yet. The
-turn records go in through the writer that finalizes a turn, which moves `inboxConsumed` and
-`lastTurnNo` with them, so the copy reads none of what they answered twice. The transcript is cut
-by turn, not by time: it ends before the first entry of a turn not kept, since every entry a turn
-writes carries its `turnId` — its answer, written after the `endedAt` its record holds, included —
-and only a flush, written between turns, carries none and comes with the turn before it. After the
-last turn the islands are copied as they are, nothing changing them; after an earlier turn they
-are restored by birth time, as for a cut at a call, and a later change refuses.
-
-**Schedules stay behind.** A schedule is a message the clock says to one spore; copied, the clock
-would say it to two, and both would answer wherever their reply-to points. So would anything
-waiting to go out, which is why the outbox, running jobs and unread messages stay behind as well.
-`sporangium.json` comes, so `spore upgrade` reads the copy against the sporangium it was made from.
-
-### Carrying a turn on from one of its rounds
-
-`spore fork --at <call>` makes a new workspace that is a run as it stood when one call's
-round came back, and carries the turn on from the next model call. It exists to take one decision
-again, many times, under a changed definition: a failure seen once in twenty full runs is reached
-every time from a fork, so a rate needs forks, not reruns. `scripts/try-definitions.js` is the
-loop around it — one cut, N forks per definition, and how often each delivered.
-
-**The cut is a round boundary**, found through the turn record's times against each message's
-`at`, and it takes every result of the round, since a model that asked for two calls has to be
-shown both. A round boundary is quiescent — every tool has returned — which is what makes it a
-place a turn can stop and start. A spore still running is refused.
-
-**The islands are restored by birth time.** The trail records what a call redirected, not what a
-program wrote, so `data/`, `calls/`, `precursors/` and `home/` are copied file by file: a file
-born after the cut is left out, and one born before it and changed after **refuses the fork**,
-because its content at the cut is gone ([principle 20](PRINCIPLES.md#20-complete-or-not-at-all)).
-The run's `reference.md`, `libraries.md`, `sporangium.json` and `plugins/` documents are copied
-too — they are part of what that spore was told — and so is `inbox.d/`. The records go the same way: the finished
-turns before the cut, the transcript to it, the inbox the turn had read, and every call record
-that started before it, so the run numbers on from them and the streams restored beside them keep
-the names the transcript gives them. A different definition given to the fork replaces the run's
-`spore.cmk`, which is the point of most forks.
-
-**The turn goes on in the same run.** `fork.json` carries the `runId`, the rounds taken and how
-far the inbox was read (`inboxTo`). The runner's `--continue` has the agent pass that record to
-`runSpore` as `resume`, which reads no new inbox, numbers calls on from the run's last
-(`createCallTrail`'s `seq`), and runs `loop` `from` the round where the run left it, with no user
-message appended, so the limits still count what was done. Spend is counted from the fork — the
-runtime records cost when a turn completes, not per round.
-
-**File times are compared with a margin.** They come from the kernel's coarse clock, which
-advances a tick at a time, so a file can read a few milliseconds off the moment that made it — a
-call's named output has been measured born 5 ms before the call's own `startedAt`. Each cut is
-moved 20 ms (`CLOCK_SLACK_MS`) into the quiet between two rounds, where a model call sits for
-seconds, so a file lands on the side of the round that made it.
-
-**`--replay` cuts one step earlier**, before the round's results: the fork keeps the assistant
-message that asked for the calls, and `loop` runs them again before its first model call, under
-the runtime as it is then. That is how a change to what a tool returns is measured — the history
-is the run's, only the result differs. The boundary is the round's first call's `startedAt`, not
-the message's `at`, because a call can open its output before the transcript writes the message
-down. A round that called `ask` cannot be replayed.
-
-### Cutting a spore from another
-
-**A clone inherits what a spore can do, not what it did**
-([principle 6](PRINCIPLES.md#6-a-copy-of-a-spore-takes-its-skills-not-its-memories)).
-`spore define <new> --from <old>` (`src/core/clone.js`) carries the capability and leaves the
-conversation:
-
-| carried | left behind |
-|---|---|
-| `spore.cmk` — identity, tools, limits, `reads`, `sources` | `state.sqlite` (the inbox, the turns, the transcript, the events, the calls), `calls/` |
-| `precursors/` | `inbox.d/`, `schedules/`, `home/` |
-| the programs a precursor grants, with what their `.with` declares | `data/memory/`, and the rest of `data/` |
-
-`model.key`, `lock` and `node_modules/` are not copied — minted per turn, liveness, and linked by
-`openWorkspace` for itself. The clone records its origin's sporangium.
-
-**The unit is the precursors and the closure of what they grant.** What a program needs beside
-itself is declared, not detected (§Precursors, `<enzyme>.with`), and a declared path that is missing
-refuses the clone (`CLONE_INCOMPLETE`). There is no other channel: a program nothing grants is
-working space. `data/bin/` is the conventional place for enzymes, taught in `reference.md` and read
-by no code.
-
-`define` says what a spore is: `--definition` says it with a file, `--sporangium` with a sporangium,
-`--from` by reference to a sibling, and the three refuse each other (`DEFINE_AMBIGUOUS`). All make
-the workspace through `openWorkspace`, and a target inside a sandbox-granted path is refused as for
-any other definition. Cloning a running spore is fine — it reads the definition, the precursors and
-their programs and takes no lock — and the worst case, a program copied mid-write, surfaces as a
-broken enzyme at its first spawn.
-
-**A clone is not told it is one.** Nothing in its prompt or its reference says it inherited
-anything, so whether it finds and uses its precursors is a property of how its origin left them. The
-command reports the cut to whoever ran it, not to the agent.
-
-### Removing a spore
-
-`spore rm` (`remove` in `src/library/verbs.js`) deletes the workspace, and refuses where a bare
-`rm -rf` would break something without a word. A directory without `spore.cmk` is not a spore,
-and neither is a path the sandbox grants, the checkout included. A spore holding a finished turn
-needs `--yes`, because a turn is history: its conversation, its records and what it made,
-whatever it cost. It knows nothing of what an application built on spore made of a workspace:
-keeping an experiment whole is that application's business.
-
-It deletes under the workspace's own lock, so a turn cannot start inside a directory that is
-going. A spore that holds the lock is running, and the refusal says to stop it first. Recorded
-turns are checked before the lock is taken, because taking it writes over the pid a crashed
-runner left, and that pid is how `stateOf` tells a crash; once the lock is held, the check is made
-again, in case a turn finished in between. Nothing outside the workspace is told: a chat route
-that still names the spore is the chat service's to report.
-
-### A spore for the directory you are in
-
-`spore here [dir]` opens the spore that works in a directory, in place, and makes it the first
-time (`packages/spore-cli/tui/here.js`, `packages/spore-cli/src/here.js`). It is named
-`<directory>-<6 hex of a hash of its real path>` in the spore home, so the same directory always
-finds the same spore and nothing else keys it, and it is granted `writes: [here=<dir>]` — the
-directory given, not its repository's root. `define` refuses a grant the runner would refuse at
-every turn (`WRITES_REFUSED`, with the reason): a directory overlapping the runtime, the
-workspace, `~/.config/spore` or a sandbox grant. Made, it does nothing on its own: a picker lists the
-sporangia with their `description`, its header saying what is granted and the git state, and
-without a terminal the sporangium must be named. Later it reopens that spore, refusing
-`--sporangium` and `--model`, and changing it is `spore edit`, as for any.
-
-**Git is the undo**, so outside a work tree it is refused unless told to work without git. Each
-session starts with a commit of the directory as it stands — tracked and untracked, `.gitignore`
-respected — under `refs/spore/<spore>/<session>`, written through an index of its own, so neither
-the work tree nor the person's index moves. Only the newest three are kept per spore, the older
-refs dropped as a session opens: a snapshot holds untracked files, so one kept forever would keep a
-deleted file — or a `.env` nobody ignored — in `.git`, where a mirror push or a backup of every ref
-would carry it. A session reads only its own; three leave room for another session of the spore
-still open. `/diff` shows what changed
-since, through git's pager, and cannot tell the spore's changes from the person's; `/undo` restores
-what changed or went and removes what was made, ignored files apart. Both are commands `spore here`
-adds to the terminal (`runTui`'s `commands`).
-
-### The first run
-
-`spore setup` (`packages/spore-cli/src/setup.js`) is a path through what other commands do,
-keeping no state of its own: each step reads what is there first and says so, so a second run
-asks nothing already answered and is a check. The models step offers what mohdex.dev recommends and
-gets a credential from the `mo` installed with spore (`MO`), stopping on its exit code. `expert`,
-the way to any model, reads readiness again after `mo onboard` rather than take the exit code, since
-a user can finish the catalog after it exits. `spore doctor`'s models area is the same reading for
-every model the spores name. The catalog is mohdel's alone: adding a model
-to it offers it to no spore, which stays `models:` in that spore's `spore.cmk`.
 
 ### Material it does not own
 
@@ -1354,60 +1381,6 @@ what the sandbox grants now.
 
 `reference.md` lists them too.
 
-### One reading of what a call did
-
-**`readOutcome()` (`src/core/call-record.js`) is the single reading of a tool result**, used by
-the loop guard, the `tool_end` event and session memory, so none of them can disagree about
-whether a call worked. It reads marks, never text. `tool_end` also carries how a call that did
-not work ended — `exit`, a command that ran to its end and exited non-zero, which may be its "no"
-(`grep` finding nothing), apart from `killed`, `signal`, `spawn` and `refused`, calls that did not
-finish or never ran — so a console marks the first with its exit code and only the others as
-failures.
-
-**A refusal is a value** (`src/core/refusal.js`). A tool that will not run returns
-`refuse(reason)`; the kernel shows the model `error: <reason>` and marks the tool message
-`refused`.
-
-**A call record is a value too** (`recorded`, `src/core/call-record.js`). The five tools that
-produce one — `read`, `write`, `edit`, `exec`, `wsexec` — return the record; the kernel shows
-the model its JSON and marks the message `record`, and `readOutcome` reads an exit code only
-from a message so marked, where the text is known to be the runtime's own. Anything else a tool
-returns is text and worked by getting that far — `ask` and `quiet` return what the model wrote,
-which may begin with `error:` or be JSON with an `exit` in it. Both marks are persisted beside
-the message in the transcript, so a replay reads them the same way.
-
-**Every call leaves a record, refusals included.** `recordRefusals()`
-(`src/tools/make-tools.js`) wraps every tool: a refusal, returned or thrown by `safePath`,
-becomes a refusal record in the trail, and the model is told the refusal's detail — what to do —
-rather than the rule it broke
-([principle 21](PRINCIPLES.md#21-when-something-fails-it-says-so)). Every tool validates before
-`trail.begin`, and the budget paths `abandon` the call before returning, so a refusal always
-means nothing was written down.
-
-### One budget, on what the model actually receives
-
-`read` measures what it will return — the whole serialized record, not the bytes it sliced —
-before the call is written down (`trail.preview`), and refuses with the real figures when it
-will not fit. The transcript sanitiser (`src/resilience/transcript.js`) is the backstop for
-anything that did not budget itself: when it has to cut a record it keeps the shape and drops
-the largest field rather than slicing the JSON, so the agent still sees which file and how big.
-
-### Nothing in the runtime refuses a command
-
-No pattern gates `exec` or `wsexec`, and no call is refused for repeating another
-([principle 9](PRINCIPLES.md#9-spore-only-blocks-what-it-can-truly-stop)). What a
-command can do is bounded where it is enforced: `exec` runs read-only under `confine`, `wsexec`
-under the agent's own ruleset, both with `NO_NEW_PRIVS` set. A command the system will not carry
-out is refused by the command — `rm -rf /` reaches GNU `rm`, which refuses and says why — and
-recorded with its exit code.
-
-The loop guard (`src/resilience/loop-guard.js`) observes and never refuses. It has two signals:
-one tool failing five times running, and the same tool returning the same result to the same
-arguments five times running. It compares the result as well as the arguments because a
-workspace is mutable — cells write into it while the agent watches, so the same `wc -l` twice
-is how an arrival is seen, and it is the wait-loop `reference.md` teaches for a detached
-fan-out. Either signal wraps the turn as `soft:progress`.
-
 ### The reference
 
 `reference.md` is the agent's account of the runtime: what each file is, what each command
@@ -1424,6 +1397,37 @@ here*.
 
 **Only the spore gets one.** `openWorkspace()` seeds it; a cell reaches `runSpore` through
 `bin/spawn-worker.js` and is seeded no reference.
+
+### The transcript
+
+**Only the spore is resumable.** Sending again to the same workspace continues it, because the
+transcript is replayed as the opening history; the directory's state is the whole of it. A cell
+has no transcript to replay and needs none.
+
+`runSpore` writes the transcript itself, in `state.sqlite`, so the command and any library embedder
+read and write the same transcript. `openWorkspace()` is what the entry points have in common:
+it resolves the directory, refuses a granted path, installs a `--definition` given for a
+workspace that has none, reads the definition, stages its grants, seeds the root documents and
+the precursor catalog, and returns the identity, grants and rules. What differs between
+entry points is presentation, not state, so a conversation started in the TUI continues
+under `spore` and back again.
+
+**An entry is `{ at, kind, role, message, marks, ahead }`, `kind` a message or a compaction.**
+`message` is exactly mohdel's wire `Message` — what is replayed is what a model can be sent,
+and the gate refuses a field its `Message` does not define. Spore's own facts sit beside it:
+`at`, `marks` for what the message is to spore, and `ahead` for what a turn's message went out
+with in front of what was said — its `Now:` line and its recall. `content` stays what was said,
+which is what memory indexes and `spore log` shows; every request carries the message with
+`ahead` in front (§The clock line stays out of the prefix). In memory the marks live in a side table
+keyed by the message object (`src/core/marks.js`): `wrap` for the notice a soft limit adds,
+`compacted` for the summary that replaces a compacted head, `schedule-notice` for the note that a
+schedule the turn wrote will not fire, `context-notice` for recovery's note
+after a drop — which lives only in the turn that made it, never written to the transcript — and `refused` and `record` (§One reading of what a call did).
+
+**The transcript is replayed; the trail is not.** The agent reads both and can rewrite neither
+([principle 13](PRINCIPLES.md#13-a-spore-cannot-rewrite-its-own-history)).
+
+## A turn
 
 ### One runner per workspace
 
@@ -1529,34 +1533,7 @@ call, since the model is what was stopped. Every ending leaves the same director
 every one is continued the same way: `spore send` again, with the reply, the correction, or
 nothing new at all.
 
-### The transcript
-
-**Only the spore is resumable.** Sending again to the same workspace continues it, because the
-transcript is replayed as the opening history; the directory's state is the whole of it. A cell
-has no transcript to replay and needs none.
-
-`runSpore` writes the transcript itself, in `state.sqlite`, so the command and any library embedder
-read and write the same transcript. `openWorkspace()` is what the entry points have in common:
-it resolves the directory, refuses a granted path, installs a `--definition` given for a
-workspace that has none, reads the definition, stages its grants, seeds the root documents and
-the precursor catalog, and returns the identity, grants and rules. What differs between
-entry points is presentation, not state, so a conversation started in the TUI continues
-under `spore` and back again.
-
-**An entry is `{ at, kind, role, message, marks, ahead }`, `kind` a message or a compaction.**
-`message` is exactly mohdel's wire `Message` — what is replayed is what a model can be sent,
-and the gate refuses a field its `Message` does not define. Spore's own facts sit beside it:
-`at`, `marks` for what the message is to spore, and `ahead` for what a turn's message went out
-with in front of what was said — its `Now:` line and its recall. `content` stays what was said,
-which is what memory indexes and `spore log` shows; every request carries the message with
-`ahead` in front (§The clock line stays out of the prefix). In memory the marks live in a side table
-keyed by the message object (`src/core/marks.js`): `wrap` for the notice a soft limit adds,
-`compacted` for the summary that replaces a compacted head, `schedule-notice` for the note that a
-schedule the turn wrote will not fire, `context-notice` for recovery's note
-after a drop — which lives only in the turn that made it, never written to the transcript — and `refused` and `record` (§One reading of what a call did).
-
-**The transcript is replayed; the trail is not.** The agent reads both and can rewrite neither
-([principle 13](PRINCIPLES.md#13-a-spore-cannot-rewrite-its-own-history)).
+## The machine's bounds
 
 ### Disk on one machine
 
@@ -1750,10 +1727,10 @@ webhook service only.
 **A webhook is a message a program says**, through `send()`, as a schedule's firing is the
 clock's. `spore-webhook` (`bin/spore-webhook.js`, `webhook/`) is a service like the Telegram one,
 on a loopback address unless told another; reaching it from elsewhere is a reverse proxy's job. Each hook in
-`hooks.json` (`docs/operating.md`) has one URL, `POST /hook/<name>`, names the spore it reaches —
-or several, each of which gets every delivery it keeps — and says how a request proves it is the
-sender's; a hook that says nothing is refused. `hooks.json` and `environment` are read again for
-every request.
+`hooks.json` ([docs/operating.md](docs/operating.md#webhooks-hooksjson)) has one URL, names the
+spore it reaches — or several, each of which gets every delivery it keeps — and says how a request
+proves it is the sender's; a hook that says nothing is refused. `hooks.json` and `environment` are
+read again for every request.
 
 **Checking a sender is four methods**, because that is where senders differ: a token in the
 path, a header equal to a token, an HMAC of the raw body against a header, and Stripe's
@@ -1798,8 +1775,7 @@ delivery is said with `startsTurn` false on its entry: nothing starts a turn for
 pass releasing it, not a runner carrying on after a turn — and the next turn reads it.
 Otherwise a delivery goes the way every message nobody typed goes (§Deliveries nobody typed):
 prepared and timed as its spore says, within the hook's `maxWait`, and held for the pass when no
-slot is free. A body past `maxBytes` is `413`, a bad check `401`, an unknown hook `404`,
-and every request while spores are paused `503` (§Turns of one user).
+slot is free. Every request is refused while spores are paused (§Turns of one user).
 
 ## Deliveries nobody typed
 
@@ -3010,10 +2986,9 @@ recall is: the system prompt stays byte for byte the same from turn to turn, and
 It stays in front of that message for good, and so does the recall. A provider reads a
 conversation back from its cache only up to where it stops matching what it was sent before, so a
 message replayed without the line it first went out with makes every later turn pay for the
-history behind it again. Measured on OpenAI over three turns with tool rounds: replayed bare, each
-follow-up read back the instructions and tools alone; replayed as sent, the whole request before
-it. So the transcript keeps both — what was said as the message's `content`, what went ahead of it
-beside it as `ahead` — and a request carries the two joined. Compaction summarizes what was said.
+history behind it again. So the transcript keeps both — what was said as the message's `content`,
+what went ahead of it beside it as `ahead` — and a request carries the two joined. Compaction
+summarizes what was said.
 
 The history is then what the model saw. An answer that leaned on a recalled line keeps that
 line in front of the message it answered, labelled as recalled. A note deleted since still shows
@@ -3134,24 +3109,10 @@ forms a fact takes.
 
 ### The vector store protocol
 
-What `memory: vectors` asks of a store, over http or https (`rust/runner/src/vectors.rs`). Where
-the store is, and how its API differs from the defaults below, is the host's `memory.json`
-(`docs/operating.md`), which the runner reads and the agent never sees. Like a source, the store
-may be reached on a unix socket that `memory.json` names.
-
-| operation | default path | body | answer |
-|---|---|---|---|
-| ready | `GET /health/ready` | — | any 2xx |
-| create | `POST /v1/collections` | `{ <collectionField>: id, vector_schema: { dimensions, metric: "cosine", embedding_space }, metadata_schema: { unit: { type: "string", filterable: true } } }` | 2xx, or `ALREADY_EXISTS`, which counts as created |
-| fetch | `POST /v1/collections/{collection}/records:fetch` | `{ ids: [...] }`, at most 256 | `{ records: [{ id }] }`: those it holds |
-| upsert | `POST /v1/collections/{collection}/records:upsert` | `{ records: [{ id, vector, metadata: { unit } }] }`, at most 256 and 8 MiB | 2xx |
-| query | `POST /v1/collections/{collection}/query` | `{ vector, top_k, mode: "exact", filter: { eq: { field: "unit", value } } }`, `top_k` at most 50,000 | `{ matches: [{ id, distance }] }` |
-
-A create and an upsert carry an `idempotency-key` header, the same for the same write. A refusal
-is `{ "error": { "code", "message" } }`; 503 and 504 are retried, six attempts in all, and
-`CAPACITY_EXCEEDED` waits eight times longer between them than any other code. A store that does
-not answer within 30 s is not asked again. The runner checks `ready` before a turn and refuses to
-start one whose store is not ready.
+What `memory: vectors` asks of a store — five operations over http or https, on a unix socket when
+the host names one — is in [docs/operating.md](docs/operating.md#the-protocol-a-store-speaks),
+with the host's `memory.json`, which says where the store is and how its API differs from the
+defaults. The runner speaks it (`rust/runner/src/vectors.rs`) and the agent never sees the file.
 
 ### What a definition declares
 
