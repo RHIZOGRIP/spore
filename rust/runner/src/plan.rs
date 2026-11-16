@@ -8,12 +8,14 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::{json, Value};
 use spore_definition::{parse_definition, Definition, Options, Pair, TOOL_NAMES};
 use spore_workspace::{
-    safe_path, writable_dirs, CALLS_DIR, DATA_DIR, DEFINITION_FILE, PRECURSOR_DIR, PRECURSOR_EXT,
-    SCHEDULE_DIR, SPAWN_FILE,
+    safe_path, writable_dirs, CALLS_DIR, CHECK_DIR, DATA_DIR, DEFINITION_FILE, PRECURSOR_DIR,
+    PRECURSOR_EXT, SCHEDULE_DIR, SPAWN_FILE,
 };
 
 pub struct Asked<'a> {
     pub precursor: Option<&'a str>,
+    /// A check's cell, `checks/<name>.cmk`, in place of a precursor.
+    pub check: Option<&'a str>,
     pub ws: Option<&'a str>,
     pub prompt: Option<&'a str>,
     pub answer: Option<&'a str>,
@@ -95,14 +97,12 @@ fn executable(path: &Path) -> bool {
 
 fn resolve_precursor(
     spore: &Path,
+    dir: &str,
     name: &str,
 ) -> Result<(PathBuf, Definition, Vec<Enzyme>), String> {
-    let path = spore
-        .join(PRECURSOR_DIR)
-        .join(format!("{name}{PRECURSOR_EXT}"));
-    let source = std::fs::read_to_string(&path).map_err(|_| {
-        format!("precursor not found — expected {PRECURSOR_DIR}/{name}{PRECURSOR_EXT}")
-    })?;
+    let path = spore.join(dir).join(format!("{name}{PRECURSOR_EXT}"));
+    let source = std::fs::read_to_string(&path)
+        .map_err(|_| format!("precursor not found — expected {dir}/{name}{PRECURSOR_EXT}"))?;
     let known: Vec<String> = TOOL_NAMES.iter().map(|t| t.to_string()).collect();
     let definition = parse_definition(
         &source,
@@ -229,14 +229,20 @@ pub fn plan_spawn(
             .map(str::to_string)
             .ok_or_else(|| format!("{label} is required"))
     };
-    let precursor = required("--precursor", asked.precursor)?;
+    let (dir, precursor) = match (asked.precursor, asked.check) {
+        (Some(_), Some(_)) => {
+            return Err("--precursor and --check each name the definition — give one".to_string())
+        }
+        (None, Some(_)) => (CHECK_DIR, required("--check", asked.check)?),
+        _ => (PRECURSOR_DIR, required("--precursor", asked.precursor)?),
+    };
     let ws = required("--ws", asked.ws)?;
     let prompt = required("--prompt", asked.prompt)?;
     let answer = required("--answer", asked.answer)?;
 
     // Before the workspace check, because what the cell may read is part of what would
     // make a directory an unusable place to confine it.
-    let (precursor_path, mut definition, enzymes) = resolve_precursor(spore, &precursor)?;
+    let (precursor_path, mut definition, enzymes) = resolve_precursor(spore, dir, &precursor)?;
     let root = spore_definition(spore)?;
     definition.model = Some(cell_model(&precursor, definition.model.as_deref(), &root)?);
 
@@ -412,6 +418,7 @@ mod tests {
         };
         let asked = Asked {
             precursor: get("precursor", "summarize"),
+            check: None,
             ws: get("ws", "work/1"),
             prompt: get("prompt", "in.md"),
             answer: get("answer", "data/out.json"),
@@ -431,6 +438,7 @@ mod tests {
         let r = root("granted");
         let asked = Asked {
             precursor: Some("summarize"),
+            check: None,
             ws: Some("work/1"),
             prompt: Some("in.md"),
             answer: Some("data/out.json"),
@@ -478,6 +486,7 @@ mod tests {
         .unwrap();
         let asked = Asked {
             precursor: Some("named"),
+            check: None,
             ws: Some("work/1"),
             prompt: Some("in.md"),
             answer: Some("data/out.json"),
@@ -496,6 +505,7 @@ mod tests {
         let r = root("elsewhere");
         let asked = Asked {
             precursor: Some("summarize"),
+            check: None,
             ws: Some("1"),
             prompt: Some("in.md"),
             answer: Some("data/out.json"),
@@ -655,6 +665,39 @@ mod tests {
         assert!(error(&r, &[("prompt", Some("absent.md"))]).contains("prompt not found"));
         assert!(error(&r, &[("precursor", Some("absent"))])
             .contains("precursor not found — expected precursors/absent.cmk"));
+    }
+
+    #[test]
+    fn plans_a_checks_cell_from_checks_and_nowhere_else() {
+        let r = root("check");
+        fs::create_dir_all(r.0.join("checks")).unwrap();
+        fs::write(
+            r.0.join("checks/answer.cmk"),
+            SUMMARIZE.replace("name: summarize", "name: answer"),
+        )
+        .unwrap();
+        let asked = |precursor: Option<&'static str>, check: Option<&'static str>| Asked {
+            precursor,
+            check,
+            ws: Some("work/1"),
+            prompt: Some("in.md"),
+            answer: Some("data/out.json"),
+        };
+        let plan = plan_spawn(&asked(None, Some("answer")), &r.0, &r.0, |_, _| None).unwrap();
+        assert_eq!(plan.precursor_path, r.0.join("checks/answer.cmk"));
+        let elsewhere = plan_spawn(&asked(None, Some("summarize")), &r.0, &r.0, |_, _| None)
+            .err()
+            .unwrap();
+        assert!(elsewhere.contains("precursor not found — expected checks/summarize.cmk"));
+        let both = plan_spawn(
+            &asked(Some("summarize"), Some("answer")),
+            &r.0,
+            &r.0,
+            |_, _| None,
+        )
+        .err()
+        .unwrap();
+        assert!(both.contains("give one"));
     }
 
     #[test]

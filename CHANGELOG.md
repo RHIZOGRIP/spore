@@ -4,6 +4,30 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.69.0] — Added: a spore can check its own answer before the turn ends
+
+### Added
+
+- **Answer checks.** A spore may keep `checks/answer.check`, a program, at its workspace root.
+  Before a turn ends on a plain-text answer, the program reads the answer on its standard input
+  and prints `{ "ok": true }` or `{ "tell": "<what is wrong>" }`. On `tell`, the answer goes back
+  to the model once with that text, and the model answers again. The second answer goes out
+  whatever the check says of it.
+- `checks/answer.cmk` is the same check as a cell. It runs when there is no program, or when the
+  program prints `{ "ask": true }`. What it spends counts against the turn's `cost`.
+- The agent cannot write `checks/`. The files come from the sporangium the spore is made from, or
+  from its operator. `spore fork` and `spore define --from` carry them. `spore upgrade` does not
+  replace them.
+- A check that fails, runs past 10 seconds or prints anything else lets the answer out. So does a
+  correction the turn cannot finish: when a hard limit ends the turn after a telling, the first
+  answer goes out.
+- A wrapped turn's answer is not checked, and neither is a question (`ask`) or a quiet ending.
+- New event `answer_check`, one per verdict. A screen that shows an answer as it streams should
+  replace it with `complete`'s when the event says `told: true`.
+- `spore-spawn --check <name>` runs a cell defined in `checks/`. It is for the runtime; an agent
+  spawns from `precursors/` as before.
+- A spore with no `checks/` directory behaves as before.
+
 ## [1.68.0] — Changed: an output left out of a call's record says nothing of it was shown
 
 ### Changed

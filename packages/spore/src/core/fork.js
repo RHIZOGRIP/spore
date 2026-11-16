@@ -27,7 +27,7 @@ import { callRuns, readCall, readCalls, writeCall } from './call-record.js'
 import { withSlot } from './admission.js'
 import { preparePlugins } from './plugins.js'
 import { startRunner } from './send.js'
-import { INBOX_DIR, PLUGINS_DIR, ROOT_DOCS, copyInbox, definitionPath, readPending, readTranscriptEntries, readTurns, writableDirs, writeTranscriptEntries, writeTurnRecords } from './spore-dir.js'
+import { CHECK_DIR, INBOX_DIR, PLUGINS_DIR, ROOT_DOCS, copyInbox, definitionPath, readPending, readTranscriptEntries, readTurns, writableDirs, writeTranscriptEntries, writeTurnRecords } from './spore-dir.js'
 import { openWorkspace } from './workspace.js'
 import { filledIn, parseDefinition } from '../delegation/definition.js'
 import { RUNNING, stateOf } from './state.js'
@@ -236,7 +236,7 @@ export function forkWorkspace ({ run, at = null, into, definition, replay = fals
     for (const file of [...ROOT_DOCS, SPORANGIUM_RECORD, ...plugins]) {
       if (existsSync(join(from, file))) copyFileSync(join(from, file), join(ws, file))
     }
-    for (const file of filesUnder(join(from, INBOX_DIR))) {
+    for (const file of [...filesUnder(join(from, INBOX_DIR)), ...filesUnder(join(from, CHECK_DIR))]) {
       const target = join(ws, relative(from, file))
       mkdirSync(dirname(target), { recursive: true })
       copyFileSync(file, target)

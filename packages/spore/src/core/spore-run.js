@@ -20,10 +20,11 @@ import { maxResultSizeForContext } from '../resilience/transcript.js'
 import { compactHistory, historyBound, historyOver } from '../resilience/compaction.js'
 import { createSessionMemory } from '../resilience/session-memory.js'
 import { makeTools, recordRefusals } from '../tools/make-tools.js'
+import { answerCheck } from './answer-check.js'
 import { loop } from './loop.js'
 import { describeCall } from './call-table.js'
 import { COMPACTED, marked } from './marks.js'
-import { DATA_DIR, appendCompaction, linkTurnTmp, appendTranscript, fromPerson, inboxConsumed, readInbox, readInboxFrom, readTreeKey, countSaidSoFar, runningLimits, writableDirs, writeOutcome } from './spore-dir.js'
+import { DATA_DIR, appendCompaction, linkTurnTmp, appendTranscript, fromPerson, inboxConsumed, readInbox, readInboxFrom, readTreeKey, countSaidSoFar, runningLimits, turnTmpOf, writableDirs, writeOutcome } from './spore-dir.js'
 import { dataBytesIn, deliverablesIn } from './deliverables.js'
 import { refusedSince, scheduleDir } from './schedule.js'
 import { composeSystem } from './system-prompt.js'
@@ -235,7 +236,7 @@ export async function runSpore ({
   let historySent = null
   if (carried !== null) events.on('usage', ({ input, cacheRead, cacheWrite }) => { historySent ??= input + cacheRead + cacheWrite })
   events.emit('inbox_read', { inboxTo: inboxAt })
-  let { fns, defs } = makeTools(WS, maxOutput, trail, {
+  let { fns, defs, run } = makeTools(WS, maxOutput, trail, {
     traceparent: formatTraceparent(sporeDispatchSpan),
     modelSocket,
     storeSocket,
@@ -409,6 +410,7 @@ export async function runSpore ({
       deadline: () => wallFrom + live.wall.hard,
       // A file put there by `wsexec` was never checked by `write`.
       refusedSchedules: () => schedules ? refusedSince(WS, wallFrom, schedules) : [],
+      checkAnswer: answerCheck({ ws: WS, scratch: turnTmpOf(trail.root), run }),
       ledger,
       emitter: events,
       mutators: new Set(['write', 'edit', 'wsexec']),

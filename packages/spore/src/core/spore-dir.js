@@ -18,6 +18,7 @@ import { openReader } from './sqlite.js'
 // The names the Rust runner also reads are `rust/workspace`'s.
 const LAYOUT = JSON.parse(native.layout())
 export const DEFINITION_FILE = LAYOUT.definition
+export const CHECK_DIR = LAYOUT.checkDir
 export const LOCK_FILE = LAYOUT.lock
 const STATE_FILE = LAYOUT.state
 // `v` on every event, the agent's and its supervisor's: one number, `rust/workspace`'s.

@@ -21,7 +21,7 @@
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, symlinkSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
-import { PRECURSOR_DIR } from './spore-dir.js'
+import { CHECK_DIR, PRECURSOR_DIR } from './spore-dir.js'
 import { PRECURSOR_EXT, parseDefinition } from '../delegation/definition.js'
 import { TOOL_NAMES } from './tool-names.js'
 import { safePath } from '../isolation/safe-path.js'
@@ -116,7 +116,7 @@ export function cloneCapability (from, to) {
     }
     return relative(root, real)
   }
-  const queue = [...(existsSync(precursors) ? [PRECURSOR_DIR] : []), ...granted]
+  const queue = [...(existsSync(precursors) ? [PRECURSOR_DIR] : []), ...(existsSync(resolve(from, CHECK_DIR)) ? [CHECK_DIR] : []), ...granted]
   const present = (path) => {
     try {
       lstatSync(path)

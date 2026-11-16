@@ -1115,6 +1115,7 @@ The workspace is flat and undotted:
     /calls/           the streams each call did not name
     /tmp              this turn's scratch: a link to calls/<run>/tmp/
     /precursors/      sub-agent definitions
+    /checks/          the checks on what a turn is about to say; never the agent's to write
     /schedules/       what the clock says to it, and when; the agent's only when granted
     /node_modules/    the libraries an agent's programs may import, linked
     /data/            everything the agent makes
@@ -1421,7 +1422,8 @@ which is what memory indexes and `spore log` shows; every request carries the me
 `ahead` in front (§The clock line stays out of the prefix). In memory the marks live in a side table
 keyed by the message object (`src/core/marks.js`): `wrap` for the notice a soft limit adds,
 `compacted` for the summary that replaces a compacted head, `schedule-notice` for the note that a
-schedule the turn wrote will not fire, `context-notice` for recovery's note
+schedule the turn wrote will not fire, `answer-notice` for the note an answer check sends back
+(§Answer checks), `context-notice` for recovery's note
 after a drop — which lives only in the turn that made it, never written to the transcript — and `refused` and `record` (§One reading of what a call did).
 
 **The transcript is replayed; the trail is not.** The agent reads both and can rewrite neither
@@ -1532,6 +1534,66 @@ agent to answer with what it has and say what is unfinished; a hard one stops it
 call, since the model is what was stopped. Every ending leaves the same directory behind, so
 every one is continued the same way: `spore send` again, with the reply, the correction, or
 nothing new at all.
+
+### Answer checks
+
+Some of what makes an answer wrong can be decided by a program: a citation that resolves to
+nothing, a link to a file that is not there. Whoever reads the answer afterwards can only report
+it. The turn that wrote it can still put it right, and the model is the one that should: nothing
+in spore rewrites what a model said.
+
+So a spore may keep an **answer check**, and `loop()` runs it on the plain-text answer a turn is
+about to end on. It is the outbound twin of the steps that time a delivery nobody typed
+(§Deliveries nobody typed): a program decides first, and a cell decides when there is no program
+or the program asks for one.
+
+| | a delivery coming in | an answer going out |
+|---|---|---|
+| program | `data/routes/<origin>.route` | `checks/answer.check`, the answer on its stdin |
+| cell | `precursors/route-<origin>.cmk` | `checks/answer.cmk` |
+| answers | `{ wait, summary, replaces }`, `{ ask }` | `{ "ok": true }`, `{ "tell": "<what is wrong>" }`, `{ "ask": true }` |
+| effect | delays the delivery | the answer goes back to the model with one note |
+
+**The check is not the agent's to write.** A router lives in `data/`, since timing its own
+deliveries is the spore's business. A check judges the agent's own answers, so it lives in
+`checks/` at the workspace root, which the agent reads and neither `write`, `edit` nor a program
+it runs can change. It comes with the sporangium the spore is made from,
+or from its operator. `fork` and `define --from` carry it.
+
+**Told once a turn.** On `tell`, the loop appends the would-be answer as said, then one marked
+note (`answer-notice`): `[System: before this answer goes out: <tell>` and, on its own line,
+`Correct it, then answer again.]`. The next plain-text answer goes out whatever its check says of
+it; that second verdict is recorded and not told. A `tell` is cut at 2,000 characters, since it
+enters the conversation.
+
+**No verdict lets the answer out.** A program that cannot start, runs past 10 seconds, exits
+non-zero or prints something other than one such JSON object is a check that failed, never a
+reason to hold an answer. The same holds for a cell that gives no answer, and for a program
+asking for a cell the spore does not keep.
+
+**A correction that cannot finish lets the first answer out.** The telling costs a round. When a
+hard limit, the hard wall or a failed model call ends the turn before another answer comes, the
+turn ends on the answer that was sent back, with `stopReason: 'answer'`: one existed, and ending
+on none would lose it.
+
+**What is checked** is only an answer that would end the turn with `answer`. A terminal tool's
+result (`ask`, `quiet`) is not, and neither is the answer of a wrapped turn, which has no room
+left to correct in.
+
+**The program runs as `exec` runs a command**: read-only under `confine`, in the agent's
+environment, which holds no secret. **The cell is a cell of the turn**: the loop starts it with
+`spore-spawn --check answer`, which reads its definition from `checks/` where `--precursor` reads
+`precursors/`, so the agent cannot spawn it and it is not in the catalog. It calls the model
+through the turn's own socket, and what it spends is drawn from the turn's allowance, under the
+spore's `cost` like any cell. Its prompt is the contract and the answer; its reply is the JSON
+object.
+
+Each verdict is an `answer_check` event: `round`, `by` (`program` or `cell`), `verdict` (`ok`,
+`tell` or `failed`), `tell` or `why`, `told`, and `afterTelling` on the verdict of an answer given
+after a telling. A first answer let out is one more, `released: true` with `because`.
+
+A screen that showed the first answer as it streamed replaces it with the turn's `complete`,
+which is the answer that went out.
 
 ## The machine's bounds
 

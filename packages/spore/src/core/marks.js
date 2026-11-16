@@ -12,6 +12,7 @@
 export const WRAP = 'wrap'
 export const NUDGE = 'nudge'
 export const SCHEDULE_NOTICE = 'schedule-notice'
+export const ANSWER_NOTICE = 'answer-notice'
 export const CONTEXT_NOTICE = 'context-notice'
 export const COMPACTED = 'compacted'
 export const DREAMT = 'dreamt'

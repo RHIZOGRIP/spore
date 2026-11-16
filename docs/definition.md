@@ -1,12 +1,13 @@
 # The definition format
 
-A `.cmk` file declares an agent. There are three kinds:
+A `.cmk` file declares an agent. There are four kinds:
 
 | file | what it declares |
 |---|---|
 | `spore.cmk`, at the workspace root | the spore: its identity, model, tools, limits and grants |
 | `precursors/<name>.cmk` | a precursor, what a cell is made from when the spore spawns one |
 | `schedules/<name>.cmk` | a schedule, a message the clock says to the spore |
+| `checks/answer.cmk` | the cell of the spore's answer check (§[An answer check](#an-answer-check)) |
 
 The spore and a precursor share one grammar and one list of fields. Some fields are accepted
 at one level and refused at the other. A schedule uses the same grammar with three fields of its
@@ -838,6 +839,61 @@ A schedule fires once for its latest slot, however many slots were missed. It do
 slot before the file's last change. It waits while the spore is running, has asked a question, or
 failed its last turn ([README §Turns the clock starts](../packages/spore/README.md#turns-the-clock-starts),
 [ARCHITECTURE §Turns the clock starts](../ARCHITECTURE.md#turns-the-clock-starts)).
+
+## An answer check
+
+A spore may keep a check on its own answers, in `checks/` at the workspace root. Before a turn
+ends on a plain-text answer, the check reads it. When the check finds something wrong, the answer
+goes back to the model once, with what the check said, and the model answers again.
+
+| file | what it is |
+|---|---|
+| `checks/answer.check` | a program, executable; or `checks/answer.check.js`, run with node |
+| `checks/answer.cmk` | a cell, run when there is no program or the program answers `{ "ask": true }` |
+
+The agent can read `checks/` and cannot write it. Put the files in the sporangium the spore is
+made from (`sporangia/<name>/checks/`), or in the workspace yourself.
+
+**The program** gets the answer on its standard input and prints one JSON object:
+
+| it prints | what happens |
+|---|---|
+| `{ "ok": true }` | the answer goes out |
+| `{ "tell": "<what is wrong>" }` | the answer goes back to the model with that text, once a turn |
+| `{ "ask": true }` | `checks/answer.cmk` decides |
+
+It runs in the workspace, read-only, as a command under `exec` does, and has 10 seconds. A
+program that fails, runs out of time or prints anything else lets the answer out.
+
+```sh
+#!/bin/sh
+if grep -q 'TODO'; then
+  printf '{"tell":"the answer still holds a TODO"}'
+else
+  printf '{"ok":true}'
+fi
+```
+
+**The cell** is defined like a precursor, with `name: answer`. Its prompt is the answer, and its
+reply must be the same JSON object, `ok` or `tell`. It runs on the spore's model unless it names
+one of the spore's `cell-models`, and what it spends counts against the turn's `cost`.
+
+```
+---
+name: answer
+rounds: [3, 4]
+cost: [0.05, 0.10]
+wall: [1m, 2m]
+on-wrap: discard
+---
+
+You check an answer before it is sent. Say what is wrong only when a claim in it has no source.
+```
+
+The answer the model gives after being told goes out whatever the check says of it. An answer
+given at a soft limit is not checked. `spore upgrade` does not replace the files in `checks/`;
+change them in the workspace. Why it works this way is in
+[ARCHITECTURE §Answer checks](../ARCHITECTURE.md#answer-checks).
 
 ## Checked after parsing
 

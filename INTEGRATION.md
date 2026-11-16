@@ -666,6 +666,7 @@ embedder, from outside the turn. `turn_end` is written by the supervisor.
 | `estimate_drift` | `round`, `model`, `estimated`, `sent`: once a turn, the provider counted far more than the estimate |
 | `empty_completion`, `recovery` | what the loop did about a bad or failed model answer |
 | `schedule_refused` | `round`, `schedules` (each `{ path, why }`), `answered`: at the model's answer, files changed under `schedules/` this turn will not fire as written, a file not named `<name>.cmk` among them; `answered` false when the turn was told and went on, true when the answer went out anyway |
+| `answer_check` | `round`, `by` (`program` or `cell`), `verdict` (`ok`, `tell` or `failed`), `tell` or `why`, `told`, `afterTelling`: the spore's answer check read an answer that was about to end the turn. `told` true means the answer went back to the model and the turn went on, so text streamed for it is not the turn's answer: replace it with `complete`'s. With `released: true` and `because`, the answer that had been sent back went out after all, since the turn could not finish correcting it |
 | `annotation` | `text`: the embedder's line shown under the running turn's header, or `null` once taken away. Its `runId` is absent when it was written before the turn's first event |
 | `turn_end` | `turnNo`, `stopReason`, `concluded`, `error`, `rounds`, `ownUsd`, `treeUsd`, `workUnits`, `settled`, `inboxFrom`, `inboxTo` |
 

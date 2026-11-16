@@ -208,6 +208,9 @@ pub const CALLS_DIR: &str = "calls";
 pub const TREE_KEY_FILE: &str = "tree.key";
 pub const DATA_DIR: &str = "data";
 pub const PRECURSOR_DIR: &str = "precursors";
+/// The runtime's checks on what a turn is about to say, at the workspace root, which the agent
+/// reads and never writes.
+pub const CHECK_DIR: &str = "checks";
 pub const SCHEDULE_DIR: &str = "schedules";
 /// The agent's `$HOME`: where the programs it runs keep their settings and caches — git's
 /// identity, npm's cache — writable, and the workspace's own rather than the host's.

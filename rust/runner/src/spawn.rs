@@ -41,6 +41,8 @@ Usage:
   spawn --precursor <name> --ws <dir> --prompt <rel> --answer <rel>
 
   --precursor  a definition in the spore's precursors/<name>.cmk
+  --check      in place of --precursor: a check's cell, checks/<name>.cmk, which
+               the runtime runs on what a turn is about to say
   --ws         directory the child lives in; refused if it already holds spawn.json
   --prompt     material for the child, relative to --ws
   --answer     where the child's result is written, relative to --ws; must be
@@ -73,6 +75,7 @@ configuration, not something a caller decides.";
 #[derive(Default)]
 struct Args {
     precursor: Option<String>,
+    check: Option<String>,
     ws: Option<String>,
     prompt: Option<String>,
     answer: Option<String>,
@@ -122,6 +125,7 @@ fn parse_args(given: &[String]) -> Args {
         }
         match name {
             "--precursor" => args.precursor = Some(value()),
+            "--check" => args.check = Some(value()),
             "--ws" => args.ws = Some(value()),
             "--prompt" => args.prompt = Some(value()),
             "--answer" => args.answer = Some(value()),
@@ -246,6 +250,7 @@ async fn main() {
     let mut plan = plan_spawn(
         &Asked {
             precursor: args.precursor.as_deref(),
+            check: args.check.as_deref(),
             ws: args.ws.as_deref(),
             prompt: args.prompt.as_deref(),
             answer: args.answer.as_deref(),

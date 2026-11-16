@@ -414,6 +414,7 @@ pub fn layout() -> String {
         "treeKey": workspace::TREE_KEY_FILE,
         "dataDir": workspace::DATA_DIR,
         "precursorDir": workspace::PRECURSOR_DIR,
+        "checkDir": workspace::CHECK_DIR,
         "precursorExt": workspace::PRECURSOR_EXT,
         "spawnFile": workspace::SPAWN_FILE,
         "state": workspace::STATE_FILE,

@@ -226,6 +226,23 @@ export function makeTools (WS, maxOutput, trail, {
       writeRoots.some(root => text.includes(root))
   }
 
+  const run = ({ command, inAbs, outAbs, errAbs, confined, timeoutMs, idleMs, sig }) => runShell({
+    command,
+    cwd: WS,
+    inAbs,
+    outAbs,
+    errAbs,
+    confine: confined ? { writeRoot: tmp, reads: [...readRoots, ...writeRoots, ...pluginReads, WS] } : null,
+    // W3C trace context, by the environment because that is the only channel a
+    // subprocess shares with us. A spawned cell picks it up and makes its own
+    // dispatch span a child of this one, which is what joins a fan-out into one
+    // trace instead of fifty roots.
+    env: { ...process.env, TMPDIR: tmp, SPORE_SPAWN: SPAWN_BIN, SPORE_FANOUT: FANOUT_BIN, SPORE_RECALL: RECALL_BIN, SPORE_SOURCE: SOURCE_BIN, SPORE_SQL: SQL_BIN, SPORE_JOB: JOB_BIN, SPORE_INTERACT: INTERACT_BIN, SPORE_INLINE_BYTES: String(INLINE_BUDGET), ...(traceparent ? { TRACEPARENT: traceparent } : {}), ...(modelSocket ? { SPORE_MODEL_SOCKET: modelSocket } : {}), ...(storeSocket ? { SPORE_STORE_SOCKET: storeSocket } : {}), ...(sourceSocket ? { SPORE_SOURCE_SOCKET: sourceSocket } : {}) },
+    timeoutMs,
+    idleMs,
+    signal: sig
+  })
+
   const runCommand = async ({ tool, command, inPath, out, err, confined, timeoutMs, idleMs, sig }) => {
     const inAbs = inPath ? safe(inPath) : null
     if (inAbs && !existsSync(inAbs)) return refuse(`in not found — ${inPath}`)
@@ -235,22 +252,7 @@ export function makeTools (WS, maxOutput, trail, {
     const { call, outAbs, errAbs } = targets
     mkdirSync(tmp, { recursive: true })
 
-    const ran = await runShell({
-      command,
-      cwd: WS,
-      inAbs,
-      outAbs,
-      errAbs,
-      confine: confined ? { writeRoot: tmp, reads: [...readRoots, ...writeRoots, ...pluginReads, WS] } : null,
-      // W3C trace context, by the environment because that is the only channel a
-      // subprocess shares with us. A spawned cell picks it up and makes its own
-      // dispatch span a child of this one, which is what joins a fan-out into one
-      // trace instead of fifty roots.
-      env: { ...process.env, TMPDIR: tmp, SPORE_SPAWN: SPAWN_BIN, SPORE_FANOUT: FANOUT_BIN, SPORE_RECALL: RECALL_BIN, SPORE_SOURCE: SOURCE_BIN, SPORE_SQL: SQL_BIN, SPORE_JOB: JOB_BIN, SPORE_INTERACT: INTERACT_BIN, SPORE_INLINE_BYTES: String(INLINE_BUDGET), ...(traceparent ? { TRACEPARENT: traceparent } : {}), ...(modelSocket ? { SPORE_MODEL_SOCKET: modelSocket } : {}), ...(storeSocket ? { SPORE_STORE_SOCKET: storeSocket } : {}), ...(sourceSocket ? { SPORE_SOURCE_SOCKET: sourceSocket } : {}) },
-      timeoutMs,
-      idleMs,
-      signal: sig
-    })
+    const ran = await run({ command, inAbs, outAbs, errAbs, confined, timeoutMs, idleMs, sig })
 
     const hint = confined && ran.exit !== 0 && refusedWrite(errAbs)
       ? `exec is read-only: nothing it runs can write but ${TMP_DIR}/. ${[DATA_DIR, PRECURSOR_DIR, ...writes.map(w => w.name)].map(dir => `${dir}/`).join(', ')} are writable — make the same write with write, edit or wsexec.`
@@ -618,5 +620,5 @@ export function makeTools (WS, maxOutput, trail, {
     }
   ]
 
-  return { fns, defs }
+  return { fns, defs, run }
 }

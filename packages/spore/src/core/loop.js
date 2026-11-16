@@ -2,7 +2,7 @@ import { sanitizeTranscript, computeBudget } from '../resilience/transcript.js'
 import { createLoopGuard } from '../resilience/loop-guard.js'
 import { compactIfNeeded, estimateTokens } from '../resilience/context-guard.js'
 import { markConversationForCaching } from './prompt-cache.js'
-import { REFUSED, SCHEDULE_NOTICE, WRAP, asSent, mark, marked, sentWith } from './marks.js'
+import { ANSWER_NOTICE, REFUSED, SCHEDULE_NOTICE, WRAP, asSent, mark, marked, sentWith } from './marks.js'
 import { refusedResult } from './refusal.js'
 import { withRecovery } from '../resilience/recovery.js'
 import { executeTools } from './tool-kernel.js'
@@ -57,9 +57,11 @@ const DRIFT_FLOOR = 2_000
  * @param {() => number} opts.deadline — when the turn's hard wall falls, in epoch ms
  * @param {() => Array<{path: string, why: string}>} opts.refusedSchedules — schedules this turn
  *   changed that will not fire as written
+ * @param {null|((answer: string, signal: AbortSignal) => Promise<{by: string, ok?: true, tell?: string, failed?: string}>)} opts.checkAnswer
+ *   — the spore's answer check, null when it keeps none
  * @returns {{ output: string|null, messages: Array, rounds: number, usage: object }}
  */
-export async function loop ({ model, system, prompt, tools, toolFns, describe, limits, ledger, emitter, mutators, terminalTools, signal, deadline, refusedSchedules, logger, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning, from }) {
+export async function loop ({ model, system, prompt, tools, toolFns, describe, limits, ledger, emitter, mutators, terminalTools, signal, deadline, refusedSchedules, checkAnswer, logger, onMessage, sessionMemory, recall, now, interject, relimited, initialMessages, parentSpan, cacheTtl, reasoning, from }) {
   const userMsg = { role: 'user', content: prompt }
   for (const dim of ['rounds', 'cost', 'wall']) {
     if (typeof limits[dim]?.soft !== 'number' || typeof limits[dim]?.hard !== 'number') {
@@ -93,6 +95,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
   let drifted = false
   const emptyState = { retries: 0 }
   let toldOfSchedules = false
+  let held = null
   const emit = (event, data) => emitter.emit(event, data)
   const startedAt = Date.now()
   let wrapped = null
@@ -114,6 +117,15 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
   }
   const append = (msg) => { messages.push(msg); onMessage(msg) }
 
+  // An answer its check sent back goes out as it was when the turn cannot finish correcting it.
+  const release = (round, because) => {
+    logger.info({ round, because }, '[loop] the corrected answer never came — the first one goes out')
+    emit('answer_check', { round, released: true, because })
+    emitter.emit('complete', { output: held, usage, rounds: round, stopReason: 'answer' })
+    return { output: held, messages, rounds: round, usage, stopReason: 'answer', spent: spent(round) }
+  }
+  const walled = () => held !== null && Date.now() >= deadline()
+
   // The first message of every call: each of `composeSystem`'s blocks a text part keeping its
   // `cache` marker — a breakpoint at that block.
   const systemMessage = {
@@ -134,6 +146,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
 
   for (let i = from ?? 0; ; i++) {
     if (signal?.aborted) {
+      if (walled()) return release(i, 'hard:wall')
       emitter.emit('complete', { output: null, usage, rounds: i, cancelled: true, stopReason: 'cancelled' })
       return { output: null, messages, rounds: i, usage, cancelled: true, stopReason: 'cancelled', spent: spent(i) }
     }
@@ -142,6 +155,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
     const hard = crossed('hard', at)
     if (hard) {
       const stopReason = `hard:${hard}`
+      if (held !== null) return release(i, stopReason)
       logger.warn({ ...at, limit: limits[hard].hard, dimension: hard }, '[loop] hard limit — stopped')
       emitter.emit('complete', { output: null, usage, rounds: i, stopReason })
       return { output: null, messages, rounds: i, usage, stopReason, spent: at }
@@ -218,7 +232,12 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
       // loop and `runSpore` alike, so the turn record — written after the loop
       // returns — was never reached: a cancelled or deadlined run left no stop
       // reason, no cost, and a workspace that looked like it had never run.
-      if (!signal?.aborted) throw err
+      if (!signal?.aborted) {
+        if (held === null) throw err
+        logger.warn({ round: i, type: err.type, why: err.message }, '[loop] the model call correcting an answer failed')
+        return release(i, err.type || 'error')
+      }
+      if (walled()) return release(i, 'hard:wall')
       logger.info({ rounds: i }, '[loop] cancelled mid-call')
       emitter.emit('complete', { output: null, usage, rounds: i, cancelled: true, stopReason: 'cancelled' })
       return { output: null, messages, rounds: i, usage, cancelled: true, stopReason: 'cancelled', spent: spent(i) }
@@ -285,6 +304,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
       // A stop during the batch wins over a terminal tool in it: readers run first, so a
       // `quiet` could have answered before the stop, and the turn did not end on its terms.
       if (signal?.aborted) {
+        if (walled()) return release(i + 1, 'hard:wall')
         emitter.emit('complete', { output: null, usage, rounds: i + 1, cancelled: true, stopReason: 'cancelled' })
         return { output: null, messages, rounds: i + 1, usage, cancelled: true, stopReason: 'cancelled', spent: spent(i + 1) }
       }
@@ -339,6 +359,39 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
       }
     }
 
+    // Told once a turn, like a schedule: the answer given after that goes out whatever its check
+    // says of it. A wrapped turn has no room to correct.
+    if (checkAnswer && res.output && !wrapped) {
+      const verdict = await checkAnswer(res.output, signal)
+      if (signal?.aborted) {
+        if (walled()) return release(i + 1, 'hard:wall')
+        emitter.emit('complete', { output: null, usage, rounds: i + 1, cancelled: true, stopReason: 'cancelled' })
+        return { output: null, messages, rounds: i + 1, usage, cancelled: true, stopReason: 'cancelled', spent: spent(i + 1) }
+      }
+      const told = Boolean(verdict.tell) && held === null
+      emit('answer_check', {
+        round: i,
+        by: verdict.by,
+        verdict: verdict.tell ? 'tell' : verdict.failed ? 'failed' : 'ok',
+        ...(verdict.tell ? { tell: verdict.tell } : {}),
+        ...(verdict.failed ? { why: verdict.failed } : {}),
+        told,
+        afterTelling: held !== null
+      })
+      if (verdict.failed) logger.warn({ round: i, by: verdict.by, why: verdict.failed }, '[loop] the answer check gave no verdict — the answer goes out')
+      if (told) {
+        held = res.output
+        logger.info({ round: i, by: verdict.by }, '[loop] the answer check sent the answer back — going on')
+        append({ role: 'assistant', content: assistantContent(res) })
+        append(mark({
+          role: 'user',
+          content: `[System: before this answer goes out: ${verdict.tell}\nCorrect it, then answer again.]`
+        }, ANSWER_NOTICE))
+        continue
+      }
+    }
+
+    if (!res.output && held !== null) return release(i + 1, 'no answer followed')
     const output = res.output || null
     const stopReason = wrapped ? `soft:${wrapped}` : 'answer'
     emitter.emit('complete', { output, usage, rounds: i + 1, stopReason })

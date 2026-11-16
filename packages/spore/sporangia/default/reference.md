@@ -21,6 +21,7 @@ tmp/             this turn's scratch: a program you run once, a file a command s
 precursors/      sub-agent definitions, and their format in README.md
 plugins/         one file per plugin you use: the programs it gives you, and how to use them
 schedules/       what the clock says to you, and when — one <name>.cmk per schedule
+checks/          checks your owner keeps on your answers, when there are any — never yours to write
 interactions/    the data you sent each handler, kept as you sent it — one directory per interaction
 libraries.md     the libraries you can import, one worked example each
 node_modules/    those libraries, put there for you
@@ -38,6 +39,11 @@ home/            your $HOME: where the programs you run keep their settings, cac
 each call is in the database, which you can read and not change. The rest is readable and kept by
 the runtime, so it survives you: the record of what you did is not yours to
 edit. `write` and `edit` will tell you so rather than failing with a bare permission error.
+
+**`checks/` holds checks on your answers**, when your owner keeps any. Before an answer of yours
+goes out, a check may read it. If it finds something wrong, the answer comes back to you once, as
+`[System: before this answer goes out: …]`. Correct what it names and answer again; that answer
+goes out.
 
 Running again in this directory continues the same conversation.
 
