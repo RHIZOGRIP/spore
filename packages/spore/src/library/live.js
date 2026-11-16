@@ -48,7 +48,8 @@ const describedOf = (event) => event.title === undefined
 /**
  * False when the event changes nothing a surface shows. The headline is, within a round, what the
  * model wrote for the person, else the last paragraph of its reasoning summary, else text it wrote
- * before a call — the answer is what comes last, never a headline.
+ * before a call — the answer is what comes last, never a headline. An answer the loop sent back
+ * to the model is not the turn's, so what was written of it goes.
  */
 export function applyEvent (live, event) {
   switch (event.event) {
@@ -115,6 +116,16 @@ export function applyEvent (live, event) {
     case 'unwrap':
       live.notes.push({ kind: 'note', text: `its ${event.dimension} limit was raised — carrying on` })
       live.wrapping = null
+      return true
+    case 'answer_check':
+      if (!event.told) return false
+      live.text = ''
+      live.notes.push({ kind: 'note', text: 'its answer check sent the answer back — correcting it' })
+      return true
+    case 'schedule_refused':
+      if (event.answered) return false
+      live.text = ''
+      live.notes.push({ kind: 'note', text: 'a schedule it wrote will not fire — putting that right' })
       return true
     case 'compaction_started':
       live.notes.push({ kind: 'note', text: `summarizing ${event.messages} earlier messages before the first round…` })

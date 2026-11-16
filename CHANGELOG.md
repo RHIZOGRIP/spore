@@ -22,11 +22,18 @@ All notable changes to this project are documented here. Format follows
   correction the turn cannot finish: when a hard limit ends the turn after a telling, the first
   answer goes out.
 - A wrapped turn's answer is not checked, and neither is a question (`ask`) or a quiet ending.
-- New event `answer_check`, one per verdict. A screen that shows an answer as it streams should
-  replace it with `complete`'s when the event says `told: true`.
+- New event `answer_check`, one per verdict. The terminal, `spore send`, the chat connectors and
+  the API's live view drop the text of an answer that was sent back and note that the turn is
+  correcting it. A program that folds `stream` events itself should discard that text when the
+  event says `told: true`.
 - `spore-spawn --check <name>` runs a cell defined in `checks/`. It is for the runtime; an agent
   spawns from `precursors/` as before.
 - A spore with no `checks/` directory behaves as before.
+
+### Fixed
+
+- A turn told that a schedule it wrote will not fire showed its first answer and its second run
+  together while it ran. The first is now dropped, as for an answer check.
 
 ## [1.68.0] — Changed: an output left out of a call's record says nothing of it was shown
 

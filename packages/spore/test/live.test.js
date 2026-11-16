@@ -79,6 +79,20 @@ describe('the default rendering of a running turn', () => {
     expect(shown([said('one\u0007two\u001b[31m'), start('read', { path: 'c.pdf' })])[1]).toBe('one two [31m')
   })
 
+  it('drops an answer the loop sent back to the model, and says why the turn goes on', () => {
+    const checked = liveOf([said('See *Necropolitics* p1.'), { event: 'answer_check', round: 0, by: 'program', verdict: 'tell', tell: 'cite by id', told: true, afterTelling: false }, said('See dq4!p1.')])
+    expect(checked.text).toBe('See dq4!p1.')
+    expect(checked.notes).toEqual([{ kind: 'note', text: 'its answer check sent the answer back — correcting it' }])
+    const passed = liveOf([said('See dq4!p1.'), { event: 'answer_check', round: 0, by: 'program', verdict: 'ok', told: false, afterTelling: false }])
+    expect(passed).toMatchObject({ text: 'See dq4!p1.', notes: [] })
+    const second = liveOf([said('one'), { event: 'answer_check', round: 1, by: 'program', verdict: 'tell', tell: 'again', told: false, afterTelling: true }])
+    expect(second).toMatchObject({ text: 'one', notes: [] })
+    const scheduled = liveOf([said('I will remind you.'), { event: 'schedule_refused', round: 1, schedules: [], answered: false }, said('No reminder is set.')])
+    expect(scheduled.text).toBe('No reminder is set.')
+    expect(scheduled.notes).toEqual([{ kind: 'note', text: 'a schedule it wrote will not fire — putting that right' }])
+    expect(liveOf([said('I will remind you.'), { event: 'schedule_refused', round: 2, schedules: [], answered: true }]).text).toBe('I will remind you.')
+  })
+
   it('heads it with what the model wrote for the person, else the last paragraph of its reasoning summary, never its raw reasoning', () => {
     const stream = (kind, delta) => ({ event: 'stream', kind, delta })
     const round = (index) => ({ event: 'round', index })

@@ -1592,8 +1592,9 @@ Each verdict is an `answer_check` event: `round`, `by` (`program` or `cell`), `v
 `tell` or `failed`), `tell` or `why`, `told`, and `afterTelling` on the verdict of an answer given
 after a telling. A first answer let out is one more, `released: true` with `because`.
 
-A screen that showed the first answer as it streamed replaces it with the turn's `complete`,
-which is the answer that went out.
+An answer sent back is not the turn's, so `live` drops what streamed of it and notes that the
+turn goes on correcting it (§What a running turn shows): the terminal, `spore send`, a chat and the
+API show the answer that went out, never the two run together. The schedule notice does the same.
 
 ## The machine's bounds
 
@@ -2432,7 +2433,8 @@ the definition, the plugin check and the agent. A turn its spore was upgraded un
 (`src/library/live.js` — `createLive`, `applyEvent`, `liveOf`), so a chat, `spore send`, the API and
 the terminal show one account of a turn rather than each reading the events its own way. It carries
 every fact a surface may want — the rounds, the calls with their descriptions and how each ended,
-the text being written, the notes (a wrap and its lifting, a message heard mid-turn, compaction),
+the text being written, the notes (a wrap and its lifting, a message heard mid-turn, compaction,
+an answer sent back to the model),
 the spend and the context of the last model call — and its `headline`, the model's own words on
 what it is doing, from its latest round: what it wrote for the person (`commentary`), else the last
 paragraph of its reasoning summary (`reasoning_summary`, when the definition's `reasoning` asks for
