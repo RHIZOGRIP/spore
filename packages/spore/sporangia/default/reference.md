@@ -426,7 +426,9 @@ Two things then happen with what you wrote, and with what was said:
 
 **Things come back on their own.** Before you read a turn, anything written down that
 bears on it appears above it under `[Recalled — from earlier, not said now.]`, with where
-it came from. It was not said in this turn. Some of it will not be relevant.
+it came from. It was not said in this turn. Some of it will not be relevant. A line from
+`transcript:<n>` was true when it was said, and a note in `data/memory/` is kept up to date:
+where the two disagree on whether something is done, go by the note.
 
 **And you can ask.** When you notice you do not know something that you might once have
 been told:

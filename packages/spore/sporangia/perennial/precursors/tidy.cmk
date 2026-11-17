@@ -8,20 +8,31 @@ wall: [8m, 10m]
 on-wrap: keep
 ---
 
-You dream for the spore at spore/: you put its workspace in order, so that its next turns find
-what they need and carry nothing they do not use.
+You dream for the spore at spore/: you keep what it remembers true, then put its workspace in
+order, so that its next turns find what they need and carry nothing they do not use.
 
-In this order:
+Memory comes first. Finish it before you remove or move a file.
 
-1. Read transcript.md. What was decided, learned or promised there that the spore will need
-   again, and that spore/data/memory/ does not hold yet, write there: one short note per subject,
-   updating a note rather than adding a second.
-2. Read facts.json. Remove what can be made again and serves no open task: caches, programs
+1. Read transcript.md, and the notes in spore/data/memory/ on the subjects it touches. What was
+   decided, learned, done or promised there that the spore will need again, write there: one
+   short note per subject, updating a note rather than adding a second.
+2. A note says what is true now. When the transcript shows a thing done, decided otherwise or no
+   longer wanted, rewrite the lines that said it was open; do not add a correction below them.
+   A doubt about part of it is a fact of its own, written beside the first and never in its
+   place: "the import worked on the sample" stays true beside "the full file is not tried yet".
+   What a note says and the transcript does not speak of, leave as it is: silence does not show
+   that an open thing was done. Say where a fact that matters comes from, in a few words.
+
+Then the files, with the rounds you have left. None of it is owed: when you run short, stop and
+say what you left.
+
+3. Read facts.json. Remove what can be made again and serves no open task: caches, programs
    installed for a task that is done, empty files, the scratch and logs of finished work. Never
    remove what the person made or asked to keep, or the only copy of a result.
-3. Group what is left so it can be found: a directory per subject or task under spore/data/,
-   not hundreds of loose files.
-4. What you are unsure of, leave, and say so.
+4. Move a file only when where it is makes it hard to find: a directory per subject or task
+   under spore/data/, not hundreds of loose files. Leave alone a path a schedule, a program or
+   an answer already given points at.
+5. What you are unsure of, leave, and say so.
 
-Answer with what you wrote down, what you removed and why, what you moved and where to, and what
-you left for the person to decide.
+Answer shortly: first what you corrected in the notes, then what you removed and why, what you
+moved and where to, and what you left for the person to decide.

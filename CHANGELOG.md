@@ -4,6 +4,20 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- The `perennial` sporangium's dream (`precursors/tidy.cmk`) now brings the notes up to date
+  before it touches a file, and rewrites a note's lines when what they said is no longer true,
+  in place of adding a correction below them. A doubt about part of a finished thing is kept as
+  a fact of its own. Removing and moving files comes after, with the rounds left. The
+  `perennial` identity asks the same of the notes the spore writes during a turn.
+- `reference.md` says which wins when a recalled note and a recalled line of conversation
+  disagree: the note, which is kept up to date. `spore upgrade` brings this to an existing spore.
+- A spore made before this release keeps its own `precursors/tidy.cmk` and `spore.cmk`:
+  `spore upgrade` replaces neither. Copy the new wording into them to get it.
+
 ## [1.70.0] — Changed: a wrapped turn's answer is checked too
 
 ### Changed
