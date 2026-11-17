@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.70.0] — Changed: a wrapped turn's answer is checked too
+
+### Changed
+
+- The answer check now reads the answer of a wrapped turn. A turn that wraps on a soft limit, or
+  because a tool stopped making progress, has the room up to its hard limit, and a corrected
+  answer fits there. It is told once, like any other turn, and still ends `soft:<dimension>`.
+- The only plain-text answer left unchecked is a first answer given on the round that reaches a
+  hard limit: no round is left to correct it in. It emits no `answer_check` event.
+- A corrected answer is checked wherever it lands, so its verdict is always recorded.
+
+### Fixed
+
+- A turn that wrapped while correcting an answer, and then ran into its hard limit, ended with
+  `stopReason: 'answer'`. It now ends `soft:<dimension>`, in the `complete` event and in the turn
+  record alike, so `spore send` exits 4 for it.
+
 ## [1.69.0] — Added: a spore can check its own answer before the turn ends
 
 ### Added

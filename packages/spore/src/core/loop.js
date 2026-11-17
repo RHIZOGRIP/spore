@@ -121,9 +121,10 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
   const release = (round, because) => {
     logger.info({ round, because }, '[loop] the corrected answer never came — the first one goes out')
     emit('answer_check', { round, released: true, because })
-    emitter.emit('complete', { output: held, usage, rounds: round, stopReason: 'answer' })
-    return { output: held, messages, rounds: round, usage, stopReason: 'answer', spent: spent(round) }
+    emitter.emit('complete', { output: held, usage, rounds: round, stopReason: ended() })
+    return { output: held, messages, rounds: round, usage, stopReason: ended(), spent: spent(round) }
   }
+  const ended = () => (wrapped ? `soft:${wrapped}` : 'answer')
   const walled = () => held !== null && Date.now() >= deadline()
 
   // The first message of every call: each of `composeSystem`'s blocks a text part keeping its
@@ -360,8 +361,9 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
     }
 
     // Told once a turn, like a schedule: the answer given after that goes out whatever its check
-    // says of it. A wrapped turn has no room to correct.
-    if (checkAnswer && res.output && !wrapped) {
+    // says of it. A first answer on the round that reaches a hard limit is not checked: no round
+    // is left to correct it in.
+    if (checkAnswer && res.output && (held !== null || !crossed('hard', spent(i + 1)))) {
       const verdict = await checkAnswer(res.output, signal)
       if (signal?.aborted) {
         if (walled()) return release(i + 1, 'hard:wall')
@@ -393,9 +395,8 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
 
     if (!res.output && held !== null) return release(i + 1, 'no answer followed')
     const output = res.output || null
-    const stopReason = wrapped ? `soft:${wrapped}` : 'answer'
-    emitter.emit('complete', { output, usage, rounds: i + 1, stopReason })
-    return { output, messages, rounds: i + 1, usage, stopReason, spent: spent(i + 1) }
+    emitter.emit('complete', { output, usage, rounds: i + 1, stopReason: ended() })
+    return { output, messages, rounds: i + 1, usage, stopReason: ended(), spent: spent(i + 1) }
   }
 }
 

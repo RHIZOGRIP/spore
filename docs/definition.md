@@ -890,8 +890,9 @@ on-wrap: discard
 You check an answer before it is sent. Say what is wrong only when a claim in it has no source.
 ```
 
-The answer the model gives after being told goes out whatever the check says of it. An answer
-given at a soft limit is not checked. `spore upgrade` does not replace the files in `checks/`;
+The answer the model gives after being told goes out whatever the check says of it. A wrapped
+turn's answer is checked like any other. A first answer given on the round that reaches a hard
+limit is not: no round is left to correct it in. `spore upgrade` does not replace the files in `checks/`;
 change them in the workspace. Why it works this way is in
 [ARCHITECTURE §Answer checks](../ARCHITECTURE.md#answer-checks).
 

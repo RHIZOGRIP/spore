@@ -48,6 +48,11 @@ const spore = (...args) => run(process.execPath, [SPORE, ...args], {
 
 const checked = () => readEvents(ws, { event: 'answer_check' })
 
+const limitRounds = (rounds) => {
+  const cmk = resolve(ws, 'spore.cmk')
+  writeFileSync(cmk, readFileSync(cmk, 'utf8').replace(/^rounds: .*$/m, `rounds: ${rounds}`))
+}
+
 afterEach(async () => {
   await gate.close()
   for (const dir of [ws, home, forked]) if (dir) rmSync(dir, { recursive: true, force: true })
@@ -171,27 +176,71 @@ describe('an answer check', () => {
       calls('exec', { command: 'true', out: 'data/a.txt' }),
       calls('exec', { command: 'true', out: 'data/b.txt' })
     ][i], { 'answer.check': NO_BAD })
-    const cmk = resolve(ws, 'spore.cmk')
-    writeFileSync(cmk, readFileSync(cmk, 'utf8').replace(/^rounds: .*$/m, 'rounds: [2, 3]'))
+    limitRounds('[2, 3]')
     await spore('send', ws, 'hello')
 
     expect(mo.seen).toHaveLength(3)
-    expect(readTurns(ws).at(-1)).toMatchObject({ stopReason: 'answer', output: 'BAD', rounds: 3 })
+    expect(readTurns(ws).at(-1)).toMatchObject({ stopReason: 'soft:rounds', output: 'BAD', rounds: 3 })
     expect(checked()).toMatchObject([{ verdict: 'tell', told: true }, { round: 3, released: true, because: 'hard:rounds' }])
   })
 
-  it('leaves a wrapped answer unchecked', { timeout: 30_000 }, async () => {
+  it('checks the answer of a wrapped turn, which still ends wrapped', { timeout: 30_000 }, async () => {
     const mo = await start('answer-check-wrapped', (input, i) => [
+      calls('exec', { command: 'true', out: 'data/a.txt' }),
+      answers('BAD one'),
+      answers('fixed')
+    ][i], { 'answer.check': NO_BAD })
+    limitRounds('[1, 4]')
+    await spore('send', ws, 'hello')
+
+    expect(mo.seen).toHaveLength(3)
+    expect(JSON.stringify(mo.seen[2]).match(/before this answer goes out/g)).toHaveLength(1)
+    expect(readTurns(ws).at(-1)).toMatchObject({ stopReason: 'soft:rounds', output: 'fixed', rounds: 3 })
+    expect(checked()).toMatchObject([
+      { round: 1, verdict: 'tell', told: true, afterTelling: false },
+      { round: 2, verdict: 'ok', told: false, afterTelling: true }
+    ])
+  })
+
+  it('checks a corrected answer given on the round that reaches the hard limit', { timeout: 30_000 }, async () => {
+    const mo = await start('answer-check-last-round', (input, i) => [
+      calls('exec', { command: 'true', out: 'data/a.txt' }),
+      answers('BAD one'),
+      answers('BAD two')
+    ][i], { 'answer.check': NO_BAD })
+    limitRounds('[1, 3]')
+    await spore('send', ws, 'hello')
+
+    expect(mo.seen).toHaveLength(3)
+    expect(readTurns(ws).at(-1)).toMatchObject({ stopReason: 'soft:rounds', output: 'BAD two', rounds: 3 })
+    expect(checked()).toMatchObject([
+      { round: 1, verdict: 'tell', told: true },
+      { round: 2, verdict: 'tell', told: false, afterTelling: true }
+    ])
+  })
+
+  it('leaves a first answer unchecked on the round that reaches the hard limit', { timeout: 30_000 }, async () => {
+    const mo = await start('answer-check-no-room', (input, i) => [
       calls('exec', { command: 'true', out: 'data/a.txt' }),
       answers('BAD')
     ][i], { 'answer.check': NO_BAD })
-    const cmk = resolve(ws, 'spore.cmk')
-    writeFileSync(cmk, readFileSync(cmk, 'utf8').replace(/^rounds: .*$/m, 'rounds: [1, 3]'))
+    limitRounds('[1, 2]')
     await spore('send', ws, 'hello')
 
     expect(mo.seen).toHaveLength(2)
     expect(readTurns(ws).at(-1)).toMatchObject({ stopReason: 'soft:rounds', output: 'BAD' })
     expect(checked()).toEqual([])
+  })
+
+  it('checks the answer of a turn wrapped for making no progress', { timeout: 30_000 }, async () => {
+    const mo = await start('answer-check-progress', (input, i) => i < 5
+      ? calls('read', { path: 'data/none.txt' })
+      : [answers('BAD one'), answers('fixed')][i - 5], { 'answer.check': NO_BAD })
+    await spore('send', ws, 'hello')
+
+    expect(mo.seen).toHaveLength(7)
+    expect(readTurns(ws).at(-1)).toMatchObject({ stopReason: 'soft:progress', output: 'fixed' })
+    expect(checked()).toMatchObject([{ verdict: 'tell', told: true }, { verdict: 'ok', afterTelling: true }])
   })
 
   it('is not there for a spore that keeps none', { timeout: 30_000 }, async () => {

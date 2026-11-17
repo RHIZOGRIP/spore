@@ -1573,12 +1573,15 @@ asking for a cell the spore does not keep.
 
 **A correction that cannot finish lets the first answer out.** The telling costs a round. When a
 hard limit, the hard wall or a failed model call ends the turn before another answer comes, the
-turn ends on the answer that was sent back, with `stopReason: 'answer'`: one existed, and ending
-on none would lose it.
+turn ends on the answer that was sent back: one existed, and ending on none would lose it. Its
+`stopReason` is `answer`, or `soft:<dimension>` when the turn had wrapped.
 
-**What is checked** is only an answer that would end the turn with `answer`. A terminal tool's
-result (`ask`, `quiet`) is not, and neither is the answer of a wrapped turn, which has no room
-left to correct in.
+**What is checked** is a plain-text answer that would end the turn, a wrapped turn's included:
+the room between a soft limit and its hard one is where a correction fits, and the turn still ends
+`soft:<dimension>`. A terminal tool's result (`ask`, `quiet`) is not checked. Neither is a first
+answer given on the round that reaches a hard limit: no round is left to correct it in, so
+telling the model could only release the same answer. A corrected answer is always checked, at a
+hard limit too, since its verdict is the record of whether the correction worked.
 
 **The program runs as `exec` runs a command**: read-only under `confine`, in the agent's
 environment, which holds no secret. **The cell is a cell of the turn**: the loop starts it with
