@@ -486,7 +486,43 @@ describe('tool loop', () => {
     expect(res.stopReason).toBe('soft:progress')
     const notice = res.messages.find(msg => marked(msg, WRAP))
     expect(notice.content).toMatch(/stopped making progress/)
-    expect(notice.content).toMatch(/`fail` has failed 5 times in a row/)
+    expect(notice.content).toMatch(/`fail` has failed in 5 rounds in a row/)
+  })
+
+  it('counts a round of calls that all fail as one failure, which the model then reads', async () => {
+    const five = toolUse([1, 2, 3, 4, 5].map(n => ({ name: 'fail', args: { attempt: n } })))
+    const m = mockModel([five, completed('corrected')])
+    const res = await run({ model: m, limits: { rounds: { soft: 90, hard: 99 } } })
+    expect(res.stopReason).toBe('answer')
+    expect(res.messages.some(msg => marked(msg, WRAP))).toBe(false)
+    expect(m.calls[1].prompt.filter(msg => msg.role === 'tool')).toHaveLength(5)
+  })
+
+  it('counts no failure for a round in which one call of the tool worked', async () => {
+    writeFileSync(resolve(WS, 'there.txt'), 'x')
+    const mixed = (n) => toolUse([
+      { name: 'read', args: { path: 'there.txt' } },
+      { name: 'read', args: { path: 'there.txt' } },
+      ...[1, 2, 3, 4, 5, 6, 7, 8].map(k => ({ name: 'read', args: { path: `missing-${n}-${k}.txt` } }))
+    ])
+    const m = mockModel([mixed(1), mixed(2), mixed(3), mixed(4), mixed(5), mixed(6), completed('done')])
+    const res = await run({ model: m, limits: { rounds: { soft: 90, hard: 99 } } })
+    expect(res.stopReason).toBe('answer')
+    expect(res.messages.some(msg => marked(msg, WRAP))).toBe(false)
+  })
+
+  it('starts the count again after a round in which the tool worked', async () => {
+    writeFileSync(resolve(WS, 'there.txt'), 'x')
+    const missing = (n) => toolUse([{ name: 'read', args: { path: `missing-${n}.txt` } }])
+    const m = mockModel([
+      missing(1), missing(2), missing(3), missing(4),
+      toolUse([{ name: 'read', args: { path: 'there.txt' } }]),
+      missing(5), missing(6), missing(7), missing(8),
+      completed('done')
+    ])
+    const res = await run({ model: m, limits: { rounds: { soft: 90, hard: 99 } } })
+    expect(res.stopReason).toBe('answer')
+    expect(res.messages.some(msg => marked(msg, WRAP))).toBe(false)
   })
 
   it('refuses to run without declared round limits', async () => {

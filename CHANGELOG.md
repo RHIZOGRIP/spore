@@ -4,7 +4,19 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [1.71.0] — Fixed: calls sent together that share one mistake no longer wrap the turn
+
+### Fixed
+
+- The loop guard counted failed results, so one round of calls sharing one mistake wrapped the
+  turn as `soft:progress` before the model had read a single error. It now counts rounds: a tool
+  wraps the turn after five rounds running in which every call of it failed, and a round in
+  which one call of it worked starts the count again. The same holds for the identical-result
+  signal. The wrap message says "has failed in 5 rounds in a row".
+- A turn whose agent was killed by a signal spore did not send was recorded as "spore.err says
+  why", and `spore.err` held nothing, since a killed process writes nothing. The record now says
+  that it is most often the kernel reclaiming memory, and names `journalctl -k`. The same holds
+  for a cell.
 
 ### Changed
 
@@ -18,12 +30,10 @@ All notable changes to this project are documented here. Format follows
 - A spore made before this release keeps its own `precursors/tidy.cmk` and `spore.cmk`:
   `spore upgrade` replaces neither. Copy the new wording into them to get it.
 
-### Fixed
+### Dependencies
 
-- A turn whose agent was killed by a signal spore did not send was recorded as "spore.err says
-  why", and `spore.err` held nothing, since a killed process writes nothing. The record now says
-  that it is most often the kernel reclaiming memory, and names `journalctl -k`. The same holds
-  for a cell.
+- marked 18.2.1, in the Telegram and WhatsApp plugins.
+- lint-staged 17.6.1, used only when working on spore.
 
 ## [1.70.0] — Changed: a wrapped turn's answer is checked too
 

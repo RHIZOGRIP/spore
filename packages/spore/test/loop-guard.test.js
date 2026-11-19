@@ -55,6 +55,37 @@ describe('loop guard', () => {
     expect(guard.stalled()).toBe(null)
   })
 
+  it('counts one failure for a round, however many of its calls failed', () => {
+    const guard = createLoopGuard()
+    const calls = [0, 1, 2, 3, 4, 5, 6].map(i => ({ id: `p${i}`, name: 'exec', arguments: { command: `cmd${i}` } }))
+    guard.observe(calls)
+    guard.record(calls.map(call => refusedResult(call.id, 'exec', `nope ${call.id}`)))
+    expect(guard.stalled()).toBe(null)
+  })
+
+  it('counts no failure for a round in which one call of the tool worked, whichever came back first', () => {
+    for (const order of [[OK, FAILED], [FAILED, OK]]) {
+      const guard = createLoopGuard()
+      for (let i = 0; i < 6; i++) {
+        const calls = order.map((_, k) => ({ id: `r${i}-${k}`, name: 'exec', arguments: { command: `cmd${i}-${k}` } }))
+        guard.observe(calls)
+        guard.record(order.map((outcome, k) => isRefusal(outcome)
+          ? refusedResult(calls[k].id, 'exec', outcome.refused)
+          : recordedResult(calls[k].id, 'exec', outcome.record)))
+      }
+      expect(guard.stalled()).toBe(null)
+    }
+  })
+
+  it('counts identical calls sent in one round as one outcome', () => {
+    const guard = createLoopGuard()
+    const same = recorded({ tool: 'exec', exit: 0, files: { out: { content: '3\n' } } })
+    const calls = [0, 1, 2, 3, 4, 5].map(i => ({ id: `s${i}`, name: 'exec', arguments: { command: 'wc -l x' } }))
+    guard.observe(calls)
+    guard.record(calls.map(call => recordedResult(call.id, 'exec', same.record)))
+    expect(guard.stalled()).toBe(null)
+  })
+
   it('keeps each tool run separate', () => {
     const guard = createLoopGuard()
     for (let i = 0; i < 6; i++) round(guard, `f${i}`, 'exec', { command: `q${i}` }, FAILED)

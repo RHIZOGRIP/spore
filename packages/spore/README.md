@@ -260,7 +260,7 @@ to answer now and say what is unfinished — you get a partial answer. Crossing 
 writes a **continuation record** to `calls/<run>/continuation.md`, assembled from the trail,
 the transcript and the files on disk with no model call.
 
-A tool that fails five times running is `soft:progress`. The loop wraps and the
+A tool whose every call fails five rounds running is `soft:progress`. The loop wraps and the
 tool stays available.
 
 However a turn ends, `spore send` again continues the conversation.

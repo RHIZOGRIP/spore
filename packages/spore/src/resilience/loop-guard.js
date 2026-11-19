@@ -6,9 +6,13 @@
  * what it has. Taking a tool away was tried, and the agent's answer was to route
  * around the guard by collapsing its remaining work into one call.
  *
- *   1. Consecutive failure — the same tool failing N times with no success between.
+ *   1. Consecutive failure — N rounds running in which every call of a tool failed.
  *   2. Identical outcome — the same tool, the same arguments, and the same result,
- *      N times running.
+ *      N rounds running.
+ *
+ * Both count rounds, not results. A round is one decision: the model sends its calls before it
+ * has read any of their results, so five calls sharing one mistake are one failure, and a
+ * failure says the agent is stuck only once it has read the last one and failed again.
  *
  * The second used to be a hard block on arguments alone, at three. Arguments do not
  * decide what a call observes: a workspace is mutable, cells write into it while the
@@ -24,10 +28,12 @@ import { silent } from '../observability/logger.js'
 const CONSECUTIVE_FAILURE_LIMIT = 5
 const IDENTICAL_OUTCOME_LIMIT = 5
 
+const sameOutcome = (a, b) => a.name === b.name && a.argsKey === b.argsKey && a.content === b.content
+
 export function createLoopGuard ({ logger = silent } = {}) {
   const pending = new Map() // toolCallId → { name, argsKey }
-  const failures = new Map() // name → consecutive failures, reset by any success
-  let repeat = null // { name, argsKey, content, count } — the current identical run
+  const failures = new Map() // name → rounds running in which every call of it failed
+  let repeat = null // { name, argsKey, content, count } — the current identical run, in rounds
 
   /**
    * What was asked for, kept until the results come back so an outcome can be
@@ -40,25 +46,28 @@ export function createLoopGuard ({ logger = silent } = {}) {
   }
 
   /**
-   * Outcomes, after execution. A tool that succeeds once has made progress, so its
-   * run of failures starts again from zero; a call that returns something different
-   * from the last one ends the identical run for the same reason.
+   * One round's outcomes, after execution. A tool one of whose calls succeeded has made
+   * progress, so its run of failed rounds starts again from zero; a round that returns anything
+   * other than the last round's one outcome ends the identical run for the same reason.
    */
   function record (toolResults) {
+    const worked = new Map()
+    const outcomes = []
     for (const tr of toolResults || []) {
       if (!tr?.toolName) continue
-      const content = textOf(tr)
-      failures.set(tr.toolName, readOutcome(tr).ok ? 0 : (failures.get(tr.toolName) || 0) + 1)
+      worked.set(tr.toolName, worked.get(tr.toolName) === true || readOutcome(tr).ok)
 
       const asked = pending.get(tr.toolCallId)
       pending.delete(tr.toolCallId)
-      const outcome = { name: tr.toolName, argsKey: asked?.argsKey ?? null, content }
-      const same = repeat &&
-        repeat.name === outcome.name &&
-        repeat.argsKey === outcome.argsKey &&
-        repeat.content === outcome.content
-      repeat = same ? { ...repeat, count: repeat.count + 1 } : { ...outcome, count: 1 }
+      outcomes.push({ name: tr.toolName, argsKey: asked?.argsKey ?? null, content: textOf(tr) })
     }
+    for (const [name, ok] of worked) failures.set(name, ok ? 0 : (failures.get(name) || 0) + 1)
+    if (!outcomes.length) return
+
+    const [outcome] = outcomes
+    const one = outcomes.every(other => sameOutcome(other, outcome))
+    if (!one) repeat = null
+    else repeat = repeat && sameOutcome(repeat, outcome) ? { ...repeat, count: repeat.count + 1 } : { ...outcome, count: 1 }
   }
 
   /**
@@ -68,12 +77,12 @@ export function createLoopGuard ({ logger = silent } = {}) {
   function stalled () {
     for (const [name, consecutive] of failures) {
       if (consecutive >= CONSECUTIVE_FAILURE_LIMIT) {
-        return { tool: name, consecutive, because: `has failed ${consecutive} times in a row without one success` }
+        return { tool: name, consecutive, because: `has failed in ${consecutive} rounds in a row without one success` }
       }
     }
     if (repeat && repeat.count >= IDENTICAL_OUTCOME_LIMIT) {
       logger.warn({ tool: repeat.name, count: repeat.count }, '[loop-guard] identical outcome')
-      return { tool: repeat.name, consecutive: repeat.count, because: `has returned the same result to the same arguments ${repeat.count} times running` }
+      return { tool: repeat.name, consecutive: repeat.count, because: `has returned the same result to the same arguments ${repeat.count} rounds running` }
     }
     return null
   }

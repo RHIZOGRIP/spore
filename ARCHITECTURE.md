@@ -455,8 +455,11 @@ out is refused by the command — `rm -rf /` reaches GNU `rm`, which refuses and
 recorded with its exit code.
 
 The loop guard (`src/resilience/loop-guard.js`) observes and never refuses. It has two signals:
-one tool failing five times running, and the same tool returning the same result to the same
-arguments five times running. It compares the result as well as the arguments because a
+five rounds running in which every call of one tool failed, and five rounds running in which
+the same tool returned the same result to the same arguments. Both count rounds, not results:
+the model sends a round's calls before it has read any of their results, so calls that share one
+mistake are one failure, and a failure says the agent is stuck only once it has read the last
+one and failed again. It compares the result as well as the arguments because a
 workspace is mutable — cells write into it while the agent watches, so the same `wc -l` twice
 is how an arrival is seen, and it is the wait-loop `reference.md` teaches for a detached
 fan-out. Either signal wraps the turn as `soft:progress`.

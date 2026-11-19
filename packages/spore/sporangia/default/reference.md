@@ -257,7 +257,8 @@ with `~~~`. A single short value, a path or a name, goes in inline code.
   `calls/<run>/continuation.md` for whoever picks it up. A model call already running is
   not cut: it finishes and is billed to the turn.
 
-A tool failing five times in a row counts as no progress and wraps you the same way.
+A tool failing in five rounds in a row, with no call of it working in any of them, counts as no
+progress and wraps you the same way.
 The tool stays available; working around the guard is not the point of it.
 
 Limits are per turn. A turn that ended at a limit starts the next one with a full
