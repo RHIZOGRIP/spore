@@ -9,6 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::time::Duration;
@@ -98,10 +99,17 @@ impl Ended {
             Ok(status) => status.to_string(),
             Err(e) => e.to_string(),
         };
+        let outside_kill =
+            matches!(&self.status, Ok(status) if status.signal() == Some(libc::SIGKILL));
+        let why = if outside_kill {
+            "spore did not send that signal, and a process it kills writes nothing: it is most often the kernel, when the machine runs out of memory (journalctl -k says)"
+        } else {
+            told
+        };
         (
             stop_reason,
             "AGENT_EXITED",
-            format!("the agent ended ({how}) without recording its turn — {told}"),
+            format!("the agent ended ({how}) without recording its turn — {why}"),
         )
     }
 }

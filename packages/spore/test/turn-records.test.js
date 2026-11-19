@@ -91,6 +91,7 @@ describe('a turn the agent never recorded', () => {
     expect(turn.stopReason).toBe('error')
     expect(turn.error).toBe('AGENT_EXITED')
     expect(turn.detail).toMatch(/SIGKILL|signal: 9/)
+    expect(turn.detail).toContain('journalctl -k')
     expect(unread()).toEqual(['first'])
   })
 

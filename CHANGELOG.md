@@ -18,6 +18,13 @@ All notable changes to this project are documented here. Format follows
 - A spore made before this release keeps its own `precursors/tidy.cmk` and `spore.cmk`:
   `spore upgrade` replaces neither. Copy the new wording into them to get it.
 
+### Fixed
+
+- A turn whose agent was killed by a signal spore did not send was recorded as "spore.err says
+  why", and `spore.err` held nothing, since a killed process writes nothing. The record now says
+  that it is most often the kernel reclaiming memory, and names `journalctl -k`. The same holds
+  for a cell.
+
 ## [1.70.0] — Changed: a wrapped turn's answer is checked too
 
 ### Changed
