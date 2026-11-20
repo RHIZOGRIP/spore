@@ -4,6 +4,29 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.72.0] — Added: a spore can keep a cell, recorded by the runner
+
+### Added
+
+- **Kept cells.** `spawn --keep` runs a cell as before and has the turn's runner record what it
+  was made from, in `cells/<name>/` at the root of the spore's workspace: `precursor.cmk`, the
+  precursor's text exactly as it stood, and `cell.json`, the cell's directory and when the entry
+  was made. `<name>` is the last part of `--ws`. This release records the cell; asking it again
+  comes with `spawn --resume`, in a later one.
+- The agent reads `cells/` and cannot write it, and a cell does not see it. The runner reads the
+  precursor itself, so a caller names a precursor and a directory and never what an entry holds.
+- A kept cell's directory is one of its own under `data/`, named as a spore or a schedule may be,
+  that has run nothing yet. No two kept cells share a name, wherever they are.
+- `living-cells` in `spore.cmk` is the most kept cells a spore has alive at once: 3 when the
+  definition does not say, `0` for none. One more is refused when it is spawned, with the names
+  and places of those alive. A precursor declaring it is refused.
+- A spore ends a kept cell by deleting its directory, or moving it: the runner drops the entry the
+  next time it reads `cells/`.
+- `--keep` is refused with `--detach`, with `--check`, and for a cell outside any turn.
+- A turn's agent finds the cell socket as `SPORE_CELL_SOCKET`, when `living-cells` is not `0`.
+  The name joins those no plugin variable may take.
+- A spawn without `--keep` behaves as before.
+
 ## [1.71.1] — Fixed: an answer corrected after its check goes out whole
 
 ### Fixed

@@ -55,6 +55,19 @@ describe('the spawn command', () => {
     expect(unnamed.stderr).toMatch(/the spore names no auth — add auth: <id> to its spore.cmk/)
   })
 
+  it('keeps a cell only for a turn, from a precursor, in the foreground', async () => {
+    const outside = await spawnCli([...ARGS, '--keep', '--standalone', '--node', process.execPath, '--session', 'x', '--chatgpt-helper', 'y'], { SPORE_OWNERS: '' })
+    expect(outside.code).toBe(2)
+    expect(outside.stderr).toMatch(/--keep is a turn's — the entry of a kept cell is written by the runner of the turn that makes it/)
+    const check = await spawnCli(['--check', 'answer', '--ws', 'work/1', '--prompt', 'in.md', '--answer', 'data/out.json', '--keep'])
+    expect(check.code).toBe(2)
+    expect(check.stderr).toMatch(/--keep is for a precursor's cell/)
+    const detached = await spawnCli([...ARGS, '--keep', '--detach'])
+    expect(detached.code).toBe(2)
+    expect(detached.stderr).toMatch(/--keep and --detach do not go together/)
+    expect(existsSync(resolve(ROOT, 'cells'))).toBe(false)
+  })
+
   it('refuses to run inside a cell, so a fan-out cannot nest', async () => {
     const r = await spawnCli(ARGS, { SPORE_CELL: 'summarize' })
     expect(r.code).toBe(2)

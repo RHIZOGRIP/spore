@@ -2,6 +2,7 @@
 //! planned. Contract: ARCHITECTURE.md §The spore command.
 
 pub mod broker;
+pub mod cells;
 pub mod dial;
 pub mod enzymes;
 pub mod host;

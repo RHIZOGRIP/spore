@@ -217,6 +217,9 @@ pub const SCHEDULE_DIR: &str = "schedules";
 pub const HOME_DIR: &str = "home";
 pub const PRECURSOR_EXT: &str = ".cmk";
 pub const SPAWN_FILE: &str = "spawn.json";
+/// The runner's record of the cells a spore keeps to ask again, one directory each, at the
+/// workspace root, which the agent reads and never writes.
+pub const CELLS_DIR: &str = "cells";
 /// Names one turn's record, so writing it down again is known for what it is.
 pub const TURN_ID: &str = "turnId";
 pub const DEFAULT_TURNS: u32 = 8;
@@ -261,7 +264,7 @@ pub const PASSED_THROUGH: [&str; 10] = [
 
 /// What the runtime itself sets in the environment of what it starts — the agent, a cell, a job,
 /// a command — which no variable a plugin declares may set.
-pub const RUNTIME_ENV: [&str; 32] = [
+pub const RUNTIME_ENV: [&str; 33] = [
     "PATH",
     "HOME",
     "TMPDIR",
@@ -269,6 +272,7 @@ pub const RUNTIME_ENV: [&str; 32] = [
     "MOHDEL_MEDIA_ROOTS",
     "SPORE_SOCKET_DIR",
     "SPORE_CELL",
+    "SPORE_CELL_SOCKET",
     "SPORE_DEBUG",
     "SPORE_ENZYME",
     "SPORE_ENZYMES",

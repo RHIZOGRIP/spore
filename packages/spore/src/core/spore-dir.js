@@ -24,6 +24,8 @@ const STATE_FILE = LAYOUT.state
 // `v` on every event, the agent's and its supervisor's: one number, `rust/workspace`'s.
 export const EVENT_SCHEMA = LAYOUT.eventSchema
 export const SPAWN_FILE = LAYOUT.spawnFile
+/** The runner's record of the cells a spore keeps, at its workspace's root. */
+export const CELLS_DIR = LAYOUT.cellsDir
 export const TREE_KEY_FILE = LAYOUT.treeKey
 export const REFERENCE_FILE = 'reference.md'
 export const LIBRARIES_FILE = 'libraries.md'

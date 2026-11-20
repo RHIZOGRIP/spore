@@ -110,6 +110,7 @@ that level. **Absent** says what leaving the field out means where it is accepte
 | [`model`](#model) | model id / name | required¹ | optional | precursor: the spore's model | spore: what it runs on; precursor: a `cell-models` name | [Defining a spore](../ARCHITECTURE.md#defining-a-spore) |
 | [`models`](#models) | list of model ids | optional | refused | only `model` | what a person may switch the spore to | [How a precursor actually runs](../ARCHITECTURE.md#how-a-precursor-actually-runs) |
 | [`cell-models`](#cell-models) | list of `name=id` | optional | refused | cells run on the spore's model | the names a precursor's `model` may give | [How a precursor actually runs](../ARCHITECTURE.md#how-a-precursor-actually-runs) |
+| [`living-cells`](#living-cells) | whole number | optional | refused | 3 | how many kept cells the spore may have alive at once | [Kept cells](../ARCHITECTURE.md#kept-cells) |
 | [`auth`](#auth) | scalar | required³ | refused | calls are spore's own | whom the spore's model calls are for on a shared gate | [The model broker](../ARCHITECTURE.md#the-model-broker) |
 | [`tools`](#tools) | list | optional | optional | no tools | which of the seven built-ins are offered | [Grants, limits…](../ARCHITECTURE.md#grants-limits-and-how-a-turn-ends) |
 | [`enzymes`](#enzymes) | list of `name=path` | refused | optional | none | programs of the spore a cell may run by name | [Format](../ARCHITECTURE.md#format) |
@@ -232,6 +233,21 @@ The runner's model broker refuses a call to any model this file does not name, w
 `model`, `models` or a `cell-models` value. Neither the agent nor a precursor it wrote can reach
 another model ([How a precursor actually runs](../ARCHITECTURE.md#how-a-precursor-actually-runs)).
 The `embedding` model is not held by this check.
+
+### `living-cells`
+
+```
+living-cells: 5
+```
+
+`spore.cmk` only. A whole number, `0` or more; absent, it is 3. It is the most cells made with
+`spawn --keep` that the spore has alive at one time. One more is refused when it is spawned, with
+the names and places of those alive. `0` keeps none: the turn serves no cell socket and
+`spawn --keep` is refused.
+
+A cell stops counting when the spore deletes or moves its directory. The definition is the only
+place this number is set: no command takes it as an option
+([Kept cells](../ARCHITECTURE.md#kept-cells)).
 
 ### `auth`
 

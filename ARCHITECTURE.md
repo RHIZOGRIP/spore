@@ -1116,6 +1116,7 @@ The workspace is flat and undotted:
     /tree.key         this tree's key to its brokers
     /lock             pid + startedAt while a run is live
     /calls/           the streams each call did not name
+    /cells/           the cells the spore keeps, one directory each; never the agent's to write
     /tmp              this turn's scratch: a link to calls/<run>/tmp/
     /precursors/      sub-agent definitions
     /checks/          the checks on what a turn is about to say; never the agent's to write
@@ -2630,6 +2631,54 @@ Detached, the pid a caller holds is the **supervisor's**, not the worker's — t
 the enzyme broker, so it takes SIGTERM and passes it to the cell rather than dying and leaving the
 agent running with its broker pulled away.
 
+### Kept cells
+
+**`spawn --keep` has the cell it starts kept**: the turn's runner records what the cell was made
+from, so that what it is does not depend on its precursor staying as it was. Without the flag a
+cell is as above, and nothing here applies to it.
+
+**The record is an entry in `cells/`**, at the root of the spore's workspace, which the agent
+reads and neither it nor a cell can write: the root is no write island, and a cell sees nothing
+of its parent's tree. An entry is a directory `cells/<name>/` of files written once:
+
+- `precursor.cmk`, the precursor's text exactly as the runner read it. Its `model:` and its
+  enzymes stay names in it.
+- `cell.json`, the cell's directory as a path from the workspace, the precursor's name and when
+  the entry was made.
+
+It is written under a dotted name and renamed into place, so an entry is whole or absent.
+
+**`<name>` is the last part of the cell's directory**, which the spore chose, and no two entries
+share one: a second cell whose directory ends in a name already kept is refused
+(`CELL_NAME_TAKEN`), wherever it is. The directory is one of its own under the spore's `data/`
+(`CELL_PLACE`), named as a cell may be (`CELL_NAME`: the rule every name follows), that has run
+nothing yet (`CELL_SPENT`).
+
+**The definition caps how many are alive**: `living-cells` in `spore.cmk`, 3 when it says
+nothing ([principle 19](PRINCIPLES.md#19-each-default-is-written-once)), and one more is refused
+(`CELL_CAP`) with the names and places of those alive. At `0` the turn serves no cell socket.
+
+**The spore ends a kept cell by deleting its directory, or moving it.** Nothing else does, and
+nothing is told: the next time the runner reads `cells/` it drops an entry whose path leads to no
+directory. It drops the same way an entry whose directory never ran a cell and whose lock nobody
+holds, which is a start that came to nothing. So an entry is never a list of what runs
+([principle 15](PRINCIPLES.md#15-the-folder-is-the-spore)): whether a cell runs is still asked of
+its lock.
+
+**The supervisor asks, the runner writes.** `spore-spawn` runs under the agent's ruleset, which
+cannot write the workspace root, so it asks the turn's **cell socket** (`SPORE_CELL_SOCKET`,
+`rust/runner/src/cells.rs`), keyed and served as every socket of a turn is. It names the
+precursor and the cell's directory, with the cell's lock already held and before anything is
+staged, so a refusal leaves the directory unused. **The runner reads the precursor itself**
+(`kept_precursor`, `rust/runner/src/plan.rs`), holding it to everything a spawn holds it to: the
+agent has the tree's key and could call the socket, and a caller that supplied the entry's
+content could give a cell grants no precursor gave it. What a forged request can do is what
+`spawn --keep` does.
+
+`--keep` is refused with `--standalone`, since a cell outside any turn has no runner to write its
+entry; with `--check`, whose cell judges one answer; and with `--detach`, where a refusal would
+reach nobody.
+
 ### A cell outside any turn
 
 Some hosts are not turns — a webhook's triage, a schedule that wants one judgment, a command — and
@@ -2984,7 +3033,7 @@ turn is its own tree and mints its own. A client that finds no key stops there
 (`TREE_KEY_MISSING`, naming the path) rather than presenting none and being told it is not this
 tree.
 
-**Every socket takes it.** The runner's model, store, source and job sockets and the cell
+**Every socket takes it.** The runner's model, store, source, job and cell sockets and the cell
 supervisor's enzyme socket are all served by `broker::serve` (`rust/runner/src/broker.rs`), which
 checks the key before routing. The enzyme broker runs an enzyme with the *supervisor's*
 privileges in the caller's working directory, so a caller without the key that knew the socket

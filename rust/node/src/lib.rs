@@ -417,11 +417,12 @@ pub fn layout() -> String {
         "checkDir": workspace::CHECK_DIR,
         "precursorExt": workspace::PRECURSOR_EXT,
         "spawnFile": workspace::SPAWN_FILE,
+        "cellsDir": workspace::CELLS_DIR,
         "state": workspace::STATE_FILE,
         "stateFd": workspace::STATE_FD,
         "eventSchema": workspace::EVENT_SCHEMA,
         "passedThrough": workspace::PASSED_THROUGH,
-        "runtimeEnv": workspace::RUNTIME_ENV,
+        "runtimeEnv": &workspace::RUNTIME_ENV[..],
         "pluginEnv": workspace::PLUGIN_ENV,
         "pluginCalls": workspace::PLUGIN_CALLS
     })

@@ -51,6 +51,11 @@ Usage:
                what its pid is. <ws>/spawn.json says \"running\":true until the
                cell ends and then holds its last frame, so the caller polls the
                workspace instead of waiting on this
+  --keep       keep the cell to be asked again: the spore's runner records what it
+               was made from under cells/<name>/, <name> being the last part of --ws,
+               which no other kept cell may have. A spore keeps at most living-cells
+               of them alive (spore.cmk), and ends one by deleting its directory.
+               Not with --detach, --check or --standalone
   --debug      the cell's agent logs at debug level
 
   --standalone with --node: a cell outside any turn, for a host that is not one.
@@ -81,6 +86,7 @@ struct Args {
     answer: Option<String>,
     debug: bool,
     detach: bool,
+    keep: bool,
     help: bool,
     standalone: bool,
     dream: bool,
@@ -131,6 +137,7 @@ fn parse_args(given: &[String]) -> Args {
             "--answer" => args.answer = Some(value()),
             "--debug" => args.debug = true,
             "--detach" => args.detach = true,
+            "--keep" => args.keep = true,
             "--standalone" => args.standalone = true,
             "--super" => args.dream = true,
             "--auth" => args.auth = Some(value()),
@@ -224,6 +231,15 @@ async fn main() {
     // A guard, not the boundary — that is a turn holding no credential to start one with.
     if args.standalone && std::env::var(OWNERS).is_ok_and(|owners| !owners.is_empty()) {
         fail("--standalone is a host's, run outside any turn — a turn's cells go through its own model socket, where what they spend is counted");
+    }
+    if args.keep && args.standalone {
+        fail("--keep is a turn's — the entry of a kept cell is written by the runner of the turn that makes it, and a cell outside any turn has none");
+    }
+    if args.keep && args.check.is_some() {
+        fail("--keep is for a precursor's cell — a check's cell judges one answer and is not asked again");
+    }
+    if args.keep && args.detach {
+        fail("--keep and --detach do not go together — a refusal to keep the cell would reach nobody");
     }
     if args.dream && !args.standalone {
         fail("--super is a dream's, run outside any turn — it needs --standalone");
@@ -362,6 +378,24 @@ async fn main() {
     let mut sigint = signal(SignalKind::interrupt()).unwrap_or_else(|e| fail(e));
 
     let staged = async {
+        // Before anything is staged, and with the cell's lock held: a name already taken or one
+        // cell too many is refused while the directory is still unused.
+        if args.keep {
+            let socket = std::env::var("SPORE_CELL_SOCKET").map_err(|_| {
+                "SPORE_CELL_SOCKET is not set — this spore keeps no cells: living-cells: 0 in its spore.cmk".to_string()
+            })?;
+            let key = std::fs::read_to_string(spore.join(TREE_KEY_FILE))
+                .map(|k| k.trim().to_string())
+                .map_err(|e| format!("no {TREE_KEY_FILE} in {} — the runner writes the tree's key there for each turn ({e})", spore.display()))?;
+            broker::ask(
+                Path::new(&socket),
+                &key,
+                "/keep",
+                &json!({ "precursor": plan.precursor.name, "ws": plan.ws }),
+            )
+            .await
+            .map_err(|refused| format!("{} — {}", refused.message, refused.detail))?;
+        }
         provision_modules(&plan.ws, &root)
             .map_err(|refused| format!("{} — {}", refused.message, refused.detail))?;
         // Copied rather than granted: the client is generic, so a copy teaches the child

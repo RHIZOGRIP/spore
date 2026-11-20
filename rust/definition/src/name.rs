@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 
 pub const NAME_MOST: usize = 64;
 
-pub const NAME_KINDS: [&str; 11] = [
+pub const NAME_KINDS: [&str; 12] = [
     "spore",
     "schedule",
     "job",
@@ -19,6 +19,7 @@ pub const NAME_KINDS: [&str; 11] = [
     "handler",
     "plugin",
     "precursor",
+    "cell",
 ];
 
 // A job's name and a plugin's are lowercase: a plugin's is the end of an npm package name.

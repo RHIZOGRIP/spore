@@ -103,9 +103,19 @@ fn resolve_precursor(
     let path = spore.join(dir).join(format!("{name}{PRECURSOR_EXT}"));
     let source = std::fs::read_to_string(&path)
         .map_err(|_| format!("precursor not found — expected {dir}/{name}{PRECURSOR_EXT}"))?;
+    let (definition, enzymes) = read_precursor(spore, name, &source)?;
+    Ok((path, definition, enzymes))
+}
+
+/// The precursor `name` as `source` writes it, with each enzyme it grants found in `spore`.
+fn read_precursor(
+    spore: &Path,
+    name: &str,
+    source: &str,
+) -> Result<(Definition, Vec<Enzyme>), String> {
     let known: Vec<String> = TOOL_NAMES.iter().map(|t| t.to_string()).collect();
     let definition = parse_definition(
-        &source,
+        source,
         &Options {
             known_tools: &known,
             cell: true,
@@ -152,7 +162,21 @@ fn resolve_precursor(
             with,
         });
     }
-    Ok((path, definition, enzymes))
+    Ok((definition, enzymes))
+}
+
+/// The text of the precursor `name` of the spore at `spore`, read once and held to everything a
+/// spawn holds it to: what a kept cell's entry records as what the cell was made from.
+pub fn kept_precursor(spore: &Path, name: &str) -> Result<String, String> {
+    let path = spore
+        .join(PRECURSOR_DIR)
+        .join(format!("{name}{PRECURSOR_EXT}"));
+    let source = std::fs::read_to_string(&path).map_err(|_| {
+        format!("precursor not found — expected {PRECURSOR_DIR}/{name}{PRECURSOR_EXT}")
+    })?;
+    let (definition, _) = read_precursor(spore, name, &source)?;
+    cell_model(name, definition.model.as_deref(), &spore_definition(spore)?)?;
+    Ok(source)
 }
 
 fn contained(ws: &Path, rel: &str, label: &str) -> Result<PathBuf, String> {
@@ -623,6 +647,28 @@ mod tests {
             .unwrap_err()
             .contains("precursor tidy, not summarize"));
         assert!(p.super_reach.is_none());
+    }
+
+    #[test]
+    fn hands_a_kept_cells_precursor_over_as_written_once_it_would_make_a_cell() {
+        let r = root("kept");
+        assert_eq!(kept_precursor(&r.0, "summarize").unwrap(), SUMMARIZE);
+        assert!(kept_precursor(&r.0, "absent")
+            .unwrap_err()
+            .contains("expected precursors/absent.cmk"));
+        fs::write(
+            r.0.join("precursors/summarize.cmk"),
+            SUMMARIZE.replace("tools: [read]", "model: strong\ntools: [read]"),
+        )
+        .unwrap();
+        fs::write(
+            r.0.join(DEFINITION_FILE),
+            spore_cmk("cell-models: [low=a/fast]\n"),
+        )
+        .unwrap();
+        assert!(kept_precursor(&r.0, "summarize")
+            .unwrap_err()
+            .contains("which this spore's cell-models does not have"));
     }
 
     #[test]

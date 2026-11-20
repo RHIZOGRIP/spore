@@ -23,7 +23,7 @@ use spore_runner::supervise::{
     confined, contain_refused, kept_refusal, owner_token, owners_with, supervise, uncontained,
     GRACE, OWNERS,
 };
-use spore_runner::{broker, interact, job, model, source, store, trace, vectors};
+use spore_runner::{broker, cells, interact, job, model, source, store, trace, vectors};
 use spore_workspace::{
     acquire_lock, agent_env, begin_turn, crash_at, end_channel, finalize_turn, free_bytes,
     hand_over, iso_now, leave_wal, limit_file_size, make_spore_socket_dir, provision_modules,
@@ -665,6 +665,9 @@ async fn main() {
         })
     });
 
+    let kept = (def.most_living_cells() > 0)
+        .then(|| Arc::new(cells::Cells::new(ws.clone(), def.most_living_cells())));
+
     let interactions = def.interactions.as_ref().map(|granted| {
         Arc::new(interact::Interactions {
             ws: ws.clone(),
@@ -759,6 +762,19 @@ async fn main() {
                     &path,
                 )?;
                 passed.insert("SPORE_JOB_SOCKET".into(), path);
+            }
+            if let Some(kept) = &kept {
+                let path = socket(&sockets, "cell")?;
+                let kept = kept.clone();
+                bind(
+                    "cell",
+                    &mut served,
+                    broker::serve(Path::new(&path), key.clone(), move |req| {
+                        kept.clone().route(req)
+                    }),
+                    &path,
+                )?;
+                passed.insert("SPORE_CELL_SOCKET".into(), path);
             }
             if let Some(interactions) = &interactions {
                 let path = socket(&sockets, "interact")?;

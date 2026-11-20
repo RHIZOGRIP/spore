@@ -29,13 +29,14 @@ pub use schedule::{parse_schedule, Due, Schedule};
 /// The tool suite, by name. Contract: ARCHITECTURE.md, "Tools".
 pub const TOOL_NAMES: [&str; 7] = ["read", "write", "edit", "exec", "wsexec", "ask", "quiet"];
 
-const FIELDS: [&str; 44] = [
+const FIELDS: [&str; 45] = [
     "name",
     "description",
     "model",
     "auth",
     "models",
     "cell-models",
+    "living-cells",
     "tools",
     "enzymes",
     "reads",
@@ -77,6 +78,9 @@ const FIELDS: [&str; 44] = [
 ];
 
 const ON_WRAP: [&str; 2] = ["keep", "discard"];
+
+/// How many resumable cells a spore keeps alive when its definition does not say.
+pub const LIVING_CELLS: u64 = 3;
 
 /// What a turn may ask its model for besides the answer: `summaries` of its reasoning, `raw` reasoning.
 const REASONING: [&str; 2] = ["summaries", "raw"];
@@ -367,6 +371,16 @@ pub struct Definition {
     /// The agent runs with no Landlock, no seccomp filter and no namespaces of its own.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub unconfined: bool,
+    /// How many resumable cells a root may keep alive, where it says; a cell carries none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub living_cells: Option<u64>,
+}
+
+impl Definition {
+    /// The most resumable cells this spore keeps alive: what it declares, or `LIVING_CELLS`.
+    pub fn most_living_cells(&self) -> u64 {
+        self.living_cells.unwrap_or(LIVING_CELLS)
+    }
 }
 
 /// `cell` holds a definition to a cell's rules, `seed` to the shipped template's, which is
@@ -1649,6 +1663,19 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
 
     let jobs = parse_jobs(&fields, opts.cell, &writes)?;
 
+    let living_cells = match scalar(&fields, "living-cells")? {
+        None => None,
+        Some(_) if opts.cell => {
+            return Err("declares living-cells, which is the root definition's — a cell spawns nothing, so it keeps no cells".into());
+        }
+        Some(text) => Some(one(
+            "living-cells",
+            text,
+            |t| whole_number(t, 0),
+            "how many resumable cells the spore may keep alive, a whole number, 0 for none",
+        )?),
+    };
+
     let interactions = parse_interactions(&fields, opts.cell)?;
     let dream = parse_dream(&fields, opts.cell)?;
 
@@ -1773,6 +1800,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         reasoning,
         cache,
         unconfined,
+        living_cells,
     })
 }
 
@@ -1977,6 +2005,7 @@ mod tests {
             "jobs",
             "interactions",
             "dream",
+            "livingCells",
         ] {
             assert!(json.get(key).is_none(), "{key} is present");
         }
@@ -2495,6 +2524,28 @@ mod tests {
             .contains("\"jobs.perDay\" takes one value"));
         assert!(
             cell(&CHART.replace("on-wrap: keep\n", "on-wrap: keep\njobs: [1, 1h]\n"))
+                .unwrap_err()
+                .contains("root definition's")
+        );
+    }
+
+    #[test]
+    fn reads_how_many_cells_a_root_keeps_alive_and_gives_the_default_when_it_says_nothing() {
+        let with = |lines: &str| {
+            parse(&WELL_FORMED.replace("tools: [read]\n", &format!("tools: [read]\n{lines}")))
+        };
+        assert_eq!(with("").unwrap().living_cells, None);
+        assert_eq!(with("").unwrap().most_living_cells(), LIVING_CELLS);
+        assert_eq!(with("living-cells: 5\n").unwrap().most_living_cells(), 5);
+        assert_eq!(with("living-cells: 0\n").unwrap().most_living_cells(), 0);
+        assert!(with("living-cells: some\n")
+            .unwrap_err()
+            .contains("living-cells"));
+        assert!(with("living-cells: [1, 2]\n")
+            .unwrap_err()
+            .contains("\"living-cells\" takes one value"));
+        assert!(
+            cell(&CHART.replace("on-wrap: keep\n", "on-wrap: keep\nliving-cells: 2\n"))
                 .unwrap_err()
                 .contains("root definition's")
         );
