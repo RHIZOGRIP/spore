@@ -387,7 +387,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
         append({ role: 'assistant', content: assistantContent(res) })
         append(mark({
           role: 'user',
-          content: `[System: before this answer goes out: ${verdict.tell}\nCorrect it, then answer again.]`
+          content: `[System: before this answer goes out: ${verdict.tell}\nCorrect it, then answer again. Your next answer is what the person receives, in place of the one above: give the whole answer, corrected, not only the part that changed.]`
         }, ANSWER_NOTICE))
         continue
       }

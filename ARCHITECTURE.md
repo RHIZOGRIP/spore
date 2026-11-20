@@ -1565,9 +1565,11 @@ or from its operator. `fork` and `define --from` carry it.
 
 **Told once a turn.** On `tell`, the loop appends the would-be answer as said, then one marked
 note (`answer-notice`): `[System: before this answer goes out: <tell>` and, on its own line,
-`Correct it, then answer again.]`. The next plain-text answer goes out whatever its check says of
-it; that second verdict is recorded and not told. A `tell` is cut at 2,000 characters, since it
-enters the conversation.
+`Correct it, then answer again. Your next answer is what the person receives, in place of the one
+above: give the whole answer, corrected, not only the part that changed.]`. The next plain-text
+answer goes out whatever its check says of it, and nothing of the first one is added to it; that
+second verdict is recorded and not told. A `tell` is cut at 2,000 characters, since it enters the
+conversation.
 
 **No verdict lets the answer out.** A program that cannot start, runs past 10 seconds, exits
 non-zero or prints something other than one such JSON object is a check that failed, never a

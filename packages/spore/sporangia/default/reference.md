@@ -43,7 +43,7 @@ edit. `write` and `edit` will tell you so rather than failing with a bare permis
 **`checks/` holds checks on your answers**, when your owner keeps any. Before an answer of yours
 goes out, a check may read it. If it finds something wrong, the answer comes back to you once, as
 `[System: before this answer goes out: …]`. Correct what it names and answer again; that answer
-goes out.
+goes out in place of the first, so give it whole, not only the part you changed.
 
 Running again in this directory continues the same conversation.
 

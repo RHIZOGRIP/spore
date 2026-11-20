@@ -75,6 +75,7 @@ describe('an answer check', () => {
 
     expect(mo.seen).toHaveLength(2)
     expect(JSON.stringify(mo.seen[1])).toContain('[System: before this answer goes out: it says BAD, which no answer may')
+    expect(JSON.stringify(mo.seen[1])).toContain('Your next answer is what the person receives, in place of the one above: give the whole answer, corrected, not only the part that changed.]')
     expect(readTurns(ws).at(-1)).toMatchObject({ stopReason: 'answer', output: 'BAD two', rounds: 2 })
     expect(checked()).toMatchObject([
       { round: 0, verdict: 'tell', tell: 'it says BAD, which no answer may', told: true, afterTelling: false },

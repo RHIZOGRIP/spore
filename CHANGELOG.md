@@ -4,6 +4,17 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.71.1] — Fixed: an answer corrected after its check goes out whole
+
+### Fixed
+
+- When an answer check sent an answer back, the note said only "Correct it, then answer again."
+  A model could read that as "send the correction": one turn answered a 2,800-word review, was
+  told of one mistyped citation, and replied with the one corrected sentence, which went out as
+  the answer. The note now says the next answer is what the person receives, in place of the
+  one above, and must be whole. `reference.md` says the same; a spore made before this release
+  gets that paragraph from `spore upgrade`, and the new note without it.
+
 ## [1.71.0] — Fixed: calls sent together that share one mistake no longer wrap the turn
 
 ### Fixed
