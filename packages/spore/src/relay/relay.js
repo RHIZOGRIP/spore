@@ -153,11 +153,14 @@ export function createRelay ({ adapter, botFile, statePath, env, log, configFile
         if (!stopped) tell(conversation, 'nothing is running', name)
         return
       }
+      const settled = () => fates().every(entry => entry.consumed || entry.setAside)
       let marked = null
       while (!stopping.signal.aborted) {
-        if (fates().every(entry => entry.consumed || entry.setAside)) marked = fates().filter(entry => entry.setAside).map(entry => entry.inboxNo)
-        else if (stateOf(ws).state !== RUNNING) marked = setAside(ws, { replyTo, upto })
-        if (marked !== null) break
+        if (!settled() && stateOf(ws).state !== RUNNING) setAside(ws, { replyTo, upto })
+        if (settled()) {
+          marked = fates().filter(entry => entry.setAside).map(entry => entry.inboxNo)
+          break
+        }
         await sleep(SETTLE_EVERY_MS, stopping.signal)
       }
       if (marked === null) return
