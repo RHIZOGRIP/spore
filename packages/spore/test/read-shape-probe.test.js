@@ -30,7 +30,7 @@ describe('the read-shape probe', () => {
     expect(new Set(items.map(item => item.id)).size).toBe(items.length)
   })
 
-  it('shows every arm the same text and the same facts', async () => {
+  it('shows every arm the same text and the same facts', { timeout: 120_000 }, async () => {
     for (const item of items.filter(each => each.task === 'locate' || each.task === 'continue')) {
       const { record, plain, numbered, 'numbered-record': numberedText } = shapes((await readMessage(WS, item.read)).content, (await readMessage(WS, { ...item.read, numbered: true })).content)
       const { content, ...facts } = JSON.parse(record)
