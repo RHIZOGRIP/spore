@@ -15,7 +15,7 @@ import { buildContinuation } from '../src/core/continuation.js'
 import { autoLogger } from '../src/observability/logger.js'
 import { ensureOtelInitialized, parseTraceparent, shutdownOtel } from '../src/observability/tracing.js'
 import { SporeError } from '../src/observability/errors.js'
-import { SPAWN_FILE, openChannel, readTreeKey } from '../src/core/spore-dir.js'
+import { SPAWN_FILE, lastSent, openChannel, readTranscript, readTreeKey } from '../src/core/spore-dir.js'
 import { linkGrants, superGrants } from '../src/core/workspace.js'
 
 const plan = JSON.parse(process.env.SPORE_PLAN)
@@ -92,7 +92,9 @@ try {
     images: plan.precursor.images,
     reasoning: plan.precursor.reasoning,
     cacheTtl: '5m',
-    initialMessages: [],
+    // A kept cell asked again goes on from all it said and did before, as a spore's turn does.
+    initialMessages: plan.resumed ? readTranscript(plan.ws) : [],
+    lastSent: plan.resumed ? lastSent(plan.ws) : null,
     sandbox: true,
     parentSpan,
     signal: stopping.signal,
@@ -116,12 +118,15 @@ try {
     : buildContinuation(plan.ws, {
       stopReason: result.stopReason,
       spent: result.spent,
-      precursor: plan.precursor.name
+      precursor: plan.precursor.name,
+      kept: plan.kept
     }).path
 
   report({
     precursor: plan.precursor.name,
     ws: where,
+    ...(plan.kept ? { kept: true } : {}),
+    ...(plan.resumed ? { resumed: true } : {}),
     // What the cell actually ran against, so a result stays attributable to a
     // program after the file has moved on.
     ...(plan.precursor.enzymes.length ? { enzymes: Object.fromEntries(plan.precursor.enzymes.map(e => [e.name, e.hash])) } : {}),

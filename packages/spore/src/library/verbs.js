@@ -13,7 +13,7 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 
 import { readConfig, existing, addTo, workspaceFor, CONFIG_FILE, containing, recordLayout } from './config.js'
 import { isWorkspace, sporesInHome } from './discover.js'
-import { acquireLock, appendFlush, approvalsIn, asked, definitionPath, DEFINITION_FILE, diskUsage, heldIn, interactionsIn, jobsIn, PRECURSOR_DIR, readInbox, cellsSince, readLock, flushesIn, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
+import { acquireLock, appendFlush, approvalsIn, asked, definitionPath, DEFINITION_FILE, diskUsage, heldIn, interactionsIn, jobsIn, keptCells, PRECURSOR_DIR, readInbox, cellsSince, readLock, flushesIn, readTranscript, readTurns, releaseLock, runningLimits, runningReadTo, statePath, turnSummary } from '../core/spore-dir.js'
 import { askApproval } from './approvals.js'
 import { takeOutcome } from '../core/interactions.js'
 import { sqlLines } from './sql.js'
@@ -641,6 +641,7 @@ export function show ({ ws, configFile = CONFIG_FILE } = {}) {
     paused: paused(),
     held: heldIn(path).map(({ origin, releaseAt, deadline, summary }) => ({ origin, releaseAt, deadline, summary })),
     cells: cellsSince(path, { since: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() }),
+    kept: keptCells(path).map(({ name, path, precursor, madeAt, dead }) => ({ name, path, precursor, madeAt, dead })),
     jobs: {
       grant: definition.jobs ?? null,
       running: jobsIn(path, { running: true }).map(job => ({ name: job.name, run: job.run, startedAt: job.startedAt, wallMs: job.wallMs, progress: progressOf(path, job) }))

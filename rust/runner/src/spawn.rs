@@ -19,7 +19,7 @@ use spore_runner::broker::{self, Served};
 use spore_runner::enzymes::{hash_enzyme, Enzyme, Enzymes};
 use spore_runner::host::{HostArgs, Models};
 use spore_runner::model::{self, Model};
-use spore_runner::plan::{dream_for, plan_spawn, Asked, Plan};
+use spore_runner::plan::{dream_for, plan_resume, plan_spawn, resolve, Asked, Plan};
 use spore_runner::supervise::{
     confined, kept_refusal, owner_token, owners_with, supervise, Kept, GRACE, OWNERS,
 };
@@ -39,6 +39,7 @@ const HELP: &str = "spawn — run one sub-agent in a workspace of its own
 
 Usage:
   spawn --precursor <name> --ws <dir> --prompt <rel> --answer <rel>
+  spawn --resume <dir> --prompt <rel> --answer <rel>
 
   --precursor  a definition in the spore's precursors/<name>.cmk
   --check      in place of --precursor: a check's cell, checks/<name>.cmk, which
@@ -56,6 +57,12 @@ Usage:
                which no other kept cell may have. A spore keeps at most living-cells
                of them alive (spore.cmk), and ends one by deleting its directory.
                Not with --detach, --check or --standalone
+  --resume     in place of --precursor and --ws: ask a kept cell again, in the
+               directory it ran in. It runs from what it was made from, whatever
+               its precursor says now, with all it said and did before ahead of
+               the new prompt, and the turn that asks pays for the whole of it.
+               --answer names a file it has not written yet. Refused for a cell
+               that was not kept, one that is running, and one that is dead
   --debug      the cell's agent logs at debug level
 
   --standalone with --node: a cell outside any turn, for a host that is not one.
@@ -87,6 +94,7 @@ struct Args {
     debug: bool,
     detach: bool,
     keep: bool,
+    resume: Option<String>,
     help: bool,
     standalone: bool,
     dream: bool,
@@ -138,6 +146,7 @@ fn parse_args(given: &[String]) -> Args {
             "--debug" => args.debug = true,
             "--detach" => args.detach = true,
             "--keep" => args.keep = true,
+            "--resume" => args.resume = Some(value()),
             "--standalone" => args.standalone = true,
             "--super" => args.dream = true,
             "--auth" => args.auth = Some(value()),
@@ -175,6 +184,23 @@ fn relative(from: &Path, to: &Path) -> PathBuf {
         out.push(part.as_os_str());
     }
     out
+}
+
+/// One request to the cell socket of the turn this spawn runs in, under the tree's key.
+async fn ask_cells(
+    spore: &Path,
+    route: &str,
+    body: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let socket = std::env::var("SPORE_CELL_SOCKET").map_err(|_| {
+        "SPORE_CELL_SOCKET is not set — this spore keeps no cells: living-cells: 0 in its spore.cmk".to_string()
+    })?;
+    let key = std::fs::read_to_string(spore.join(TREE_KEY_FILE))
+        .map(|k| k.trim().to_string())
+        .map_err(|e| format!("no {TREE_KEY_FILE} in {} — the runner writes the tree's key there for each turn ({e})", spore.display()))?;
+    broker::ask(Path::new(&socket), &key, route, body)
+        .await
+        .map_err(|refused| format!("{} — {}", refused.message, refused.detail))
 }
 
 /// Detaching hands the whole job to a copy of this process that the invoking shell is not
@@ -241,6 +267,20 @@ async fn main() {
     if args.keep && args.detach {
         fail("--keep and --detach do not go together — a refusal to keep the cell would reach nobody");
     }
+    if args.resume.is_some() {
+        if args.ws.is_some() || args.precursor.is_some() || args.check.is_some() {
+            fail("--resume names the kept cell's directory, and what the cell was made from is kept with it — give no --ws, --precursor or --check");
+        }
+        if args.keep {
+            fail("--resume asks a cell that is already kept — --keep is for its first run");
+        }
+        if args.standalone {
+            fail("--resume is a turn's — a kept cell is asked again through the runner of the turn that asks");
+        }
+        if args.detach {
+            fail("--resume and --detach do not go together — a refusal to ask the cell would reach nobody");
+        }
+    }
     if args.dream && !args.standalone {
         fail("--super is a dream's, run outside any turn — it needs --standalone");
     }
@@ -263,19 +303,50 @@ async fn main() {
             fail("SPORE_WS is not set — spawn runs under a spore, whose runner names its workspace")
         }))
     };
-    let mut plan = plan_spawn(
-        &Asked {
-            precursor: args.precursor.as_deref(),
-            check: args.check.as_deref(),
-            ws: args.ws.as_deref(),
-            prompt: args.prompt.as_deref(),
-            answer: args.answer.as_deref(),
-        },
-        &cwd,
-        &spore,
-        |ws, reads| granted_path_containing(&root, ws, reads).ok().flatten(),
-    )
+    let granted =
+        |ws: &Path, reads: &[PathBuf]| granted_path_containing(&root, ws, reads).ok().flatten();
+    let mut plan = match &args.resume {
+        None => plan_spawn(
+            &Asked {
+                precursor: args.precursor.as_deref(),
+                check: args.check.as_deref(),
+                ws: args.ws.as_deref(),
+                prompt: args.prompt.as_deref(),
+                answer: args.answer.as_deref(),
+            },
+            &cwd,
+            &spore,
+            granted,
+        ),
+        Some(dir) => {
+            let asked = resolve(&cwd, dir);
+            let made = ask_cells(&spore, "/resume", &json!({ "ws": asked }))
+                .await
+                .unwrap_or_else(|problem| fail(problem));
+            let (Some(name), Some(source)) = (made["precursor"].as_str(), made["source"].as_str())
+            else {
+                fail(format!(
+                    "the runner answered a kept cell in a shape spawn does not read — {made}"
+                ))
+            };
+            plan_resume(
+                &Asked {
+                    precursor: None,
+                    check: None,
+                    ws: Some(dir),
+                    prompt: args.prompt.as_deref(),
+                    answer: args.answer.as_deref(),
+                },
+                &cwd,
+                &spore,
+                granted,
+                name,
+                source,
+            )
+        }
+    }
     .unwrap_or_else(|problem| fail(problem));
+    plan.kept = plan.kept || args.keep;
     if args.dream {
         dream_for(&spore, &mut plan).unwrap_or_else(|problem| fail(problem));
     }
@@ -381,20 +452,12 @@ async fn main() {
         // Before anything is staged, and with the cell's lock held: a name already taken or one
         // cell too many is refused while the directory is still unused.
         if args.keep {
-            let socket = std::env::var("SPORE_CELL_SOCKET").map_err(|_| {
-                "SPORE_CELL_SOCKET is not set — this spore keeps no cells: living-cells: 0 in its spore.cmk".to_string()
-            })?;
-            let key = std::fs::read_to_string(spore.join(TREE_KEY_FILE))
-                .map(|k| k.trim().to_string())
-                .map_err(|e| format!("no {TREE_KEY_FILE} in {} — the runner writes the tree's key there for each turn ({e})", spore.display()))?;
-            broker::ask(
-                Path::new(&socket),
-                &key,
+            ask_cells(
+                &spore,
                 "/keep",
                 &json!({ "precursor": plan.precursor.name, "ws": plan.ws }),
             )
-            .await
-            .map_err(|refused| format!("{} — {}", refused.message, refused.detail))?;
+            .await?;
         }
         provision_modules(&plan.ws, &root)
             .map_err(|refused| format!("{} — {}", refused.message, refused.detail))?;

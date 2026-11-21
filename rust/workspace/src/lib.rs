@@ -28,11 +28,11 @@ pub use state::{
     ask_interaction, attach_held, attempt_outbox, begin_job, begin_turn, cancel_interaction,
     change_limits, check_reply_to, copy_inbox, end_channel, end_job, expire_approval, finalize,
     finalize_turn, hand_interaction, hold_delivery, inbox_consumed, interaction_origin, leave_wal,
-    migrate_state, origin_of, outbox, post_approval, prune_trail, record_cell, recover,
-    refuse_approval, release_held, replace_transcript, replace_turns, request, reschedule_held,
-    serve, set_aside, settle_approval, settle_outbox, start_limits, starting_since, turn_hop,
-    turn_limits, turn_state, unanswered_traceparents, unread, unread_past, write_outcome,
-    EVENT_SCHEMA, MAX_FRAME, STATE_FILE,
+    left_unfinished, migrate_state, origin_of, outbox, post_approval, prune_trail, record_cell,
+    recover, refuse_approval, release_held, replace_transcript, replace_turns, request,
+    reschedule_held, serve, set_aside, settle_approval, settle_outbox, start_limits,
+    starting_since, turn_hop, turn_limits, turn_state, unanswered_traceparents, unread,
+    unread_past, write_outcome, EVENT_SCHEMA, MAX_FRAME, STATE_FILE,
 };
 
 /// The descriptor a supervisor hands its agent the channel on, named to it in
@@ -220,6 +220,12 @@ pub const SPAWN_FILE: &str = "spawn.json";
 /// The runner's record of the cells a spore keeps to ask again, one directory each, at the
 /// workspace root, which the agent reads and never writes.
 pub const CELLS_DIR: &str = "cells";
+/// In a kept cell's entry: an exact copy of the precursor the cell was made from.
+pub const CELL_PRECURSOR_FILE: &str = "precursor.cmk";
+/// In a kept cell's entry: where the cell is, from the workspace, and when it was made.
+pub const CELL_FILE: &str = "cell.json";
+/// In a kept cell's entry, once the cell can no longer run: why, and since when.
+pub const CELL_DEAD_FILE: &str = "dead.json";
 /// Names one turn's record, so writing it down again is known for what it is.
 pub const TURN_ID: &str = "turnId";
 pub const DEFAULT_TURNS: u32 = 8;

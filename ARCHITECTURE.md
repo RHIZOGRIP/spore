@@ -1405,9 +1405,10 @@ here*.
 
 ### The transcript
 
-**Only the spore is resumable.** Sending again to the same workspace continues it, because the
-transcript is replayed as the opening history; the directory's state is the whole of it. A cell
-has no transcript to replay and needs none.
+**The spore is resumable, and so is a cell it keeps.** Sending again to the same workspace
+continues it, because the transcript is replayed as the opening history; the directory's state is
+the whole of it. A cell starts with no transcript to replay, and one that is not kept never has
+use for the one it writes; a kept cell asked again replays its own (§Kept cells).
 
 `runSpore` writes the transcript itself, in `state.sqlite`, so the command and any library embedder
 read and write the same transcript. `openWorkspace()` is what the entry points have in common:
@@ -2516,8 +2517,9 @@ marks the workspace spent.
 report the same one. `stopReason` is the spore's taxonomy, so a reducer can tell a finished cell
 from one that ran out of rounds without opening anything. A cell that produced no answer names a
 `continuation` instead: the record `buildContinuation()` writes for the spore, assembled from the
-trail with no model call, saying what the cell did and what remains. Its advice differs by level,
-because a cell cannot be resumed — the parent spawns a fresh one rather than continuing this.
+trail with no model call, saying what the cell did and what remains. Its advice differs by level
+and by whether the cell is kept: a cell that is not cannot be resumed, so its parent spawns a
+fresh one, and a kept one is asked again.
 
 ### The child's world is the subdirectory
 
@@ -2560,8 +2562,8 @@ of it.
 Staging needs no machinery. The parent writes inputs into the subdirectory with the tools it
 already has and reads results back out of it.
 
-**A cell's workspace is used once.** If the directory already contains `spawn.json`, spawn
-refuses. The **worker** writes that file before anything else runs, not when it finishes, which
+**A cell's workspace is used once**, unless the cell is kept (§Kept cells). If the directory
+already contains `spawn.json`, spawn refuses. The **worker** writes that file before anything else runs, not when it finishes, which
 puts the marker exactly where the meaning is: a spawn that failed before its worker ran releases
 the directory again, so a mistyped flag does not spend the name. A cell that died is re-spawned, not
 resumed: its precursor and its prompt file are both still there, so re-running it costs a directory
@@ -2633,9 +2635,10 @@ agent running with its broker pulled away.
 
 ### Kept cells
 
-**`spawn --keep` has the cell it starts kept**: the turn's runner records what the cell was made
-from, so that what it is does not depend on its precursor staying as it was. Without the flag a
-cell is as above, and nothing here applies to it.
+**`spawn --keep` has the cell it starts kept, and `spawn --resume` asks a kept cell again.** The
+turn's runner records what the cell was made from, so that what it is does not depend on its
+precursor staying as it was; asked again, it goes on from all it said and did. Without `--keep` a
+cell is as above, used once, and nothing here applies to it.
 
 **The record is an entry in `cells/`**, at the root of the spore's workspace, which the agent
 reads and neither it nor a cell can write: the root is no write island, and a cell sees nothing
@@ -2645,8 +2648,11 @@ of its parent's tree. An entry is a directory `cells/<name>/` of files written o
   enzymes stay names in it.
 - `cell.json`, the cell's directory as a path from the workspace, the precursor's name and when
   the entry was made.
+- `dead.json`, only for a cell that can no longer run: why, and since when. That it is there is
+  the state.
 
-It is written under a dotted name and renamed into place, so an entry is whole or absent.
+Each is written under a dotted name and renamed into place, so an entry and its mark are whole or
+absent.
 
 **`<name>` is the last part of the cell's directory**, which the spore chose, and no two entries
 share one: a second cell whose directory ends in a name already kept is refused
@@ -2677,7 +2683,61 @@ content could give a cell grants no precursor gave it. What a forged request can
 
 `--keep` is refused with `--standalone`, since a cell outside any turn has no runner to write its
 entry; with `--check`, whose cell judges one answer; and with `--detach`, where a refusal would
-reach nobody.
+reach nobody. `--resume` is refused with the same three.
+
+**`spawn --resume <dir>` is a new run in the directory the cell ran in.** It takes a prompt file
+and an answer file as any spawn does, and neither `--precursor` nor `--ws`. The supervisor asks
+the cell socket, which answers with the entry's copy of the precursor, and the spawn is planned
+from that text (`plan_resume`) and never from `precursors/`: its `model:` is read against the
+spore's `cell-models` as they are now, its enzymes are found in the spore as they are now, and an
+enzyme whose code changed runs as it is. The worker replays the cell's transcript ahead of the
+prompt, as a spore's turn replays its own, so compaction is the spore's
+(`compactHistory`) and nothing of it is a cell's own. The cell's database gains a turn, and
+`spawn.json` holds the frame of the latest run, with `kept` and `resumed`.
+
+**The turn that asks pays.** The tree's key is staged into the cell at each start and the cell
+calls through that turn's model socket, so a resume in a later turn is counted in that turn, under
+its limits, with the cell's own limits those of the precursor it was made from. Nothing else of
+the earlier turn is needed: between two questions a kept cell is a directory, not a process. What
+a resume costs is the whole transcript sent again, cheap while the provider's cache holds it and
+paid in full after.
+
+**A resume grants nothing new**: the same directory, islands, tools and enzymes, and
+`SPORE_CELL` set, so a kept cell spawns nothing either.
+
+**What is refused**: a directory with no entry (`CELL_NOT_KEPT`, a cell that was not kept being
+spent), a cell whose lock is held (`CELL_RUNNING`), and a dead one (`CELL_DEAD`, with why).
+
+**A cell dies, for good, in two ways.** A resume finds its precursor no longer makes a cell — the
+spore's definition does not offer its model, or an enzyme it was granted is gone — and the runner
+writes `dead.json` with that reason. Or a run of it ended without being written down: a turn of
+its database begun and never made final, and its lock held by nobody, which is what a supervisor
+that died leaves. Nothing repairs or replays a transcript cut short; the cell is marked, as an
+interrupted job is ended. A dead cell keeps its entry and its name until the spore deletes its
+directory, and counts no longer towards `living-cells`. A run that ends on a limit, a provider
+error or a stop is written down as any turn is, and the cell stays alive.
+
+**Every turn starts from a swept record** (`Cells::sweep`): entries whose directory is gone
+dropped, crashed cells marked. So the agent counts by reading: beside the `Now:` line, ahead of
+the turn's message and kept with it in the transcript, a spore with kept cells alive is told how
+many (`[Kept cells: 2 alive — …]`), and reads `cells/` for the rest. A spore with none is told
+nothing, so its turns are as before.
+
+**A fork's entries follow its directories** (`restoreKept`, `src/core/fork.js`). A fork copies
+the islands file by file as of its cut, so a cell kept after the cut is not in it, entry and all;
+a cell kept before it and not asked since is, with its entry, and the fork can ask it again; and a
+cell kept before the cut and asked again after it refuses the fork, as any file changed after the
+cut does, since its transcript at the cut is gone. A mark made after the cut is left out: the cell
+was alive at it. `spore define --from` carries no entry
+([principle 6](PRINCIPLES.md#6-a-copy-of-a-spore-takes-its-skills-not-its-memories)).
+
+**`spore show` lists them** on a line of their own, `kept`, each with where it is and whether it
+is dead, as its last turn left the record. The `cells` view of the database is still the cells
+run outside any turn: kept cells are files, not rows.
+
+**What is not protected, and need not be.** A cell's directory, its database included, is in the
+spore's `data/`, which the spore writes: it could alter its cell's transcript. That gains nothing
+it could not put in a prompt. What a cell may do is in its entry, which it cannot reach.
 
 ### A cell outside any turn
 

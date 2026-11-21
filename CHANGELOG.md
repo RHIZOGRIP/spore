@@ -4,28 +4,56 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
-## [1.72.0] — Added: a spore can keep a cell, recorded by the runner
+## [1.72.0] — Added: a spore can keep a cell and ask it again
 
 ### Added
 
-- **Kept cells.** `spawn --keep` runs a cell as before and has the turn's runner record what it
-  was made from, in `cells/<name>/` at the root of the spore's workspace: `precursor.cmk`, the
-  precursor's text exactly as it stood, and `cell.json`, the cell's directory and when the entry
-  was made. `<name>` is the last part of `--ws`. This release records the cell; asking it again
-  comes with `spawn --resume`, in a later one.
+- **Kept cells.** `spawn --keep` runs a cell as before and keeps it. `spawn --resume <dir>
+  --prompt <file> --answer <file>` asks it again, in the same turn or any later one: the cell
+  goes on from all it read, said and did, with the new prompt after it. A cell spawned without
+  `--keep` is used once, as before.
+- A kept cell is what it was made as. The turn's runner records it in `cells/<name>/` at the root
+  of the spore's workspace: `precursor.cmk`, the precursor's text exactly as it stood, and
+  `cell.json`, where the cell is and when it was made. `<name>` is the last part of `--ws`. A
+  resume runs from that copy, so editing or deleting the precursor afterwards changes nothing.
+  Its model name and its enzymes are read against the spore as it is now, and an enzyme whose
+  code changed runs as it is.
 - The agent reads `cells/` and cannot write it, and a cell does not see it. The runner reads the
   precursor itself, so a caller names a precursor and a directory and never what an entry holds.
-- A kept cell's directory is one of its own under `data/`, named as a spore or a schedule may be,
-  that has run nothing yet. No two kept cells share a name, wherever they are.
+- The turn that asks pays for a resume, under its own limits; the cell runs under the limits of
+  the precursor it was made from. A resume sends the cell's whole transcript again: cheap while
+  the provider's cache holds it, full price after. A long transcript is compacted as a spore's is.
+- A kept cell's directory is one of its own under `data/`, named as a spore or a schedule may be.
+  No two kept cells share a name, wherever they are.
 - `living-cells` in `spore.cmk` is the most kept cells a spore has alive at once: 3 when the
   definition does not say, `0` for none. One more is refused when it is spawned, with the names
   and places of those alive. A precursor declaring it is refused.
-- A spore ends a kept cell by deleting its directory, or moving it: the runner drops the entry the
-  next time it reads `cells/`.
-- `--keep` is refused with `--detach`, with `--check`, and for a cell outside any turn.
+- A spore ends a kept cell by deleting its directory, or moving it. The runner drops the entry at
+  the start of the next turn.
+- A kept cell dies, for good, when the spore's definition no longer offers its model, when an
+  enzyme it was granted is gone, or when a run of it ended without being written down, as after
+  a kill. `cells/<name>/dead.json` says why. A dead cell is never asked again and no longer
+  counts towards `living-cells`; its name is free once its directory is deleted. A run that ends
+  on a limit, a provider error or a stop leaves the cell alive.
+- A turn of a spore with kept cells alive is told how many, beside the `Now:` line. A spore with
+  none is told nothing.
+- The spawn frame says `kept: true` for a kept cell and `resumed: true` for a run that asked one
+  again. The continuation record of a kept cell that gave no answer says to ask it again.
+- `spore show` lists the kept cells, with where each is and whether it is dead.
+- `spore fork` brings back the entry of a kept cell whose directory it brings back. A cell asked
+  again after the cut refuses the fork, as any file changed after the cut does.
+- `--keep` and `--resume` are refused with `--detach`, with `--check`, and for a cell outside any
+  turn.
 - A turn's agent finds the cell socket as `SPORE_CELL_SOCKET`, when `living-cells` is not `0`.
   The name joins those no plugin variable may take.
-- A spawn without `--keep` behaves as before.
+
+### Changed
+
+- The `tidy` precursor of the `perennial` sporangium is told that a kept cell's directory is not
+  to be moved, and is removed only when the cell is dead or its work is closed. A spore made
+  before this release keeps its own `precursors/tidy.cmk`.
+- `reference.md` has a section on kept cells. A spore made before this release gets it from
+  `spore upgrade`.
 
 ## [1.71.1] — Fixed: an answer corrected after its check goes out whole
 

@@ -665,8 +665,7 @@ async fn main() {
         })
     });
 
-    let kept = (def.most_living_cells() > 0)
-        .then(|| Arc::new(cells::Cells::new(ws.clone(), def.most_living_cells())));
+    let kept = Arc::new(cells::Cells::new(ws.clone(), def.most_living_cells()));
 
     let interactions = def.interactions.as_ref().map(|granted| {
         Arc::new(interact::Interactions {
@@ -763,7 +762,8 @@ async fn main() {
                 )?;
                 passed.insert("SPORE_JOB_SOCKET".into(), path);
             }
-            if let Some(kept) = &kept {
+            kept.sweep()?;
+            if def.most_living_cells() > 0 {
                 let path = socket(&sockets, "cell")?;
                 let kept = kept.clone();
                 bind(

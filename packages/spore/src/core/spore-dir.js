@@ -26,6 +26,8 @@ export const EVENT_SCHEMA = LAYOUT.eventSchema
 export const SPAWN_FILE = LAYOUT.spawnFile
 /** The runner's record of the cells a spore keeps, at its workspace's root. */
 export const CELLS_DIR = LAYOUT.cellsDir
+const CELL_FILE = LAYOUT.cellFile
+const CELL_DEAD_FILE = LAYOUT.cellDeadFile
 export const TREE_KEY_FILE = LAYOUT.treeKey
 export const REFERENCE_FILE = 'reference.md'
 export const LIBRARIES_FILE = 'libraries.md'
@@ -1274,6 +1276,23 @@ export function acquireLock (ws) {
 
 export function readLock (ws) {
   return JSON.parse(native.readLock(ws))
+}
+
+/**
+ * The cells the spore at `ws` keeps, as its runner left their entries when the turn began: each
+ * one's name, where it is, what it was made from and when, and for a dead one why and since when.
+ */
+export function keptCells (ws) {
+  const dir = resolve(ws, CELLS_DIR)
+  if (!existsSync(dir)) return []
+  return readdirSync(dir).filter(name => !name.startsWith('.')).sort().map(name => {
+    const dead = resolve(dir, name, CELL_DEAD_FILE)
+    return {
+      name,
+      ...JSON.parse(readFileSync(resolve(dir, name, CELL_FILE), 'utf8')),
+      dead: existsSync(dead) ? JSON.parse(readFileSync(dead, 'utf8')) : null
+    }
+  })
 }
 
 /**

@@ -1,7 +1,8 @@
 /**
- * A cell kept with `spawn --keep`, from inside a real turn: the runner serves the cell socket,
- * reads the precursor and writes the entry under `cells/` (ARCHITECTURE §Kept cells). The
- * session is scripted; the runner, the agent, `spore-spawn` and the cell are real.
+ * A cell kept with `spawn --keep` and asked again with `spawn --resume`, from inside real
+ * turns: the runner serves the cell socket, reads the precursor and writes the entry under
+ * `cells/` (ARCHITECTURE §Kept cells). The session is scripted; the runner, the agent,
+ * `spore-spawn` and the cell are real.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
@@ -53,12 +54,13 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (asked.op) return
   const start = now()
   const done = (result) => write({ type: 'done', result: { inputTokens: 10, outputTokens: 5, thinkingTokens: 0, cost: 0.01, timestamps: { start, first: start, end: now() }, ...result } })
-  if (line.includes('CELL-TASK')) {
-    mark('cell')
-    return done({ status: 'completed', output: 'what the cell found' })
+  if (line.includes('CELL-TASK') || line.includes('CELL-AGAIN')) {
+    const again = line.includes('CELL-AGAIN')
+    appendFileSync(MARKS, JSON.stringify({ what: 'cell', again, task: line.includes('CELL-TASK'), heard: line.includes('what the cell found'), reduces: line.includes('You reduce a document') }) + '\\n')
+    return done({ status: 'completed', output: again ? 'what the cell found next' : 'what the cell found' })
   }
   const call = rootCalls()
-  mark('root')
+  appendFileSync(MARKS, JSON.stringify({ what: 'root', told: /\\[Kept cells: 1 alive/.test(line) }) + '\\n')
   if (call % 2 === 1) return done({ status: 'completed', output: 'done' })
   const command = JSON.parse(readFileSync(${JSON.stringify(commands)}, 'utf8'))[call / 2]
   done({ status: 'tool_use', output: null, toolCalls: [{ id: 'c' + call, name: 'wsexec', arguments: { command, out: 'data/turn-' + (call / 2) + '.txt', timeout: 60 } }] })
@@ -94,6 +96,16 @@ const keep = (dir) => [
   `printf 'CELL-%s\\n' TASK > ${dir}/in.md`,
   `"$SPORE_SPAWN" --precursor summarize --ws ${dir} --prompt in.md --answer data/out.txt --keep 2> ${dir}.err; echo $? > ${dir}.code`
 ].join(' && ')
+
+const once = (dir) => keep(dir).replace(' --keep', '')
+
+const ask = (dir, n) => [
+  `printf 'CELL-%s\\n' AGAIN > ${dir}/q${n}.md`,
+  `"$SPORE_SPAWN" --resume ${dir} --prompt q${n}.md --answer data/out${n}.txt 2> ${dir}.err${n}; echo $? > ${dir}.code${n}`
+].join(' && ')
+
+const rootCalls = () => readFileSync(marks, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(said => said.what === 'root')
+const cellCalls = () => readFileSync(marks, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(said => said.what === 'cell')
 
 const read = (path) => readFileSync(resolve(ws, path), 'utf8')
 const kept = () => existsSync(resolve(ws, CELLS_DIR)) ? readdirSync(resolve(ws, CELLS_DIR)).sort() : []
@@ -159,6 +171,38 @@ describe('a cell spawned with --keep', () => {
     await turn(`rm -rf data/a data/b data/b.err data/b.code && ${keep('data/b')}`)
     expect(read('data/b.code').trim(), read('data/b.err')).toBe('0')
     expect(kept()).toEqual(['b'])
+  })
+
+  it('is asked again in a later turn, going on from what it said, as what it was made from', { timeout: 90000 }, async () => {
+    await turn(keep('data/cache-bug'))
+    writeFileSync(resolve(ws, 'precursors/summarize.cmk'), readFileSync(SUMMARIZE, 'utf8').replace('You reduce a document to its essentials.', 'You count words.'))
+
+    await turn(ask('data/cache-bug', 2))
+
+    expect(read('data/cache-bug.code2').trim(), read('data/cache-bug.err2')).toBe('0')
+    expect(read('data/cache-bug/data/out.txt')).toBe('what the cell found')
+    expect(read('data/cache-bug/data/out2.txt')).toBe('what the cell found next')
+    expect(cellCalls()).toEqual([
+      { what: 'cell', again: false, task: true, heard: false, reduces: true },
+      { what: 'cell', again: true, task: true, heard: true, reduces: true }
+    ])
+    expect(rootCalls().map(said => said.told)).toEqual([false, false, true, true])
+    expect(JSON.parse(read('data/cache-bug/spawn.json'))).toMatchObject({ kept: true, resumed: true, answer: 'data/out2.txt', stopReason: 'answer' })
+    expect(readTurns(resolve(ws, 'data/cache-bug')).map(one => one.stopReason)).toEqual(['answer', 'answer'])
+    expect(readTurns(ws).at(-1).byPrecursor).toEqual({ summarize: { micros: 10000, rounds: 1, cells: 1 } })
+  })
+
+  it('is not asked again when it was not kept, or is not there', { timeout: 90000 }, async () => {
+    await turn(once('data/once'))
+    expect(read('data/once.code').trim(), read('data/once.err')).toBe('0')
+
+    await turn(`${ask('data/once', 2)}; mkdir -p data/none; ${ask('data/none', 2)}`)
+
+    expect(read('data/once.code2').trim()).toBe('2')
+    expect(read('data/once.err2')).toMatch(/no kept cell is at data\/once — the cell that ran there was not spawned with --keep, and is spent/)
+    expect(read('data/none.code2').trim()).toBe('2')
+    expect(read('data/none.err2')).toMatch(/no kept cell is at data\/none — only a cell spawned with --keep is asked again/)
+    expect(kept()).toEqual([])
   })
 
   it('is refused by a spore whose definition keeps none', { timeout: 60000 }, async () => {

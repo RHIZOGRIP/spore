@@ -32,7 +32,10 @@ say what you left.
 4. Move a file only when where it is makes it hard to find: a directory per subject or task
    under spore/data/, not hundreds of loose files. Leave alone a path a schedule, a program or
    an answer already given points at.
-5. What you are unsure of, leave, and say so.
+5. A cell the spore keeps lives in the directory its entry names (spore/cells/<name>/cell.json).
+   Never move it: a kept cell that is moved or removed is ended, and what it knew is gone. Remove
+   one only when its entry holds a dead.json, or the notes say its work is done and closed.
+6. What you are unsure of, leave, and say so.
 
 Answer shortly: first what you corrected in the notes, then what you removed and why, what you
 moved and where to, and what you left for the person to decide.

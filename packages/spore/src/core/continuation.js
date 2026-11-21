@@ -43,7 +43,7 @@ const describe = (m) =>
  * model is what was just stopped. That is also what makes this path incapable of
  * overrunning the limit that reached it.
  */
-export function buildContinuation (ws, { stopReason, spent, precursor }) {
+export function buildContinuation (ws, { stopReason, spent, precursor, kept = false }) {
   const runId = callRuns(ws)[0] ?? null
   const ran = runId ? readCalls(ws, runId).filter(call => call.record).map(call => call.record) : []
   const files = produced(ws)
@@ -79,13 +79,21 @@ export function buildContinuation (ws, { stopReason, spent, precursor }) {
     lines.push('')
   }
 
-  // A cell cannot be resumed — its workspace is spent once it holds a trail — so
-  // the only continuation open to a parent is a fresh one.
-  lines.push('## To continue', '', ...(precursor
+  // A cell that was not kept cannot be resumed — its workspace is spent once it holds a
+  // trail — so the only continuation open to its parent is a fresh one. A kept cell runs under
+  // the limits it was made with, whatever its precursor says since.
+  const forCell = kept
     ? [
+        'This cell is kept: ask it again with `spawn --resume` on its directory, a new prompt',
+        'file and a new answer file. It goes on from here, under the limits it was made with,',
+        `so narrow what you ask; to give it more, spawn a fresh cell from \`${PRECURSOR_DIR}/${precursor}${PRECURSOR_EXT}\`.`
+      ]
+    : [
         'This cell is spent: a workspace that has run cannot run again. Spawn a fresh one',
         `on a narrower slice, or raise the limits in \`${PRECURSOR_DIR}/${precursor}${PRECURSOR_EXT}\` first.`
       ]
+  lines.push('## To continue', '', ...(precursor
+    ? forCell
     : [
         'Run again in this workspace. The transcript replays, so the next turn resumes',
         'from here. Raise the limit in `spore.cmk` first if the work genuinely needs it.'

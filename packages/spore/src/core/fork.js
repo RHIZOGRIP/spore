@@ -27,7 +27,7 @@ import { callRuns, readCall, readCalls, writeCall } from './call-record.js'
 import { withSlot } from './admission.js'
 import { preparePlugins } from './plugins.js'
 import { startRunner } from './send.js'
-import { CHECK_DIR, INBOX_DIR, PLUGINS_DIR, ROOT_DOCS, copyInbox, definitionPath, readPending, readTranscriptEntries, readTurns, writableDirs, writeTranscriptEntries, writeTurnRecords } from './spore-dir.js'
+import { CELLS_DIR, CHECK_DIR, INBOX_DIR, PLUGINS_DIR, ROOT_DOCS, SPAWN_FILE, copyInbox, definitionPath, keptCells, readPending, readTranscriptEntries, readTurns, writableDirs, writeTranscriptEntries, writeTurnRecords } from './spore-dir.js'
 import { openWorkspace } from './workspace.js'
 import { filledIn, parseDefinition } from '../delegation/definition.js'
 import { RUNNING, stateOf } from './state.js'
@@ -131,6 +131,24 @@ function * filesUnder (dir) {
 }
 
 /**
+ * The entries of the kept cells the islands brought back, as they stood at the cut. A cell kept
+ * after it ran nothing by then, so neither it nor its entry is in the fork; a cell marked dead
+ * after it was alive at it, and is in the fork.
+ */
+function restoreKept (run, into, at) {
+  const cut = at === null ? Infinity : Date.parse(at)
+  for (const cell of keptCells(run)) {
+    if (!existsSync(join(into, cell.path, SPAWN_FILE))) continue
+    for (const file of filesUnder(join(run, CELLS_DIR, cell.name))) {
+      if (basename(file).startsWith('.') || lstatSync(file).birthtimeMs > cut) continue
+      const target = join(into, relative(run, file))
+      mkdirSync(dirname(target), { recursive: true })
+      copyFileSync(file, target)
+    }
+  }
+}
+
+/**
  * The islands as they stood at the cut, or as they are when there is none. A file born after it
  * is simply not there yet; one born before and changed after cannot be put back as it was, and a
  * fork that differs from its run is not a fork of it — so that refuses, rather than handing back
@@ -218,6 +236,7 @@ export function forkWorkspace ({ run, at = null, into, definition, replay = fals
   mkdirSync(ws, { recursive: true })
   try {
     restoreIslands(from, ws, cut.islandsAt)
+    restoreKept(from, ws, cut.islandsAt)
     writeTurnRecords(ws, cut.kept)
     // A turn cut within is carried on under the fork's own, so what it said so far belongs to
     // no turn here yet.

@@ -24,7 +24,7 @@ import { answerCheck } from './answer-check.js'
 import { loop } from './loop.js'
 import { describeCall } from './call-table.js'
 import { COMPACTED, marked } from './marks.js'
-import { DATA_DIR, appendCompaction, linkTurnTmp, appendTranscript, fromPerson, inboxConsumed, readInbox, readInboxFrom, readTreeKey, countSaidSoFar, runningLimits, turnTmpOf, writableDirs, writeOutcome } from './spore-dir.js'
+import { CELLS_DIR, DATA_DIR, appendCompaction, linkTurnTmp, appendTranscript, fromPerson, inboxConsumed, keptCells, readInbox, readInboxFrom, readTreeKey, countSaidSoFar, runningLimits, turnTmpOf, writableDirs, writeOutcome } from './spore-dir.js'
 import { dataBytesIn, deliverablesIn } from './deliverables.js'
 import { refusedSince, scheduleDir } from './schedule.js'
 import { composeSystem } from './system-prompt.js'
@@ -42,6 +42,13 @@ const LIMITS_EVERY_MS = 2000
 function nowLine (now = new Date()) {
   const day = now.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })
   return `[Now: ${now.toISOString().slice(0, 16)}Z (${day}) — the runtime's clock, not part of the message.]`
+}
+
+// Beside the clock, for the same reason: how many cells the spore keeps changes from turn to turn.
+function cellsLine (ws) {
+  const alive = keptCells(ws).filter(cell => cell.dead === null).length
+  if (!alive) return null
+  return `[Kept cells: ${alive} alive — ${CELLS_DIR}/ has each one's entry; ask one again with spawn --resume.]`
 }
 
 /**
@@ -400,7 +407,7 @@ export async function runSpore ({
       model,
       system: systemBlocks,
       prompt: turnPrompt,
-      now: dated ? nowLine() : null,
+      now: dated ? [nowLine(), cellsLine(WS)].filter(Boolean).join('\n') : null,
       recall,
       tools: defs,
       toolFns: fns,

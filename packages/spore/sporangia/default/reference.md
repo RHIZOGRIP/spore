@@ -384,8 +384,8 @@ its report is the one JSON line on stdout.
   depth: the directories on the way are made for it. The cell does not write it — it
   replies, and the runtime puts that reply there. A precursor that tells a cell to write the
   file sends it looking for one that does not exist yet.
-- **A workspace is used once.** Once it holds `spawn.json` it is refused, so a retry
-  needs a new directory with the material copied into it.
+- **A workspace is used once**, unless you keep the cell (below). Once it holds `spawn.json`
+  it is refused, so a retry needs a new directory with the material copied into it.
 - Blocking, it returns when the cell does and prints one JSON line: which directory,
   whether it answered, why it stopped, what it cost.
 - `--detach` returns as soon as the cell starts, printing its directory and pid. Its
@@ -413,6 +413,37 @@ written nothing and used no CPU for `idle` seconds — 120 by default, and never
 `timeout`, which ends the command first — recorded as `killed: idle`. Waiting on a model call or the network uses
 neither, so a wait of your own prints as it goes, as the loop above does, or asks for a
 longer `idle`. `$SPORE_FANOUT` and a blocking `$SPORE_SPAWN` print their own progress.
+
+### A cell you ask again
+
+A cell answers one prompt and is spent. When you expect a second question about the same work
+— "does that hold with caching off?" after an investigation — keep it:
+
+```
+"$SPORE_SPAWN" --precursor investigate --ws data/cache-bug --prompt in.md --answer data/out.md --keep
+"$SPORE_SPAWN" --resume data/cache-bug --prompt q2.md --answer data/out2.md
+```
+
+- `--keep` runs the cell as usual and records it under `cells/<name>/`, which you read and
+  cannot write. `<name>` is the last part of `--ws`: choose one that says what the cell is for.
+  No two kept cells share a name. The directory is one under your `data/`.
+- `--resume <dir>` asks it again, in this turn or any later one. It goes on from all it read,
+  said and did, and it is the cell it was made as: editing or deleting its precursor since
+  changes nothing. Write the new prompt into its directory first, and name an answer file it
+  has not written yet.
+- **A resume sends the whole of what came before again**, and the turn that asks pays for it.
+  Minutes after its last run that is cheap; hours later it is the full price. A fresh cell
+  handed the first one's answer file is often enough: resume when what the cell knows is worth
+  more than that.
+- You keep at most `living-cells` of them alive (`spore.cmk`, 3 unless it says). A turn that
+  starts with any is told how many, beside the clock line. `cells/<name>/cell.json` says where
+  each is.
+- **You end a kept cell by deleting its directory.** Moving or renaming the directory ends it
+  too. Do that when the work is done: the name and the place are free at once.
+- A kept cell can die: its model is no longer offered, an enzyme it was granted is gone, or a
+  run of it was killed. `cells/<name>/dead.json` says why. A dead cell is never asked again;
+  spawn a fresh one and delete the dead one's directory.
+- Not with `--detach`.
 
 ## Remembering across turns
 

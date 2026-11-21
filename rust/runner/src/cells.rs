@@ -1,7 +1,7 @@
-//! The cell socket: how a turn's `spawn` has the cell it starts kept, to be asked again. The
-//! runner reads the precursor itself and writes the cell's entry under `cells/` at the workspace
-//! root, which neither the agent nor a cell can write: a caller names a precursor and a
-//! directory, never what the entry holds. Contract: ARCHITECTURE.md, "Kept cells".
+//! The cell socket: how a turn's `spawn` has the cell it starts kept, and asks a kept one again.
+//! The runner reads the precursor itself and writes the cell's entry under `cells/` at the
+//! workspace root, which neither the agent nor a cell can write: a caller names a precursor and
+//! a directory, never what the entry holds. Contract: ARCHITECTURE.md, "Kept cells".
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -11,17 +11,16 @@ use hyper::{Method, Request, Response, StatusCode};
 use mohdel_thin_gate::prelude::{not_found_response, Body};
 use serde_json::{json, Value};
 use spore_definition::{is_name, name_rule};
-use spore_workspace::{iso_now, lock_holder, CELLS_DIR, DATA_DIR, SPAWN_FILE};
+use spore_workspace::{
+    iso_now, left_unfinished, lock_holder, CELLS_DIR, CELL_DEAD_FILE as DEAD_FILE, CELL_FILE,
+    CELL_PRECURSOR_FILE as PRECURSOR_FILE, DATA_DIR, SPAWN_FILE,
+};
 
 use crate::broker::{answer, read_json, Refusal};
-use crate::plan::kept_precursor;
+use crate::plan::{check_kept, kept_precursor};
 
-/// An exact copy of the precursor the cell was made from.
-pub const PRECURSOR_FILE: &str = "precursor.cmk";
-/// Where the cell is, from the workspace, and when it was made.
-pub const CELL_FILE: &str = "cell.json";
-/// Present for a cell that can no longer run: why, and since when.
-pub const DEAD_FILE: &str = "dead.json";
+const CRASHED: &str =
+    "a run of it ended without being written down, so what it last did is not known";
 
 pub struct Cells {
     ws: PathBuf,
@@ -57,6 +56,15 @@ fn refused(kind: &str, message: impl Into<String>, detail: impl Into<String>) ->
     Refusal::new(StatusCode::CONFLICT, kind, message, detail)
 }
 
+/// Marks the cell whose entry is `record` dead, for good: written whole or not at all.
+fn mark_dead(record: &Path, name: &str, why: &str) -> Result<(), Refusal> {
+    let writing = |e: std::io::Error| failed(format!("cannot mark {name} dead — {e}"));
+    let marking = record.join(format!(".{DEAD_FILE}"));
+    let said = json!({ "why": why, "at": iso_now() });
+    std::fs::write(&marking, format!("{said}\n")).map_err(writing)?;
+    std::fs::rename(&marking, record.join(DEAD_FILE)).map_err(writing)
+}
+
 impl Cells {
     pub fn new(ws: PathBuf, most: u64) -> Cells {
         Cells {
@@ -68,7 +76,7 @@ impl Cells {
 
     pub async fn route(self: Arc<Self>, req: Request<Incoming>) -> Response<Body> {
         let (method, path) = (req.method().clone(), req.uri().path().to_string());
-        if method != Method::POST || path != "/keep" {
+        if method != Method::POST || !matches!(path.as_str(), "/keep" | "/resume") {
             return not_found_response(&method, &path);
         }
         let body = match read_json(req).await {
@@ -77,15 +85,131 @@ impl Cells {
         };
         let cells = self.clone();
         answer(
-            tokio::task::spawn_blocking(move || cells.keep(&body))
-                .await
-                .unwrap_or_else(|e| Err(failed(e.to_string()))),
+            tokio::task::spawn_blocking(move || match path.as_str() {
+                "/keep" => cells.keep(&body),
+                _ => cells.resume(&body),
+            })
+            .await
+            .unwrap_or_else(|e| Err(failed(e.to_string()))),
         )
+    }
+
+    /// The workspace and, from it, the directory a request names: one of its own under `data/`.
+    fn place(&self, asked: &str) -> Result<(PathBuf, PathBuf, String), Refusal> {
+        let ws = std::fs::canonicalize(&self.ws)
+            .map_err(|e| failed(format!("cannot resolve {} — {e}", self.ws.display())))?;
+        let data = ws.join(DATA_DIR);
+        let place = |detail: String| {
+            refused(
+                "CELL_PLACE",
+                format!(
+                    "a kept cell lives in a directory of its own under the spore's {DATA_DIR}/"
+                ),
+                detail,
+            )
+        };
+        let dir = std::fs::canonicalize(asked).map_err(|e| place(format!("{asked} — {e}")))?;
+        if !dir.is_dir() || !dir.starts_with(&data) || dir == data {
+            return Err(place(format!("{asked} is not one")));
+        }
+        let rel = dir
+            .strip_prefix(&ws)
+            .ok()
+            .and_then(Path::to_str)
+            .ok_or_else(|| place(format!("{asked} is not a path that can be written down")))?
+            .to_string();
+        Ok((ws, dir, rel))
+    }
+
+    /// A kept cell asked again: the copy of its precursor its entry holds, once the cell can
+    /// still run. One that cannot — its model or an enzyme is gone, or a run of it ended without
+    /// being written down — is marked dead here and refused from then on.
+    fn resume(&self, body: &Value) -> Result<Value, Refusal> {
+        let asked = body["ws"]
+            .as_str()
+            .ok_or_else(|| malformed("ws is the cell's directory"))?;
+        let (ws, dir, rel) = self.place(asked)?;
+        let _writing = self
+            .writing
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Some(entry) = self
+            .entries(&ws)?
+            .into_iter()
+            .find(|entry| entry.path == rel)
+        else {
+            return Err(refused(
+                "CELL_NOT_KEPT",
+                format!("no kept cell is at {rel}"),
+                if dir.join(SPAWN_FILE).exists() {
+                    "the cell that ran there was not spawned with --keep, and is spent — spawn a fresh one"
+                } else {
+                    "only a cell spawned with --keep is asked again"
+                },
+            ));
+        };
+        let record = ws.join(CELLS_DIR).join(&entry.name);
+        let dead =
+            |why: String| refused("CELL_DEAD", format!("the cell {} is dead", entry.name), why);
+        if entry.dead {
+            let read = std::fs::read_to_string(record.join(DEAD_FILE))
+                .map_err(|e| failed(format!("cannot read why {} is dead — {e}", entry.name)))?;
+            let why = serde_json::from_str::<Value>(&read)
+                .ok()
+                .and_then(|mark| mark["why"].as_str().map(str::to_string))
+                .ok_or_else(|| failed(format!("{} does not say why it is dead", entry.name)))?;
+            return Err(dead(format!(
+                "{why} — spawn a fresh cell, and delete {rel} to free its name"
+            )));
+        }
+        let held = lock_holder(&dir)
+            .map_err(|e| failed(format!("cannot tell whether {rel} is running — {e}")))?
+            .is_some();
+        if held {
+            return Err(refused(
+                "CELL_RUNNING",
+                format!("the cell {} is running", entry.name),
+                "a kept cell answers one prompt at a time — ask it again when this run has ended",
+            ));
+        }
+        let precursor = std::fs::read_to_string(record.join(CELL_FILE))
+            .ok()
+            .and_then(|read| serde_json::from_str::<Value>(&read).ok())
+            .and_then(|cell| cell["precursor"].as_str().map(str::to_string))
+            .ok_or_else(|| failed(format!("{} does not name its precursor", entry.name)))?;
+        let source = std::fs::read_to_string(record.join(PRECURSOR_FILE)).map_err(|e| {
+            failed(format!(
+                "cannot read what {} was made from — {e}",
+                entry.name
+            ))
+        })?;
+        if let Err(why) = check_kept(&ws, &precursor, &source) {
+            mark_dead(&record, &entry.name, &why)?;
+            return Err(dead(format!(
+                "{why} — spawn a fresh cell, and delete {rel} to free its name"
+            )));
+        }
+        Ok(json!({ "name": entry.name, "path": rel, "precursor": precursor, "source": source }))
+    }
+
+    /// What every turn starts from: `cells/` holding the cells that are still there, the ones
+    /// that crashed marked.
+    pub fn sweep(&self) -> Result<(), String> {
+        let ws = std::fs::canonicalize(&self.ws)
+            .map_err(|e| format!("cannot resolve {} — {e}", self.ws.display()))?;
+        let _writing = self
+            .writing
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.entries(&ws)
+            .map(|_| ())
+            .map_err(|refusal| format!("{} — {}", refusal.message, refusal.detail))
     }
 
     /// The entries whose cell is still where its entry says. One whose directory is gone or
     /// moved has ended, and one whose directory never ran a cell and is held by nobody was never
-    /// started: both are dropped here.
+    /// started: both are dropped here. One a run of which ended without being written down is
+    /// marked dead here.
     fn entries(&self, ws: &Path) -> Result<Vec<Entry>, Refusal> {
         let cells = ws.join(CELLS_DIR);
         let listed = match std::fs::read_dir(&cells) {
@@ -120,11 +244,12 @@ impl Cells {
                     .map_err(|e| failed(format!("cannot drop {} — {e}", entry.display())))?;
                 continue;
             }
-            entries.push(Entry {
-                name,
-                path,
-                dead: entry.join(DEAD_FILE).exists(),
-            });
+            let mut dead = entry.join(DEAD_FILE).exists();
+            if !dead && !held && left_unfinished(&dir).map_err(|e| failed(e))? {
+                mark_dead(&entry, &name, CRASHED)?;
+                dead = true;
+            }
+            entries.push(Entry { name, path, dead });
         }
         entries.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(entries)
@@ -140,32 +265,11 @@ impl Cells {
         if !is_name("precursor", precursor).expect("precursor is a kind of name") {
             return Err(malformed(format!("{precursor:?} names no precursor")));
         }
-        let ws = std::fs::canonicalize(&self.ws)
-            .map_err(|e| failed(format!("cannot resolve {} — {e}", self.ws.display())))?;
-        let data = ws.join(DATA_DIR);
-        let place = |detail: String| {
-            refused(
-                "CELL_PLACE",
-                format!(
-                    "a kept cell lives in a directory of its own under the spore's {DATA_DIR}/"
-                ),
-                detail,
-            )
-        };
-        let dir = std::fs::canonicalize(asked).map_err(|e| place(format!("{asked} — {e}")))?;
-        if !dir.is_dir() || !dir.starts_with(&data) || dir == data {
-            return Err(place(format!("{asked} is not one")));
-        }
-        let rel = dir
-            .strip_prefix(&ws)
-            .ok()
-            .and_then(Path::to_str)
-            .ok_or_else(|| place(format!("{asked} is not a path that can be written down")))?
-            .to_string();
+        let (ws, dir, rel) = self.place(asked)?;
         let name = dir
             .file_name()
             .and_then(|name| name.to_str())
-            .ok_or_else(|| place(format!("{asked} has no name")))?
+            .expect("a path written down has a last part that can be")
             .to_string();
         if !is_name("cell", &name).expect("cell is a kind of name") {
             return Err(refused(
@@ -445,5 +549,151 @@ mod tests {
         fs::write(r.0.join("precursors/summarize.cmk"), "not a definition").unwrap();
         assert_eq!(keep(&cells, &ws).unwrap_err().kind, "CELL_PRECURSOR");
         assert!(kept(&r).is_empty());
+    }
+    const SHOUT: &str = "---\nname: shout\nmodel: strong\ntools: [read, wsexec]\nenzymes: [upper=tools/upper.sh]\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\non-wrap: discard\n---\n\nYou shout.\n\n:::enzyme upper\nupper — writes its arguments upper-cased.\n:::\n";
+
+    /// A spore offering the cell model `strong`, with a precursor that runs on it and grants an
+    /// enzyme, and a cell kept from it that has run.
+    fn shouting(name: &str) -> (Root, Cells, String) {
+        use std::os::unix::fs::PermissionsExt;
+        let r = root(name);
+        fs::write(
+            r.0.join("spore.cmk"),
+            SPORE.replace(
+                "tools: [read]",
+                "cell-models: [strong=a/best]\ntools: [read]",
+            ),
+        )
+        .unwrap();
+        fs::create_dir_all(r.0.join("tools")).unwrap();
+        fs::write(r.0.join("tools/upper.sh"), "#!/bin/sh\n").unwrap();
+        fs::set_permissions(
+            r.0.join("tools/upper.sh"),
+            fs::Permissions::from_mode(0o755),
+        )
+        .unwrap();
+        fs::write(r.0.join("precursors/shout.cmk"), SHOUT).unwrap();
+        let cells = Cells::new(r.0.clone(), 3);
+        let ws = place(&r, "data/a");
+        cells
+            .keep(&json!({ "precursor": "shout", "ws": ws }))
+            .unwrap();
+        ran(&r, "data/a");
+        (r, cells, ws)
+    }
+
+    fn resume(cells: &Cells, ws: &str) -> Result<Value, Refusal> {
+        cells.resume(&json!({ "ws": ws }))
+    }
+
+    #[test]
+    fn hands_a_kept_cell_asked_again_what_it_was_made_from_whatever_its_precursor_says_now() {
+        let (r, cells, ws) = shouting("resume");
+        fs::write(
+            r.0.join("precursors/shout.cmk"),
+            SHOUT.replace("You shout.", "You whisper."),
+        )
+        .unwrap();
+        let said = resume(&cells, &ws).unwrap();
+        assert_eq!(said["name"], "a");
+        assert_eq!(said["path"], "data/a");
+        assert_eq!(said["precursor"], "shout");
+        assert_eq!(said["source"], SHOUT);
+        fs::remove_file(r.0.join("precursors/shout.cmk")).unwrap();
+        assert_eq!(resume(&cells, &ws).unwrap()["source"], SHOUT);
+    }
+
+    #[test]
+    fn asks_again_only_a_cell_that_was_kept() {
+        let r = root("unkept");
+        let cells = Cells::new(r.0.clone(), 3);
+        let spent = place(&r, "data/spent");
+        ran(&r, "data/spent");
+        let refusal = resume(&cells, &spent).unwrap_err();
+        assert_eq!(refusal.kind, "CELL_NOT_KEPT");
+        assert!(refusal.detail.contains("is spent"));
+        let fresh = resume(&cells, &place(&r, "data/fresh")).unwrap_err();
+        assert_eq!(fresh.kind, "CELL_NOT_KEPT");
+        assert!(fresh.detail.contains("only a cell spawned with --keep"));
+        assert_eq!(
+            resume(&cells, &place(&r, "elsewhere")).unwrap_err().kind,
+            "CELL_PLACE"
+        );
+    }
+
+    #[test]
+    fn marks_dead_a_cell_whose_model_the_spore_no_longer_offers_and_says_why_from_then_on() {
+        let (r, cells, ws) = shouting("model-gone");
+        fs::write(
+            r.0.join("spore.cmk"),
+            SPORE.replace("tools: [read]", "cell-models: [low=a/fast]\ntools: [read]"),
+        )
+        .unwrap();
+        let refusal = resume(&cells, &ws).unwrap_err();
+        assert_eq!(refusal.kind, "CELL_DEAD");
+        assert!(refusal
+            .detail
+            .contains("which this spore's cell-models does not have"));
+        let mark: Value = serde_json::from_str(
+            &fs::read_to_string(r.0.join(CELLS_DIR).join("a").join(DEAD_FILE)).unwrap(),
+        )
+        .unwrap();
+        assert!(mark["why"].as_str().unwrap().contains("cell-models"));
+        assert!(mark["at"].is_string());
+        fs::write(
+            r.0.join("spore.cmk"),
+            SPORE.replace(
+                "tools: [read]",
+                "cell-models: [strong=a/best]\ntools: [read]",
+            ),
+        )
+        .unwrap();
+        let again = resume(&cells, &ws).unwrap_err();
+        assert_eq!(again.kind, "CELL_DEAD");
+        assert!(again.detail.contains("cell-models does not have"));
+    }
+
+    #[test]
+    fn marks_dead_a_cell_granted_an_enzyme_that_is_gone() {
+        let (r, cells, ws) = shouting("enzyme-gone");
+        fs::remove_file(r.0.join("tools/upper.sh")).unwrap();
+        let refusal = resume(&cells, &ws).unwrap_err();
+        assert_eq!(refusal.kind, "CELL_DEAD");
+        assert!(refusal
+            .detail
+            .contains("declares an enzyme that does not exist"));
+        assert!(r.0.join(CELLS_DIR).join("a").join(DEAD_FILE).exists());
+    }
+
+    #[test]
+    fn runs_an_enzyme_as_it_is_now_when_only_its_code_changed() {
+        let (r, cells, ws) = shouting("enzyme-changed");
+        fs::write(r.0.join("tools/upper.sh"), "#!/bin/sh\necho changed\n").unwrap();
+        assert!(resume(&cells, &ws).is_ok());
+    }
+
+    #[test]
+    fn marks_dead_a_cell_whose_run_ended_without_being_written_down() {
+        let (r, cells, ws) = shouting("crashed");
+        spore_workspace::begin_turn(&r.0.join("data/a"), &iso_now(), None).unwrap();
+        let refusal = resume(&cells, &ws).unwrap_err();
+        assert_eq!(refusal.kind, "CELL_DEAD");
+        assert!(refusal.detail.contains("ended without being written down"));
+        assert!(r.0.join(CELLS_DIR).join("a").join(DEAD_FILE).exists());
+    }
+    #[test]
+    fn leaves_every_turn_a_record_of_the_cells_still_there_with_the_crashed_marked() {
+        let (r, cells, _) = shouting("sweep");
+        keep(&cells, &place(&r, "data/b")).unwrap();
+        ran(&r, "data/b");
+        keep(&cells, &place(&r, "data/c")).unwrap();
+        ran(&r, "data/c");
+        fs::remove_dir_all(r.0.join("data/b")).unwrap();
+        spore_workspace::begin_turn(&r.0.join("data/c"), &iso_now(), None).unwrap();
+        cells.sweep().unwrap();
+        assert_eq!(kept(&r), ["a", "c"]);
+        let entry = |name: &str| r.0.join(CELLS_DIR).join(name);
+        assert!(!entry("a").join(DEAD_FILE).exists());
+        assert!(entry("c").join(DEAD_FILE).exists());
     }
 }

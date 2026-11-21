@@ -30,7 +30,8 @@ So the spore's real job is to write, test and run programs.
 
 A spore can do anything it is allowed to. When a job needs focus — a narrow task, a few tools, a
 small budget — the spore does not narrow itself. It writes a precursor and starts a cell from it:
-a specialist made on the spot, for that one job.
+a specialist made on the spot, for that one job. A cell answers once and is done, unless the
+spore keeps it to ask it again about the same work.
 
 There are only two levels. A cell cannot create cells of its own, and only cells receive enzymes.
 One general level on top and specialists below lets the top one keep the others in check.

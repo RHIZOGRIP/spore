@@ -155,6 +155,7 @@ function renderShow (result) {
     const by = Object.entries(result.cells.origins).map(([origin, runs]) => `${origin} ${runs}`).join(', ')
     line('cells', `${result.cells.runs} outside turns in the last day, $${result.cells.costUsd.toFixed(4)} — ${by}`)
   }
+  if (result.kept.length) line('kept', result.kept.map(cell => `${cell.name} at ${cell.path}${cell.dead ? ' (dead)' : ''}`).join(', '))
   if (result.jobs.grant || result.jobs.running.length) {
     if (!result.jobs.running.length) line('jobs', `none running — ${jobGrant(result.jobs.grant)}`)
     for (const [i, job] of result.jobs.running.entries()) line(i ? '' : 'jobs', runningJob(job))

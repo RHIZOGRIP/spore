@@ -1923,6 +1923,18 @@ pub fn turn_state(ws: &Path, turn_id: &str) -> Result<Option<String>, String> {
     })
 }
 
+/// Whether a turn here was begun and never made final. With nobody holding the workspace, that
+/// is what a supervisor that died leaves behind.
+pub fn left_unfinished(ws: &Path) -> Result<bool, String> {
+    reading(ws, false, |conn| {
+        conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM t_turns WHERE state <> 'final')",
+            [],
+            |row| row.get(0),
+        )
+    })
+}
+
 /// One request, answered. `turn` is the turn the channel belongs to — none for a host writing
 /// fixtures, which then may not say how a turn ended. Each request is one transaction, so an
 /// answer that says it is written means it is.

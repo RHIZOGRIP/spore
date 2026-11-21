@@ -8,8 +8,8 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::{json, Value};
 use spore_definition::{parse_definition, Definition, Options, Pair, TOOL_NAMES};
 use spore_workspace::{
-    safe_path, writable_dirs, CALLS_DIR, CHECK_DIR, DATA_DIR, DEFINITION_FILE, PRECURSOR_DIR,
-    PRECURSOR_EXT, SCHEDULE_DIR, SPAWN_FILE,
+    safe_path, writable_dirs, CALLS_DIR, CELLS_DIR, CELL_PRECURSOR_FILE, CHECK_DIR, DATA_DIR,
+    DEFINITION_FILE, PRECURSOR_DIR, PRECURSOR_EXT, SCHEDULE_DIR, SPAWN_FILE,
 };
 
 pub struct Asked<'a> {
@@ -36,6 +36,10 @@ pub struct Plan {
     pub precursor: Definition,
     pub enzymes: Vec<Enzyme>,
     pub super_reach: Option<SuperReach>,
+    /// The cell has an entry under `cells/`, so it can be asked again.
+    pub kept: bool,
+    /// This run asks a kept cell again: its transcript is replayed ahead of the prompt.
+    pub resumed: bool,
 }
 
 /// What a super cell reaches beyond its own directory, as real paths: the spore, read whole, with
@@ -174,9 +178,16 @@ pub fn kept_precursor(spore: &Path, name: &str) -> Result<String, String> {
     let source = std::fs::read_to_string(&path).map_err(|_| {
         format!("precursor not found — expected {PRECURSOR_DIR}/{name}{PRECURSOR_EXT}")
     })?;
-    let (definition, _) = read_precursor(spore, name, &source)?;
-    cell_model(name, definition.model.as_deref(), &spore_definition(spore)?)?;
+    check_kept(spore, name, &source)?;
     Ok(source)
+}
+
+/// Whether the precursor `name`, as `source` writes it, still makes a cell in the spore at
+/// `spore`: its enzymes are there and its model is one the spore offers.
+pub fn check_kept(spore: &Path, name: &str, source: &str) -> Result<(), String> {
+    let (definition, _) = read_precursor(spore, name, source)?;
+    cell_model(name, definition.model.as_deref(), &spore_definition(spore)?)?;
+    Ok(())
 }
 
 fn contained(ws: &Path, rel: &str, label: &str) -> Result<PathBuf, String> {
@@ -260,15 +271,76 @@ pub fn plan_spawn(
         (None, Some(_)) => (CHECK_DIR, required("--check", asked.check)?),
         _ => (PRECURSOR_DIR, required("--precursor", asked.precursor)?),
     };
-    let ws = required("--ws", asked.ws)?;
-    let prompt = required("--prompt", asked.prompt)?;
-    let answer = required("--answer", asked.answer)?;
+    required("--ws", asked.ws)?;
+    required("--prompt", asked.prompt)?;
+    required("--answer", asked.answer)?;
 
     // Before the workspace check, because what the cell may read is part of what would
     // make a directory an unusable place to confine it.
     let (precursor_path, mut definition, enzymes) = resolve_precursor(spore, dir, &precursor)?;
     let root = spore_definition(spore)?;
     definition.model = Some(cell_model(&precursor, definition.model.as_deref(), &root)?);
+    settle(
+        asked,
+        cwd,
+        precursor_path,
+        definition,
+        enzymes,
+        granted,
+        false,
+    )
+}
+
+/// The plan of a kept cell asked again: made from `source`, the copy of its precursor `name`
+/// its entry holds, never from the spore's `precursors/`, and run in the directory it already
+/// ran in.
+pub fn plan_resume(
+    asked: &Asked,
+    cwd: &Path,
+    spore: &Path,
+    granted: impl Fn(&Path, &[PathBuf]) -> Option<PathBuf>,
+    name: &str,
+    source: &str,
+) -> Result<Plan, String> {
+    if asked.precursor.is_some() || asked.check.is_some() {
+        return Err("--resume asks a kept cell again, and what it was made from is kept with it — give neither --precursor nor --check".to_string());
+    }
+    let (mut definition, enzymes) = read_precursor(spore, name, source)?;
+    let root = spore_definition(spore)?;
+    definition.model = Some(cell_model(name, definition.model.as_deref(), &root)?);
+    let mut plan = settle(
+        asked,
+        cwd,
+        PathBuf::new(),
+        definition,
+        enzymes,
+        granted,
+        true,
+    )?;
+    let cell = plan.ws.file_name().expect("a cell's directory has a name");
+    plan.precursor_path = spore.join(CELLS_DIR).join(cell).join(CELL_PRECURSOR_FILE);
+    Ok(plan)
+}
+
+/// Where a cell runs and what it reads and writes there, checked before anything starts.
+fn settle(
+    asked: &Asked,
+    cwd: &Path,
+    precursor_path: PathBuf,
+    definition: Definition,
+    enzymes: Vec<Enzyme>,
+    granted: impl Fn(&Path, &[PathBuf]) -> Option<PathBuf>,
+    resumed: bool,
+) -> Result<Plan, String> {
+    let required = |label: &str, value: Option<&str>| -> Result<String, String> {
+        value
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| format!("{label} is required"))
+    };
+    let ws = required(if resumed { "--resume" } else { "--ws" }, asked.ws)?;
+    let prompt = required("--prompt", asked.prompt)?;
+    let answer = required("--answer", asked.answer)?;
 
     let ws_path = resolve(cwd, &ws);
     if !ws_path.is_dir() {
@@ -288,10 +360,18 @@ pub fn plan_spawn(
     }
     // The worker writes this the moment a cell starts, so a supervisor that died while
     // staging has not spent the name.
-    if ws_path.join(SPAWN_FILE).exists() {
-        return Err(format!(
-            "workspace is already used — {ws} contains {SPAWN_FILE}, name another one"
-        ));
+    match (ws_path.join(SPAWN_FILE).exists(), resumed) {
+        (true, false) => {
+            return Err(format!(
+                "workspace is already used — {ws} contains {SPAWN_FILE}, name another one"
+            ))
+        }
+        (false, true) => {
+            return Err(format!(
+                "{ws} has run no cell — a kept cell is asked again once it has answered its first prompt"
+            ))
+        }
+        _ => {}
     }
 
     let prompt_path = contained(&ws_path, &prompt, "--prompt")?;
@@ -321,6 +401,8 @@ pub fn plan_spawn(
         precursor: definition,
         enzymes,
         super_reach: None,
+        kept: resumed,
+        resumed,
     })
 }
 
@@ -381,6 +463,8 @@ impl Plan {
             "precursorPath": self.precursor_path,
             "precursor": precursor,
             "answer": answer,
+            "kept": self.kept,
+            "resumed": self.resumed,
             "superReach": self.super_reach.as_ref().map(|reach| json!({
                 "spore": reach.spore,
                 "reads": reach.reads.iter().map(|(name, path)| json!({ "name": name, "path": path })).collect::<Vec<_>>(),
@@ -669,6 +753,47 @@ mod tests {
         assert!(kept_precursor(&r.0, "summarize")
             .unwrap_err()
             .contains("which this spore's cell-models does not have"));
+    }
+
+    #[test]
+    fn plans_a_kept_cell_asked_again_from_its_entrys_copy_in_the_directory_it_ran_in() {
+        let r = root("resume");
+        fs::write(r.0.join("work/1/spawn.json"), "{}").unwrap();
+        fs::remove_file(r.0.join("precursors/summarize.cmk")).unwrap();
+        let ask = |precursor, ws| Asked {
+            precursor,
+            check: None,
+            ws: Some(ws),
+            prompt: Some("in.md"),
+            answer: Some("data/out2.json"),
+        };
+        let resume =
+            |asked: &Asked| plan_resume(asked, &r.0, &r.0, |_, _| None, "summarize", SUMMARIZE);
+        let p = resume(&ask(None, "work/1")).unwrap();
+        assert!(p.kept && p.resumed);
+        assert_eq!(p.precursor.name, "summarize");
+        assert_eq!(p.precursor.model.as_deref(), Some("fake/parent"));
+        assert_eq!(p.precursor_path, r.0.join("cells/1/precursor.cmk"));
+        assert_eq!(p.for_worker("data/out2.json", &[])["resumed"], true);
+
+        assert!(resume(&ask(Some("summarize"), "work/1"))
+            .err()
+            .unwrap()
+            .contains("give neither --precursor nor --check"));
+        fs::create_dir_all(r.0.join("work/2")).unwrap();
+        fs::write(r.0.join("work/2/in.md"), "material").unwrap();
+        assert!(resume(&ask(None, "work/2"))
+            .err()
+            .unwrap()
+            .contains("work/2 has run no cell"));
+    }
+
+    #[test]
+    fn says_a_cell_that_is_not_kept_is_neither_kept_nor_resumed() {
+        let r = root("plain");
+        let p = plan_with(&r, &[]).unwrap();
+        assert!(!p.kept && !p.resumed);
+        assert_eq!(p.for_worker("data/out.json", &[])["kept"], false);
     }
 
     #[test]
