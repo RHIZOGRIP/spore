@@ -49,7 +49,7 @@ describe('wsexec under the call contract', () => {
 
   it('reports a missing in before running anything', async () => {
     const result = await exec({ command: 'cat', in: 'data/absent.txt', out: 'data/o.txt' })
-    expect(result).toMatch(/in not found/)
+    expect(result).toMatch(/in not found — data\/absent\.txt; for no input leave in out or send it empty/)
     expect(existsSync(resolve(WS, 'data/o.txt'))).toBe(false)
   })
 
@@ -123,7 +123,7 @@ describe('wsexec under the call contract', () => {
   })
 
   it('refuses an absolute in by saying that leaving it out is no input, which it is', async () => {
-    expect(await wsexec({ command: 'cat', in: '/dev/null' })).toMatch(/without in, stdin is already empty, so leave it out/)
+    expect(await wsexec({ command: 'cat', in: '/dev/null' })).toMatch(/is absolute; for no input leave in out or send it empty/)
     const meta = JSON.parse(await wsexec({ command: 'cat', out: 'data/stdin.txt' }))
     expect(meta.exit).toBe(0)
     expect(readFileSync(resolve(WS, 'data/stdin.txt'), 'utf8')).toBe('')

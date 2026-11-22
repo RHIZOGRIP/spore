@@ -34,7 +34,8 @@ a retry.
 ## What a run leaves behind
 
 Every run gets its own directory under `--ws`, named like `20260910-1652-openai-gpt-5.6-luna`,
-and `latest` points at the newest. By default `--ws` is `$XDG_STATE_HOME/spore/conformance`, or
+with `-2`, `-3` after it for another run of the same model in the same minute, and `latest`
+points at the newest. By default `--ws` is `$XDG_STATE_HOME/spore/conformance`, or
 `~/.local/state/spore/conformance`, beside the cells spore keeps there: outside any checkout and
 outside `/tmp`, where a workspace is refused. Nothing is deleted. It used to be one directory,
 emptied at the start of each run, which meant the evidence for "this passed yesterday"

@@ -139,7 +139,8 @@ Every tool call names the file it is about.
 - `err` is the same for stderr. Unnamed, it is dropped when nothing was written; a named one
   stays, empty or not. Name `out` or `err` only for a stream you mean to keep: unnamed, you
   still see what it holds.
-- `in` names a workspace file that `exec` or `wsexec` sends to the command's stdin.
+- `in` names a workspace file that `exec` or `wsexec` sends to the command's stdin. For a
+  command that reads no input, leave it out or send it empty: its stdin is then empty.
 - The exit code is the only success signal. A command that printed a friendly message
   and exited 1 failed.
 - No stream enters this conversation. A short file comes back inline in the record; a

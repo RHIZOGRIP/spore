@@ -71,13 +71,26 @@ if (!wanted.length) fail(`nothing matches "${argv.only}"`)
 if (!process.env.MODEL) fail('$MODEL is not set — this runs a model and costs money')
 const entry = (await loadCuratedCache())[process.env.MODEL]
 if (!entry) fail(`${process.env.MODEL} is not an entry of mohdel's catalog here, so its price is unknown — name the model by its catalog id, as mo model show prints it`)
+function newRunDir (named) {
+  mkdirSync(dirname(named), { recursive: true })
+  for (let n = 1; ; n++) {
+    const dir = n === 1 ? named : `${named}-${n}`
+    try {
+      mkdirSync(dir)
+      return dir
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err
+    }
+  }
+}
+
 const price = inputPrice(entry)
 const limitsOf = (item) => pricedLimits(caseLimits(item), price)
 
 // One directory per run, kept. It used to be one directory, emptied at the start of
 // every run: the evidence for "it passed yesterday" was deleted by the run asking.
-const RUN_DIR = runDir(resolve(argv.ws), { model: process.env.MODEL })
-mkdirSync(RUN_DIR, { recursive: true })
+// A run is named to the minute, so a second one inside it takes the name with `-2`, then `-3`.
+const RUN_DIR = newRunDir(runDir(resolve(argv.ws), { model: process.env.MODEL }))
 const latest = resolve(resolve(argv.ws), LATEST)
 rmSync(latest, { recursive: true, force: true })
 try {

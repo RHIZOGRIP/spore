@@ -4,6 +4,16 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.72.2] — Fixed: a missing `in` file says how to run a command with no input
+
+### Fixed
+
+- The refusal for an `in` that names a file not in the workspace now says that leaving `in` out,
+  or sending it empty, gives the command an empty stdin. The refusal for an absolute `in` and the
+  tools' description of `in` say it the same way. A model that fills every field of a call invented a path
+  for a command with no input, got `in not found` alone, and repeated the call until the turn
+  wrapped for lack of progress. `reference.md` says the same on its `in` line.
+
 ## [1.72.1] — Fixed: a picture no longer blocks a spore whose model takes no images
 
 ### Fixed

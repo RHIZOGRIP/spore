@@ -179,7 +179,7 @@ export function makeTools (WS, maxOutput, trail, {
       if (p && hasDotSegment(p, WS)) return refuse(`${label} cannot be a dotfile or dotdir`)
     }
     if (inPath && isAbsolute(inPath)) {
-      return refuse(`in names a workspace file, and "${inPath}" is absolute — without in, stdin is already empty, so leave it out for no input`)
+      return refuse(`in names a workspace file, and "${inPath}" is absolute; for no input leave in out or send it empty: stdin is then empty`)
     }
     return null
   }
@@ -246,7 +246,7 @@ export function makeTools (WS, maxOutput, trail, {
 
   const runCommand = async ({ tool, command, inPath, out, err, confined, timeoutMs, idleMs, sig }) => {
     const inAbs = inPath ? safe(inPath) : null
-    if (inAbs && !existsSync(inAbs)) return refuse(`in not found — ${inPath}`)
+    if (inAbs && !existsSync(inAbs)) return refuse(`in not found — ${inPath}; for no input leave in out or send it empty: stdin is then empty`)
 
     const targets = openTargets(tool, { out, err })
     if (targets.refusal) return targets.refusal
@@ -576,7 +576,7 @@ export function makeTools (WS, maxOutput, trail, {
         properties: {
           command: { type: 'string', description: 'Shell command line. Pipes, redirects, && and ; all work.' },
           out: { type: 'string', description: 'Workspace path to receive stdout, under data/ (optional; kept automatically when omitted)' },
-          in: { type: 'string', description: 'Workspace file to redirect to stdin (optional). Without it, stdin is empty.' },
+          in: { type: 'string', description: 'Workspace file to redirect to stdin (optional). Left out or empty, stdin is empty.' },
           err: { type: 'string', description: 'Workspace path to receive stderr, under data/ (optional)' },
           timeout: { type: 'number', description: 'Seconds to allow, default 30.' },
           idle: { type: 'number', description: 'Seconds a command may go with no new output and no CPU time before it is killed, default 120; past the timeout, the timeout ends it first. Waiting on a model call or the network uses neither.' }
@@ -592,7 +592,7 @@ export function makeTools (WS, maxOutput, trail, {
         properties: {
           command: { type: 'string', description: 'Shell command line. Pipes, redirects, && and ; all work.' },
           out: { type: 'string', description: 'Workspace path to receive stdout, under data/ (optional; kept automatically when omitted)' },
-          in: { type: 'string', description: 'Workspace file to redirect to stdin (optional). Without it, stdin is empty.' },
+          in: { type: 'string', description: 'Workspace file to redirect to stdin (optional). Left out or empty, stdin is empty.' },
           err: { type: 'string', description: 'Workspace path to receive stderr, under data/ (optional)' },
           timeout: { type: 'number', description: 'Seconds to allow, default 30.' },
           idle: { type: 'number', description: 'Seconds a command may go with no new output and no CPU time before it is killed, default 120; past the timeout, the timeout ends it first. Waiting on a model call or the network uses neither.' }
