@@ -47,7 +47,8 @@ function stagedFiles (ws, dir = ws) {
 }
 
 /** Called after `stage()` and before `openWorkspace()`, which seeds what every workspace gets. */
-export function caseDigest ({ ws, cmk }, item) {
+export function caseDigest ({ ws, cmk }, asked) {
+  const item = asked.written ?? asked
   return sha256(JSON.stringify(canonical({
     definition: asSet(readFileSync(cmk, 'utf8'), item),
     files: Object.fromEntries(stagedFiles(ws)),

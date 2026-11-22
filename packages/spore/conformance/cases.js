@@ -357,8 +357,12 @@ export const CASES = [
     tier: 'identity',
     identity: 'perennial',
     feature: 'a reminder is a schedule',
-    prompt: 'Remind me tomorrow at 9:00, Paris time, to call the bank.',
-    expect: { fires: { tz: 'Europe/Paris', days: 1, at: '09:00' }, under: { schedules: /bank/i } }
+    // The date is named, and settled once when the run starts (`dated`): counted from the
+    // runtime's UTC clock line, "tomorrow" is a different day for the hour a day that Paris is
+    // already past midnight, and the case was harder in that hour than in the other 23.
+    prompt: 'Remind me tomorrow, {day}, at 9:00, Paris time, to call the bank.',
+    day: { tz: 'Europe/Paris', after: 1 },
+    expect: { fires: { tz: 'Europe/Paris', day: '{day}', at: '09:00' }, under: { schedules: /bank/i } }
   },
 
   // ── boundaries: does it respect what the runtime refuses ──────────────────
@@ -428,3 +432,28 @@ export const CASES = [
 ]
 
 export const caseLimits = (item) => item.limits || LIMITS
+
+export const DAY = '{day}'
+
+/**
+ * A case as one run asks it. A case with a `day: { tz, after }` names a date `after` days past
+ * `now` on the clock of `tz`: `{day}` in its prompt becomes that date as a person says it
+ * ("Tuesday 24 November"), and `expect.fires.day` the same date as `2026-11-24`. `written` is
+ * the case as `CASES` holds it, which is what its digest is taken from, so the date a run fell
+ * on does not make it another case.
+ */
+export function dated (item, now) {
+  if (!item.day) return item
+  const { tz, after } = item.day
+  const here = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
+  const [y, m, d] = here.split('-').map(Number)
+  const at = new Date(Date.UTC(y, m - 1, d + after))
+  const part = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' })
+    .formatToParts(at).map(({ type, value }) => [type, value]))
+  return {
+    ...item,
+    prompt: item.prompt.replace(DAY, `${part.weekday} ${part.day} ${part.month}`),
+    expect: { ...item.expect, fires: { ...item.expect.fires, day: at.toISOString().slice(0, 10) } },
+    written: item
+  }
+}

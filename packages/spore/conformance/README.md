@@ -137,8 +137,11 @@ From the workspace, never from what the agent said about it:
   path and contents that match: a file in `data/out/` the list does not name was not handed back
 - **under** — a file anywhere under a directory, with matching contents, for a note or a
   schedule whose name the model chooses
-- **fires** — a one-off schedule firing a number of days after the turn started, at a local
-  time, both read on the clock of a named zone: "tomorrow at 9:00, Paris time"
+- **fires** — a one-off schedule firing on a day, at a local time, both read on the clock of a
+  named zone. The day is the one the prompt names: a case with `day: { tz, after }` has `{day}`
+  in its prompt and in `fires.day`, filled once when the run starts with the date `after` days
+  ahead on that zone's clock. The case's digest is taken from the form with `{day}`, so it is
+  the same case every day
 - **uncalled** — tools the turn must not have called, and **answerNot** — a pattern the
   answer must not match
 
@@ -225,6 +228,13 @@ filesystem. Everything else that failed was the case, and each taught a rule:
   as an instruction to create the file — `echo "hello" > data/one/in.md` — destroying the
   question, after which the cell answered a greeting. `fanout` says the directory *holds*
   a question and never had the problem.
+- **A case whose difficulty depends on the hour it runs is a flaky case.** `follow-up` said
+  "tomorrow at 9:00, Paris time", and the clock line a turn is shown is in UTC. For one hour a
+  day Paris is already on the next date, and only then did "tomorrow" need converting before
+  counting: a model passed at 22:42 UTC and failed at 23:31. The case is about a reminder
+  becoming a one-off schedule, so the prompt now names the date and settles it; the hour, the
+  zone's offset and the schedule's form are still the model's to get right. Working out
+  "tomorrow" in another zone is a skill of its own, and a case for it needs a fixed clock.
 - **A budget that is nearly enough is a flaky case.** `echo` had `rounds: [3, 4]`, and a
   cell that took 4 wrapped at the soft bound and lost an answer it had produced, because
   `on-wrap: discard` is doing its job.

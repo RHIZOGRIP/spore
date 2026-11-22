@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.72.3] — Fixed: the conformance `follow-up` case asks the same thing at every hour
+
+### Fixed
+
+- The conformance `follow-up` case names the date it means: "Remind me tomorrow, Tuesday 24
+  November, at 9:00, Paris time, to call the bank." Between 23:00 and 24:00 UTC, Paris is already
+  on the next day while the clock line a turn is shown still reads the day before, so the case
+  was harder in that hour than in the rest of the day. The date is settled when the run starts
+  and the grader checks that date. The case's digest does not change with the day, so this
+  wording is one new version of the case.
+- Two conformance runs of one model started in the same minute each get a directory of their
+  own, the second named with `-2`. The second used to crash in the first's directory.
+
 ## [1.72.2] — Fixed: a missing `in` file says how to run a command with no input
 
 ### Fixed

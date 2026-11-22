@@ -22,7 +22,7 @@ import { DEFINITION_FILE, writeTranscriptEntries, writeTurnRecords } from '../sr
 import { sporangiumOf, sporangiumTree } from '../src/core/sporangia.js'
 import { NAMES } from '../src/core/names.js'
 import { writeCall } from '../src/core/call-record.js'
-import { CASES, REFERENCE_PRICE, TIERS, caseLimits, inputPrice, pricedLimits } from './cases.js'
+import { CASES, DAY, REFERENCE_PRICE, TIERS, caseLimits, dated, inputPrice, pricedLimits } from './cases.js'
 import { stage } from './stage.js'
 import { caseDigest } from './digest.js'
 import { grade } from './check.js'
@@ -46,6 +46,8 @@ check('every case expects something', CASES.every(c => Object.keys(c.expect || {
 check('every prompt names what it wants', CASES.every(c => c.identity || (c.messages ?? [c.prompt]).every(m => m.length > 20)))
 check('every case the clock speaks in names a schedule a schedule could have',
   CASES.every(c => c.schedule === undefined || NAMES.schedule.pattern.test(c.schedule)))
+check('a case names a day in its prompt and in what it expects, or in neither', CASES.every(c =>
+  Boolean(c.day) === Boolean(c.prompt?.includes(DAY)) && Boolean(c.day) === (c.expect.fires?.day === DAY)))
 check('every case says one thing or a list of things, not both', CASES.every(c => Boolean(c.prompt) !== Boolean(c.messages?.length)))
 // A case granting a tool it never needs is a case that can pass by accident.
 check('no case grants spawn tools it does not use', CASES.every(c =>
@@ -148,6 +150,13 @@ try {
   check('a case staged with its cost scaled to a dearer model has the same digest',
     CASES.every((item, i) => staged(item, 'other/model', pricedLimits(caseLimits(item), 4 * REFERENCE_PRICE)).digest === digests[i]))
   check('every case has its own digest', new Set(digests).size === CASES.length)
+
+  const followUp = CASES.find(c => c.id === 'follow-up')
+  const [monday, friday] = ['2026-11-23T10:00:00Z', '2026-11-27T10:00:00Z'].map(clock => dated(followUp, new Date(clock)))
+  check('a case run on two days asks about two dates', monday.prompt !== friday.prompt && monday.expect.fires.day !== friday.expect.fires.day,
+    `${monday.prompt} / ${friday.prompt}`)
+  check('and has one digest, the one of the case as written',
+    staged(monday).digest === staged(friday).digest && staged(monday).digest === staged(followUp).digest)
 
   const matcher = CASES.find(c => c.expect.answer instanceof RegExp)
   const changed = { ...matcher, expect: { ...matcher.expect, answer: new RegExp(`${matcher.expect.answer.source}x`, matcher.expect.answer.flags) } }
@@ -351,20 +360,27 @@ try {
     grade(make({ turn: answered, files: { 'data/notes.md': 'Invoice prefix: AX-\n' } }), { expect: spec('remember') }).length === 1)
 
   // AT is 02:00 in Paris on the 27th, so tomorrow there is the 28th, in summer time.
+  const followUp = CASES.find(c => c.id === 'follow-up')
+  const tomorrow = dated(followUp, new Date(AT))
+  check('a case run at 02:00 in Paris names the next day there, as a person says it',
+    tomorrow.expect.fires.day === '2026-09-28' && tomorrow.prompt === 'Remind me tomorrow, Monday 28 September, at 9:00, Paris time, to call the bank.', tomorrow.prompt)
+  check('a case run at 22:30 UTC, past midnight in Paris, names the day after that',
+    dated(followUp, new Date('2026-09-27T22:30:00.000Z')).expect.fires.day === '2026-09-29')
   const at = (when) => `---\nwhen: ${when}\n---\n\nCall the bank.\n`
   check('a one-off schedule for tomorrow 09:00 Paris counts',
-    grade(make({ turn: answered, files: { 'schedules/bank.cmk': at('at 2026-09-28T09:00:00+02:00') } }), { expect: spec('follow-up') }).length === 0)
+    grade(make({ turn: answered, files: { 'schedules/bank.cmk': at('at 2026-09-28T09:00:00+02:00') } }), tomorrow).length === 0)
   check('the same instant written in UTC counts',
-    grade(make({ turn: answered, files: { 'schedules/bank.cmk': at('at 2026-09-28T07:00:00Z') } }), { expect: spec('follow-up') }).length === 0)
+    grade(make({ turn: answered, files: { 'schedules/bank.cmk': at('at 2026-09-28T07:00:00Z') } }), tomorrow).length === 0)
   check('09:00 UTC is not 09:00 Paris',
-    grade(make({ turn: answered, files: { 'schedules/bank.cmk': at('at 2026-09-28T09:00:00Z') } }), { expect: spec('follow-up') }).length === 1)
+    grade(make({ turn: answered, files: { 'schedules/bank.cmk': at('at 2026-09-28T09:00:00Z') } }), tomorrow).length === 1)
   check('a cron that fires that morning fires every year, so it does not count',
-    grade(make({ turn: answered, files: { 'schedules/bank.cmk': '---\nwhen: 0 9 28 9 *\ntz: Europe/Paris\n---\n\nCall the bank.\n' } }), { expect: spec('follow-up') }).length === 1)
-  check('tomorrow is read on the clock of the zone, not of UTC',
-    grade(make({ turn: { ...answered, startedAt: '2026-09-27T22:30:00.000Z' }, files: { 'schedules/bank.cmk': at('at 2026-09-28T09:00:00+02:00') } }),
-      { expect: spec('follow-up') }).length === 1)
+    grade(make({ turn: answered, files: { 'schedules/bank.cmk': '---\nwhen: 0 9 28 9 *\ntz: Europe/Paris\n---\n\nCall the bank.\n' } }), tomorrow).length === 1)
+  check('the day before the one named does not count',
+    grade(make({ turn: answered, files: { 'schedules/bank.cmk': at('at 2026-09-27T09:00:00+02:00') } }), tomorrow).length === 1)
+  check('the day named counts whenever the turn started',
+    grade(make({ turn: { ...answered, startedAt: '2026-09-27T22:30:00.000Z' }, files: { 'schedules/bank.cmk': at('at 2026-09-28T09:00:00+02:00') } }), tomorrow).length === 0)
   check('a schedule that says something else does not',
-    grade(make({ turn: answered, files: { 'schedules/bank.cmk': '---\nwhen: at 2026-09-28T09:00:00+02:00\n---\n\nWater the plants.\n' } }), { expect: spec('follow-up') }).length === 1)
+    grade(make({ turn: answered, files: { 'schedules/bank.cmk': '---\nwhen: at 2026-09-28T09:00:00+02:00\n---\n\nWater the plants.\n' } }), tomorrow).length === 1)
 
   // Counterexamples: each keeps the superficial success signal and breaks the intent.
   // Every one of these passed before, and the suite reported green alongside them.

@@ -24,7 +24,7 @@ import { send } from '../src/core/send.js'
 import { turnSummary } from '../src/core/spore-dir.js'
 import { stateOf, stop } from '../src/core/state.js'
 import { openWorkspace } from '../src/core/workspace.js'
-import { CASES, REFERENCE_PRICE, TIERS, caseLimits, inputPrice, pricedLimits } from './cases.js'
+import { CASES, REFERENCE_PRICE, TIERS, caseLimits, dated, inputPrice, pricedLimits } from './cases.js'
 import { LATEST, MANIFEST, provenance, runDir } from './record.js'
 import { caseDigest } from './digest.js'
 import { runDeadline } from './schedule.js'
@@ -66,7 +66,7 @@ const fail = (message) => {
   process.exit(2)
 }
 
-const wanted = CASES.filter(item => !argv.only || item.id === argv.only || item.tier === argv.only)
+const wanted = CASES.filter(item => !argv.only || item.id === argv.only || item.tier === argv.only).map(item => dated(item, new Date()))
 if (!wanted.length) fail(`nothing matches "${argv.only}"`)
 if (!process.env.MODEL) fail('$MODEL is not set — this runs a model and costs money')
 const entry = (await loadCuratedCache())[process.env.MODEL]

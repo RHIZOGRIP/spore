@@ -146,18 +146,15 @@ const lastAnswer = (ws, turn) => {
 
 const dayIn = (ms, tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms)
 const timeIn = (ms, tz) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms)
-const daysAfter = (day, n) => {
-  const [y, m, d] = day.split('-').map(Number)
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
-}
 
 /**
- * A one-off schedule firing `days` after the day the turn started, at `at`, both read on the
- * clock of `tz` — which is what "tomorrow at 9:00, Paris time" means wherever the run is. One
+ * A one-off schedule firing on `day` at `at`, both read on the clock of `tz`. The day is the
+ * one the prompt named (`dated` in `cases.js`), not one counted from when the turn started: a
+ * run staged before midnight there and started after it was asked about the earlier day. One
  * firing, so an `at` schedule: a cron that fires that morning fires every year after it too.
  */
-const firing = (ws, turn, { tz, days, at }) => {
-  const day = daysAfter(dayIn(Date.parse(turn.startedAt), tz), days)
+const firing = (ws, { tz, day, at }) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error(`fires.day is ${JSON.stringify(day)}, not a date: grade the case as dated() returns it`)
   const found = readSchedules(ws)
   if (found.some(s => s.parsed.at && dayIn(Date.parse(s.parsed.at), tz) === day && timeIn(Date.parse(s.parsed.at), tz) === at)) return null
   const said = found.map(s => `${s.name}: ${s.parsed.error ?? s.parsed.when}`).join(', ')
@@ -235,7 +232,7 @@ export function grade (ws, item) {
   }
 
   if (expect.fires) {
-    const missed = firing(ws, turn, expect.fires)
+    const missed = firing(ws, expect.fires)
     if (missed) problems.push(missed)
   }
 
