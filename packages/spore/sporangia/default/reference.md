@@ -165,7 +165,9 @@ name, so an extension that is wrong or missing does not matter.
 An image comes back whole: `offset` and `length` slice text, and on an image the record lists
 them under `ignored`. How many you may look at in one turn, and their total size, are in
 `spore.cmk` as `images: [count, size]` — when that line is absent this workspace cannot look at anything
-and `read` says so rather than failing obscurely. Running a program over a picture is
+and `read` says so rather than failing obscurely. A model that takes no images cannot look
+either, whatever the line says: `read` refuses and names the model, and a picture looked at
+earlier, on a model that took it, is a note in its place. Running a program over a picture is
 always available whatever the line says: anything on the box that reads images runs under
 `exec`.
 

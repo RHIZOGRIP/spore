@@ -4,6 +4,17 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.72.1] — Fixed: a picture no longer blocks a spore whose model takes no images
+
+### Fixed
+
+- **A picture no longer blocks a spore whose model takes no images.** `read` on an image is
+  refused when the model's catalog entry lists no `image` among its input formats, and says
+  which model. Before, the picture went into the transcript, the provider refused the call, and
+  every later turn failed the same way, with no way out for the person. A picture already in a
+  transcript is sent as a note in its place while the model takes none, so a spore blocked this
+  way answers again.
+
 ## [1.72.0] — Added: a spore can keep a cell and ask it again
 
 ### Added

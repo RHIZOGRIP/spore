@@ -5,7 +5,9 @@
  *   - a tool call with no result is answered as interrupted — an agent killed mid-batch leaves
  *     one, and a provider refuses a call without its result;
  *   - a picture that can no longer be read is replaced by a note saying so — an image part
- *     replays by its path, so a file removed after it was looked at would fail every later call.
+ *     replays by its path, so a file removed after it was looked at would fail every later call;
+ *   - every picture is replaced by a note when the model takes none — a picture looked at on
+ *     a model that took it, or before its catalog entry said otherwise, would fail every later call.
  */
 
 import { accessSync, constants } from 'node:fs'
@@ -77,11 +79,17 @@ function unreadable (fileUri) {
   }
 }
 
-function withoutLostPictures (msg, logger) {
+function withoutLostPictures (msg, blind, logger) {
   if (!Array.isArray(msg.content)) return
   let lost = false
   const content = msg.content.map(part => {
-    const why = part?.type === 'image' ? unreadable(part.fileUri) : null
+    if (part?.type !== 'image') return part
+    if (blind) {
+      lost = true
+      logger.warn({ model: blind }, '[transcript] a picture looked at earlier goes to a model that takes none — replaying a note in its place')
+      return { type: 'text', text: `[a picture was looked at here, which ${blind} cannot be shown: it takes no images]` }
+    }
+    const why = unreadable(part.fileUri)
     if (!why) return part
     lost = true
     const path = fileURLToPath(part.fileUri)
@@ -98,13 +106,14 @@ function withoutLostPictures (msg, logger) {
  * @param {Array} messages
  * @param {object} [opts]
  * @param {number} [opts.maxResultSize=50000] — max chars per tool_result content
+ * @param {string|null} [opts.blind] — the model's id when it takes no images
  * @param {object} [opts.logger]
  * @returns {Array} the sanitized messages array
  */
-export function sanitizeTranscript (messages, { maxResultSize = FALLBACK_MAX_RESULT_SIZE, logger = silent } = {}) {
+export function sanitizeTranscript (messages, { maxResultSize = FALLBACK_MAX_RESULT_SIZE, blind = null, logger = silent } = {}) {
   const resolvedCalls = new Set()
 
-  for (const msg of messages) withoutLostPictures(msg, logger)
+  for (const msg of messages) withoutLostPictures(msg, blind, logger)
 
   for (const msg of messages) {
     if (msg.role !== 'tool') continue

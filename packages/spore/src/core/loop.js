@@ -7,6 +7,7 @@ import { refusedResult } from './refusal.js'
 import { withRecovery } from '../resilience/recovery.js'
 import { executeTools } from './tool-kernel.js'
 import { textOf } from './message.js'
+import { takesNoImages } from './media.js'
 import { MAX_EMPTY_RETRIES, accountUsage, resolveEmptyCompletion } from './answer-result.js'
 import { SporeError } from '../observability/errors.js'
 import { limitText } from './units.js'
@@ -91,6 +92,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
   const guard = createLoopGuard({ logger })
   const resilientModel = withRecovery(model, { messages, sessionMemory, logger, emitter, signal, deadline })
   const { contextLimit, maxResultSize } = computeBudget(model)
+  const blind = takesNoImages(model.info()) ? model.id : null
   let lastInputTokens = 0
   let drifted = false
   const emptyState = { retries: 0 }
@@ -205,7 +207,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
     }
 
     emitter.emit('round', { index: i })
-    sanitizeTranscript(messages, { maxResultSize, logger })
+    sanitizeTranscript(messages, { maxResultSize, blind, logger })
     if (contextLimit) compactIfNeeded(messages, { contextLimit, lastInputTokens, logger })
 
     const answerOpts = { tools }

@@ -127,6 +127,7 @@ export function makeTools (WS, maxOutput, trail, {
   writes = [],
   pluginReads = [],
   images = null,
+  blind = null,
   // The root definition's `schedules: [count, interval]`. Granted, `schedules/` is a write
   // island and every file written there is checked against it; absent, the directory is
   // the operator's.
@@ -300,6 +301,9 @@ export function makeTools (WS, maxOutput, trail, {
       if (mime) {
         if (!images) {
           return refuse(`${path} is an image (${mime}), and this spore is not granted images — its definition needs an images: [count, size] line before it can look at one`)
+        }
+        if (blind) {
+          return refuse(`${path} is an image (${mime}), and ${blind} takes no images — its catalog entry lists none among its input formats, so this spore cannot look at it. Say so to whoever asked, and work from text`)
         }
         if (looked.count >= images.count) {
           return refuse(`${images.count} image(s) is all this turn may look at — the rest of the work has to happen without another, or in the next turn`)

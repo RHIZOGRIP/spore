@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { sniffImage } from '../src/core/media.js'
+import { sniffImage, takesNoImages } from '../src/core/media.js'
 import { parseDefinition, sizeBytes } from '../src/delegation/definition.js'
 import { kernelOf } from './fixtures/collaborators.js'
 import { estimateTokens } from '../src/resilience/context-guard.js'
@@ -77,6 +77,19 @@ describe('read returns the picture', () => {
     const result = await tools({}).read({ path: 'data/shot.png' })
     expect(result).toMatch(/not granted images/)
     expect(result).toMatch(/images: \[count, size\]/)
+  })
+
+  it('refuses when the model takes no images, naming the model', async () => {
+    writeFileSync(resolve(WS, 'data/shot.png'), PNG)
+    const result = await tools({ images: { count: 4, bytes: 1_000_000 }, blind: 'acme/text-only' }).read({ path: 'data/shot.png' })
+    expect(result).toMatch(/acme\/text-only takes no images/)
+  })
+
+  it('reads a model\'s catalog entry for whether it takes images', () => {
+    expect(takesNoImages({ inputFormat: ['text'] })).toBe(true)
+    expect(takesNoImages({ inputFormat: ['text', 'image'] })).toBe(false)
+    expect(takesNoImages({ contextTokenLimit: 1000 })).toBe(false)
+    expect(takesNoImages(null)).toBe(false)
   })
 
   it('comes back whole whatever slice is asked for, and the record says what was ignored', async () => {

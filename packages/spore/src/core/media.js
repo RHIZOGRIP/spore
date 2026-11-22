@@ -17,6 +17,12 @@ const starts = (buf, bytes) => bytes.every((b, i) => buf[i] === b)
 
 export const SNIFF_BYTES = 16
 
+/**
+ * Whether a catalog entry says its model takes no pictures. An entry that lists no input
+ * formats, or no entry at all, says nothing, and the provider is then the one to answer.
+ */
+export const takesNoImages = (info) => Array.isArray(info?.inputFormat) && !info.inputFormat.includes('image')
+
 export function sniffImage (buf) {
   if (!buf || buf.length < 4) return null
   for (const { mime, bytes } of MAGIC) {

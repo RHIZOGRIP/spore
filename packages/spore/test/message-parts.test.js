@@ -80,6 +80,19 @@ describe('a message whose content is parts', () => {
     expect(messages[0].content[1]).toEqual({ type: 'text', text: `[a picture was looked at here: ${path}, which can no longer be read (EACCES)]` })
   })
 
+  it('becomes a note when the model takes no images, on disk or inline', () => {
+    const path = picture('unseen.jpg')
+    const messages = [
+      asked,
+      { role: 'tool', toolCallId: 'c1', toolName: 'read', content: [{ type: 'text', text: 'looked' }, { type: 'image', fileUri: pathToFileURL(path).href, mimeType: 'image/jpeg' }] },
+      { role: 'user', content: [{ type: 'text', text: 'see this' }, { type: 'image', fileUri: 'data:image/png;base64,iVBORw==', mimeType: 'image/png' }] }
+    ]
+    sanitizeTranscript(messages, { maxResultSize: 10000, blind: 'acme/text-only' })
+    const note = { type: 'text', text: '[a picture was looked at here, which acme/text-only cannot be shown: it takes no images]' }
+    expect(messages[1].content).toEqual([{ type: 'text', text: 'looked' }, note])
+    expect(messages[2].content[1]).toEqual(note)
+  })
+
   it('keeps a picture that is inline rather than on disk', () => {
     const inline = { type: 'image', fileUri: 'data:image/png;base64,iVBORw==', mimeType: 'image/png' }
     const messages = [{ role: 'user', content: [{ type: 'text', text: 'see this' }, inline] }]

@@ -22,6 +22,7 @@ import { createSessionMemory } from '../resilience/session-memory.js'
 import { makeTools, recordRefusals } from '../tools/make-tools.js'
 import { answerCheck } from './answer-check.js'
 import { loop } from './loop.js'
+import { takesNoImages } from './media.js'
 import { describeCall } from './call-table.js'
 import { COMPACTED, marked } from './marks.js'
 import { CELLS_DIR, DATA_DIR, appendCompaction, linkTurnTmp, appendTranscript, fromPerson, inboxConsumed, keptCells, readInbox, readInboxFrom, readTreeKey, countSaidSoFar, runningLimits, turnTmpOf, writableDirs, writeOutcome } from './spore-dir.js'
@@ -252,6 +253,7 @@ export async function runSpore ({
     writes,
     pluginReads,
     images,
+    blind: takesNoImages(model.info()) ? modelId : null,
     schedules,
     unanswered: () => person
   })

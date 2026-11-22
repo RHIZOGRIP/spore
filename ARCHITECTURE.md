@@ -162,10 +162,17 @@ across a long conversation is compaction. A precursor may declare its own.
 An image carries no characters and about a thousand tokens, so `estimateTokens` counts one
 as 6000 characters (`src/resilience/context-guard.js`).
 
-**The grant is not checked against the model.** A definition may name a text-only model and grant
-images, and the refusal then comes from the provider mid-turn — the same bargain `tools` makes
-with a model that has no tool support. Whether a given model can drive this runtime is the
-conformance suite's question, answered per model.
+**The grant is checked against the model's catalog entry.** When the entry's `inputFormat` lists
+no `image`, `read` refuses the picture and names the model, and every image part already in the
+transcript is replaced by a note before each call (`sanitizeTranscript`): a part the model
+refuses fails every later call, and a spore's model can change to a text-only one after a
+picture was looked at. The stored transcript keeps the part, so a model that takes images sees
+the picture again.
+
+An entry that lists no input formats, or a model with no entry, says nothing (`takesNoImages`,
+`src/core/media.js`): the picture is sent and the provider answers. A catalog entry that wrongly
+lists `image` ends the same way, with the provider refusing the call and every later one until
+the entry is corrected.
 
 ### Two guards on an image path
 

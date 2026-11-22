@@ -555,8 +555,8 @@ images: [4, 10MB]
 Accepted at both levels. A two-item list: at most `count` images, together at most `size` bytes,
 that `read` may show the model in one turn. `count` is a whole number, and `size` is a size of at
 least one byte. This pair is intake per turn, not a soft/hard pair. Absent, `read` on an image is
-refused with that reason. The grant is not checked against the model, so a text-only model granted
-images fails at the provider
+refused with that reason. A model whose catalog entry lists no `image` among its input formats
+cannot look either: `read` refuses and names the model
 ([Looking at a picture is a read](../ARCHITECTURE.md#looking-at-a-picture-is-a-read)).
 
 ### `reasoning`
