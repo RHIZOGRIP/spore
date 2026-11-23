@@ -63,7 +63,7 @@ The grammar has nothing else: no nesting, no multi-line values, no defaults.
 - **A key written twice** is refused.
 - **An unknown field** is refused, and the message lists every field. A dotted key `a.b` that is
   not one of the named fields is read as [`<enzyme>.with`](#enzymewith) when `a` is an enzyme
-  the file grants. A single value is read as [`<plugin>.<option>`](#pluginoption), and refused
+  the file grants, and as [`<check>.with`](#check) when `a` is the check it names. A single value is read as [`<plugin>.<option>`](#pluginoption), and refused
   when `a` is not a plugin the file uses. A list is read as [`<source>.<param>`](#sourceparam),
   and refused when `a` is not a source the file grants. So a plugin's source and its options
   share the plugin's name and never collide. A dotted key whose first part is a field with
@@ -119,6 +119,8 @@ that level. **Absent** says what leaving the field out means where it is accepte
 | [`cost`](#rounds-cost-wall) | `[soft, hard]` amounts | required | required | — | dollars per turn; the spore's covers its cells | [The model broker](../ARCHITECTURE.md#the-model-broker) |
 | [`wall`](#rounds-cost-wall) | `[soft, hard]` durations | required | required | — | elapsed time per turn | [Grants, limits…](../ARCHITECTURE.md#grants-limits-and-how-a-turn-ends) |
 | [`on-wrap`](#on-wrap) | `keep` or `discard` | refused | required | — | what a cell's wrapped answer is worth | [Format](../ARCHITECTURE.md#format) |
+| [`check`](#check) | name | refused | optional | not checked | the answer check of the spore that reads this cell's answer | [Answer checks](../ARCHITECTURE.md#answer-checks) |
+| [`<check>.with`](#check) | list of paths | refused | optional | the program alone | files and directories the check needs beside itself | same |
 | [`extend.rounds`](#extend) | count | optional | refused | cannot be raised | ceiling for raising hard `rounds` mid-turn | [Changing a running turn's limits](../ARCHITECTURE.md#changing-a-running-turns-limits) |
 | [`extend.cost`](#extend) | amount | optional | refused | cannot be raised | ceiling for raising hard `cost` mid-turn | same |
 | [`extend.wall`](#extend) | duration | optional | refused | cannot be raised | ceiling for raising hard `wall` mid-turn | same |
@@ -375,6 +377,38 @@ what a cell's answer is worth when the cell wrapped at a soft limit instead of f
 - `discard` throws it away and writes the continuation record instead.
 
 Choose `discard` when a partial result cannot be told from a complete one by whatever reads it.
+
+### `check`
+
+```
+check: extraction
+extraction.with: [data/schema.json]
+```
+
+**A precursor's alone.** It names an answer check the spore keeps: `checks/extraction.check`, an
+executable program, or `checks/extraction.check.js`, run with node. Before the cell ends on a
+plain-text answer, the program reads it, under the contract of
+[an answer check](#an-answer-check): it gets the answer on its standard input, prints
+`{ "ok": true }` or `{ "tell": "<what is wrong>" }`, and has 10 seconds. On `tell` the answer goes
+back to the cell once, and the cell's next answer is the one written to `--answer`. A program
+that fails, runs out of time or prints anything else lets the answer out.
+
+- **No `check`, no check.** The spore's own `checks/answer.check` reads the spore's answers and
+  never a cell's.
+- **`<check>.with`** lists what the program needs beside itself, as
+  [`<enzyme>.with`](#enzymewith) does: paths relative to the spore's workspace, hashed with the
+  program when the cell starts. A change to any of them while the cell runs refuses the check,
+  and the answer goes out unchecked.
+- **Where it runs.** The cell cannot reach `checks/`, so its supervisor runs the program, as it
+  runs an enzyme: in the cell's workspace, not read-only. The program finds its files from its
+  own location.
+- **Program only.** A check that prints `{ "ask": true }` gave no verdict: a cell starts no cell.
+- **Refused when the spawn is planned:** a name the spore keeps no program for, a `.check` that
+  is not executable, a `<check>.with` path that is missing, and a name an enzyme or a source of
+  the same precursor already has.
+- **The correction is the cell's.** It costs a round of the cell's `rounds`, `cost` and `wall`.
+- **Recorded** as `answer_check` events in the cell's workspace, each with `check`, and as
+  `check` (name and hash) in the cell's frame.
 
 ### `extend.*`
 
@@ -867,6 +901,9 @@ goes back to the model once, with what the check said, and the model answers aga
 | `checks/answer.check` | a program, executable; or `checks/answer.check.js`, run with node |
 | `checks/answer.cmk` | a cell, run when there is no program or the program answers `{ "ask": true }` |
 
+These two read the spore's own answers. A cell's answer is read only by the check its precursor
+names ([`check`](#check)), another program in the same directory.
+
 The agent can read `checks/` and cannot write it. Put the files in the sporangium the spore is
 made from (`sporangia/<name>/checks/`), or in the workspace yourself.
 
@@ -921,6 +958,7 @@ A file that parses is checked again later:
 - its `name` differs from its file name;
 - its `model` names a cell model the spore's `cell-models` lacks;
 - an enzyme's path is missing or not executable, or a `<enzyme>.with` path is missing;
+- its `check` names no program in `checks/`, or a `<check>.with` path is missing;
 - it names a source outside the spore's grant.
 
 **When a turn starts:**

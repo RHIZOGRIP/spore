@@ -107,6 +107,25 @@ describe('what a clone carries', () => {
     expect(readFileSync(resolve(to, 'data/lib/templates/bar.svg'), 'utf8')).toBe('<svg/>')
   })
 
+  it('carries what a precursor\'s answer check needs beside itself, with the check', () => {
+    put(from, 'checks/totals.check.js', 'console.log("{}")')
+    put(from, 'data/schema.json', '{}')
+    put(from, 'precursors/triage.cmk', PRECURSOR.replace('on-wrap: keep', 'on-wrap: keep\ncheck: totals\ntotals.with: [data/schema.json]'))
+
+    const carried = cloneCapability(from, to)
+
+    expect(carried.programs).toContain('data/schema.json')
+    expect(readFileSync(resolve(to, 'data/schema.json'), 'utf8')).toBe('{}')
+    expect(existsSync(resolve(to, 'checks/totals.check.js'))).toBe(true)
+  })
+
+  it('refuses a clone missing what a check says it needs', () => {
+    put(from, 'checks/totals.check.js', 'console.log("{}")')
+    put(from, 'precursors/triage.cmk', PRECURSOR.replace('on-wrap: keep', 'on-wrap: keep\ncheck: totals\ntotals.with: [data/schema.json]'))
+
+    expect(() => cloneCapability(from, to)).toThrow(expect.objectContaining({ type: 'CLONE_INCOMPLETE', message: expect.stringMatching(/names the check totals, and data\/schema.json is not there/) }))
+  })
+
   it('refuses a clone missing what an enzyme says it needs, rather than one that fails later', () => {
     put(from, 'precursors/triage.cmk', PRECURSOR.replace('on-wrap: keep', 'on-wrap: keep\nchart.with: [data/lib/helper.js]'))
 

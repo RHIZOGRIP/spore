@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { createModelServer, testSocket, suppliedKey } from './fixtures/model-server.js'
 import { native } from '../src/native.js'
 import { KEY_HEADER } from '../src/infra/socket-request.js'
-import { readTurns } from '../src/core/spore-dir.js'
+import { readEvents, readTurns } from '../src/core/spore-dir.js'
 import { outsideWorkspace } from './fixtures/outside-ws.js'
 import { answers, calls, scriptedMo } from './fixtures/scripted-model.js'
 
@@ -326,5 +326,123 @@ describe('a cell that names sources', () => {
     } finally {
       await sources.close()
     }
+  })
+})
+
+describe('a cell whose precursor names an answer check', () => {
+  // The check reads what it needs from where its spore keeps it, beside `checks/`.
+  const TOTALS = "const { readFileSync } = require('node:fs')\nconst { join } = require('node:path')\nconst { key } = JSON.parse(readFileSync(join(__dirname, '../data/schema.json'), 'utf8'))\nlet said = ''\nprocess.stdin.on('data', d => { said += d }).on('end', () => console.log(JSON.stringify(said.includes(key) ? { ok: true } : { tell: 'the answer has no ' + key })))\n"
+  const args = (part = 'one') => ['--precursor', 'extract', '--ws', `data/${part}`, '--prompt', 'in.md', '--answer', 'data/out.txt']
+  const checked = (part = 'one') => readEvents(resolve(root, 'data', part), { event: 'answer_check' })
+  const extract = (lines = 'check: totals\ntotals.with: [data/schema.json]\n') => precursor('extract',
+    `---\nname: extract\ntools: [read, write, wsexec]\n${lines}rounds: [6, 8]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\non-wrap: discard\n---\n\nYou do what in.md asks.\n`)
+
+  beforeEach(() => {
+    mkdirSync(resolve(root, 'checks'), { recursive: true })
+    writeFileSync(resolve(root, 'checks/totals.check.js'), TOTALS)
+    writeFileSync(resolve(root, 'data/schema.json'), '{"key":"total"}')
+    extract()
+  })
+
+  it('has an answer its check refuses sent back once, and its second answer is the one written', async () => {
+    const seen = []
+    await start(async (input, round) => {
+      seen.push(input)
+      return [answers('{"sum": 3}'), answers('{"total": 3}')][round]
+    })
+
+    const r = await spawnCell(args())
+    expect(r.code, r.stderr).toBe(0)
+
+    expect(seen).toHaveLength(2)
+    expect(JSON.stringify(seen[1])).toContain('[System: before this answer goes out: the answer has no total')
+    expect(readFileSync(resolve(root, 'data/one/data/out.txt'), 'utf8')).toBe('{"total": 3}')
+    expect(checked()).toMatchObject([
+      { round: 0, by: 'program', check: 'totals', verdict: 'tell', tell: 'the answer has no total', told: true, afterTelling: false },
+      { round: 1, by: 'program', check: 'totals', verdict: 'ok', told: false, afterTelling: true }
+    ])
+    const frame = cellFrame('data/one')
+    expect(frame.rounds).toBe(2)
+    expect(frame.check).toMatchObject({ name: 'totals', hash: expect.stringMatching(/^[0-9a-f]{16}$/) })
+  })
+
+  it('answers in one round when its check passes the answer', async () => {
+    await start(async () => answers('{"total": 3}'))
+
+    const r = await spawnCell(args())
+    expect(r.code, r.stderr).toBe(0)
+    expect(cellFrame('data/one').rounds).toBe(1)
+    expect(checked()).toMatchObject([{ round: 0, check: 'totals', verdict: 'ok', told: false }])
+  })
+
+  it('runs a check that is a program of its own', async () => {
+    writeFileSync(resolve(root, 'checks/shell.check'), '#!/bin/sh\ngrep -q total && echo \'{"ok":true}\' || echo \'{"tell":"no total"}\'\n')
+    chmodSync(resolve(root, 'checks/shell.check'), 0o755)
+    extract('check: shell\n')
+    await start(async (input, round) => [answers('nothing'), answers('total: 3')][round])
+
+    const r = await spawnCell(args())
+    expect(r.code, r.stderr).toBe(0)
+    expect(readFileSync(resolve(root, 'data/one/data/out.txt'), 'utf8')).toBe('total: 3')
+    expect(checked()).toMatchObject([{ check: 'shell', verdict: 'tell', told: true }, { check: 'shell', verdict: 'ok' }])
+  })
+
+  it('is not checked by its spore\'s own answer check when its precursor names none', async () => {
+    writeFileSync(resolve(root, 'checks/answer.check.js'), "console.log(JSON.stringify({ tell: 'never' }))\n")
+    extract('')
+    await start(async () => answers('{"sum": 3}'))
+
+    const r = await spawnCell(args())
+    expect(r.code, r.stderr).toBe(0)
+    const frame = cellFrame('data/one')
+    expect(frame.rounds).toBe(1)
+    expect(frame.check).toBeUndefined()
+    expect(checked()).toEqual([])
+  })
+
+  it('is refused when its precursor names a check its spore does not keep', async () => {
+    extract('check: absent\n')
+    await start(async () => answers('unreached'))
+
+    const r = await spawnCell(args())
+    expect(r.code).toBe(2)
+    expect(r.stderr).toMatch(/precursor extract names a check its spore does not keep — expected checks\/absent\.check or checks\/absent\.check\.js/)
+    expect(existsSync(resolve(root, 'data/one/spawn.json'))).toBe(false)
+  })
+
+  it('cannot write its check or what the check needs', async () => {
+    await start(async (input, round) => round === 0
+      ? calls('wsexec', { command: `echo '{"key":"sum"}' > '${resolve(root, 'data/schema.json')}'; echo 'console.log("{\\"ok\\":true}")' > '${resolve(root, 'checks/totals.check.js')}'`, out: 'data/tried.txt', err: 'data/why.txt' })
+      : [answers('{"sum": 3}'), answers('{"sum": 4}')][round - 1])
+
+    const r = await spawnCell(args())
+    expect(r.code, r.stderr).toBe(0)
+    expect(readFileSync(resolve(root, 'data/schema.json'), 'utf8')).toBe('{"key":"total"}')
+    expect(readFileSync(resolve(root, 'checks/totals.check.js'), 'utf8')).toBe(TOTALS)
+    expect(checked()).toMatchObject([{ verdict: 'tell', told: true }, { verdict: 'tell', afterTelling: true }])
+  })
+
+  it('lets the answer out when the check changed after the cell started', async () => {
+    await start(async (input, round) => {
+      if (round === 0) writeFileSync(resolve(root, 'data/schema.json'), '{"key":"sum"}')
+      return answers('{"total": 3}')
+    })
+
+    const r = await spawnCell(args())
+    expect(r.code, r.stderr).toBe(0)
+    expect(cellFrame('data/one').rounds).toBe(1)
+    expect(checked()).toMatchObject([{ verdict: 'failed', told: false }])
+    expect(checked()[0].why).toMatch(/totals changed since this cell started/)
+  })
+
+  it('gives two cells of one fan-out the same check, hashed at each spawn', async () => {
+    mkdirSync(resolve(root, 'data/two'), { recursive: true })
+    writeFileSync(resolve(root, 'data/two/in.md'), 'extract')
+    await start(async () => answers('{"total": 3}'))
+
+    expect((await spawnCell(args('one'))).code).toBe(0)
+    expect((await spawnCell(args('two'))).code).toBe(0)
+    expect(cellFrame('data/two').check).toEqual(cellFrame('data/one').check)
+    expect(checked('two')).toMatchObject([{ check: 'totals', verdict: 'ok' }])
   })
 })

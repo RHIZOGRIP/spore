@@ -91,6 +91,7 @@ try {
     limits: plan.precursor.limits,
     images: plan.precursor.images,
     reasoning: plan.precursor.reasoning,
+    check: plan.precursor.check ? { name: plan.precursor.check.name, client: process.env.SPORE_ENZYME } : null,
     cacheTtl: '5m',
     // A kept cell asked again goes on from all it said and did before, as a spore's turn does.
     initialMessages: plan.resumed ? readTranscript(plan.ws) : [],
@@ -130,6 +131,7 @@ try {
     // What the cell actually ran against, so a result stays attributable to a
     // program after the file has moved on.
     ...(plan.precursor.enzymes.length ? { enzymes: Object.fromEntries(plan.precursor.enzymes.map(e => [e.name, e.hash])) } : {}),
+    ...(plan.precursor.check ? { check: plan.precursor.check } : {}),
     answer: answered ? plan.answer : null,
     stopReason: result.stopReason || null,
     continuation,

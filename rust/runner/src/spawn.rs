@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use serde_json::json;
 use spore_runner::broker::{self, Served};
-use spore_runner::enzymes::{hash_enzyme, Enzyme, Enzymes};
+use spore_runner::enzymes::{hash_enzyme, Check, Enzyme, Enzymes};
 use spore_runner::host::{HostArgs, Models};
 use spore_runner::model::{self, Model};
 use spore_runner::plan::{dream_for, plan_resume, plan_spawn, resolve, Asked, Plan};
@@ -411,6 +411,12 @@ async fn main() {
     // Under a turn, a cell's grants sit inside its agent's confinement; outside one, no agent
     // stands above it, so an enzyme would run in this unconfined broker and a read would
     // be the cell's own grant over the host.
+    if let (Some(_), Some(check)) = (&standalone, &plan.check) {
+        fail(format!(
+            "precursor {} names the check {}, and a cell outside any turn is refused one — nothing above it bounds what the program would reach",
+            plan.precursor.name, check.name
+        ));
+    }
     if standalone.is_some()
         && !(plan.precursor.enzymes.is_empty() && plan.precursor.reads.is_empty())
     {
@@ -547,12 +553,33 @@ async fn main() {
             });
         }
         let hashes: Vec<String> = enzymes.iter().map(|e| e.hash.clone()).collect();
-        let hosted = if enzymes.is_empty() {
+        let check = match &plan.check {
+            None => None,
+            Some(named) => {
+                let hash = hash_enzyme(&named.command, &named.with).ok_or_else(|| {
+                    format!(
+                        "cannot read {} or what it needs to hash it",
+                        named.command.display()
+                    )
+                })?;
+                Some(Check {
+                    program: Enzyme {
+                        name: named.name.clone(),
+                        command: named.command.clone(),
+                        with: named.with.clone(),
+                        hash,
+                    },
+                    node: named.script.then(|| node.clone()),
+                })
+            }
+        };
+        let check_hash = check.as_ref().map(|c| c.program.hash.clone());
+        let hosted = if enzymes.is_empty() && check.is_none() {
             None
         } else {
-            let broker = Enzymes::new(enzymes, plan.ws.clone());
+            let broker = Enzymes::new(enzymes, check, plan.ws.clone());
             let dir = std::env::var("SPORE_SOCKET_DIR").map_err(|_| {
-                "SPORE_SOCKET_DIR is not set — a cell with enzymes is spawned by a spore's agent, whose runner names the directory its sockets go in".to_string()
+                "SPORE_SOCKET_DIR is not set — a cell with enzymes or an answer check is spawned by a spore's agent, whose runner names the directory its sockets go in".to_string()
             })?;
             let path = spore_socket_path(Path::new(&dir), "enzymes")
                 .map_err(|e| format!("cannot make the enzymes socket's directory — {e}"))?
@@ -571,8 +598,12 @@ async fn main() {
         passed.insert("SPORE_WS".into(), plan.ws.display().to_string());
         passed.insert(
             "SPORE_PLAN".into(),
-            plan.for_worker(args.answer.as_deref().expect("planned"), &hashes)
-                .to_string(),
+            plan.for_worker(
+                args.answer.as_deref().expect("planned"),
+                &hashes,
+                check_hash.as_deref(),
+            )
+            .to_string(),
         );
         passed.insert("SPORE_ENZYME".into(), client.display().to_string());
         let socket = match (&own_model, &model_socket) {

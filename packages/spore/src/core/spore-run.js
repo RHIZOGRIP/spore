@@ -20,7 +20,7 @@ import { maxResultSizeForContext } from '../resilience/transcript.js'
 import { compactHistory, historyBound, historyOver } from '../resilience/compaction.js'
 import { createSessionMemory } from '../resilience/session-memory.js'
 import { makeTools, recordRefusals } from '../tools/make-tools.js'
-import { answerCheck } from './answer-check.js'
+import { answerCheck, cellAnswerCheck } from './answer-check.js'
 import { loop } from './loop.js'
 import { takesNoImages } from './media.js'
 import { describeCall } from './call-table.js'
@@ -81,6 +81,8 @@ export async function runSpore ({
   images = null,
   // `reasoning:` from the definition: what each model call asks for besides the answer.
   reasoning = [],
+  // A cell's answer check, the one its precursor names: `{ name, client }`, run by its supervisor.
+  check = null,
   // `schedules: [count, interval]` from the root definition: whether `schedules/` is the
   // agent's to write, and what bounds it.
   schedules = null,
@@ -419,7 +421,9 @@ export async function runSpore ({
       deadline: () => wallFrom + live.wall.hard,
       // A file put there by `wsexec` was never checked by `write`.
       refusedSchedules: () => schedules ? refusedSince(WS, wallFrom, schedules) : [],
-      checkAnswer: answerCheck({ ws: WS, scratch: turnTmpOf(trail.root), run }),
+      checkAnswer: check
+        ? cellAnswerCheck({ ...check, scratch: turnTmpOf(trail.root), run })
+        : answerCheck({ ws: WS, scratch: turnTmpOf(trail.root), run }),
       ledger,
       emitter: events,
       mutators: new Set(['write', 'edit', 'wsexec']),

@@ -29,7 +29,7 @@ pub use schedule::{parse_schedule, Due, Schedule};
 /// The tool suite, by name. Contract: ARCHITECTURE.md, "Tools".
 pub const TOOL_NAMES: [&str; 7] = ["read", "write", "edit", "exec", "wsexec", "ask", "quiet"];
 
-const FIELDS: [&str; 45] = [
+const FIELDS: [&str; 46] = [
     "name",
     "description",
     "model",
@@ -46,6 +46,7 @@ const FIELDS: [&str; 45] = [
     "cost",
     "wall",
     "on-wrap",
+    "check",
     "retain",
     "history",
     "extend.rounds",
@@ -212,6 +213,14 @@ pub struct Enzyme {
     pub with: Vec<String>,
 }
 
+/// The answer check a precursor names, kept by its spore as `checks/<name>.check`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Check {
+    pub name: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub with: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Grant {
     pub name: String,
@@ -337,6 +346,8 @@ pub struct Definition {
     pub limits: Limits,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_wrap: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub check: Option<Check>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retain: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1171,7 +1182,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
     let fields = parse_frontmatter(&document[1])?;
 
     // `<source>.<param>` narrows what a granted source may be asked for, `<enzyme>.with`
-    // names what a granted enzyme needs beside itself, and `<plugin>.<option>` chooses how a used
+    // names what a granted enzyme needs beside itself, `<check>.with` what the answer check does, and `<plugin>.<option>` chooses how a used
     // plugin serves this spore — the one key shape the schema does not name in advance, since
     // which are legal depends on what this definition grants. A name carries no dot, so the split
     // is unambiguous, and a source and an enzyme may not share one. A source and a plugin may: a
@@ -1190,6 +1201,28 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         Some(Value::Scalar(s)) => vec![s.as_str()],
         None => Vec::new(),
     };
+    let check_name = match fields.get("check") {
+        Some(Value::Scalar(name)) if TOOL_NAME.is_match(name) => Some(name.as_str()),
+        Some(other) => {
+            return Err(cannot_read(
+                "check",
+                &other.text(),
+                "the name of one check its spore keeps, as check: extraction for checks/extraction.check",
+            ))
+        }
+        None => None,
+    };
+    if let Some(name) = check_name {
+        if !opts.cell {
+            return Err("declares check, which is a precursor's — a spore's own answers are checked by checks/answer.check, which needs no naming".into());
+        }
+        if enzyme_names.contains(&name) || granted.contains(&name) {
+            return Err(format!(
+                "names a check and {} both \"{name}\" — {name}.with could mean either, so rename one",
+                if granted.contains(&name) { "a source" } else { "an enzyme" }
+            ));
+        }
+    }
     if let Some(both) = enzyme_names.iter().find(|name| granted.contains(name)) {
         return Err(format!(
             "grants a source and an enzyme both named \"{both}\" — {both}.<field> could mean either, so rename one"
@@ -1205,10 +1238,11 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
                 FIELDS.join(", ")
             ));
         };
-        if enzyme_names.contains(&&scoped[1]) {
+        if enzyme_names.contains(&&scoped[1]) || check_name == Some(&scoped[1]) {
             if &scoped[2] != "with" {
                 return Err(format!(
-                    "has \"{key}\" — an enzyme takes only {}.with, the files and directories it needs beside itself",
+                    "has \"{key}\" — {} takes only {}.with, the files and directories it needs beside itself",
+                    if check_name == Some(&scoped[1]) { "a check" } else { "an enzyme" },
                     &scoped[1]
                 ));
             }
@@ -1364,6 +1398,11 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         (false, None) => None,
     };
 
+    let check = check_name.map(|name| Check {
+        name: name.into(),
+        with: list(&fields, &format!("{name}.with")).to_vec(),
+    });
+
     let (reads, writes) = parse_grants(list(&fields, "reads"), list(&fields, "writes"))?;
     if opts.cell && !writes.is_empty() {
         return Err("declares writes — a cell works in its own directory, and its parent brings what it made into the one the parent writes".into());
@@ -1398,7 +1437,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         if FIELDS.contains(&key.as_str()) {
             continue;
         }
-        if enzyme_names.contains(&&scoped[1]) {
+        if enzyme_names.contains(&&scoped[1]) || check_name == Some(&scoped[1]) {
             continue;
         }
         let Value::List(values) = value else { continue };
@@ -1784,6 +1823,7 @@ pub fn parse_definition(source: &str, opts: &Options) -> Result<Definition, Stri
         scopes,
         limits,
         on_wrap,
+        check,
         retain,
         history,
         extend,
@@ -2268,6 +2308,49 @@ mod tests {
     }
 
     const CHART: &str = "---\nname: charts\ntools: [exec]\nenzymes: [chart=tools/chart.mjs]\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\non-wrap: keep\n---\n\nYou chart.\n\n:::enzyme chart\nDraws a chart.\n:::\n";
+
+    #[test]
+    fn reads_the_answer_check_a_precursor_names() {
+        let named = |lines: &str| {
+            cell(&CHART.replace("on-wrap: keep\n", &format!("on-wrap: keep\n{lines}")))
+        };
+        assert_eq!(cell(CHART).unwrap().check, None);
+        assert_eq!(
+            named("check: extraction\nextraction.with: [data/schema.json]\n")
+                .unwrap()
+                .check,
+            Some(Check {
+                name: "extraction".into(),
+                with: vec!["data/schema.json".into()]
+            })
+        );
+        assert_eq!(
+            named("check: extraction\n").unwrap().check.unwrap().with,
+            Vec::<String>::new()
+        );
+        assert!(named("check: [a, b]\n")
+            .unwrap_err()
+            .contains("has a check it cannot read"));
+        assert!(named("check: checks/extraction.check\n")
+            .unwrap_err()
+            .contains("has a check it cannot read"));
+        assert_eq!(
+            named("check: chart\n").unwrap_err(),
+            "names a check and an enzyme both \"chart\" — chart.with could mean either, so rename one"
+        );
+        assert!(named("check: extraction\nextraction.timeout: 5s\n")
+            .unwrap_err()
+            .contains("a check takes only extraction.with"));
+        assert!(named("extraction.with: [data/schema.json]\n").is_err());
+        let known: Vec<String> = TOOLS.iter().map(|t| t.to_string()).collect();
+        let root = parse_definition(
+            "---\nname: c\nmodel: a/b\ncheck: extraction\nrounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\n---\n\nYou work.\n",
+            &Options { known_tools: &known, cell: false, seed: false },
+        );
+        assert!(root
+            .unwrap_err()
+            .contains("declares check, which is a precursor's"));
+    }
 
     #[test]
     fn reads_what_an_enzyme_needs_beside_itself() {

@@ -4,6 +4,9 @@
 //!
 //! `POST /run?enzyme=<name>&arg=<a>&arg=<b>` — the request body is the enzyme's stdin, and the
 //! response is NDJSON: `stdout` and `stderr` events carrying base64, then one `exit`.
+//!
+//! `POST /check` runs the answer check the cell's precursor names the same way, the answer as
+//! the request body: the check is its spore's, in `checks/`, which the cell cannot reach either.
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -87,8 +90,16 @@ pub struct Enzyme {
     pub hash: String,
 }
 
+/// The answer check a cell's precursor names: its program, hashed like an enzyme, and the Node
+/// that runs it when it is a script.
+pub struct Check {
+    pub program: Enzyme,
+    pub node: Option<String>,
+}
+
 pub struct Enzymes {
     enzymes: HashMap<String, Enzyme>,
+    check: Option<Check>,
     cwd: PathBuf,
     live: Mutex<HashMap<u64, u32>>,
     next: AtomicU64,
@@ -157,9 +168,10 @@ async fn relay(mut pipe: impl AsyncRead + Unpin, kind: &'static str, tx: mpsc::S
 }
 
 impl Enzymes {
-    pub fn new(enzymes: Vec<Enzyme>, cwd: PathBuf) -> Arc<Enzymes> {
+    pub fn new(enzymes: Vec<Enzyme>, check: Option<Check>, cwd: PathBuf) -> Arc<Enzymes> {
         Arc::new(Enzymes {
             enzymes: enzymes.into_iter().map(|t| (t.name.clone(), t)).collect(),
+            check,
             cwd,
             live: Mutex::default(),
             next: AtomicU64::new(0),
@@ -173,12 +185,39 @@ impl Enzymes {
     }
 
     pub async fn route(self: Arc<Self>, req: Request<Incoming>) -> Response<Body> {
-        if req.method() != Method::POST || req.uri().path() != "/run" {
+        let check = req.uri().path() == "/check";
+        if req.method() != Method::POST || !(check || req.uri().path() == "/run") {
             return not_found_response(req.method(), req.uri().path());
         }
-        match self.run(req) {
+        let ran = if check {
+            self.check(req)
+        } else {
+            self.run(req)
+        };
+        match ran {
             Ok(answered) => answered,
             Err(refusal) => refusal.response(),
+        }
+    }
+
+    fn check(self: &Arc<Self>, req: Request<Incoming>) -> Result<Response<Body>, Refusal> {
+        let Some(check) = &self.check else {
+            return Err(Refusal::new(
+                StatusCode::NOT_FOUND,
+                "CHECK_UNKNOWN",
+                "this cell's precursor names no answer check",
+                "",
+            ));
+        };
+        let program = &check.program;
+        match &check.node {
+            Some(node) => self.start(
+                program,
+                Path::new(node),
+                vec![program.command.display().to_string()],
+                req,
+            ),
+            None => self.start(program, &program.command, Vec::new(), req),
         }
     }
 
@@ -217,6 +256,16 @@ impl Enzymes {
                 "",
             ));
         };
+        self.start(enzyme, &enzyme.command, args, req)
+    }
+
+    fn start(
+        self: &Arc<Self>,
+        enzyme: &Enzyme,
+        program: &Path,
+        args: Vec<String>,
+        req: Request<Incoming>,
+    ) -> Result<Response<Body>, Refusal> {
         // The cell was told about the program that was there when it started. Answers from
         // an edited one would come from another program with nothing saying which — the
         // kind of wrong that reads as right. Coherence, not access: the parent could always
@@ -251,7 +300,7 @@ impl Enzymes {
             Some(_) => {}
         }
 
-        let mut child = Command::new(&enzyme.command)
+        let mut child = Command::new(program)
             .args(&args)
             .current_dir(&self.cwd)
             .stdin(Stdio::piped())
@@ -366,6 +415,15 @@ mod tests {
         }
 
         fn serve(&self, names: &[&str], cwd: &Path) -> (Arc<Enzymes>, PathBuf) {
+            self.serve_checked(names, None, cwd)
+        }
+
+        fn serve_checked(
+            &self,
+            names: &[&str],
+            check: Option<Check>,
+            cwd: &Path,
+        ) -> (Arc<Enzymes>, PathBuf) {
             let enzymes = names
                 .iter()
                 .map(|name| {
@@ -378,7 +436,7 @@ mod tests {
                     }
                 })
                 .collect();
-            let enzymes = Enzymes::new(enzymes, cwd.to_path_buf());
+            let enzymes = Enzymes::new(enzymes, check, cwd.to_path_buf());
             let socket = self.dir.join("t.sock");
             let _ = std::fs::remove_file(&socket);
             let served = enzymes.clone();
@@ -527,6 +585,54 @@ mod tests {
         let r = call(&scene.client(true), &socket, &["wordcount"], b"a\nb\nc\n").await;
         assert_eq!(r.code, 0, "{}", r.stderr);
         assert_eq!(r.out().trim(), "3");
+    }
+
+    #[tokio::test]
+    async fn runs_the_answer_check_on_the_answer_and_refuses_one_that_changed() {
+        let scene = Scene::new();
+        let schema = scene.dir.join("schema.json");
+        std::fs::write(&schema, "total").unwrap();
+        let program = scene.script(
+            "extraction.check",
+            &format!("grep -q \"$(cat '{}')\" && echo '{{\"ok\":true}}' || echo '{{\"tell\":\"no total\"}}'", schema.display()),
+        );
+        let with = vec![schema.clone()];
+        let check = Check {
+            program: Enzyme {
+                name: "extraction".into(),
+                hash: hash_enzyme(&program, &with).unwrap(),
+                command: program,
+                with,
+            },
+            node: None,
+        };
+        let (_, socket) = scene.serve_checked(&[], Some(check), &scene.dir);
+        let client = scene.client(true);
+        let r = call(&client, &socket, &["--check"], b"{\"total\": 3}").await;
+        assert_eq!(r.code, 0, "{}", r.stderr);
+        assert_eq!(r.out().trim(), "{\"ok\":true}");
+        let r = call(&client, &socket, &["--check"], b"{\"sum\": 3}").await;
+        assert_eq!(r.out().trim(), "{\"tell\":\"no total\"}");
+
+        std::fs::write(&schema, "sum").unwrap();
+        let r = call(&client, &socket, &["--check"], b"{\"sum\": 3}").await;
+        assert_eq!(r.code, 127);
+        assert!(
+            r.stderr
+                .contains("extraction changed since this cell started"),
+            "{}",
+            r.stderr
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cell_whose_precursor_names_no_check_has_none_to_run() {
+        let scene = Scene::new();
+        scene.script("wordcount", "wc -l");
+        let (_, socket) = scene.serve(&["wordcount"], &scene.dir);
+        let r = call(&scene.client(true), &socket, &["--check"], b"an answer").await;
+        assert_eq!(r.code, 127);
+        assert!(r.stderr.contains("names no answer check"), "{}", r.stderr);
     }
 
     #[tokio::test]

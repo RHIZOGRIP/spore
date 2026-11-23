@@ -53,6 +53,8 @@ material actually supports.
 | `sources` | endpoints it may call by name through `$SPORE_SOURCE` |
 | `<source>.<param>` | the values it may ask that source for — one value is filled for it |
 | `images` | `[count, size]`, as `[4, 10MB]` — how many pictures the sub-agent may look at with `read` in its turn, and their total size. Absent means none |
+| `check` | the name of a check your owner keeps in `checks/` — `check: extraction` for `checks/extraction.check`. It reads the sub-agent's answer before the answer is written, and sends it back once with what is wrong. You cannot write a check; a name `checks/` does not hold refuses the spawn |
+| `<check>.with` | files that check needs beside itself, relative to your workspace, as `extraction.with: [data/schema.json]` |
 | `enzymes` | programs the sub-agent may call that are not built in — `name=path`, or a bare path taking its basename, which must then be a name itself (`tools/plot`, not `tools/plot.py`) |
 
 Every limit is required and every one is a soft/hard pair, hard strictly past soft.

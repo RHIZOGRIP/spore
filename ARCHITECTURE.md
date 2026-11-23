@@ -1605,7 +1605,23 @@ through the turn's own socket, and what it spends is drawn from the turn's allow
 spore's `cost` like any cell. Its prompt is the contract and the answer; its reply is the JSON
 object.
 
-Each verdict is an `answer_check` event: `round`, `by` (`program` or `cell`), `verdict` (`ok`,
+**A cell is checked by the check its precursor names, and by no other.** `check: extraction` in a
+precursor names `checks/extraction.check` (or `.check.js`) of its spore, and the cell's loop runs
+it on the cell's answer under the same contract: told once, no verdict lets the answer out, and
+the correction is a round of the cell's own `rounds`, `cost` and `wall`. A precursor that names
+none makes a cell with no check: the spore's `checks/answer.check` judges the spore's own answers
+and is never applied to a cell. A cell's world is its directory, so it cannot reach `checks/`;
+its supervisor runs the program for it as it runs an enzyme (§Spawn), on `POST /check` of the
+same socket, in the cell's workspace, with the answer as the body. What the program needs beside
+itself is declared as an enzyme's is, `<check>.with: [paths]`, hashed with it when the cell
+starts; a program or a needed file that changed since is refused, which is a check that gave no
+verdict. A name the spore keeps no program for refuses the spawn, as an unknown enzyme does, and
+so does a cell outside any turn. A cell's check is a program alone: one that answers
+`{ "ask": true }` gave no verdict, since a cell starts no cell. The frame carries `check`, its
+name and hash.
+
+Each verdict is an `answer_check` event, in the records of whoever was checked, the spore or the
+cell: `round`, `check` (the check's name, `answer` for a spore's), `by` (`program` or `cell`), `verdict` (`ok`,
 `tell` or `failed`), `tell` or `why`, `told`, and `afterTelling` on the verdict of an answer given
 after a telling. A first answer let out is one more, `released: true` with `because`.
 

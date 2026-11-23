@@ -4,6 +4,31 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.73.0] — Added: a precursor can name an answer check for its cells
+
+### Added
+
+- `check: <name>` in a precursor names an answer check the spore keeps, `checks/<name>.check` or
+  `checks/<name>.check.js`. The cell's loop runs it on the cell's plain-text answer before the
+  cell ends, under the contract of a spore's answer check: the program gets the answer on stdin
+  and prints `{ "ok": true }` or `{ "tell": "…" }`, a `tell` sends the answer back once, and the
+  cell's second answer is the one written. The correction is a round of the cell's own limits.
+  A precursor that names none makes a cell with no check, as before, and the spore's own
+  `checks/answer.check` is never applied to a cell.
+- `<check>.with: [paths]` lists what the program needs beside itself, relative to the spore's
+  workspace, such as a schema every cell of a run is held to. It is hashed with the program when
+  the cell starts, and `spore define --from` carries it.
+- The cell cannot reach `checks/`, so its supervisor runs the program as it runs an enzyme, on
+  `POST /check` of the cell's enzyme socket. `enzyme.js --check` is the client.
+- A spawn is refused when its precursor names a check the spore does not keep, one that is not
+  executable, or a `<check>.with` path that is missing. A cell outside any turn is refused one.
+- A cell's frame carries `check`, the name and hash of the check it ran under.
+
+### Changed
+
+- An `answer_check` event carries `check`, the name of the check that read the answer: `answer`
+  for a spore's own.
+
 ## [1.72.3] — Fixed: the conformance `follow-up` case asks the same thing at every hour
 
 ### Fixed

@@ -33,7 +33,7 @@ const outside = (rel) => rel === '..' || rel.startsWith('..' + sep) || isAbsolut
 
 /**
  * The enzymes a precursor grants, each with what its `<enzyme>.with` says it needs beside
- * itself. `enzymes` is `name=path` resolved against the workspace, so precursors alone clone
+ * itself, and what the answer check it names needs (`<check>.with`). `enzymes` is `name=path` resolved against the workspace, so precursors alone clone
  * into a spore that is refused its first spawn. What an enzyme needs cannot be read off the
  * program — an import is one kind of dependency among several — so it is declared, and a
  * declared path that is not there refuses the clone: carried without it, the enzyme would
@@ -56,26 +56,29 @@ function grantedPrograms (from) {
       continue
     }
     if (definition.error) continue
-    for (const entry of definition.enzymes || []) {
-      for (const path of [entry.path, ...(entry.with || [])]) {
+    const programs = (definition.enzymes || []).map(entry => ({ what: `grants ${entry.name}`, name: entry.name, reader: 'the enzyme', paths: [entry.path, ...(entry.with || [])], program: entry.path }))
+    // The check's program is carried with `checks/`; what it needs beside itself is declared, as an enzyme's is.
+    if (definition.check) programs.push({ what: `names the check ${definition.check.name}`, name: definition.check.name, reader: 'the check', paths: definition.check.with || [], program: null })
+    for (const entry of programs) {
+      for (const path of entry.paths) {
         const rel = relative(from, resolve(from, path))
         if (outside(rel)) {
-          throw incomplete(`${file} grants ${entry.name}, and ${path} is outside the workspace, where a clone cannot carry it`,
+          throw incomplete(`${file} ${entry.what}, and ${path} is outside the workspace, where a clone cannot carry it`,
             'move it into the workspace, or drop it')
         }
         let abs
         try {
           abs = safePath(from, path)
         } catch (e) {
-          throw incomplete(`${file} grants ${entry.name}, and ${path} leads out of the workspace`,
-            `${e.detail || e.message} A clone carries what the enzyme reads, so what it points at has to be inside.`)
+          throw incomplete(`${file} ${entry.what}, and ${path} leads out of the workspace`,
+            `${e.detail || e.message} A clone carries what ${entry.reader} reads, so what it points at has to be inside.`)
         }
         if (!existsSync(abs)) {
-          throw new SporeError(`${file} grants ${entry.name}, and ${path} is not there to carry`, {
+          throw new SporeError(`${file} ${entry.what}, and ${path} is not there to carry`, {
             type: 'CLONE_INCOMPLETE',
-            detail: path === entry.path
+            detail: path === entry.program
               ? 'the program is gone — restore it, or drop the grant'
-              : `${entry.name}.with names it as something the enzyme needs — restore it, or take it out of ${entry.name}.with`
+              : `${entry.name}.with names it as something ${entry.reader} needs — restore it, or take it out of ${entry.name}.with`
           })
         }
         paths.add(rel)

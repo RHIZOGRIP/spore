@@ -3,6 +3,7 @@
  * `checks/answer.check` (or `answer.check.js`), a program given the answer a turn is about to end
  * on, and `checks/answer.cmk`, a cell run when the spore keeps no program or its program answers
  * `{ "ask": true }`. Either answers `{ "ok": true }` or `{ "tell": "<what is wrong>" }`.
+ * A cell has the check its precursor names, `checks/<name>.check`, kept by its spore.
  * Contract: ARCHITECTURE.md, "Answer checks".
  */
 
@@ -66,33 +67,68 @@ const ranText = (ran, started, errAbs) => {
   return null
 }
 
+/** A check's program, run on the answer at `answerAbs` as `exec` runs a command. */
+const programRun = (run, command) => async (dir, answerAbs, sig) => {
+  const printedAbs = join(dir, 'printed')
+  const errAbs = join(dir, 'err')
+  const started = Date.now()
+  const ran = await run({
+    command: command.map(quote).join(' '),
+    inAbs: answerAbs,
+    outAbs: printedAbs,
+    errAbs,
+    confined: true,
+    timeoutMs: CHECK_TIMEOUT_MS,
+    idleMs: CHECK_TIMEOUT_MS,
+    sig
+  })
+  const failed = ranText(ran, started, errAbs)
+  return failed ? { failed } : verdictOf(readFileSync(printedAbs, 'utf8'))
+}
+
+/** One check per answer, in a directory of its own: the program first, the cell when it asks. */
+const checking = ({ scratch, name, byProgram, byCell, noCell }) => {
+  let checked = 0
+  return async (answer, sig) => {
+    const dir = join(scratch, `answer-check-${++checked}`)
+    mkdirSync(dir, { recursive: true })
+    try {
+      const answerAbs = join(dir, 'answer')
+      writeFileSync(answerAbs, answer)
+      const first = byProgram ? await byProgram(dir, answerAbs, sig) : { ask: true }
+      if (!first.ask) return { by: 'program', check: name, ...first }
+      if (!byCell) return { by: 'program', check: name, failed: noCell }
+      return { by: 'cell', check: name, ...await byCell(dir, answer, sig) }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+}
+
+/**
+ * What checks an answer of a cell whose precursor names the check `name`: a program its spore
+ * keeps in `checks/`, which the cell cannot reach, so the cell's supervisor runs it as it runs an
+ * enzyme, through `client`, the cell's `enzyme.js`. `run` is `makeTools`'s.
+ */
+export function cellAnswerCheck ({ name, client, scratch, run }) {
+  return checking({
+    scratch,
+    name,
+    byProgram: programRun(run, [process.execPath, client, '--check']),
+    byCell: null,
+    noCell: 'asked for a cell, and a cell\'s check is a program alone'
+  })
+}
+
 /**
  * What checks an answer of the spore at `ws`, or null when it keeps no check: it answers
- * `{ by, ok: true }`, `{ by, tell }` or `{ by, failed }`, `by` being `program` or `cell`. `run` is
- * `makeTools`'s, so the cell is a cell of the turn, paid from its allowance.
+ * `{ by, check, ok: true }`, `{ by, check, tell }` or `{ by, check, failed }`, `by` being
+ * `program` or `cell`. `run` is `makeTools`'s, so the cell is a cell of the turn, paid from its
+ * allowance.
  */
 export function answerCheck ({ ws, scratch, run }) {
   const { program, cell } = answerChecksIn(ws)
   if (!program && !cell) return null
-  let checked = 0
-
-  const byProgram = async (dir, answerAbs, sig) => {
-    const printedAbs = join(dir, 'printed')
-    const errAbs = join(dir, 'err')
-    const started = Date.now()
-    const ran = await run({
-      command: (program.endsWith('.js') ? [process.execPath, program] : [program]).map(quote).join(' '),
-      inAbs: answerAbs,
-      outAbs: printedAbs,
-      errAbs,
-      confined: true,
-      timeoutMs: CHECK_TIMEOUT_MS,
-      idleMs: CHECK_TIMEOUT_MS,
-      sig
-    })
-    const failed = ranText(ran, started, errAbs)
-    return failed ? { failed } : verdictOf(readFileSync(printedAbs, 'utf8'))
-  }
 
   const byCell = async (dir, answer, sig) => {
     const definition = parseDefinition(readFileSync(cell, 'utf8'), { knownTools: TOOL_NAMES, cell: true })
@@ -122,18 +158,11 @@ export function answerCheck ({ ws, scratch, run }) {
     return verdict.failed ? { failed: `the cell ${verdict.failed}` } : verdict
   }
 
-  return async (answer, sig) => {
-    const dir = join(scratch, `answer-check-${++checked}`)
-    mkdirSync(dir, { recursive: true })
-    try {
-      const answerAbs = join(dir, 'answer')
-      writeFileSync(answerAbs, answer)
-      const first = program ? await byProgram(dir, answerAbs, sig) : { ask: true }
-      if (!first.ask) return { by: 'program', ...first }
-      if (!cell) return { by: 'program', failed: `asked for a cell, and there is no ${CHECK_DIR}/${ANSWER_CHECK}${PRECURSOR_EXT}` }
-      return { by: 'cell', ...await byCell(dir, answer, sig) }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
+  return checking({
+    scratch,
+    name: ANSWER_CHECK,
+    byProgram: program ? programRun(run, program.endsWith('.js') ? [process.execPath, program] : [program]) : null,
+    byCell: cell ? byCell : null,
+    noCell: `asked for a cell, and there is no ${CHECK_DIR}/${ANSWER_CHECK}${PRECURSOR_EXT}`
+  })
 }

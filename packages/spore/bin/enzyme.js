@@ -3,6 +3,7 @@
  * enzyme — call an enzyme the caller has no path to.
  *
  *   enzyme <name> [args...]     socket from $SPORE_ENZYMES
+ *   enzyme --check              the answer check the cell's precursor names, an answer on stdin
  *
  * Self-contained on purpose: it is copied into a sub-agent's workspace, where
  * nothing else of spore is reachable.
@@ -19,6 +20,7 @@ import { fileURLToPath } from 'node:url'
 const keyPath = resolve(dirname(fileURLToPath(import.meta.url)), 'tree.key')
 const socketPath = process.env.SPORE_ENZYMES
 const [name, ...args] = process.argv.slice(2)
+const CHECK = '--check'
 
 if (!socketPath) {
   console.error('enzyme: SPORE_ENZYMES is not set — no enzymes are available here')
@@ -59,10 +61,11 @@ const send = () => {
 }
 
 const query = new URLSearchParams([['enzyme', name], ...args.map(arg => ['arg', arg])])
+const path = name === CHECK ? '/check' : `/run?${query}`
 const req = http.request({
   socketPath,
   method: 'POST',
-  path: `/run?${query}`,
+  path,
   headers: {
     'x-spore-key': key,
     'content-type': 'application/octet-stream',

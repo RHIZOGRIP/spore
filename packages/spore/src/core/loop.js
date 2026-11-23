@@ -58,7 +58,7 @@ const DRIFT_FLOOR = 2_000
  * @param {() => number} opts.deadline — when the turn's hard wall falls, in epoch ms
  * @param {() => Array<{path: string, why: string}>} opts.refusedSchedules — schedules this turn
  *   changed that will not fire as written
- * @param {null|((answer: string, signal: AbortSignal) => Promise<{by: string, ok?: true, tell?: string, failed?: string}>)} opts.checkAnswer
+ * @param {null|((answer: string, signal: AbortSignal) => Promise<{by: string, check: string, ok?: true, tell?: string, failed?: string}>)} opts.checkAnswer
  *   — the spore's answer check, null when it keeps none
  * @returns {{ output: string|null, messages: Array, rounds: number, usage: object }}
  */
@@ -376,6 +376,7 @@ export async function loop ({ model, system, prompt, tools, toolFns, describe, l
       emit('answer_check', {
         round: i,
         by: verdict.by,
+        check: verdict.check,
         verdict: verdict.tell ? 'tell' : verdict.failed ? 'failed' : 'ok',
         ...(verdict.tell ? { tell: verdict.tell } : {}),
         ...(verdict.failed ? { why: verdict.failed } : {}),

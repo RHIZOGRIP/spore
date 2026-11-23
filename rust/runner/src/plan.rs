@@ -12,6 +12,8 @@ use spore_workspace::{
     DEFINITION_FILE, PRECURSOR_DIR, PRECURSOR_EXT, SCHEDULE_DIR, SPAWN_FILE,
 };
 
+const CHECK_EXT: &str = ".check";
+
 pub struct Asked<'a> {
     pub precursor: Option<&'a str>,
     /// A check's cell, `checks/<name>.cmk`, in place of a precursor.
@@ -28,6 +30,15 @@ pub struct Enzyme {
     pub with: Vec<PathBuf>,
 }
 
+/// The answer check a precursor names, found in its spore's `checks/`.
+pub struct Check {
+    pub name: String,
+    pub command: PathBuf,
+    /// Run by Node: a `.check.js`, which need not be executable.
+    pub script: bool,
+    pub with: Vec<PathBuf>,
+}
+
 pub struct Plan {
     pub ws: PathBuf,
     pub prompt_path: PathBuf,
@@ -35,6 +46,7 @@ pub struct Plan {
     pub precursor_path: PathBuf,
     pub precursor: Definition,
     pub enzymes: Vec<Enzyme>,
+    pub check: Option<Check>,
     pub super_reach: Option<SuperReach>,
     /// The cell has an entry under `cells/`, so it can be asked again.
     pub kept: bool,
@@ -103,20 +115,21 @@ fn resolve_precursor(
     spore: &Path,
     dir: &str,
     name: &str,
-) -> Result<(PathBuf, Definition, Vec<Enzyme>), String> {
+) -> Result<(PathBuf, Definition, Vec<Enzyme>, Option<Check>), String> {
     let path = spore.join(dir).join(format!("{name}{PRECURSOR_EXT}"));
     let source = std::fs::read_to_string(&path)
         .map_err(|_| format!("precursor not found — expected {dir}/{name}{PRECURSOR_EXT}"))?;
-    let (definition, enzymes) = read_precursor(spore, name, &source)?;
-    Ok((path, definition, enzymes))
+    let (definition, enzymes, check) = read_precursor(spore, name, &source)?;
+    Ok((path, definition, enzymes, check))
 }
 
-/// The precursor `name` as `source` writes it, with each enzyme it grants found in `spore`.
+/// The precursor `name` as `source` writes it, with each enzyme it grants and the answer check
+/// it names found in `spore`.
 fn read_precursor(
     spore: &Path,
     name: &str,
     source: &str,
-) -> Result<(Definition, Vec<Enzyme>), String> {
+) -> Result<(Definition, Vec<Enzyme>, Option<Check>), String> {
     let known: Vec<String> = TOOL_NAMES.iter().map(|t| t.to_string()).collect();
     let definition = parse_definition(
         source,
@@ -166,7 +179,51 @@ fn read_precursor(
             with,
         });
     }
-    Ok((definition, enzymes))
+    let check = match &definition.check {
+        None => None,
+        Some(named) => {
+            let program = spore
+                .join(CHECK_DIR)
+                .join(format!("{}{CHECK_EXT}", named.name));
+            let script = spore
+                .join(CHECK_DIR)
+                .join(format!("{}{CHECK_EXT}.js", named.name));
+            let (command, script) = match (program.is_file(), script.is_file()) {
+                (true, _) if executable(&program) => (program, false),
+                (true, _) => {
+                    return Err(format!(
+                        "precursor {name} names a check that is not executable — {CHECK_DIR}/{}{CHECK_EXT}",
+                        named.name
+                    ))
+                }
+                (false, true) => (script, true),
+                (false, false) => {
+                    return Err(format!(
+                        "precursor {name} names a check its spore does not keep — expected {CHECK_DIR}/{0}{CHECK_EXT} or {CHECK_DIR}/{0}{CHECK_EXT}.js, a program given the cell's answer",
+                        named.name
+                    ))
+                }
+            };
+            let mut with = Vec::new();
+            for needed in &named.with {
+                let path = resolve(spore, needed);
+                if !path.exists() {
+                    return Err(format!(
+                        "precursor {name} says its check {} needs {needed}, which does not exist",
+                        named.name
+                    ));
+                }
+                with.push(path);
+            }
+            Some(Check {
+                name: named.name.clone(),
+                command,
+                script,
+                with,
+            })
+        }
+    };
+    Ok((definition, enzymes, check))
 }
 
 /// The text of the precursor `name` of the spore at `spore`, read once and held to everything a
@@ -185,7 +242,7 @@ pub fn kept_precursor(spore: &Path, name: &str) -> Result<String, String> {
 /// Whether the precursor `name`, as `source` writes it, still makes a cell in the spore at
 /// `spore`: its enzymes are there and its model is one the spore offers.
 pub fn check_kept(spore: &Path, name: &str, source: &str) -> Result<(), String> {
-    let (definition, _) = read_precursor(spore, name, source)?;
+    let (definition, _, _) = read_precursor(spore, name, source)?;
     cell_model(name, definition.model.as_deref(), &spore_definition(spore)?)?;
     Ok(())
 }
@@ -277,7 +334,14 @@ pub fn plan_spawn(
 
     // Before the workspace check, because what the cell may read is part of what would
     // make a directory an unusable place to confine it.
-    let (precursor_path, mut definition, enzymes) = resolve_precursor(spore, dir, &precursor)?;
+    let (precursor_path, mut definition, enzymes, check) =
+        resolve_precursor(spore, dir, &precursor)?;
+    if let (Some(_), Some(named)) = (asked.check, &check) {
+        return Err(format!(
+            "{CHECK_DIR}/{precursor}{PRECURSOR_EXT} names the check {} — a check's cell judges an answer, and its own is not checked",
+            named.name
+        ));
+    }
     let root = spore_definition(spore)?;
     definition.model = Some(cell_model(&precursor, definition.model.as_deref(), &root)?);
     settle(
@@ -286,6 +350,7 @@ pub fn plan_spawn(
         precursor_path,
         definition,
         enzymes,
+        check,
         granted,
         false,
     )
@@ -305,7 +370,7 @@ pub fn plan_resume(
     if asked.precursor.is_some() || asked.check.is_some() {
         return Err("--resume asks a kept cell again, and what it was made from is kept with it — give neither --precursor nor --check".to_string());
     }
-    let (mut definition, enzymes) = read_precursor(spore, name, source)?;
+    let (mut definition, enzymes, check) = read_precursor(spore, name, source)?;
     let root = spore_definition(spore)?;
     definition.model = Some(cell_model(name, definition.model.as_deref(), &root)?);
     let mut plan = settle(
@@ -314,6 +379,7 @@ pub fn plan_resume(
         PathBuf::new(),
         definition,
         enzymes,
+        check,
         granted,
         true,
     )?;
@@ -329,6 +395,7 @@ fn settle(
     precursor_path: PathBuf,
     definition: Definition,
     enzymes: Vec<Enzyme>,
+    check: Option<Check>,
     granted: impl Fn(&Path, &[PathBuf]) -> Option<PathBuf>,
     resumed: bool,
 ) -> Result<Plan, String> {
@@ -400,6 +467,7 @@ fn settle(
         precursor_path,
         precursor: definition,
         enzymes,
+        check,
         super_reach: None,
         kept: resumed,
         resumed,
@@ -433,8 +501,8 @@ pub fn dream_for(spore: &Path, plan: &mut Plan) -> Result<(), String> {
 
 impl Plan {
     /// What `bin/spawn-worker.js` reads as `SPORE_PLAN`: the precursor as the parser
-    /// serializes it, with each enzyme resolved and hashed.
-    pub fn for_worker(&self, answer: &str, hashes: &[String]) -> Value {
+    /// serializes it, with each enzyme resolved and hashed, and the answer check's hash.
+    pub fn for_worker(&self, answer: &str, hashes: &[String], check: Option<&str>) -> Value {
         let mut precursor = serde_json::to_value(&self.precursor).expect("a definition serializes");
         let fields = precursor
             .as_object_mut()
@@ -456,6 +524,14 @@ impl Plan {
                     .collect(),
             ),
         );
+        match (&self.check, check) {
+            (Some(named), Some(hash)) => {
+                fields.insert("check".into(), json!({ "name": named.name, "hash": hash }));
+            }
+            _ => {
+                fields.remove("check");
+            }
+        }
         json!({
             "ws": self.ws,
             "promptPath": self.prompt_path,
@@ -630,7 +706,7 @@ mod tests {
         assert_eq!(p.ws, r.0.join("work/1"));
         assert_eq!(p.prompt_path, r.0.join("work/1/in.md"));
         assert_eq!(p.answer_path, r.0.join("work/1/data/out.json"));
-        let worker = p.for_worker("data/out.json", &[]);
+        let worker = p.for_worker("data/out.json", &[], None);
         assert_eq!(worker["answer"], "data/out.json");
         assert_eq!(
             worker["precursor"],
@@ -694,12 +770,13 @@ mod tests {
             (p.precursor.limits.wall.soft, p.precursor.limits.wall.hard),
             (120_000.0, 180_000.0)
         );
-        let worker = p.for_worker("data/out.json", &[]);
+        let worker = p.for_worker("data/out.json", &[], None);
         assert_eq!(worker["superReach"]["reads"][1]["name"], "here");
         assert_eq!(worker["superReach"]["writes"].as_array().unwrap().len(), 2);
-        assert!(
-            plan_with(&r, &[]).unwrap().for_worker("data/out.json", &[])["superReach"].is_null()
-        );
+        assert!(plan_with(&r, &[])
+            .unwrap()
+            .for_worker("data/out.json", &[], None)["superReach"]
+            .is_null());
     }
 
     #[test]
@@ -774,7 +851,7 @@ mod tests {
         assert_eq!(p.precursor.name, "summarize");
         assert_eq!(p.precursor.model.as_deref(), Some("fake/parent"));
         assert_eq!(p.precursor_path, r.0.join("cells/1/precursor.cmk"));
-        assert_eq!(p.for_worker("data/out2.json", &[])["resumed"], true);
+        assert_eq!(p.for_worker("data/out2.json", &[], None)["resumed"], true);
 
         assert!(resume(&ask(Some("summarize"), "work/1"))
             .err()
@@ -793,7 +870,7 @@ mod tests {
         let r = root("plain");
         let p = plan_with(&r, &[]).unwrap();
         assert!(!p.kept && !p.resumed);
-        assert_eq!(p.for_worker("data/out.json", &[])["kept"], false);
+        assert_eq!(p.for_worker("data/out.json", &[], None)["kept"], false);
     }
 
     #[test]
@@ -941,8 +1018,73 @@ mod tests {
             p.enzymes[0].description.as_deref(),
             Some("Counts lines on stdin.")
         );
-        let worker = p.for_worker("data/out.json", &["abc".into()]);
+        let worker = p.for_worker("data/out.json", &["abc".into()], None);
         assert_eq!(worker["precursor"]["enzymes"][0]["hash"], "abc");
+    }
+
+    #[test]
+    fn finds_the_check_a_precursor_names_or_refuses_the_spawn() {
+        let r = root("check");
+        let cmk = |lines: &str| {
+            format!("---\nname: extract\ncheck: extraction\n{lines}rounds: [5, 7]\ncost: [0.10, 0.15]\nwall: [2m, 3m]\non-wrap: discard\n---\n\nbody\n")
+        };
+        fs::write(r.0.join("precursors/extract.cmk"), cmk("")).unwrap();
+        let with = [("precursor", Some("extract"))];
+        assert!(plan_with(&r, &[]).unwrap().check.is_none());
+        assert!(error(&r, &with).contains(
+            "names a check its spore does not keep — expected checks/extraction.check or checks/extraction.check.js"
+        ));
+        fs::create_dir_all(r.0.join("checks")).unwrap();
+        fs::write(r.0.join("checks/extraction.check.js"), "").unwrap();
+        let p = plan_with(&r, &with).unwrap();
+        let check = p.check.as_ref().unwrap();
+        assert_eq!(check.command, r.0.join("checks/extraction.check.js"));
+        assert!(check.script);
+        assert_eq!(
+            p.for_worker("data/out.json", &[], Some("abc"))["precursor"]["check"],
+            json!({ "name": "extraction", "hash": "abc" })
+        );
+        fs::write(r.0.join("checks/extraction.check"), "#!/bin/sh\n").unwrap();
+        assert!(error(&r, &with).contains("names a check that is not executable"));
+        fs::set_permissions(
+            r.0.join("checks/extraction.check"),
+            fs::Permissions::from_mode(0o755),
+        )
+        .unwrap();
+        let p = plan_with(&r, &with).unwrap();
+        assert_eq!(
+            p.check.as_ref().unwrap().command,
+            r.0.join("checks/extraction.check")
+        );
+        assert!(!p.check.as_ref().unwrap().script);
+
+        fs::write(
+            r.0.join("precursors/extract.cmk"),
+            cmk("extraction.with: [data/schema.json]\n"),
+        )
+        .unwrap();
+        assert!(error(&r, &with)
+            .contains("says its check extraction needs data/schema.json, which does not exist"));
+        fs::create_dir_all(r.0.join("data")).unwrap();
+        fs::write(r.0.join("data/schema.json"), "{}").unwrap();
+        assert_eq!(
+            plan_with(&r, &with).unwrap().check.unwrap().with,
+            vec![r.0.join("data/schema.json")]
+        );
+
+        fs::write(r.0.join("checks/extract.cmk"), cmk("")).unwrap();
+        let asked = Asked {
+            precursor: None,
+            check: Some("extract"),
+            ws: Some("work/1"),
+            prompt: Some("in.md"),
+            answer: Some("data/out.json"),
+        };
+        let refused = plan_spawn(&asked, &r.0, &r.0, |_, _| None).err().unwrap();
+        assert!(
+            refused.contains("a check's cell judges an answer, and its own is not checked"),
+            "{refused}"
+        );
     }
 
     #[test]
