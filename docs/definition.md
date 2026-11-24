@@ -502,6 +502,9 @@ non-empty list. A plugin's source is narrowed the same way, once the file lists 
 - A parameter the host marks `requires` must be narrowed, or the turn is refused at start.
 - A key naming a source the file does not grant is refused: *narrows "…" without granting the
   source*.
+- **In a precursor**, the values are a choice among the spore's: a cell is filled in and answered
+  within them. A value the spore's own definition does not allow fails the spawn
+  (`SOURCE_OUT_OF_SCOPE`), so a precursor can narrow what `spore.cmk` narrowed and never widen it.
 
 ## Memory
 

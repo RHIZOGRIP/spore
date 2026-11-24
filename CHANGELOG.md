@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.74.0] — Added: the HTTP API flushes a spore and serves approvals
+
+### Added
+
+- **An API caller can serve approvals for its own kind of place.** `"serves": ["app"]` on a caller
+  in `api.json` makes it the service of approvals asked with `to: "app:<conversation>"`. It reads
+  what waits for it with `GET /v1/spores/<name>/approvals?open=true` and reports each step:
+  `POST …/approvals/<id>/posted`, `/refused`, `/answer` and `/settled`. Spore applies the same
+  rules as for a chat platform (who may answer, the options, the fields, the first press, the
+  deadline) and tells the spore once when the caller settles. Nothing runs between the caller's
+  requests: an approval past its deadline ends when the caller next reads. No hook is called on
+  this path, and an approval naming one for such a place is refused (`APPROVAL_HOOKED`).
+  INTEGRATION.md §Serving approvals yourself.
+- `POST /v1/spores/<name>/flush` with `{ "by" }` flushes a spore's conversation, as `spore flush`
+  does, and answers `{ "entryNo", "by", "open" }`: `open` is what was still open, which the agent
+  is told. While a turn runs it answers `409` (`SPORE_RUNNING`) and changes nothing; after a turn
+  that crashed, `409` (`SPORE_CRASHED`). Any caller whose patterns name the spore may flush it.
+
 ## [1.73.1] — Fixed: installing spore no longer warns about OpenTelemetry versions
 
 ### Fixed

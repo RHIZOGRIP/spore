@@ -223,6 +223,34 @@ export function askApproval (ws, request, { configFile = CONFIG_FILE, now = Date
   return { approval: id, until }
 }
 
+/** The label of the option an answered approval was answered with. */
+export const labelOf = (approval) => approval.options.find(option => option.id === approval.choice).label
+
+function filledOf (approval) {
+  if (!approval.inputs) return null
+  const lines = (approval.fields ?? []).filter(field => field.id in approval.inputs).map(field => {
+    const input = approval.inputs[field.id]
+    if (kindOf(field) === 'text') return `- ${field.label}: ${JSON.stringify(input)}`
+    const picked = field.choices.filter(choice => input.includes(choice.id)).map(choice => choice.label)
+    return `- ${field.label}: ${picked.length ? picked.join(', ') : 'nothing picked'}`
+  })
+  return lines.length ? `What they filled in:\n${lines.join('\n')}` : null
+}
+
+/**
+ * What a spore is told of a settled approval that was answered or expired: who chose what and
+ * whether the host confirmed it, a line per field the press filled in — a text quoted, a choice
+ * by the labels picked — and what the host adds.
+ */
+export function endedText (approval) {
+  const answered = approval.state === 'answered'
+  const confirmed = { confirmed: ', and the host confirmed it', failed: `, and the host did not confirm it — ${approval.reason}` }
+  const line = answered
+    ? `${approval.answererName} chose "${labelOf(approval)}"${confirmed[approval.outcome] ?? ''}.`
+    : `Nobody answered it by ${approval.until}.`
+  return [line, answered ? filledOf(approval) : null, approval.tell ? `The host adds:\n${approval.tell}` : null].filter(Boolean).join('\n\n')
+}
+
 const hookFailed = (name, why) => new SporeError(`the approval hook "${name}" failed`, { type: 'APPROVAL_HOOK_FAILED', detail: why })
 
 async function answerOf (name, response) {

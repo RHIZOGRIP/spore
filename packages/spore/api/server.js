@@ -1,7 +1,7 @@
 /**
  * The library's verbs over HTTP, for a caller that is not on this machine or not in this
- * container: send, watch, show, list, stop, wrap, extend, the running turn as a person is shown it and
- * a line of the caller's own in it, approvals asked and read, a program's delivery, prepared and timed as its spore says, and the
+ * container: send, watch, show, list, stop, wrap, extend, flush, the running turn as a person is shown it and
+ * a line of the caller's own in it, approvals asked, read and, for the kinds of place the caller serves, shown and answered, a program's delivery, prepared and timed as its spore says, and the
  * outcome of an interaction the spore asked for, from the handler that took it. Every
  * request names its caller by token and reaches only the spores that caller may; its
  * `traceparent` is the parent of the request's span, which a message carries on to its turn.
@@ -13,15 +13,15 @@ import { basename } from 'node:path'
 
 import { isWorkspace } from '../src/library/discover.js'
 import { CONFIG_FILE, NAME, readConfig, workspaceFor } from '../src/library/config.js'
-import { list, show } from '../src/library/verbs.js'
+import { flush, list, show } from '../src/library/verbs.js'
 import { watch } from '../src/library/watch.js'
 import { annotateTurn, liveIn, renderLive } from '../src/library/live.js'
 import { send } from '../src/core/send.js'
 import { stop } from '../src/core/state.js'
 import { native } from '../src/native.js'
 import { extendTurn, wrapTurn } from '../src/core/limits.js'
-import { approvalOf, approvalsIn, readEvents } from '../src/core/spore-dir.js'
-import { askApproval } from '../src/library/approvals.js'
+import { approvalOf, approvalsIn, expireApproval, postApproval, readEvents, refuseApproval, settleApproval } from '../src/core/spore-dir.js'
+import { answerApproval, askApproval, endedText } from '../src/library/approvals.js'
 import { paused } from '../src/core/admission.js'
 import { SporeError } from '../src/observability/errors.js'
 import { readBody } from '../src/infra/http.js'
@@ -31,11 +31,13 @@ import { takeOutcome } from '../src/core/interactions.js'
 import { callerOf, reaches } from './config.js'
 
 const MAX_BODY = 32 * 1024 * 1024
-const ROUTE = /^\/v1\/spores(?:\/([^/]+)(?:\/(messages|deliveries|events|live|annotate|stop|wrap|extend|approvals)(?:\/([0-9a-f]{12}))?)?)?\/?$/
+const ROUTE = /^\/v1\/spores(?:\/([^/]+)(?:\/(messages|deliveries|events|live|annotate|stop|wrap|extend|flush|approvals)(?:\/([0-9a-f]{12})(?:\/(posted|refused|answer|settled))?)?)?)?\/?$/
 const OUTCOME = /^\/v1\/spores\/([^/]+)\/interactions\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/outcome\/?$/
 const DELIVERY = /^[A-Za-z0-9._:-]{1,128}$/
 const LEVELS = ['brief', 'plain', 'details']
 const PAYLOAD = 'payload.json'
+const OUTCOMES = ['confirmed', 'failed']
+const LATE = 'its deadline passed before it could be shown'
 
 const STATUS = {
   API_UNAUTHORIZED: 401,
@@ -45,6 +47,11 @@ const STATUS = {
   API_TOO_LARGE: 413,
   ADMISSION_FULL: 503,
   PAUSED: 503,
+  SPORE_RUNNING: 409,
+  SPORE_CRASHED: 409,
+  APPROVAL_NOT_SERVED: 403,
+  APPROVAL_STATE: 409,
+  APPROVAL_HOOKED: 409,
   INTERACTION_UNKNOWN: 404,
   INTERACTION_ANSWERED: 409,
   INTERACTION_CLOSED: 409
@@ -66,6 +73,22 @@ async function jsonOf (request, response) {
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
   } catch {}
   throw failure('API_BAD_REQUEST', 'the request body is not a JSON object')
+}
+
+const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
+const isText = (value) => typeof value === 'string' && value.trim() !== ''
+const kindOfPlace = (approval) => approval.place.slice(0, approval.place.indexOf(':'))
+const due = (approval) => Date.parse(approval.until) <= Date.now()
+
+/**
+ * An approval past its deadline ended, which nothing but a look at it does for a place a caller
+ * serves: one never shown is refused and done with, one shown and not answered expires.
+ */
+function ended (ws, approval) {
+  if (!due(approval) || !['asked', 'posted'].includes(approval.state)) return approval
+  if (approval.state === 'posted') expireApproval(ws, approval.id)
+  else if (refuseApproval(ws, approval.id, LATE)) settleApproval(ws, approval.id)
+  return approvalOf(ws, approval.id)
 }
 
 const attachmentsOf = (attach) => {
@@ -133,6 +156,19 @@ export function createApiServer ({ api, env, log = () => {} }) {
     return target.path
   }
 
+  const servedOf = (caller, ws, id) => {
+    const found = approvalOf(ws, id)
+    if (!found) throw failure('API_NOT_FOUND', `no approval ${id} in this spore`)
+    const kind = kindOfPlace(found)
+    if (!caller.serves.includes(kind)) throw failure('APPROVAL_NOT_SERVED', `approval ${id} was asked in ${found.place}, which "${caller.name}" does not serve`, `serves on a caller in api.json lists the kinds of place it shows and answers approvals for, as ["${kind}"]`)
+    if (found.hook) throw hooked(found.place, found.hook, caller.name)
+    return ended(ws, found)
+  }
+
+  const hooked = (place, hook, server) => failure('APPROVAL_HOOKED', `an approval asked in ${place} names the hook ${JSON.stringify(hook)}, which nothing calls there`, `"${server}" serves that place and reports how the approval ended itself, with settled — ask it without a hook`)
+
+  const notIn = (approval, wanted, step) => failure('APPROVAL_STATE', `approval ${approval.id} is ${approval.state}, and only one ${wanted} is ${step}`, approval.reason ?? undefined)
+
   const routes = {
     'GET spores': ({ caller }) => {
       const { home } = readConfig(CONFIG_FILE)
@@ -164,12 +200,68 @@ export function createApiServer ({ api, env, log = () => {} }) {
       })
       return { status: 202, body: { inbox: sent.inbox, started: sent.started, repeated: Boolean(sent.repeated) } }
     },
-    'POST approvals': async ({ request, response, ws }) => ({ status: 201, body: askApproval(ws, await jsonOf(request, response), { configFile: CONFIG_FILE }) }),
-    'GET approvals': ({ ws }) => ({ status: 200, body: { approvals: approvalsIn(ws) } }),
+    'POST approvals': async ({ request, response, ws }) => {
+      const asked = await jsonOf(request, response)
+      const server = typeof asked.to === 'string' && asked.hook !== undefined ? api.callers.find(one => one.serves.includes(asked.to.slice(0, asked.to.indexOf(':')))) : null
+      if (server) throw hooked(asked.to, asked.hook, server.name)
+      return { status: 201, body: askApproval(ws, asked, { configFile: CONFIG_FILE }) }
+    },
+    'GET approvals': ({ ws, caller, url }) => {
+      const open = url.searchParams.get('open')
+      if (open !== null && open !== 'true') throw failure('API_BAD_REQUEST', `open is true, or left out — not ${open}`)
+      if (open === null) return { status: 200, body: { approvals: approvalsIn(ws) } }
+      const waiting = approvalsIn(ws, { open: true }).filter(one => caller.serves.includes(kindOfPlace(one))).map(one => ended(ws, one))
+      return { status: 200, body: { approvals: waiting.filter(one => one.settledAt === null || (one.state !== 'refused' && !one.told)) } }
+    },
     'GET approval': ({ ws, id }) => {
       const one = approvalOf(ws, id)
       if (!one) throw failure('API_NOT_FOUND', `no approval ${id} in this spore`)
       return { status: 200, body: one }
+    },
+    'POST approval posted': async ({ request, response, ws, caller, id }) => {
+      const { shown, note = null } = await jsonOf(request, response)
+      if (!isRecord(shown) || !(note === null || typeof note === 'string')) throw failure('API_BAD_REQUEST', 'posted says what was shown', '{ "shown": <the payload as drawn>, "note": "<your id for the message>" }, note optional')
+      const approval = servedOf(caller, ws, id)
+      if (!postApproval(ws, id, { shown, note })) throw notIn(approval, 'asked', 'shown')
+      return { status: 200, body: { posted: true } }
+    },
+    'POST approval refused': async ({ request, response, ws, caller, id }) => {
+      const { reason } = await jsonOf(request, response)
+      if (!isText(reason)) throw failure('API_BAD_REQUEST', 'refused says why it could not be shown', '{ "reason": "…" }')
+      const approval = servedOf(caller, ws, id)
+      if (!refuseApproval(ws, id, reason)) throw notIn(approval, 'asked', 'refused')
+      settleApproval(ws, id)
+      return { status: 200, body: { refused: true } }
+    },
+    'POST approval answer': async ({ request, response, ws, caller, id }) => {
+      const { choice, inputs = null, person } = await jsonOf(request, response)
+      if (typeof choice !== 'string' || !isRecord(person) || !isText(person.id) || !isText(person.name) || !(inputs === null || isRecord(inputs))) {
+        throw failure('API_BAD_REQUEST', 'an answer says who pressed what', '{ "choice": "<an option\'s id>", "person": { "id", "name" }, "inputs": { "<field id>": … } }, inputs optional — that the person is who they say is yours to have checked')
+      }
+      servedOf(caller, ws, id)
+      return { status: 200, body: answerApproval(ws, id, { choice, inputs, person: { id: person.id, name: person.name } }) }
+    },
+    'POST approval settled': async ({ request, response, ws, caller, id }) => {
+      const { outcome = null, reason = null, tell = null, replaced = null } = await jsonOf(request, response)
+      const shape = '{ "outcome": "confirmed" or "failed", "reason": "<why it failed>", "tell": "<what the spore should know>", "replaced": <what the question was replaced with> }, each optional'
+      const fits = (outcome === null || OUTCOMES.includes(outcome)) && (outcome === 'failed' ? isText(reason) : reason === null) &&
+        (tell === null || isText(tell)) && (replaced === null || isRecord(replaced))
+      if (!fits) throw failure('API_BAD_REQUEST', 'settled says how an ended approval was seen through', shape)
+      const approval = servedOf(caller, ws, id)
+      if (!['answered', 'expired'].includes(approval.state)) throw notIn(approval, 'answered or expired', 'settled')
+      if (outcome !== null && approval.state === 'expired') throw failure('API_BAD_REQUEST', 'an approval nobody answered has no outcome to confirm', shape)
+      const settled = settleApproval(ws, id, { outcome, reason, replaced, tell })
+      const now = approvalOf(ws, id)
+      const answered = now.state === 'answered'
+      send(ws, endedText(now), {
+        requestId: `approval:${id}`,
+        replyTo: now.place,
+        approval: id,
+        ...(answered ? { from: { name: now.answererName, id: `${kindOfPlace(now)}:${now.answererId}`, where: now.place } } : {}),
+        env,
+        configFile: CONFIG_FILE
+      })
+      return { status: 200, body: { settled, told: true } }
     },
     'POST annotate': async ({ request, response, ws }) => ({ status: 200, body: annotateTurn(ws, (await jsonOf(request, response)).text) }),
     'POST stop': async ({ request, response, ws }) => {
@@ -183,6 +275,10 @@ export function createApiServer ({ api, env, log = () => {} }) {
     'POST extend': async ({ request, response, ws }) => {
       const { dimension, amount } = await jsonOf(request, response)
       return { status: 200, body: extendTurn(ws, dimension, String(amount)) }
+    },
+    'POST flush': async ({ request, response, ws }) => {
+      const { entryNo, by, open } = flush({ ws, by: (await jsonOf(request, response)).by, configFile: CONFIG_FILE })
+      return { status: 200, body: { entryNo, by, open } }
     }
   }
 
@@ -210,8 +306,8 @@ export function createApiServer ({ api, env, log = () => {} }) {
     const url = new URL(request.url, 'http://spore')
     const outcome = OUTCOME.exec(url.pathname)
     const found = ROUTE.exec(url.pathname)
-    const [, name, action, id] = outcome ? [outcome[0], outcome[1], 'outcome', outcome[2]] : found ?? []
-    const route = outcome ? 'outcome' : !found || (id && action !== 'approvals') ? null : !name ? 'spores' : id ? 'approval' : action ?? 'spore'
+    const [, name, action, id, step] = outcome ? [outcome[0], outcome[1], 'outcome', outcome[2]] : found ?? []
+    const route = outcome ? 'outcome' : !found || (id && action !== 'approvals') ? null : !name ? 'spores' : step ? `approval ${step}` : id ? 'approval' : action ?? 'spore'
     const span = startSpan(`spore.api.${route ?? 'unknown'}`, { 'http.method': request.method, ...(name ? { 'spore.name': name } : {}) }, parseTraceparent(request.headers.traceparent))
     const traceparent = formatTraceparent(span)
     let caller = null

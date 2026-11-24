@@ -366,6 +366,36 @@ carries no approvals, there is nothing to show there — is refused, and only
 your hook is told. `listApprovals({ ws })`, `spore approval ls` and `GET
 /v1/spores/<name>/approvals/<id>` read where each one is.
 
+### Serving approvals yourself
+
+A program that shows the conversation itself — an application with its own interface, no chat
+platform between — serves its own kind of place through the HTTP API. `api.json` gives the
+caller `"serves": ["app"]`, and an approval asked with `to: "app:<conversation>"` is then that
+caller's to show, answer and close. Spore keeps the record and the rules; it calls nothing and
+runs nothing in between, so the caller reads when it wants to know.
+
+1. **Read what waits for you**: `GET /v1/spores/<name>/approvals?open=true` lists the approvals
+   of your kinds that need something. `asked` is to be shown, `answered` and `expired` are to be
+   settled. An approval past its `until` ends at this read: one never shown is refused and
+   leaves the list, one shown becomes `expired`.
+2. **Show it**, then `POST …/<id>/posted` with `shown`, the payload as you drew it, and `note`,
+   your id for the message. One you cannot show: `POST …/<id>/refused` with the `reason`.
+3. **Report a press**: `POST …/<id>/answer` with the option's id as `choice`, the `person` and
+   what they filled in as `inputs`. That the person is who they say is yours to have checked.
+   Spore takes the press as it takes a platform's: only from someone `by` names, on one of the
+   options, with the fields filled in as they must be, the first one, before `until`. Anything
+   else answers `{ "taken": false, "reason" }` and changes nothing.
+4. **Apply the choice and settle**: `POST …/<id>/settled` with `outcome` (`confirmed`, or
+   `failed` with a `reason`) and `tell`, what the spore should know. For an expired one, send
+   `{}` or a `tell`. Spore then tells the spore once, as it does after a platform's press, and
+   the spore answers under `replyTo: app:<conversation>`. Sending `settled` again changes
+   nothing and tells nobody twice.
+
+No hook is called on this path, since the caller is the program a hook would tell: a request
+naming a `hook` for a place a caller serves is refused, `APPROVAL_HOOKED`. A step on an approval
+in a place you do not serve is `403 APPROVAL_NOT_SERVED`, and a step it is not ready for is
+`409 APPROVAL_STATE`. Each kind of place is served by one caller.
+
 ### Reading what exists
 
 Nothing here starts anything. Most take `{ ws }` (a name or a path; omitted, the current
@@ -518,9 +548,15 @@ All under `/v1`, JSON in and out.
 | `POST /v1/spores/<name>/stop` | — | `200 { "stopped", "pid" }` |
 | `POST /v1/spores/<name>/wrap` | `{ "wait"? }`, as `"10m"`; none is now | `200`, the change or `{ "refused", … }` |
 | `POST /v1/spores/<name>/extend` | `{ "dimension", "amount" }`, as `"wall"`, `"30m"` | `200`, the change or `{ "refused", … }` |
+| `POST /v1/spores/<name>/flush` | `{ "by" }`: who asked, as the record and the agent read it | `200 { "entryNo", "by", "open" }`, what `flush` returns: `open` is what was still open, which the agent is told; `409` while a turn runs (`SPORE_RUNNING`) or after one that crashed (`SPORE_CRASHED`) |
 | `POST /v1/spores/<name>/approvals` | an approval's request ([§Asking a person to approve](#asking-a-person-to-approve)) | `201 { "approval", "until" }` |
 | `GET /v1/spores/<name>/approvals` | — | `200 { "approvals": [record] }`, oldest first |
+| `GET /v1/spores/<name>/approvals?open=true` | — | `200 { "approvals": [record] }`: those asked in a place you serve that still need you ([§Serving approvals yourself](#serving-approvals-yourself)) |
 | `GET /v1/spores/<name>/approvals/<id>` | — | `200`, the approval's record, as `approvalsIn` has it |
+| `POST /v1/spores/<name>/approvals/<id>/posted` | `{ "shown", "note"? }`: what you showed, buttons included, and your id for the message | `200 { "posted": true }` |
+| `POST /v1/spores/<name>/approvals/<id>/refused` | `{ "reason" }`: why you cannot show it | `200 { "refused": true }` |
+| `POST /v1/spores/<name>/approvals/<id>/answer` | `{ "choice", "person": { "id", "name" }, "inputs"? }` | `200 { "taken": true }`, or `{ "taken": false, "reason" }` with what to tell the person |
+| `POST /v1/spores/<name>/approvals/<id>/settled` | `{ "outcome"?, "reason"?, "tell"?, "replaced"? }` | `200 { "settled", "told": true }` |
 | `POST /v1/spores/<name>/deliveries` | `{ "delivery", "text"?, "payload"?, "attach"?, "hop"? }` ([below](#delivering-from-a-program)) | `202 { "delivery", "outcome", "started" }` |
 | `POST /v1/spores/<name>/interactions/<id>/outcome` | the outcome of an interaction the spore asked for, sent by its handler ([docs/interactions.md](docs/interactions.md#service--spore-the-outcome)) | `200 { "inbox", "repeated" }` |
 
@@ -601,7 +637,8 @@ An error is `{ "error": { "type", "message", "detail"? } }`.
 | 400 | `API_BAD_REQUEST` (a body that is not a JSON object, a message without text, a malformed `attach` or `after`), and any other refusal from a verb, such as `LIMIT_UNKNOWN`, `LIMIT_AMOUNT`, `PLUGIN_NOT_ALLOWED`, `REQUEST_ID_INVALID` |
 | 401 | `API_UNAUTHORIZED` |
 | 404 | `NOT_A_WORKSPACE`, `API_NOT_FOUND`, `INTERACTION_UNKNOWN` |
-| 409 | `INTERACTION_ANSWERED`, `INTERACTION_CLOSED` |
+| 403 | `APPROVAL_NOT_SERVED` |
+| 409 | `INTERACTION_ANSWERED`, `INTERACTION_CLOSED`, `SPORE_RUNNING`, `SPORE_CRASHED`, `APPROVAL_STATE`, `APPROVAL_HOOKED` |
 | 405 | `API_METHOD` |
 | 413 | `API_TOO_LARGE` |
 | 503 | `ADMISSION_FULL`, `PAUSED` |

@@ -18,6 +18,7 @@ import { variableOf } from '../src/core/variables.js'
 export const apiPath = (configFile = CONFIG_FILE) => resolve(dirname(configFile), API_FILE)
 
 const PATTERN = /^[A-Za-z0-9*][A-Za-z0-9._*-]{0,63}$/
+const PLACE_KIND = /^[a-z][a-z0-9-]*$/
 
 const refuse = (path, problem, detail) => new SporeError(`${path} ${problem}`, { type: 'API_CONFIG_INVALID', detail })
 
@@ -27,8 +28,9 @@ const matcher = (pattern) => new RegExp(`^${pattern.replace(/[.]/g, '\\.').repla
 
 /**
  * `{ socket, listen, callers }`: `listen` as `listenOf` reads it, or null, each caller `{ name, spores,
- * maxWait }` with its token kept only as a digest beside the variable holding it, and `maxWait` the
- * longest a spore's router may hold its deliveries, or null.
+ * serves, maxWait }` with its token kept only as a digest beside the variable holding it, `serves` the
+ * kinds of place whose approvals it shows and answers, and `maxWait` the longest a spore's router may
+ * hold its deliveries, or null.
  */
 export function loadApi (path = apiPath(), env = process.env) {
   if (!existsSync(path)) throw new SporeError(`no ${path}`, { type: 'API_NO_CONFIG', detail: 'it says where the API listens and who may call it — see docs/operating.md, "The HTTP API service"' })
@@ -56,10 +58,17 @@ export function loadApi (path = apiPath(), env = process.env) {
     if (!(Array.isArray(patterns) && patterns.length && patterns.every(p => typeof p === 'string' && PATTERN.test(p)))) {
       throw refuse(path, `has spores for ${name} that are not a list of names or patterns`, 'as ["*"], ["support-*", "ops"]')
     }
+    const serves = caller.serves ?? []
+    if (!(Array.isArray(serves) && serves.every(kind => typeof kind === 'string' && PLACE_KIND.test(kind)) && new Set(serves).size === serves.length)) {
+      throw refuse(path, `has serves for ${name} that is not a list of kinds of place`, 'as ["app"]: the caller shows and answers the approvals asked in app:<conversation> — a kind is lowercase letters, digits and -, starting with a letter')
+    }
     if (caller.router !== undefined) throw refuse(path, `has a router for ${name}, which api.json no longer binds`, 'what prepares a delivery is the spore\'s: prepare: [api:<caller>=<plugin>/<program>] in its spore.cmk')
     const { maxWait, perDay, perHour } = deliveryBounds(caller, (problem, detail) => refuse(path, `caller ${JSON.stringify(name)} ${problem}`, detail), { callerAdmits: admitting })
-    return { name, digest: digest(token), variable, spores: patterns.map(matcher), maxWait, perDay, perHour }
+    return { name, digest: digest(token), variable, spores: patterns.map(matcher), serves, maxWait, perDay, perHour }
   })
+  const served = callers.flatMap(caller => caller.serves)
+  const twice = served.find((kind, at) => served.indexOf(kind) !== at)
+  if (twice) throw refuse(path, `has two callers serving ${twice}`, 'a kind of place is served by one caller, as a conversation is reached through one bot')
   return { socket: raw.socket ?? null, listen, callers }
 }
 

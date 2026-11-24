@@ -377,7 +377,21 @@ service behind it tells them apart, and can lead what it keeps back to the turn 
 ```
 
 The agent can neither set nor change either. The name is only as good as the credential beside it:
-whoever holds the credential can send any name, so the service checks both. Without `paths` a
+whoever holds the credential can send any name, so the service checks both.
+
+**What the service behind a source can rely on**, for every call the runner makes for a spore,
+from its agent or from any of its cells:
+
+- `{name}` and `{turn}` are the root spore's. A cell calls through its root's runner, which fills
+  them from its own spore and turn, never from the request.
+- Each parameter the spore's `spore.cmk` narrows (`<source>.<param>`) is one of the listed
+  values. A precursor can choose among them for its cell and cannot add one: a wider one fails
+  the spawn.
+
+So a service may take the name as which spore is asking, and a narrowed parameter, as
+`account.user: [42]`, as fixed for that spore and its whole tree.
+
+Without `paths` a
 source is one URL, and the agent adds query parameters. With them it is an API:
 a call names a method, a path matching a pattern, and a JSON body. Spore checks only the method
 and path; give the token no more scope at the service than the agent should have.
@@ -551,6 +565,11 @@ node bin/spore-api.js --check     # read api.json and the environment, print whe
   `~/.config/spore/environment` (`openssl rand -hex 32`), never in the file. `spores` lists names
   and patterns of letters, digits, `.`, `_`, `-` and `*`, where `*` matches within one name; a
   caller reaches only the spores under `home` that its patterns name.
+- `serves` lists the kinds of place whose approvals the caller shows and answers itself, as
+  `["app"]` for approvals asked in `app:<conversation>`
+  ([INTEGRATION §Serving approvals yourself](../INTEGRATION.md#serving-approvals-yourself)). A kind
+  is lowercase letters, digits and `-`, starting with a letter, and is served by one caller. Do
+  not list a kind a chat service on this host serves.
 - `maxWait` is the longest the spore's router or triage cell for `api:<caller>` may keep a
   delivery from the caller (`POST /v1/spores/<name>/deliveries`) waiting, as a hook's `maxWait`
   ([§Webhooks](#webhooks)); absent, it is released as soon as it is timed. What prepares it is

@@ -317,7 +317,7 @@ The loop compares its estimate with what the provider counted after each call, a
 turn, `estimate_drift`, when the count is more than a quarter higher.
 
 **A flush starts the conversation over and forgets nothing.** `flush()` — `spore flush`, `/flush` in
-the terminal or a conversation — appends a compaction entry that keeps none of the history
+the terminal or a conversation, `POST …/flush` on the HTTP API — appends a compaction entry that keeps none of the history
 (`append_flush`, `rust/workspace/src/state.rs`): its summary is a fixed note saying who flushed and
 what is still open from before — the question the last turn asked, approvals not yet settled, jobs
 still running, interactions not yet answered — and `flushed: { by, at }`. The next turn replays
@@ -2009,6 +2009,16 @@ the question closed — replaced by the body the hook answered, or kept with its
 it ended below; `settle_approval` writing the hook's `outcome` (`confirmed`, or `failed` with its
 `reason`), what `replaced` the question and the hook's `tell`; then the spore told. A hook can
 therefore be told twice of one approval, and keys on its id.
+
+**A place can be served by an API caller instead of a relay.** A caller whose `api.json` entry
+says `serves: [<kind>]` is the service of `<kind>:<conversation>`: it reads what waits for it
+(`GET …/approvals?open=true`), and reports each step — `posted` or `refused`, `answer` with the
+person it vouches for, `settled` with the outcome — through the same writers the relay uses, so
+`by`, the options, the fields, the first press and the deadline hold as they do on a platform.
+Nothing runs between its requests: an approval past `until` is refused or expired when the caller
+next reads, and the spore is told inside `settled`, by the text the relay tells it with
+(`endedText`). No hook is called, since the caller is the host a hook would tell, and an approval
+naming one there is refused (`APPROVAL_HOOKED`).
 
 **The hook** is named in `config.json`'s `approvals` by its URL and the `${VAR}` holding its secret,
 which reaches no turn. It is a POST signed with HMAC-SHA256 over `<timestamp>.<body>`, tried again

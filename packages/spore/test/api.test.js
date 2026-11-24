@@ -14,7 +14,8 @@ import { outsideRoot, withAuth } from './fixtures/outside-ws.js'
 import { pauseSpores, unpauseSpores } from '../src/core/admission.js'
 import { CONFIG_DIR, CONFIG_FILE } from '../src/library/config.js'
 import { definitionWith } from '../src/testing.js'
-import { heldIn, readInbox, saidOf } from '../src/core/spore-dir.js'
+import { acquireLock, approvalOf, heldIn, postApproval, readInbox, readTranscript, releaseLock, saidOf, writeTranscriptEntries } from '../src/core/spore-dir.js'
+import { askApproval } from '../src/library/approvals.js'
 import { apiCaller, callerOf, loadApi, reaches } from '../api/config.js'
 import { createApiServer } from '../api/server.js'
 
@@ -35,6 +36,7 @@ vi.mock('../src/core/prepare.js', async (original) => {
 
 const APP = 'a'.repeat(40)
 const NARROW = 'n'.repeat(40)
+const OTHER = 'o'.repeat(40)
 const TRACE = '0af7651916cd43dd8448eb211c80319c'
 
 let root
@@ -48,7 +50,8 @@ const configure = () => {
   writeFileSync(join(CONFIG_DIR, 'api.json'), JSON.stringify({
     socket: join(root, 'run', 'api.sock'),
     callers: {
-      app: { token: '${API_APP}', spores: ['*'] }, // eslint-disable-line no-template-curly-in-string
+      app: { token: '${API_APP}', spores: ['*'], serves: ['da'] }, // eslint-disable-line no-template-curly-in-string
+      other: { token: '${API_OTHER}', spores: ['*'] }, // eslint-disable-line no-template-curly-in-string
       narrow: { token: '${API_NARROW}', spores: ['beta*'] } // eslint-disable-line no-template-curly-in-string
     }
   }))
@@ -71,7 +74,7 @@ beforeEach(async () => {
   writeFileSync(join(ws, 'spore.cmk'), withAuth(definitionWith('anthropic/claude-haiku-4-5')))
   gate = await startGate({ mo: scriptedMo(async () => answers('hello back')), name: 'api-test' })
   configure()
-  const secrets = { API_APP: APP, API_NARROW: NARROW }
+  const secrets = { API_APP: APP, API_NARROW: NARROW, API_OTHER: OTHER }
   const api = loadApi(join(CONFIG_DIR, 'api.json'), secrets)
   const env = { PATH: process.env.PATH, HOME: process.env.HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, MODEL: 'anthropic/claude-haiku-4-5', ...secrets }
   mkdirSync(join(root, 'run'), { recursive: true, mode: 0o700 })
@@ -160,6 +163,112 @@ describe('stopping a turn', () => {
       const refused = await call('POST', '/v1/spores/alpha/stop', { body: { replyTo } })
       expect([refused.status, refused.json().error.type]).toEqual([400, 'API_BAD_REQUEST'])
     }
+  })
+})
+
+describe('flushing a spore', () => {
+  it('flushes between turns for whoever the caller says asked, and is refused while a turn runs or with nobody named', async () => {
+    const ws = join(root, 'home', 'alpha')
+    const said = (role, content) => ({ at: '2026-10-26T00:00:00.000Z', kind: 'message', role, message: { role, content } })
+    writeTranscriptEntries(ws, [said('user', 'my locker code is 4417'), said('assistant', 'noted')])
+
+    const unnamed = await call('POST', '/v1/spores/alpha/flush', { body: {} })
+    expect([unnamed.status, unnamed.json().error.type]).toEqual([400, 'FLUSH_INVALID'])
+
+    acquireLock(ws)
+    try {
+      const running = await call('POST', '/v1/spores/alpha/flush', { body: { by: 'Ada' } })
+      expect([running.status, running.json().error.type]).toEqual([409, 'SPORE_RUNNING'])
+    } finally {
+      releaseLock(ws)
+    }
+    expect(readTranscript(ws)).toHaveLength(2)
+
+    const flushed = await call('POST', '/v1/spores/alpha/flush', { body: { by: 'Ada' } })
+    expect([flushed.status, flushed.json()]).toEqual([200, { entryNo: 3, by: 'Ada', open: { question: null, approvals: [], jobs: [], interactions: [] } }])
+    expect(readTranscript(ws).map(message => message.content)).toEqual([expect.stringMatching(/Ada flushed the conversation/)])
+    expect((await call('POST', '/v1/spores/alpha/flush', { token: NARROW, body: { by: 'Ada' } })).json().error.type).toBe('NOT_A_WORKSPACE')
+  })
+})
+
+describe('an approval in a place the caller serves', () => {
+  const REQUEST = {
+    to: 'da:thread-7',
+    by: ['u1'],
+    options: [{ id: 'apply', label: 'Apply' }, { id: 'cancel', label: 'Cancel', skip: true }],
+    body: { default: { text: 'Apply the change?' } },
+    fields: [{ id: 'reason', label: 'Why?', required: true }]
+  }
+  const ADA = { id: 'u1', name: 'Ada' }
+  const waiting = async (token = APP) => (await call('GET', '/v1/spores/alpha/approvals?open=true', { token })).json().approvals.map(one => [one.id, one.state])
+  const step = (id, name, body, token = APP) => call('POST', `/v1/spores/alpha/approvals/${id}/${name}`, { body, token })
+
+  it('is shown, answered by someone it names and settled by that caller, and the spore is told once', async () => {
+    const ws = join(root, 'home', 'alpha')
+    const { approval: id } = (await call('POST', '/v1/spores/alpha/approvals', { body: REQUEST })).json()
+    expect(await waiting()).toEqual([[id, 'asked']])
+    expect(await waiting(OTHER)).toEqual([])
+
+    for (const [name, body] of [['posted', { shown: {} }], ['refused', { reason: 'no' }], ['answer', { choice: 'apply', person: ADA }], ['settled', {}]]) {
+      const refused = await step(id, name, body, OTHER)
+      expect([name, refused.status, refused.json().error.type]).toEqual([name, 403, 'APPROVAL_NOT_SERVED'])
+      expect((await step(id, name, body, NARROW)).json().error.type).toBe('NOT_A_WORKSPACE')
+    }
+    expect((await step(id, 'answer', { choice: 'apply', person: ADA })).json()).toEqual({ taken: false, reason: 'this question is closed' })
+    expect((await step(id, 'settled', {})).json().error.type).toBe('APPROVAL_STATE')
+
+    expect((await step(id, 'posted', { shown: { text: 'Apply the change?', buttons: ['apply', 'cancel'] }, note: 'm-1' })).json()).toEqual({ posted: true })
+    expect((await step(id, 'posted', { shown: {} })).status).toBe(409)
+    expect(approvalOf(ws, id)).toMatchObject({ state: 'posted', note: 'm-1', shown: { buttons: ['apply', 'cancel'] } })
+
+    expect((await step(id, 'answer', { choice: 'apply', person: { id: 'u2', name: 'Bob' } })).json()).toEqual({ taken: false, reason: 'this is not yours to answer' })
+    expect((await step(id, 'answer', { choice: 'later', person: ADA })).json()).toEqual({ taken: false, reason: 'that is not one of its choices' })
+    expect((await step(id, 'answer', { choice: 'apply', person: ADA })).json()).toEqual({ taken: false, reason: 'fill in "Why?" first' })
+    expect((await step(id, 'answer', { choice: 'apply', person: { id: 'u1' } })).status).toBe(400)
+    expect((await step(id, 'answer', { choice: 'apply', inputs: { reason: 'checked' }, person: ADA })).json()).toEqual({ taken: true })
+    expect((await step(id, 'answer', { choice: 'cancel', person: ADA })).json()).toEqual({ taken: false, reason: 'this was answered already' })
+    expect(await waiting()).toEqual([[id, 'answered']])
+
+    expect((await step(id, 'settled', { outcome: 'failed' })).status).toBe(400)
+    expect((await step(id, 'settled', { outcome: 'confirmed', tell: 'It is live.' })).json()).toEqual({ settled: true, told: true })
+    expect((await step(id, 'settled', { outcome: 'failed', reason: 'late' })).json()).toEqual({ settled: false, told: true })
+    await call('GET', '/v1/spores/alpha/events?after=0')
+
+    const inbox = readInbox(ws)
+    expect(inbox).toHaveLength(1)
+    expect(inbox[0]).toMatchObject({ approval: id, replyTo: 'da:thread-7', requestId: `approval:${id}` })
+    expect(inbox[0].text).toBe('Ada chose "Apply", and the host confirmed it.\n\nWhat they filled in:\n- Why?: "checked"\n\nThe host adds:\nIt is live.')
+    expect(approvalOf(ws, id)).toMatchObject({ state: 'answered', outcome: 'confirmed', told: true })
+    expect(await waiting()).toEqual([])
+  })
+
+  it('ends at the caller\'s next look once its deadline passed: refused when never shown, expired when shown', async () => {
+    const ws = join(root, 'home', 'alpha')
+    const past = { configFile: CONFIG_FILE, now: Date.now() - 2 * 3600_000 }
+    const unshown = askApproval(ws, { ...REQUEST, within: '1h' }, past).approval
+    const shown = askApproval(ws, { ...REQUEST, within: '1h' }, past).approval
+    postApproval(ws, shown, { shown: { text: 'Apply the change?' }, note: null })
+
+    expect(await waiting()).toEqual([[shown, 'expired']])
+    expect(approvalOf(ws, unshown)).toMatchObject({ state: 'refused', reason: 'its deadline passed before it could be shown', settledAt: expect.any(String) })
+    expect((await step(unshown, 'posted', { shown: {} })).json().error.type).toBe('APPROVAL_STATE')
+
+    expect((await step(shown, 'settled', { outcome: 'confirmed' })).status).toBe(400)
+    expect((await step(shown, 'settled', {})).json()).toEqual({ settled: true, told: true })
+    await call('GET', '/v1/spores/alpha/events?after=0')
+    expect(readInbox(ws).map(entry => entry.text)).toEqual([expect.stringMatching(/^Nobody answered it by /)])
+    expect(await waiting()).toEqual([])
+  })
+
+  it('is refused by the caller that cannot show it, and done with', async () => {
+    const { approval: id } = (await call('POST', '/v1/spores/alpha/approvals', { body: REQUEST })).json()
+    expect((await step(id, 'refused', {})).status).toBe(400)
+    expect((await step(id, 'refused', { reason: 'the thread is closed' })).json()).toEqual({ refused: true })
+    expect(approvalOf(join(root, 'home', 'alpha'), id)).toMatchObject({ state: 'refused', reason: 'the thread is closed', settledAt: expect.any(String) })
+    expect(await waiting()).toEqual([])
+    expect((await call('GET', '/v1/spores/alpha/approvals?open=yes')).status).toBe(400)
+    const hooked = await call('POST', '/v1/spores/alpha/approvals', { body: { ...REQUEST, hook: 'kpi' } })
+    expect([hooked.status, hooked.json().error]).toEqual([409, expect.objectContaining({ type: 'APPROVAL_HOOKED', detail: expect.stringMatching(/"app" serves that place/) })])
   })
 })
 
@@ -355,6 +464,8 @@ describe('api.json', () => {
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { 'my app': { token, spores: ['*'] } } }), env)).toThrow(/has a caller named "my app"/)
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], maxWait: 'soon' } } }), env)).toThrow(/caller "a" has a maxWait spore cannot read — "soon"/)
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], perDay: 0 } } }), env)).toThrow(/caller "a" has a perDay that is not a count — 0/)
+    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], serves: ['Chat'] } } }), env)).toThrow(/serves for a that is not a list of kinds of place/)
+    expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], serves: ['app'] }, b: { token, spores: ['*'], serves: ['app'] } } }), env)).toThrow(/two callers serving app/)
     expect(() => loadApi(write({ socket: '/run/a.sock', callers: { a: { token, spores: ['*'], router: { plugin: 'pdf', name: 'pages' } } } }), env)).toThrow(/router for a, which api.json no longer binds/)
   })
 

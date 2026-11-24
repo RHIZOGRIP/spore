@@ -8,7 +8,7 @@
  */
 
 import { answerApproval, approvalOf, approvalsIn, callApprovalHook, errorText, expireApproval, postApproval, refuseApproval, send, settleApproval, SporeError } from '../index.js'
-import { kindOf, pickOf, pressProblem } from '../library/approvals.js'
+import { endedText, kindOf, labelOf, pickOf, pressProblem } from '../library/approvals.js'
 
 const PRESS = /^ap:([0-9a-f]{12}):([A-Za-z0-9_-]{1,32})$/
 const TELL_AGAIN_MS = 30_000
@@ -43,7 +43,6 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
   const untold = new Map()
 
   const conversationOf = (approval) => approval.place.slice(prefix.length)
-  const labelOf = (approval) => approval.options.find(option => option.id === approval.choice).label
   const logged = (approval, name, line) => log(`approval ${approval.id} of ${name}: ${line}`)
 
   const shownOf = (body) => {
@@ -86,32 +85,12 @@ export function createApprovals ({ adapter, prefix, botFile, configFile, keyOf, 
     return outcome === 'failed' ? `${chose} · not confirmed: ${reason}` : chose
   }
 
-  /**
-   * What the person filled in, a line per field the press carried: a text quoted, as they typed
-   * it, and a choice by the labels of what was picked. Null for a press that carried none.
-   */
-  const filledOf = (approval) => {
-    if (!approval.inputs) return null
-    const lines = (approval.fields ?? []).filter(field => field.id in approval.inputs).map(field => {
-      const input = approval.inputs[field.id]
-      if (kindOf(field) === 'text') return `- ${field.label}: ${JSON.stringify(input)}`
-      const picked = field.choices.filter(choice => input.includes(choice.id)).map(choice => choice.label)
-      return `- ${field.label}: ${picked.length ? picked.join(', ') : 'nothing picked'}`
-    })
-    return lines.length ? `What they filled in:\n${lines.join('\n')}` : null
-  }
-
   /** The spore told how its approval ended, once, in the conversation it was asked in. */
   const tell = (name, ws, approval) => {
     const conversation = conversationOf(approval)
     const answered = approval.state === 'answered'
-    const confirmed = { confirmed: ', and the host confirmed it', failed: `, and the host did not confirm it — ${approval.reason}` }
-    const line = answered
-      ? `${approval.answererName} chose "${labelOf(approval)}"${confirmed[approval.outcome] ?? ''}.`
-      : `Nobody answered it by ${approval.until}.`
-    const said = [line, answered ? filledOf(approval) : null, approval.tell ? `The host adds:\n${approval.tell}` : null].filter(Boolean).join('\n\n')
     try {
-      send(ws, said, {
+      send(ws, endedText(approval), {
         requestId: `approval:${approval.id}`,
         replyTo: approval.place,
         approval: approval.id,
