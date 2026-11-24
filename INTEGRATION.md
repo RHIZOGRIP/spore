@@ -384,7 +384,7 @@ signature of each, and every error it throws, is in [docs/library.md](docs/libra
 | `stateOf(ws)` | `{ state, lastTurnNo, treeUsd, last, pid?, startedAt?, draining? }`; `state` is `running`, `idle`, `waiting`, `wrapped`, `halted`, `cancelled`, `failed` or `crashed` |
 | `readTranscript(ws)`, `textOf(message)` | the conversation as the model last saw it, and a message's text |
 | `readEvents(ws, { after, event, limit })` | events past `after` without following |
-| `isWorkspace(dir)`, `workspacesIn(dir)`, `workspaceFor(name)` | finding spores |
+| `isWorkspace(dir)`, `workspacesIn(dir)`, `workspaceFor(asked)` | finding spores, and what a name or a path given for one points at |
 | `readConfig()`, `settings()`, `getKey(key)` | the host's `config.json` |
 | `sporangia()`, `defaultModel()` | what a spore can be made from, and the model new spores get |
 | `paused()` | the pause in force (`{ at, why? }` or `null`) |

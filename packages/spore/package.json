@@ -65,8 +65,8 @@
   },
   "dependencies": {
     "@opentelemetry/api": "^1.10.0",
-    "@opentelemetry/exporter-trace-otlp-grpc": "^0.223.2",
-    "@opentelemetry/sdk-node": "^0.223.2",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.301.1",
+    "@opentelemetry/sdk-node": "^0.301.1",
     "ajv": "^8.20.0",
     "cheerio": "^1.2.0",
     "csv-parse": "^7.0.3",

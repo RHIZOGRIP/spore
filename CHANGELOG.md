@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [1.73.1] — Fixed: installing spore no longer warns about OpenTelemetry versions
+
+### Fixed
+
+- `npm install` no longer prints `ERESOLVE overriding peer dependency` for the tracing packages.
+  The core asked for `@opentelemetry/api` 1.10 and for an SDK (`sdk-node` and
+  `exporter-trace-otlp-grpc` 0.223) that accepts only an API below 1.10. Both SDK packages are now
+  `^0.301.1`, which is the SDK mohdel runs and the one that takes API 1.10.
+
 ## [1.73.0] — Added: a precursor can name an answer check for its cells
 
 ### Added
