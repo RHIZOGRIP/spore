@@ -1,4 +1,5 @@
 export { openCairn, verifyCairn, SCHEMA_VERSION, ENVELOPE_VERSION } from './cairn.js'
+export { MAX_EVIDENCE, MAX_LINE, openChecked } from './checked.js'
 export { canonical } from './canonical.js'
 export { CairnError } from './errors.js'
 export { CAIRN_NAME, MAX_SOCKET_PATH, serve, tokenVariable } from './daemon.js'

@@ -6,3 +6,12 @@ export class CairnError extends Error {
     this.detail = detail
   }
 }
+
+export function entryAt (index, check) {
+  try {
+    return check()
+  } catch (err) {
+    if (err instanceof CairnError) err.index = index
+    throw err
+  }
+}

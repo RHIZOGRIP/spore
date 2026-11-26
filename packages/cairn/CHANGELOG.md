@@ -4,6 +4,26 @@ All notable changes to `@rhizogrip/cairn` are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [0.2.0] — Added: a batch append, and the daemon's rules without the daemon
+
+### Added
+
+- `appendAll(entries, options)` on what `openCairn` returns: a batch written in one transaction,
+  so one fsync, chained as one `append` per entry would chain it. One refused entry refuses the
+  batch and nothing is written; the `CairnError` carries the entry's place as `index`.
+  `expectedHead` is the head before the batch, and `maxBytes` bounds each line. `append` is a
+  batch of one.
+- `openChecked(file, { name, instance })`: a cairn written under its instance file by a program
+  that holds the file, with no daemon. It records `cairn.config`, checks membership, kinds,
+  shapes, `at`, refs and the 4 KB line as the daemon does, keeps evidence with `store`, and has
+  `append` and `appendAll`. A `seq` ref may name an entry earlier in the same batch.
+
+### Changed
+
+- The daemon writes through `openChecked`, so both routes hold one set of rules. Its refusals keep
+  their types, statuses and `detail`. Two messages no longer name a header: a writer that is not a
+  member, and a `via` that is none of the three.
+
 ## [0.1.0] — First release
 
 ### Added

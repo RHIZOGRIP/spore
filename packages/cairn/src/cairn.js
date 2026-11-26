@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { canonical } from './canonical.js'
-import { CairnError } from './errors.js'
+import { CairnError, entryAt } from './errors.js'
 
 export const SCHEMA_VERSION = 1
 export const ENVELOPE_VERSION = 1
@@ -192,7 +192,9 @@ function verifyChain (db, { from = 1, to = Number.MAX_SAFE_INTEGER } = {}) {
 
 /**
  * The writer's side of one cairn: `file` is created when absent, and an existing one must be the
- * cairn called `name`. One process appends; anyone may read the file at the same time. The file is
+ * cairn called `name`. One process appends; anyone may read the file at the same time. `appendAll`
+ * writes a batch in one transaction, all of it or none, chained as one `append` per entry would
+ * be; what it refuses carries the `index` of the entry refused. The file is
  * in WAL mode while the writer holds it and back in rollback mode once it closes, because a
  * reader that may create nothing beside the file cannot open a WAL database without its `-shm`.
  */
@@ -208,34 +210,44 @@ export function openCairn (file, { name }) {
   const insertEntry = db.prepare('INSERT INTO t_entries (seq, line, hash) VALUES (?, ?, ?)')
   const insertRef = db.prepare('INSERT INTO t_refs (key, value, seq) VALUES (?, ?, ?)')
 
-  function append (fields, { expectedHead, maxBytes } = {}) {
-    for (const field of WRITER_FIELDS) {
-      if (fields[field] === undefined) throw new CairnError(`an entry needs ${field}`, { type: 'shape-mismatch', detail: `$.${field}` })
-    }
-    const refs = refsOf(fields.refs)
+  function appendAll (entries, { expectedHead, maxBytes } = {}) {
+    const refs = entries.map((fields, index) => entryAt(index, () => {
+      for (const field of WRITER_FIELDS) {
+        if (fields[field] === undefined) throw new CairnError(`an entry needs ${field}`, { type: 'shape-mismatch', detail: `$.${field}` })
+      }
+      return refsOf(fields.refs)
+    }))
+    if (!entries.length) return []
     db.exec('BEGIN IMMEDIATE')
     try {
-      const head = last.get()
-      const seq = head ? head.seq + 1 : 1
-      if (expectedHead !== undefined && expectedHead !== seq - 1) {
-        throw new CairnError(`the head is ${seq - 1}, not ${expectedHead}`, { type: 'stale-head', detail: String(seq - 1) })
+      let head = last.get()
+      const before = head ? head.seq : 0
+      if (expectedHead !== undefined && expectedHead !== before) {
+        throw new CairnError(`the head is ${before}, not ${expectedHead}`, { type: 'stale-head', detail: String(before) })
       }
-      const entry = { ...Object.fromEntries(WRITER_FIELDS.map(field => [field, fields[field]])), v: ENVELOPE_VERSION, seq, cairn: name, prev: head ? head.hash : null }
-      const line = canonical(entry)
-      const bytes = Buffer.byteLength(line, 'utf8')
-      if (maxBytes !== undefined && bytes > maxBytes) {
-        throw new CairnError(`the entry is ${bytes} bytes, past ${maxBytes}: a large payload goes to the evidence store, cited by hash`, { type: 'too-large', detail: String(bytes) })
-      }
-      const hash = sha256(line)
-      insertEntry.run(seq, line, hash)
-      for (const [key, value] of refs) insertRef.run(key, value, seq)
+      const written = entries.map((fields, index) => entryAt(index, () => {
+        const seq = before + index + 1
+        const entry = { ...Object.fromEntries(WRITER_FIELDS.map(field => [field, fields[field]])), v: ENVELOPE_VERSION, seq, cairn: name, prev: head ? head.hash : null }
+        const line = canonical(entry)
+        const bytes = Buffer.byteLength(line, 'utf8')
+        if (maxBytes !== undefined && bytes > maxBytes) {
+          throw new CairnError(`the entry is ${bytes} bytes, past ${maxBytes}: a large payload goes to the evidence store, cited by hash`, { type: 'too-large', detail: String(bytes) })
+        }
+        const hash = sha256(line)
+        insertEntry.run(seq, line, hash)
+        for (const [key, value] of refs[index]) insertRef.run(key, value, seq)
+        head = { seq, hash }
+        return head
+      }))
       db.exec('COMMIT')
-      return { seq, hash }
+      return written
     } catch (err) {
       db.exec('ROLLBACK')
       throw err
     }
   }
+
+  const append = (fields, options) => appendAll([fields], options)[0]
 
   function head () {
     const row = db.prepare('SELECT seq, hash, at FROM head').get()
@@ -260,7 +272,7 @@ export function openCairn (file, { name }) {
     }
   }
 
-  return { name, append, head, since, latest, verify: (range) => verifyChain(db, range), close }
+  return { name, append, appendAll, head, since, latest, verify: (range) => verifyChain(db, range), close }
 }
 
 function verifyEvidence (db, store) {

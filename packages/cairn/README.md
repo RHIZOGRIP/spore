@@ -155,10 +155,38 @@ done
 ## As a library
 
 ```js
-import { openCairn, serve, verifyCairn } from '@rhizogrip/cairn'
+import { openChecked, readInstance, serve, verifyCairn } from '@rhizogrip/cairn'
 ```
 
 `serve({ name, instanceFile, file, socket, token })` is the daemon, resolving to `{ close }`.
-`openCairn(file, { name })` is the writer's side without one — `append`, `head`, `since(seq)`,
-`verify({ from, to })`, `close` — for a single process that owns the file. `verifyCairn(file,
-{ evidence })` is what `cairn verify` runs.
+
+`openChecked(file, { name, instance })` writes a cairn under the same rules with no daemon, for a
+program that is the file's only writer; `instance` is what `readInstance(instanceFile)` returns,
+and one instance can be passed to many cairns. It records the instance as `cairn.config` as the
+daemon does, and refuses what the daemon refuses, with the same `type` and `detail` on the
+`CairnError` it throws.
+
+```js
+const cairn = openChecked('/srv/cairns/u42.sqlite', { name: 'user', instance: readInstance('user.json') })
+cairn.appendAll([
+  { actor: 'app', via: 'program', id: null, hop: 0, kind: 'page.opened', at, refs: { user: 'u_42' }, data: { path: '/home' } },
+  { actor: 'backend', via: 'program', id: 'run-9', hop: 0, kind: 'job.done', at, refs: { user: 'u_42' }, data: {} }
+], { expectedHead })
+cairn.close()
+```
+
+- An entry carries what the daemon reads from headers beside what it reads from the body: `actor`
+  a member, `via`, `id` (the writer's run, or `null`) and `hop`. The role is stamped from
+  `members`. Nothing checks who the caller is: that the actor is who it says is the program's word.
+- `appendAll(entries, { expectedHead })` writes the batch in one transaction and answers
+  `[{ seq, hash }]` in order. The entries are chained as one `append` each would chain them. One
+  refused entry refuses the batch, nothing is written, and the error's `index` is that entry's
+  place in the list. `expectedHead` is the head before the batch. A `seq` ref may name an entry
+  earlier in the same batch. `append(entry, options)` is a batch of one.
+- `store(actor, bytes)` keeps evidence and answers `{ sha256, bytes }`.
+- `head`, `since(seq)`, `latest(kind)`, `verify({ from, to })` and `close` read and release it.
+
+`openCairn(file, { name })` is the record beneath both, with no instance and so none of these
+checks: `append` and `appendAll` take the whole envelope the writer sets (`at`, `kind`, `refs`,
+`data`, `actor` as `{ name, role, via }`, `id`, `hop`) and check only that it is there and can be
+written. `verifyCairn(file, { evidence })` is what `cairn verify` runs.

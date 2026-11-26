@@ -156,6 +156,89 @@ describe('the chain', () => {
   })
 })
 
+describe('a batch', () => {
+  const batch = (from, count) => Array.from({ length: count }, (_, i) => entry(from + i))
+  const subjects = (sql) => {
+    const db = new DatabaseSync(file, { readOnly: true })
+    const rows = db.prepare(sql).all().map(row => ({ ...row }))
+    db.close()
+    return rows
+  }
+
+  it('takes consecutive seqs in one chain, as one append each would', () => {
+    const cairn = openCairn(file, { name: 'ops' })
+    const written = cairn.appendAll(batch(1, 40))
+    expect(written.map(w => w.seq)).toEqual(Array.from({ length: 40 }, (_, i) => i + 1))
+    expect(cairn.since(0).map(e => e.hash)).toEqual(written.map(w => w.hash))
+    expect(cairn.head()).toMatchObject(written[39])
+    cairn.close()
+    expect(verifyCairn(file)).toMatchObject({ ok: true, checked: 40 })
+
+    const one = join(dir, 'one-by-one.sqlite')
+    const single = openCairn(one, { name: 'ops' })
+    expect(batch(1, 40).map(fields => single.append(fields))).toEqual(written)
+    single.close()
+  })
+
+  it('chains with the appends around it', () => {
+    const cairn = openCairn(file, { name: 'ops' })
+    const first = cairn.append(entry(1))
+    const middle = cairn.appendAll(batch(2, 3))
+    const last = cairn.append(entry(5))
+    expect([first, ...middle, last].map(w => w.seq)).toEqual([1, 2, 3, 4, 5])
+    const read = cairn.since(0)
+    expect(read[1].prev).toBe(first.hash)
+    expect(read[4].prev).toBe(middle[2].hash)
+    expect(cairn.verify()).toEqual({ ok: true, checked: 5 })
+    cairn.close()
+  })
+
+  it('writes nothing when one entry is refused, and says which', () => {
+    const cairn = filled(2)
+    const head = cairn.head()
+    const noKind = entry(4)
+    delete noKind.kind
+    const cases = [
+      [noKind, 'shape-mismatch', '$.kind', {}],
+      [{ ...entry(4), refs: { task: 1.5 } }, 'shape-mismatch', '$.refs.task', {}],
+      [entry(4, { ratio: 1.5 }), 'shape-mismatch', '$.data.ratio', {}],
+      [entry(4, { note: 'x'.repeat(500) }), 'too-large', expect.any(String), { maxBytes: 400 }]
+    ]
+    for (const [bad, type, detail, options] of cases) {
+      const err = refusal(() => cairn.appendAll([entry(3), bad, entry(5)], options))
+      expect(err).toMatchObject({ type, detail, index: 1 })
+      expect(cairn.head()).toEqual(head)
+    }
+    expect(refusal(() => cairn.append(noKind))).toMatchObject({ detail: '$.kind', index: 0 })
+    expect(cairn.verify()).toEqual({ ok: true, checked: 2 })
+    cairn.close()
+    expect(subjects('SELECT count(*) AS n FROM t_refs')).toEqual([{ n: 4 }])
+  })
+
+  it('is refused over a head that moved', () => {
+    const cairn = filled(2)
+    expect(refusal(() => cairn.appendAll(batch(3, 2), { expectedHead: 1 }))).toMatchObject({ type: 'stale-head', detail: '2' })
+    expect(cairn.head().seq).toBe(2)
+    expect(cairn.appendAll(batch(3, 2), { expectedHead: 2 }).map(w => w.seq)).toEqual([3, 4])
+    cairn.close()
+  })
+
+  it('keeps the refs of every entry', () => {
+    const cairn = openCairn(file, { name: 'ops' })
+    cairn.appendAll(batch(1, 3))
+    cairn.close()
+    expect(subjects("SELECT seq, value FROM subjects WHERE key = 'task' ORDER BY seq")).toEqual([{ seq: 1, value: '1' }, { seq: 2, value: '2' }, { seq: 3, value: '3' }])
+    expect(subjects("SELECT count(*) AS n FROM subjects WHERE key = 'customer' AND value = 'cus_1'")).toEqual([{ n: 3 }])
+  })
+
+  it('of nothing writes nothing', () => {
+    const cairn = filled(1)
+    expect(cairn.appendAll([])).toEqual([])
+    expect(cairn.head().seq).toBe(1)
+    cairn.close()
+  })
+})
+
 describe('the journal', () => {
   const mode = () => {
     const db = new DatabaseSync(file, { readOnly: true })
