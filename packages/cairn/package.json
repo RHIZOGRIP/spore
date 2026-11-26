@@ -1,6 +1,6 @@
 {
   "name": "@rhizogrip/cairn",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A shared, append-only, hash-chained record that agents, programs and people write to and read from",
   "author": {
     "name": "Christophe Le Bars",
