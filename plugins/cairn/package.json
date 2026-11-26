@@ -32,7 +32,7 @@
     "NOTICE"
   ],
   "dependencies": {
-    "@rhizogrip/cairn": "^0.1.0"
+    "@rhizogrip/cairn": "^0.2.0"
   },
   "peerDependencies": {
     "@rhizogrip/spore": "^1.46.0"
